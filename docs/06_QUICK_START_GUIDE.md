@@ -4,120 +4,49 @@
 
 ---
 
-## 第一步：核心数据库 Schema (30 分钟)
+## 第一步：启动数据库 + Prisma 迁移（10 分钟）
 
-### 创建数据库迁移文件
+本仓库数据库层使用 **Prisma ORM**（见 `backend/prisma/schema.prisma`），迁移通过 `prisma migrate` 自动生成/执行，**不需要手写 SQL**。
 
-`database/migrations/001_initial_schema.sql`:
+### 1) 启动 PostgreSQL（Docker Compose）
 
-```sql
--- Projects 表
-CREATE TABLE projects (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(255) NOT NULL,
-  repo_url VARCHAR(500) NOT NULL,
-  scm_type VARCHAR(20) NOT NULL DEFAULT 'gitlab',
-  default_branch VARCHAR(100) NOT NULL DEFAULT 'main',
-  gitlab_project_id INTEGER UNIQUE,
-  gitlab_access_token TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Issues 表
-CREATE TABLE issues (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  title VARCHAR(255) NOT NULL,
-  description TEXT,
-  acceptance_criteria JSONB DEFAULT '[]',
-  constraints JSONB DEFAULT '[]',
-  test_requirements TEXT,
-  status VARCHAR(50) NOT NULL DEFAULT 'pending',
-  assigned_agent_id UUID,
-  created_by VARCHAR(100),
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_issues_project_status ON issues(project_id, status);
-
--- Agents 表
-CREATE TABLE agents (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(255) NOT NULL,
-  type VARCHAR(20) NOT NULL DEFAULT 'local',
-  proxy_id VARCHAR(100) UNIQUE,
-  capabilities JSONB DEFAULT '{}',
-  status VARCHAR(50) NOT NULL DEFAULT 'offline',
-  current_load INTEGER NOT NULL DEFAULT 0,
-  max_concurrent_runs INTEGER NOT NULL DEFAULT 2,
-  last_heartbeat TIMESTAMP,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_agents_status ON agents(status, current_load);
-
--- Runs 表
-CREATE TABLE runs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
-  agent_id UUID NOT NULL REFERENCES agents(id),
-  acp_session_id VARCHAR(100),
-  workspace_path VARCHAR(500),
-  branch_name VARCHAR(200),
-  status VARCHAR(50) NOT NULL DEFAULT 'pending',
-  started_at TIMESTAMP DEFAULT NOW(),
-  completed_at TIMESTAMP,
-  failure_reason VARCHAR(100),
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_runs_issue ON runs(issue_id);
-CREATE INDEX idx_runs_agent_status ON runs(agent_id, status);
-CREATE INDEX idx_runs_session ON runs(acp_session_id);
-
--- Events 表
-CREATE TABLE events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-  source VARCHAR(50) NOT NULL,
-  type VARCHAR(100) NOT NULL,
-  payload JSONB,
-  metadata JSONB,
-  timestamp TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_events_run_time ON events(run_id, timestamp DESC);
-CREATE INDEX idx_events_type ON events(type);
-
--- Artifacts 表
-CREATE TABLE artifacts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-  type VARCHAR(50) NOT NULL,
-  content JSONB NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_artifacts_run ON artifacts(run_id, type);
-
--- 初始化一个测试项目
-INSERT INTO projects (name, repo_url, gitlab_project_id)
-VALUES ('Test Project', 'https://gitlab.example.com/user/test-project', 123);
+```powershell
+docker compose up -d
 ```
 
-### 执行迁移
+### 2) 配置后端环境变量
 
-```bash
-psql -U acp_user -d acp_system -f database/migrations/001_initial_schema.sql
+```powershell
+Copy-Item backend/.env.example backend/.env
+```
+
+### 3) 执行迁移（创建/更新表结构）
+
+```powershell
+cd backend
+pnpm prisma:migrate
 ```
 
 ---
 
 ## 第二步：后端 Orchestrator (1 天)
+
+### 启动后端（Fastify + Prisma）
+
+仓库已在 `backend/` 中实现 Orchestrator（REST API + WebSocket Gateway + Prisma ORM），直接启动即可：
+
+```powershell
+cd backend
+pnpm dev
+```
+
+验证（Windows/pwsh 注意使用 `curl.exe` 并关闭代理）：
+
+```powershell
+curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/projects
+```
+
+> 下方的“关键代码片段”属于文档示例，真实实现以仓库代码为准。
 
 ### 最小可用代码结构
 
@@ -439,25 +368,16 @@ acp-proxy/
 └── README.md
 ```
 
-### 快速开始
+### 快速开始（Windows/pwsh）
 
-```bash
+```powershell
 cd acp-proxy
-
-# 初始化项目
-go mod init acp-proxy
-go get github.com/gorilla/websocket
-
-# 复制配置文件
-cp config.json.example config.json
-# 编辑 config.json 填入实际值
-
-# 构建
-go build -o acp-proxy cmd/proxy/main.go
-
-# 运行
-./acp-proxy
+Copy-Item config.json.example config.json
+notepad config.json
+go run ./cmd/proxy
 ```
+
+> 说明：若本机 `codex` CLI 不支持 `--acp`，Proxy 默认使用 `npx --yes @zed-industries/codex-acp` 启动 ACP Agent。
 
 ### 核心代码片段
 
@@ -523,34 +443,16 @@ GOOS=linux GOARCH=amd64 go build -o acp-proxy-linux cmd/proxy/main.go
 
 ## 第四步：前端 Web UI (1 天)
 
-### 简化版实现要点
+### 快速启动（React + Vite）
 
-只实现 3 个核心页面:
+前端已在 `frontend/` 中实现（Issue 列表 / 详情 / 创建 + WS 实时刷新），直接启动即可：
 
-1. **任务列表** (`src/pages/IssueList.tsx`)
-2. **任务详情** (`src/pages/IssueDetail.tsx`)
-3. **创建任务** (Modal)
-
-**关键代码**:
-
-```typescript
-// src/api/client.ts
-import axios from "axios";
-
-const API_URL = import.meta.env.VITE_API_URL;
-
-export const api = axios.create({
-  baseURL: API_URL,
-});
-
-export const createIssue = (data: any) => api.post("/issues", data);
-
-export const getIssues = () => api.get("/issues");
-
-export const getIssue = (id: string) => api.get(`/issues/${id}`);
-
-export const getRunEvents = (runId: string) => api.get(`/runs/${runId}/events`);
+```powershell
+cd frontend
+pnpm dev
 ```
+
+默认地址：`http://localhost:5173`
 
 ---
 
@@ -558,36 +460,24 @@ export const getRunEvents = (runId: string) => api.get(`/runs/${runId}/events`);
 
 ### 测试用例
 
-```bash
-# 1. 创建 Issue
-curl -X POST http://localhost:3000/api/issues \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "修复 README 拼写错误",
-    "description": "README 中有多个拼写错误",
-    "acceptance_criteria": [
-      "修复所有拼写错误",
-      "提交应该只包含 README.md 的修改"
-    ]
-  }'
+```powershell
+# 0) 先创建 Project（数据库里没有 Project 时创建 Issue 会返回 NO_PROJECT）
+curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
+  -H "Content-Type: application/json" `
+  -d '{\"name\":\"Demo\",\"repoUrl\":\"https://example.com/repo.git\"}'
 
-# 2. 查看 Proxy 日志
-# 应该看到: "Executing task: run-xxx"
+# 1) 创建 Issue（有在线 Agent 时会自动创建 Run 并下发 execute_task）
+curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/issues `
+  -H "Content-Type: application/json" `
+  -d '{\"title\":\"修复 README 拼写错误\",\"description\":\"README 中有多个拼写错误\",\"acceptanceCriteria\":[\"修复所有拼写错误\"]}'
 
-# 3. 查看 Codex 输出（在 Proxy 日志中）
-# 应该看到: "Analyzing..."
+# 2) 查看 Agent 列表（Proxy 连接后应为 online）
+curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/agents
 
-# 4. 等待 MR 创建（约 2-5 分钟）
-
-# 5. 在 GitLab 上验证 MR 存在
-
-# 6. CI 运行并通过
-
-# 7. 手动合并 MR
-
-# 8. 验证任务状态变为 Done
-curl http://localhost:3000/api/issues/{issue_id}
-# 应该返回: {"issue": {"status": "done", ...}}
+# 3) 查询 Issue / Run / Events
+curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/issues/{issue_id}
+curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/runs/{run_id}
+curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/runs/{run_id}/events
 ```
 
 ---
@@ -598,37 +488,36 @@ curl http://localhost:3000/api/issues/{issue_id}
 
 **检查**:
 
-```bash
+```powershell
 # Orchestrator 是否运行
-curl http://localhost:3000/api/issues
+curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/issues
 
-# WebSocket 是否可访问
-wscat -c ws://localhost:3000/ws/agent
+# WebSocket 是否可访问（无需全局安装）
+npx --yes wscat -c ws://localhost:3000/ws/agent
 ```
 
 ### 2. Codex 无输出
 
 **检查**:
 
-```bash
-# 手动启动 Codex 测试
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | codex --acp
+```powershell
+# 手动测试 ACP Agent（若本机 codex CLI 不支持 --acp）
+'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}' | npx --yes @zed-industries/codex-acp
 
-# 查看 Proxy 日志
-tail -f proxy.log
+# Proxy 默认打印到控制台；如你把输出重定向到文件：
+Get-Content -Wait .\\proxy.log
 ```
 
 ### 3. MR 未创建
 
 **检查**:
 
-```bash
-# GitLab Token 是否正确
-curl -H "PRIVATE-TOKEN: $GITLAB_ACCESS_TOKEN" \
-  $GITLAB_URL/api/v4/projects/$GITLAB_PROJECT_ID
+```powershell
+# GitLab Token 是否正确（后续 GitLab 集成时使用）
+curl.exe -H "PRIVATE-TOKEN: $env:GITLAB_ACCESS_TOKEN" "$env:GITLAB_URL/api/v4/projects/$env:GITLAB_PROJECT_ID"
 
-# Proxy 是否检测到 "branch created"
-grep -i "branch created" proxy.log
+# Proxy 是否检测到 "branch created"（如你把输出重定向到文件）
+Select-String -Path .\\proxy.log -Pattern "branch created" -CaseSensitive:$false
 ```
 
 ---

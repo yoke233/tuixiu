@@ -246,6 +246,12 @@ codex --help | grep -i acp
 #   --acp    Enable Agent Client Protocol mode
 ```
 
+如果你使用的 `codex` CLI **没有** `--acp` 选项，可以使用 `codex-acp`（`https://github.com/zed-industries/codex-acp`）作为 ACP Agent：
+
+```bash
+npx --yes @zed-industries/codex-acp --help
+```
+
 ### 3.3 测试 Codex (可选)
 
 ```bash
@@ -662,18 +668,13 @@ CREATE DATABASE acp_system OWNER acp_user;
 \q
 ```
 
-### 9.2 创建初始表（手动 SQL）
+### 9.2 迁移表结构（Prisma ORM，推荐）
 
-创建 `database/migrations/001_initial_schema.sql`:
-
-```sql
--- 见后续章节完整 SQL
-```
-
-执行迁移:
+本仓库数据库层使用 **Prisma ORM**（见 `backend/prisma/schema.prisma`），迁移文件位于 `backend/prisma/migrations/`，通过 `prisma migrate` 应用到数据库，**不需要手写 SQL**。
 
 ```bash
-psql -U acp_user -d acp_system -f database/migrations/001_initial_schema.sql
+cd backend
+pnpm prisma:migrate
 ```
 
 ### 9.3 验证数据库
@@ -698,56 +699,12 @@ psql -U acp_user -d acp_system
 
 ## 10. Docker Compose 配置（可选）
 
-如果你想使用 Docker 一键启动所有服务:
+如果你想用 Docker 快速启动数据库（推荐）：
 
-创建 `docker-compose.yml`:
-
-```yaml
-version: "3.8"
-
-services:
-  postgres:
-    image: postgres:14
-    environment:
-      POSTGRES_USER: acp_user
-      POSTGRES_PASSWORD: acp_password
-      POSTGRES_DB: acp_system
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/migrations:/docker-entrypoint-initdb.d
-
-  backend:
-    build: ./backend
-    ports:
-      - "3000:3000"
-    environment:
-      DATABASE_URL: postgresql://acp_user:acp_password@postgres:5432/acp_system
-      GITLAB_URL: ${GITLAB_URL}
-      GITLAB_ACCESS_TOKEN: ${GITLAB_ACCESS_TOKEN}
-      GITLAB_PROJECT_ID: ${GITLAB_PROJECT_ID}
-    depends_on:
-      - postgres
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
-
-  frontend:
-    build: ./frontend
-    ports:
-      - "8080:80"
-    depends_on:
-      - backend
-
-volumes:
-  postgres_data:
-```
-
-启动所有服务:
+仓库根目录已提供 `docker-compose.yml`（仅包含 Postgres），直接启动即可：
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ---

@@ -28,6 +28,55 @@
 
 ---
 
+## ✅ 本仓库当前可运行的 MVP
+
+已实现并可本地跑通：
+- `backend/`：Fastify + WebSocket Gateway + Prisma ORM（迁移使用 `prisma migrate` 自动生成/执行）
+- `acp-proxy/`：Go 实现 WS ↔ ACP(JSON-RPC/stdin/stdout)；默认使用 `npx --yes @zed-industries/codex-acp`
+- `frontend/`：React + Vite Web UI（Issue 列表/详情/创建 + WS 实时刷新）
+- 单元测试：后端/前端/Proxy 均已覆盖并可一键执行
+
+### 快速启动（Windows / PowerShell）
+
+```powershell
+pnpm install
+docker compose up -d
+
+Copy-Item backend/.env.example backend/.env
+cd backend
+pnpm prisma:migrate
+pnpm dev
+```
+
+另开一个终端启动 Proxy：
+
+```powershell
+cd acp-proxy
+Copy-Item config.json.example config.json
+notepad config.json
+go run ./cmd/proxy
+```
+
+再开一个终端启动前端：
+
+```powershell
+cd frontend
+pnpm dev
+```
+
+浏览器打开 `http://localhost:5173`，先创建 Project，再创建 Issue。
+
+> Windows 下如使用命令行调用后端 API，建议用 `curl.exe --noproxy 127.0.0.1 ...`，避免系统代理导致本地请求失败。
+
+### 一键验证
+
+```powershell
+pnpm test
+pnpm test:coverage
+```
+
+---
+
 ### 技术实现（核心）
 
 5. **[docs/03_COMPONENT_IMPLEMENTATION.md](docs/03_COMPONENT_IMPLEMENTATION.md)**  

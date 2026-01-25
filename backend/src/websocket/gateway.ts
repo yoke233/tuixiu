@@ -1,0 +1,183 @@
+import type { FastifyInstance } from "fastify";
+import type { WebSocket } from "ws";
+
+import type { PrismaDeps } from "../deps.js";
+
+type AgentRegisterMessage = {
+  type: "register_agent";
+  agent: {
+    id: string; // proxyId
+    name: string;
+    capabilities?: unknown;
+    max_concurrent?: number;
+  };
+};
+
+type AgentHeartbeatMessage = {
+  type: "heartbeat";
+  agent_id: string; // proxyId
+  timestamp?: string;
+};
+
+type AgentUpdateMessage = {
+  type: "agent_update";
+  run_id: string;
+  content: unknown;
+};
+
+type BranchCreatedMessage = {
+  type: "branch_created";
+  run_id: string;
+  branch: string;
+};
+
+type AnyAgentMessage =
+  | AgentRegisterMessage
+  | AgentHeartbeatMessage
+  | AgentUpdateMessage
+  | BranchCreatedMessage;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
+  const agentConnections = new Map<string, WebSocket>();
+  const clientConnections = new Set<WebSocket>();
+
+  function broadcastToClients(payload: unknown) {
+    const data = JSON.stringify(payload);
+    for (const ws of clientConnections) {
+      ws.send(data);
+    }
+  }
+
+  async function sendToAgent(proxyId: string, payload: unknown) {
+    const ws = agentConnections.get(proxyId);
+    if (!ws) throw new Error(`Agent ${proxyId} not connected`);
+    ws.send(JSON.stringify(payload));
+  }
+
+  function handleAgentConnection(socket: WebSocket, logError: (err: unknown) => void) {
+    let proxyId: string | null = null;
+
+    socket.on("message", async (data: Buffer) => {
+      try {
+        const message = JSON.parse(data.toString()) as AnyAgentMessage;
+
+        if (message.type === "register_agent") {
+          proxyId = message.agent.id;
+          agentConnections.set(proxyId, socket);
+
+          await deps.prisma.agent.upsert({
+            where: { proxyId },
+            create: {
+              name: message.agent.name,
+              proxyId,
+              status: "online",
+              currentLoad: 0,
+              maxConcurrentRuns: message.agent.max_concurrent ?? 1,
+              capabilities: message.agent.capabilities ?? {}
+            },
+            update: {
+              name: message.agent.name,
+              status: "online",
+              maxConcurrentRuns: message.agent.max_concurrent ?? 1,
+              capabilities: message.agent.capabilities ?? {},
+              lastHeartbeat: new Date()
+            }
+          });
+
+          socket.send(JSON.stringify({ type: "register_ack", success: true }));
+          return;
+        }
+
+        if (message.type === "heartbeat") {
+          await deps.prisma.agent.update({
+            where: { proxyId: message.agent_id },
+            data: { lastHeartbeat: new Date(), status: "online" }
+          });
+          return;
+        }
+
+        if (message.type === "agent_update") {
+          await deps.prisma.event.create({
+            data: {
+              runId: message.run_id,
+              source: "acp",
+              type: "acp.update.received",
+              payload: message.content as any
+            }
+          });
+
+          if (isRecord(message.content) && message.content.type === "prompt_result") {
+            const run = await deps.prisma.run.update({
+              where: { id: message.run_id },
+              data: { status: "completed", completedAt: new Date() }
+            });
+            await deps.prisma.agent
+              .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
+              .catch(() => {});
+            await deps.prisma.issue
+              .update({ where: { id: run.issueId }, data: { status: "done" } })
+              .catch(() => {});
+          }
+
+          broadcastToClients({ type: "event_added", run_id: message.run_id });
+          return;
+        }
+
+        if (message.type === "branch_created") {
+          await deps.prisma.artifact.create({
+            data: {
+              runId: message.run_id,
+              type: "branch",
+              content: { branch: message.branch } as any
+            }
+          });
+          broadcastToClients({ type: "artifact_added", run_id: message.run_id });
+          return;
+        }
+      } catch (error) {
+        logError(error);
+      }
+    });
+
+    socket.on("close", async () => {
+      if (!proxyId) return;
+      agentConnections.delete(proxyId);
+      await deps.prisma.agent
+        .update({ where: { proxyId }, data: { status: "offline" } })
+        .catch(() => {});
+    });
+  }
+
+  function handleClientConnection(socket: WebSocket) {
+    clientConnections.add(socket);
+    socket.on("close", () => {
+      clientConnections.delete(socket);
+    });
+  }
+
+  function init(server: FastifyInstance) {
+    server.get("/ws/agent", { websocket: true }, (socket) => {
+      handleAgentConnection(socket, (err) => server.log.error(err));
+    });
+
+    server.get("/ws/client", { websocket: true }, (socket) => {
+      handleClientConnection(socket);
+    });
+  }
+
+  return {
+    init,
+    sendToAgent,
+    broadcastToClients,
+    __testing: {
+      agentConnections,
+      clientConnections,
+      handleAgentConnection,
+      handleClientConnection
+    }
+  };
+}

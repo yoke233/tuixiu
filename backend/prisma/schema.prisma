@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IssueStatus {
+  pending
+  running
+  reviewing
+  done
+  failed
+  cancelled
+}
+
+enum AgentType {
+  local
+  remote
+}
+
+enum AgentStatus {
+  online
+  offline
+  degraded
+  suspended
+}
+
+enum RunStatus {
+  pending
+  running
+  waiting_ci
+  completed
+  failed
+  cancelled
+}
+
+enum EventSource {
+  acp
+  gitlab
+  system
+  user
+}
+
+enum ArtifactType {
+  branch
+  mr
+  patch
+  report
+  ci_result
+}
+
+model Project {
+  id                     String   @id @default(uuid()) @db.Uuid
+  name                   String   @db.VarChar(255)
+  repoUrl                String   @db.VarChar(500)
+  scmType                String   @default("gitlab") @db.VarChar(20)
+  defaultBranch          String   @default("main") @db.VarChar(100)
+  gitlabProjectId        Int?     @unique
+  gitlabAccessToken      String?  @db.Text
+  gitlabWebhookSecret    String?  @db.VarChar(255)
+  branchProtection       Json?
+  agentAllocationStrategy String? @db.VarChar(20)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  issues Issue[]
+
+  @@index([gitlabProjectId])
+}
+
+model Issue {
+  id                 String      @id @default(uuid()) @db.Uuid
+  projectId          String      @db.Uuid
+  project            Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title              String      @db.VarChar(255)
+  description        String?
+  acceptanceCriteria Json?
+  constraints        Json?
+  testRequirements   String?     @db.Text
+  status             IssueStatus @default(pending)
+
+  assignedAgentId    String?     @db.Uuid
+  assignedAgent      Agent?      @relation(fields: [assignedAgentId], references: [id])
+
+  createdBy          String?     @db.VarChar(100)
+  labels             Json?
+  priority           Int         @default(0)
+
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  runs               Run[]
+
+  @@index([projectId, status])
+  @@index([assignedAgentId])
+  @@index([status])
+}
+
+model Agent {
+  id                String      @id @default(uuid()) @db.Uuid
+  name              String      @db.VarChar(255)
+  type              AgentType   @default(local)
+
+  proxyId            String      @unique @db.VarChar(100)
+  gatewayId          String?     @db.VarChar(100)
+
+  capabilities       Json?
+
+  status            AgentStatus @default(offline)
+  currentLoad       Int         @default(0)
+  maxConcurrentRuns Int         @default(2)
+
+  lastHeartbeat     DateTime?
+  healthCheckInterval Int       @default(30)
+  stats             Json?
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  runs              Run[]
+  assignedIssues    Issue[]
+
+  @@index([status, currentLoad])
+  @@index([proxyId])
+  @@index([lastHeartbeat])
+}
+
+model Run {
+  id             String    @id @default(uuid()) @db.Uuid
+
+  issueId        String    @db.Uuid
+  issue          Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  agentId        String    @db.Uuid
+  agent          Agent     @relation(fields: [agentId], references: [id])
+
+  acpSessionId   String?   @db.VarChar(100)
+
+  workspaceType  String?   @db.VarChar(20)
+  workspacePath  String?   @db.VarChar(500)
+  branchName     String?   @db.VarChar(200)
+
+  status         RunStatus @default(pending)
+
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  durationSeconds Int?
+
+  failureReason  String?   @db.VarChar(100)
+  errorMessage   String?   @db.Text
+
+  metadata       Json?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  events         Event[]
+  artifacts      Artifact[]
+
+  @@index([issueId])
+  @@index([agentId, status])
+  @@index([acpSessionId])
+  @@index([status])
+}
+
+model Event {
+  id        String      @id @default(uuid()) @db.Uuid
+
+  runId     String      @db.Uuid
+  run       Run         @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  source    EventSource
+  type      String      @db.VarChar(100)
+
+  payload   Json?
+  metadata  Json?
+
+  timestamp DateTime    @default(now())
+
+  @@index([runId, timestamp(sort: Desc)])
+  @@index([type])
+  @@index([source])
+}
+
+model Artifact {
+  id        String       @id @default(uuid()) @db.Uuid
+
+  runId     String       @db.Uuid
+  run       Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  type      ArtifactType
+  content   Json
+
+  createdAt DateTime     @default(now())
+
+  @@index([runId, type])
+}

@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:14
+    container_name: acp-postgres
+    environment:
+      POSTGRES_USER: acp_user
+      POSTGRES_PASSWORD: acp_password
+      POSTGRES_DB: acp_system
+    ports:
+      - "5432:5432"
+    volumes:
+      - acp_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  acp_postgres_data:
+
