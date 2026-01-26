@@ -26,6 +26,7 @@ type ConsoleItem = {
   toolCallId?: string;
   toolCallInfo?: ToolCallInfo;
   detailsTitle?: string;
+  agentChunkType?: "message" | "thought";
 };
 
 function extractToolCallInfo(update: any): ToolCallInfo | null {
@@ -233,12 +234,11 @@ function eventToConsoleItem(e: Event): ConsoleItem {
     }
 
     if (payload?.type === "prompt_result") {
-      const stopReason = typeof payload.stopReason === "string" ? payload.stopReason : "end_turn";
       return {
         id: e.id,
         role: "system",
         kind: "block",
-        text: `（本轮结束: ${stopReason}）`,
+        text: "",
         timestamp: e.timestamp
       };
     }
@@ -254,7 +254,8 @@ function eventToConsoleItem(e: Event): ConsoleItem {
           role: "agent",
           kind: "chunk",
           text: typeof chunkText === "string" ? chunkText : "",
-          timestamp: e.timestamp
+          timestamp: e.timestamp,
+          agentChunkType: sessionUpdate === "agent_thought_chunk" ? "thought" : "message"
         };
       }
 
@@ -351,7 +352,13 @@ export function RunConsole(props: { events: Event[] }) {
       if (!item.text) continue;
 
       const last = out[out.length - 1];
-      if (last && last.kind === "chunk" && item.kind === "chunk" && last.role === item.role) {
+      if (
+        last &&
+        last.kind === "chunk" &&
+        item.kind === "chunk" &&
+        last.role === item.role &&
+        last.agentChunkType === item.agentChunkType
+      ) {
         last.text += item.text;
         last.timestamp = item.timestamp;
         continue;
@@ -413,6 +420,20 @@ export function RunConsole(props: { events: Event[] }) {
   return (
     <div ref={ref} className="console" role="log" aria-label="运行输出">
       {items.map((item) => {
+        if (item.role === "agent" && item.agentChunkType === "thought") {
+          return (
+            <details key={item.id} className={`consoleItem ${item.role}`}>
+              <summary className="detailsSummary">
+                <span className="toolSummaryRow">
+                  <span className="badge gray">THINK</span>
+                  <span className="toolSummaryTitle">思考</span>
+                  <span style={{ marginLeft: "auto" }}>▸</span>
+                </span>
+              </summary>
+              <div className="pre">{item.text}</div>
+            </details>
+          );
+        }
         if (item.role === "system" && item.detailsTitle) {
           return (
             <details key={item.id} className={`consoleItem ${item.role}`}>
