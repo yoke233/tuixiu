@@ -149,4 +149,8 @@ export class AcpBridge {
     await this.conn.cancel({ sessionId });
   }
 
+  close(): void {
+    this.kill();
+  }
+
 }

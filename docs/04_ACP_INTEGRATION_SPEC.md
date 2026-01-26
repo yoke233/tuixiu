@@ -23,7 +23,7 @@ ACP（Agent Client Protocol）是基于 JSON-RPC 2.0 的协议，常见传输方
 本仓库的链路：
 
 ```
-[Web UI] ⇄ (ws/client) ⇄ [Orchestrator backend] ⇄ (ws/agent) ⇄ [acp-proxy] ⇄ (stdio/NDJSON) ⇄ [ACP agent 子进程]
+[Web UI] ⇄ (ws/client) ⇄ [Orchestrator backend] ⇄ (ws/agent) ⇄ [acp-proxy] ⇄ (stdio/NDJSON) ⇄ [ACP agent 子进程(按 Run 隔离)]
 ```
 
 ACP session 是“一段对话/线程”的上下文载体。要跨进程重启恢复对话，必须依赖 `session/load`，且前提是 agent 在 `initialize` 响应里声明支持 `loadSession`。
@@ -34,7 +34,7 @@ ACP session 是“一段对话/线程”的上下文载体。要跨进程重启�
 
 ### 2.1 初始化
 
-proxy 启动 agent 子进程后会先发起 `initialize`，确认协议版本与能力（尤其是 `agentCapabilities.loadSession`）。
+proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 worktree/workspace），并在启动后先发起 `initialize`，确认协议版本与能力（尤其是 `agentCapabilities.loadSession`）。
 
 ### 2.2 Session 建立/恢复
 
@@ -66,7 +66,7 @@ proxy 启动 agent 子进程后会先发起 `initialize`，确认协议版本与
 │           ↓                                         │
 │  ┌───────────────────────────────────────────────┐ │
 │  │  Session Router                                │ │
-│  │  - runId ↔ sessionId 映射                       │ │
+│  │  - runId ↔ (bridge/process/sessionId) 映射      │ │
 │  │  - session/load（可选）                         │ │
 │  │  - chunk 聚合                                   │ │
 │  └────────┬──────────────────────────────────────┘ │
@@ -86,7 +86,7 @@ proxy 启动 agent 子进程后会先发起 `initialize`，确认协议版本与
 - `acp-proxy/src/index.ts`
   - WebSocket 连接与重连、心跳
   - 处理 `execute_task` / `prompt_run`
-  - 管理 `runId → sessionId`、`sessionId → runId`
+  - 维护 `runId → (bridge/agent 子进程, sessionId)` 的运行态映射（每个 Run 独立 cwd/worktree）
   - 对 `agent_message_chunk` 做缓冲聚合（减少 UI 抖动）
   - 使用 `Semaphore` 限制并发 Run
 - `acp-proxy/src/acpBridge.ts`
