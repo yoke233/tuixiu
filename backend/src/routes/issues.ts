@@ -393,11 +393,12 @@ export function makeIssueRoutes(deps: {
     server.patch("/:id", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({
-        status: mutableIssueStatusSchema.optional()
+        status: mutableIssueStatusSchema.optional(),
+        archived: z.boolean().optional()
       });
 
       const { id } = paramsSchema.parse(request.params);
-      const { status } = bodySchema.parse(request.body ?? {});
+      const { status, archived } = bodySchema.parse(request.body ?? {});
 
       const issue = await deps.prisma.issue.findUnique({ where: { id } });
       if (!issue) {
@@ -409,13 +410,27 @@ export function makeIssueRoutes(deps: {
           error: { code: "ISSUE_RUNNING", message: "Issue 正在运行中，请先完成/取消 Run" }
         };
       }
-      if (!status) {
+      if (!status && typeof archived !== "boolean") {
         return { success: true, data: { issue } };
+      }
+
+      const nextStatus = status ?? issue.status;
+      if (archived === true && !["done", "failed", "cancelled"].includes(nextStatus)) {
+        return {
+          success: false,
+          error: { code: "ISSUE_NOT_COMPLETED", message: "仅已完成/失败/取消的 Issue 才能归档" }
+        };
+      }
+
+      const data: any = {};
+      if (status) data.status = status;
+      if (typeof archived === "boolean") {
+        data.archivedAt = archived ? ((issue as any).archivedAt ?? new Date()) : null;
       }
 
       const updated = await deps.prisma.issue.update({
         where: { id },
-        data: { status }
+        data
       });
 
       return { success: true, data: { issue: updated } };

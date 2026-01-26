@@ -660,6 +660,59 @@ describe("Issues routes", () => {
     await server.close();
   });
 
+  it("PATCH /api/issues/:id archives completed issue", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({ id: "i1", status: "done", archivedAt: null }),
+        update: vi.fn().mockResolvedValue({ id: "i1", status: "done", archivedAt: "2026-01-25T00:00:00.000Z" })
+      }
+    } as any;
+
+    await server.register(makeIssueRoutes({ prisma, sendToAgent: vi.fn() }), { prefix: "/api/issues" });
+
+    const id = "00000000-0000-0000-0000-000000000001";
+    const res = await server.inject({
+      method: "PATCH",
+      url: `/api/issues/${id}`,
+      payload: { archived: true }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: true,
+      data: { issue: { id: "i1", status: "done", archivedAt: "2026-01-25T00:00:00.000Z" } }
+    });
+    expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id }, data: { archivedAt: expect.any(Date) } });
+
+    await server.close();
+  });
+
+  it("PATCH /api/issues/:id returns ISSUE_NOT_COMPLETED when archiving pending issue", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({ id: "i1", status: "pending", archivedAt: null }),
+        update: vi.fn()
+      }
+    } as any;
+
+    await server.register(makeIssueRoutes({ prisma, sendToAgent: vi.fn() }), { prefix: "/api/issues" });
+
+    const res = await server.inject({
+      method: "PATCH",
+      url: "/api/issues/00000000-0000-0000-0000-000000000001",
+      payload: { archived: true }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: false,
+      error: { code: "ISSUE_NOT_COMPLETED", message: "仅已完成/失败/取消的 Issue 才能归档" }
+    });
+    expect(prisma.issue.update).not.toHaveBeenCalled();
+
+    await server.close();
+  });
+
   it("PATCH /api/issues/:id returns ISSUE_RUNNING when issue is running", async () => {
     const server = createHttpServer();
     const prisma = {

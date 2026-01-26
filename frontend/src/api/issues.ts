@@ -42,7 +42,10 @@ export async function startIssue(
   return data;
 }
 
-export async function updateIssue(id: string, input: { status?: Exclude<IssueStatus, "running"> }): Promise<Issue> {
+export async function updateIssue(
+  id: string,
+  input: { status?: Exclude<IssueStatus, "running">; archived?: boolean }
+): Promise<Issue> {
   const data = await apiPatch<{ issue: Issue }>(`/issues/${id}`, input);
   return data.issue;
 }

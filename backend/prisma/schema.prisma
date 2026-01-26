@@ -105,6 +105,7 @@ model Issue {
 
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
+  archivedAt         DateTime?
 
   runs               Run[]
 

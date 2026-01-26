@@ -29,6 +29,7 @@ export type Issue = {
   title: string;
   description?: string | null;
   status: IssueStatus;
+  archivedAt?: string | null;
   createdAt: string;
   runs: Run[];
 };
