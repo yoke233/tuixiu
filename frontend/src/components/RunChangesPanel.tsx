@@ -253,11 +253,12 @@ export function RunChangesPanel(props: Props) {
         "建议步骤（在当前 worktree 执行）：",
         "1) git fetch origin",
         `2) git merge origin/${base}`,
-        "3) 解决冲突后：git add -A",
-        "4) git commit -m \"chore: resolve merge conflicts\"",
-        "5) git push",
+        "3) 解决冲突",
+        "4) 确保 tests/lint 通过（如项目有）",
+        "5) 提交修复说明",
+        "6) git push",
         "",
-        "要求：不引入无关改动；确保 tests/lint 通过（如项目有）。",
+        "要求：不引入无关改动。",
       ].filter(Boolean);
 
       await promptRun(props.runId, lines.join("\n"));
