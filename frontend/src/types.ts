@@ -71,8 +71,10 @@ export type AgentStatus = "online" | "offline" | "degraded" | "suspended";
 export type Agent = {
   id: string;
   name: string;
+  type?: string;
   proxyId: string;
   status: AgentStatus;
+  capabilities?: unknown;
   currentLoad: number;
   maxConcurrentRuns: number;
   createdAt: string;

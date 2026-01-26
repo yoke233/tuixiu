@@ -234,4 +234,46 @@ describe("IssueDetailPage", () => {
 
     await waitFor(() => expect(screen.getAllByText("cancelled").length).toBeGreaterThan(0));
   });
+
+  it("keeps start run enabled when /api/agents fails", async () => {
+    // issue detail (no run)
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issue: {
+          id: "i1",
+          projectId: "p1",
+          title: "Need agent",
+          status: "pending",
+          createdAt: "2026-01-25T00:00:00.000Z",
+          runs: []
+        }
+      }
+    });
+
+    // agents list fails
+    (globalThis.fetch as any).mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false, error: { code: "UPSTREAM", message: "agents down" } }), {
+        status: 500,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/issues/i1"]}>
+          <Routes>
+            <Route path="/issues/:id" element={<IssueDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
+    );
+
+    expect(await screen.findByText("Need agent")).toBeInTheDocument();
+    expect(await screen.findByText(/无法获取 Agent 列表/)).toBeInTheDocument();
+
+    const btn = await screen.findByRole("button", { name: "启动 Run" });
+    expect(btn).not.toBeDisabled();
+    expect(screen.queryByText(/当前没有可用的在线 Agent/)).not.toBeInTheDocument();
+  });
 });

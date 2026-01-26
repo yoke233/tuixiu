@@ -251,13 +251,39 @@ async function main() {
   };
 
   const registerAgent = () => {
+    const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities) ? cfg.agent.capabilities : {};
+    const baseSandbox: Record<string, unknown> = isRecord(baseCaps.sandbox) ? baseCaps.sandbox : {};
+    const baseRuntime: Record<string, unknown> = isRecord(baseCaps.runtime) ? baseCaps.runtime : {};
+    const baseBoxlite: Record<string, unknown> =
+      isRecord(baseSandbox.boxlite) ? (baseSandbox.boxlite as Record<string, unknown>) : {};
+
+    const runtime: Record<string, unknown> = {
+      ...baseRuntime,
+      platform: process.platform,
+      arch: process.arch,
+      isWsl,
+      wslDistro: process.env.WSL_DISTRO_NAME ?? null,
+    };
+
+    const sandbox: Record<string, unknown> = {
+      ...baseSandbox,
+      provider: cfg.sandbox.provider,
+    };
+    if (cfg.sandbox.provider === "boxlite_oci") {
+      sandbox.boxlite = {
+        ...baseBoxlite,
+        image: cfg.sandbox.boxlite?.image ?? null,
+        workingDir: cfg.sandbox.boxlite?.workingDir ?? null,
+      };
+    }
+
     send({
       type: "register_agent",
       agent: {
         id: cfg.agent.id,
         name: cfg.agent.name ?? cfg.agent.id,
         max_concurrent: cfg.agent.max_concurrent,
-        capabilities: cfg.agent.capabilities ?? {},
+        capabilities: { ...baseCaps, runtime, sandbox },
       },
     });
   };

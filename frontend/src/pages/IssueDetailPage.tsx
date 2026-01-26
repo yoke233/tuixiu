@@ -16,6 +16,49 @@ type IssuesOutletContext = {
   onIssueUpdated?: (issue: Issue) => void;
 };
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function platformLabel(platform: string | null): string {
+  switch (platform) {
+    case "win32":
+      return "Windows";
+    case "darwin":
+      return "macOS";
+    case "linux":
+      return "Linux";
+    default:
+      return platform ? platform : "未知";
+  }
+}
+
+function getAgentEnvLabel(agent: Agent | null): string | null {
+  if (!agent) return null;
+  const caps = isRecord(agent.capabilities) ? agent.capabilities : null;
+  const runtime = caps && isRecord(caps.runtime) ? caps.runtime : null;
+  const platform = runtime && typeof runtime.platform === "string" ? runtime.platform : null;
+  const isWsl = runtime && typeof runtime.isWsl === "boolean" ? runtime.isWsl : null;
+  if (isWsl) return "WSL2";
+  return platformLabel(platform);
+}
+
+function getAgentSandboxLabel(agent: Agent | null): { label: string; details?: string } | null {
+  if (!agent) return null;
+  const caps = isRecord(agent.capabilities) ? agent.capabilities : null;
+  const sandbox = caps && isRecord(caps.sandbox) ? caps.sandbox : null;
+  const provider = sandbox && typeof sandbox.provider === "string" ? sandbox.provider : null;
+  if (!provider) return null;
+
+  if (provider === "boxlite_oci" && sandbox) {
+    const boxlite = isRecord(sandbox.boxlite) ? sandbox.boxlite : null;
+    const image = boxlite && typeof boxlite.image === "string" ? boxlite.image : "";
+    return { label: "boxlite_oci", details: image || undefined };
+  }
+
+  return { label: provider };
+}
+
 export function IssueDetailPage() {
   const params = useParams();
   const issueId = params.id ?? "";
@@ -26,6 +69,8 @@ export function IssueDetailPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const issueRef = useRef<Issue | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [chatText, setChatText] = useState<string>("");
   const [sending, setSending] = useState(false);
@@ -41,6 +86,16 @@ export function IssueDetailPage() {
     [agents, currentAgentId],
   );
   const agentOnline = currentAgent ? currentAgent.status === "online" : true;
+  const currentAgentEnvLabel = useMemo(() => getAgentEnvLabel(currentAgent), [currentAgent]);
+  const currentAgentSandbox = useMemo(() => getAgentSandboxLabel(currentAgent), [currentAgent]);
+
+  const selectedAgent = useMemo(
+    () => (selectedAgentId ? agents.find((a) => a.id === selectedAgentId) ?? null : null),
+    [agents, selectedAgentId],
+  );
+  const selectedAgentEnvLabel = useMemo(() => getAgentEnvLabel(selectedAgent), [selectedAgent]);
+  const selectedAgentSandbox = useMemo(() => getAgentSandboxLabel(selectedAgent), [selectedAgent]);
+
   const sessionId = run?.acpSessionId ?? null;
   const sessionKnown = !!sessionId;
 
@@ -86,8 +141,15 @@ export function IssueDetailPage() {
 
   useEffect(() => {
     listAgents()
-      .then(setAgents)
-      .catch(() => {});
+      .then((as) => {
+        setAgents(as);
+        setAgentsError(null);
+        setAgentsLoaded(true);
+      })
+      .catch((err) => {
+        setAgentsError(err instanceof Error ? err.message : String(err));
+        setAgentsLoaded(true);
+      });
   }, []);
 
   const onWs = useCallback(
@@ -134,6 +196,13 @@ export function IssueDetailPage() {
     [currentRunId, outlet]
   );
   const ws = useWsClient(onWs);
+
+  const availableAgents = useMemo(
+    () => agents.filter((a) => a.status === "online" && a.currentLoad < a.maxConcurrentRuns),
+    [agents],
+  );
+  const selectedAgentReady = selectedAgent ? selectedAgent.status === "online" && selectedAgent.currentLoad < selectedAgent.maxConcurrentRuns : false;
+  const canStartRun = Boolean(issueId) && (selectedAgentId ? selectedAgentReady : !agentsLoaded || !!agentsError || availableAgents.length > 0);
 
   async function onStartRun() {
     if (!issueId) return;
@@ -242,12 +311,24 @@ export function IssueDetailPage() {
                     </button>
                   </>
                 ) : (
-                  <button onClick={onStartRun} disabled={!issueId}>
+                  <button onClick={onStartRun} disabled={!canStartRun}>
                     启动 Run
                   </button>
                 )}
               </div>
             </div>
+
+            {!run && agentsLoaded && !agentsError && availableAgents.length === 0 ? (
+              <div className="muted" style={{ marginTop: 8 }}>
+                当前没有可用的在线 Agent：请先启动 `acp-proxy`（或等待 Agent 空闲）。
+              </div>
+            ) : null}
+
+            {!run && agentsError ? (
+              <div className="muted" style={{ marginTop: 8 }} title={agentsError}>
+                无法获取 Agent 列表：仍可尝试启动 Run（将由后端自动分配；如无 Agent 会返回错误）。
+              </div>
+            ) : null}
 
             {run ? (
               <div className="row gap">
@@ -282,6 +363,20 @@ export function IssueDetailPage() {
                   </span>
                 </div>
                 <div>
+                  <div className="muted">环境</div>
+                  <span className="muted">{currentAgentEnvLabel ?? "未知"}</span>
+                </div>
+                <div>
+                  <div className="muted">sandbox</div>
+                  {currentAgentSandbox ? (
+                    <span className="muted" title={currentAgentSandbox.details ?? ""}>
+                      {currentAgentSandbox.label}
+                    </span>
+                  ) : (
+                    <span className="muted">未知</span>
+                  )}
+                </div>
+                <div>
                   <div className="muted">session</div>
                   {sessionKnown ? <code title={sessionId ?? ""}>{sessionId}</code> : <span className="muted">未建立</span>}
                 </div>
@@ -292,14 +387,28 @@ export function IssueDetailPage() {
                   选择 Agent（可选）
                   <select value={selectedAgentId} onChange={(e) => setSelectedAgentId(e.target.value)}>
                     <option value="">自动分配</option>
-                    {agents.map((a) => (
-                      <option key={a.id} value={a.id} disabled={a.status !== "online"}>
-                        {a.name} ({a.status} {a.currentLoad}/{a.maxConcurrentRuns})
-                      </option>
-                    ))}
+                    {agents.map((a) => {
+                      const sandbox = getAgentSandboxLabel(a);
+                      const disabled = a.status !== "online" || a.currentLoad >= a.maxConcurrentRuns;
+                      return (
+                        <option key={a.id} value={a.id} disabled={disabled}>
+                          {a.name} ({a.status} {a.currentLoad}/{a.maxConcurrentRuns}
+                          {sandbox?.label ? ` · ${sandbox.label}` : ""})
+                        </option>
+                      );
+                    })}
                   </select>
                 </label>
-                <div className="muted">暂无 Run</div>
+                <div className="muted">
+                  暂无 Run
+                  {selectedAgent ? (
+                    <span>
+                      {" · "}
+                      {selectedAgentEnvLabel ?? "未知"}
+                      {selectedAgentSandbox?.label ? ` · ${selectedAgentSandbox.label}` : ""}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             )}
           </section>
