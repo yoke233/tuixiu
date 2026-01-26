@@ -7,6 +7,7 @@ import { loadEnv } from "./config.js";
 import { prisma } from "./db.js";
 import { makeAgentRoutes } from "./routes/agents.js";
 import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
+import { makeGitHubWebhookRoutes } from "./routes/githubWebhooks.js";
 import { makeIssueRoutes } from "./routes/issues.js";
 import { makeProjectRoutes } from "./routes/projects.js";
 import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
@@ -62,6 +63,7 @@ server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeGitHubIssueRoutes({ prisma }), { prefix: "/api/projects" });
+server.register(makeGitHubWebhookRoutes({ prisma, webhookSecret: env.GITHUB_WEBHOOK_SECRET }), { prefix: "/api/webhooks" });
 
 startWorkspaceCleanupLoop({
   prisma,

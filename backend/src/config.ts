@@ -26,7 +26,8 @@ const envSchema = z.object({
   GITLAB_URL: z.string().optional(),
   GITLAB_ACCESS_TOKEN: z.string().optional(),
   GITLAB_PROJECT_ID: z.string().optional(),
-  GITLAB_WEBHOOK_SECRET: z.string().optional()
+  GITLAB_WEBHOOK_SECRET: z.string().optional(),
+  GITHUB_WEBHOOK_SECRET: z.string().optional()
 });
 
 export type Env = z.infer<typeof envSchema>;

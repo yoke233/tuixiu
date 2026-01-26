@@ -56,6 +56,19 @@
    - 在 **Console** 查看输出并可继续对话
    - 展开 **变更** → 点击 **创建 GitHub PR** →（可选）**合并 GitHub PR**
 
+### 自动导入 GitHub 新 Issue（Webhook）
+
+后端已提供 GitHub Webhook 接口：`POST /api/webhooks/github`。当仓库有新 Issue（`issues.opened` / `issues.reopened`）时，会自动在系统里创建 `pending` Issue。
+
+1. 在本地 `backend/.env` 配置（可选，推荐）：`GITHUB_WEBHOOK_SECRET="xxx"`
+2. 在 GitHub 仓库 → **Settings → Webhooks → Add webhook**
+   - **Payload URL**：`https://<你的可访问域名>/api/webhooks/github`
+   - **Content type**：`application/json`
+   - **Secret**：填写与 `GITHUB_WEBHOOK_SECRET` 一致的值
+   - **Which events**：勾选 **Issues**
+3. 运行在本机时，GitHub 访问不到 `localhost`，需要用 ngrok / Cloudflare Tunnel 等把 `3000` 端口暴露出去
+4. Webhook Delivery 返回 `success=true` 后，去 GitHub 新建 Issue，即可在页面刷新后看到自动导入的 Issue
+
 ### 注意事项（MVP）
 
 - Token 会写入数据库（当前无 KMS/加密/权限体系/审计），请仅在可信环境使用，并尽量使用最小权限 PAT
