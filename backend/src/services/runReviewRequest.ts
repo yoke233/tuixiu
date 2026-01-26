@@ -22,6 +22,24 @@ export type RunReviewDeps = {
   };
 };
 
+function appendGitHubIssueLinkForPrBody(params: {
+  body: string;
+  issue: { externalProvider?: string | null; externalNumber?: number | null; externalUrl?: string | null };
+}): string {
+  const provider = String(params.issue.externalProvider ?? "").toLowerCase();
+  const externalNumber = params.issue.externalNumber;
+  if (provider !== "github") return params.body;
+  if (!Number.isFinite(externalNumber) || externalNumber <= 0) return params.body;
+
+  const externalUrl = params.issue.externalUrl?.trim();
+  const issueRefRegex = new RegExp(`#${externalNumber}(?!\\d)`);
+  if (issueRefRegex.test(params.body)) return params.body;
+  if (externalUrl && params.body.includes(externalUrl)) return params.body;
+
+  const trimmed = params.body.trimEnd();
+  return `${trimmed}${trimmed ? "\n\n" : ""}Closes #${externalNumber}`;
+}
+
 export async function createReviewRequestForRun(
   deps: RunReviewDeps,
   runId: string,
@@ -144,8 +162,9 @@ export async function createReviewRequestForRun(
     };
 
     let pr: github.GitHubPullRequest;
+    const prBody = appendGitHubIssueLinkForPrBody({ body: description, issue: run.issue });
     try {
-      pr = await createPullRequest(auth, { head: branch, base: targetBranch, title, body: description });
+      pr = await createPullRequest(auth, { head: branch, base: targetBranch, title, body: prBody });
     } catch (err) {
       return {
         success: false,
