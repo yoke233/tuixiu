@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
-import { createRunWorktree, suggestRunKey } from "../utils/gitWorkspace.js";
+import { createRunWorktree, suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_m, key) => {
@@ -178,7 +178,7 @@ export function makeIssueRoutes(deps: {
         const name =
           typeof worktreeName === "string" && worktreeName.trim()
             ? worktreeName.trim()
-            : suggestRunKey({
+            : await suggestRunKeyWithLlm({
                 title: issue.title,
                 externalProvider: (issue as any).externalProvider,
                 externalNumber: (issue as any).externalNumber,

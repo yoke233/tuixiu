@@ -54,6 +54,7 @@
 
 - Token 会写入数据库（当前无 KMS/加密/权限体系/审计），请仅在可信环境使用，并尽量使用最小权限 PAT
 - Run 会在仓库根目录生成 `.worktrees/`（git worktree）；建议不要手动改动其结构
+- worktreeName 默认从 Issue 标题生成 **ASCII slug**（避免中文等字符进入分支/路径）；如需更短更贴近语义的名称，可在后端启用 `WORKTREE_NAME_LLM=1`（会把标题发给 LLM），并配置 `WORKTREE_NAME_LLM_API_KEY`/`OPENAI_API_KEY`
 - 当前 `worktree` 模式天然绑定“后端启动时所在的仓库目录”：一个 `backend` 实例默认只服务一个 repo；多仓库请多实例或等待 `workspaceMode=clone`（见上方 PRD）
 - RoleTemplate 的 `initScript` 在 `acp-proxy` 所在机器执行，等同运行本地脚本；建议仅管理员可编辑
 

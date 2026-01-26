@@ -1,9 +1,32 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { makeIssueRoutes } from "../../src/routes/issues.js";
 import { createHttpServer } from "../test-utils.js";
 
 describe("Issues routes", () => {
+  const originalEnv = {
+    WORKTREE_NAME_LLM: process.env.WORKTREE_NAME_LLM,
+    WORKTREE_NAME_LLM_API_KEY: process.env.WORKTREE_NAME_LLM_API_KEY,
+    WORKTREE_NAME_LLM_MODEL: process.env.WORKTREE_NAME_LLM_MODEL,
+    WORKTREE_NAME_LLM_BASE_URL: process.env.WORKTREE_NAME_LLM_BASE_URL,
+    WORKTREE_NAME_LLM_TIMEOUT_MS: process.env.WORKTREE_NAME_LLM_TIMEOUT_MS
+  };
+
+  beforeEach(() => {
+    delete process.env.WORKTREE_NAME_LLM;
+    delete process.env.WORKTREE_NAME_LLM_API_KEY;
+    delete process.env.WORKTREE_NAME_LLM_MODEL;
+    delete process.env.WORKTREE_NAME_LLM_BASE_URL;
+    delete process.env.WORKTREE_NAME_LLM_TIMEOUT_MS;
+  });
+
+  afterAll(() => {
+    for (const [k, v] of Object.entries(originalEnv)) {
+      if (typeof v === "string") process.env[k] = v;
+      else delete process.env[k];
+    }
+  });
+
   it("GET /api/issues without status uses empty where", async () => {
     const server = createHttpServer();
     const prisma = {
@@ -232,6 +255,138 @@ describe("Issues routes", () => {
     expect(res.statusCode).toBe(200);
     expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "gh-456-fix-login-r1" });
     await server.close();
+  });
+
+  it("POST /api/issues/:id/start drops non-ascii in auto worktreeName", async () => {
+    const server = createHttpServer();
+    const createWorkspace = vi.fn().mockResolvedValue({
+      repoRoot: "D:\\xyad\\tuixiu",
+      branchName: "run/gh-456-r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-gh-456-r1"
+    });
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "i1",
+          projectId: "p1",
+          title: "修复登录",
+          description: null,
+          status: "pending",
+          acceptanceCriteria: [],
+          constraints: [],
+          testRequirements: null,
+          externalProvider: "github",
+          externalNumber: 456,
+          runs: [],
+          project: { id: "p1", defaultBranch: "main" }
+        }),
+        update: vi.fn().mockResolvedValue({ id: "i1" })
+      },
+      agent: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "a1",
+          proxyId: "proxy-1",
+          status: "online",
+          currentLoad: 0,
+          maxConcurrentRuns: 1
+        }),
+        update: vi.fn().mockResolvedValue({ id: "a1" })
+      },
+      run: {
+        create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }),
+        update: vi.fn().mockResolvedValue({ id: "r1" })
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
+    } as any;
+
+    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/issues/00000000-0000-0000-0000-000000000001/start",
+      payload: { agentId: "00000000-0000-0000-0000-000000000010" }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "gh-456-r1" });
+    await server.close();
+  });
+
+  it("POST /api/issues/:id/start uses LLM slug when enabled", async () => {
+    process.env.WORKTREE_NAME_LLM = "1";
+    process.env.WORKTREE_NAME_LLM_API_KEY = "sk-test-123456";
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        choices: [{ message: { content: "worktree-name-fix" } }]
+      })
+    });
+
+    const originalFetch = (globalThis as any).fetch;
+    (globalThis as any).fetch = fetchMock;
+
+    try {
+      const server = createHttpServer();
+      const createWorkspace = vi.fn().mockResolvedValue({
+        repoRoot: "D:\\xyad\\tuixiu",
+        branchName: "run/gh-456-worktree-name-fix-r1",
+        workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-gh-456-worktree-name-fix-r1"
+      });
+      const prisma = {
+        issue: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "i1",
+            projectId: "p1",
+            title: "自动生成的worktreename 把中文也填进去了",
+            description: null,
+            status: "pending",
+            acceptanceCriteria: [],
+            constraints: [],
+            testRequirements: null,
+            externalProvider: "github",
+            externalNumber: 456,
+            runs: [],
+            project: { id: "p1", defaultBranch: "main" }
+          }),
+          update: vi.fn().mockResolvedValue({ id: "i1" })
+        },
+        agent: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "a1",
+            proxyId: "proxy-1",
+            status: "online",
+            currentLoad: 0,
+            maxConcurrentRuns: 1
+          }),
+          update: vi.fn().mockResolvedValue({ id: "a1" })
+        },
+        run: {
+          create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }),
+          update: vi.fn().mockResolvedValue({ id: "r1" })
+        },
+        artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
+      } as any;
+
+      const sendToAgent = vi.fn().mockResolvedValue(undefined);
+      await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+
+      const res = await server.inject({
+        method: "POST",
+        url: "/api/issues/00000000-0000-0000-0000-000000000001/start",
+        payload: { agentId: "00000000-0000-0000-0000-000000000010" }
+      });
+      expect(res.statusCode).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(createWorkspace).toHaveBeenCalledWith({
+        runId: "r1",
+        baseBranch: "main",
+        name: "gh-456-worktree-name-fix-r1"
+      });
+      await server.close();
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+    }
   });
 
   it("POST /api/issues/:id/start forwards user worktreeName when provided", async () => {
