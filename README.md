@@ -19,11 +19,14 @@
 3. **[docs/01_SYSTEM_ARCHITECTURE.md](docs/01_SYSTEM_ARCHITECTURE.md)**  
    系统架构文档 - 三层架构、组件职责、数据流、技术选型
 
+4. **[docs/ROADMAP.md](docs/ROADMAP.md)**  
+   Roadmap - 已完成/未完成清单与下一步优先级
+
 ---
 
 ### 环境搭建（第一步）
 
-4. **[docs/02_ENVIRONMENT_SETUP.md](docs/02_ENVIRONMENT_SETUP.md)**  
+5. **[docs/02_ENVIRONMENT_SETUP.md](docs/02_ENVIRONMENT_SETUP.md)**  
    环境搭建指南 - 工具安装、数据库初始化、GitLab 配置、项目初始化
 
 ---

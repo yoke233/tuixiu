@@ -61,6 +61,7 @@ model Project {
   gitlabProjectId        Int?     @unique
   gitlabAccessToken      String?  @db.Text
   gitlabWebhookSecret    String?  @db.VarChar(255)
+  githubAccessToken      String?  @db.Text
   branchProtection       Json?
   agentAllocationStrategy String? @db.VarChar(20)
   createdAt              DateTime @default(now())

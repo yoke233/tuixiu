@@ -81,13 +81,13 @@ export function RunChangesPanel(props: Props) {
     const c = mrArtifact.content as any;
     const webUrl = (typeof c?.webUrl === "string" && c.webUrl) || (typeof c?.web_url === "string" && c.web_url) || "";
     const state = (typeof c?.state === "string" && c.state) || "";
-    const iid = typeof c?.iid === "number" ? c.iid : Number(c?.iid);
-    return { webUrl, state, iid: Number.isFinite(iid) ? iid : null };
+    const idNumRaw = typeof c?.iid === "number" ? c.iid : typeof c?.number === "number" ? c.number : Number(c?.iid ?? c?.number);
+    return { webUrl, state, num: Number.isFinite(idNumRaw) ? idNumRaw : null };
   }, [mrArtifact]);
 
-  const canUseGitlabApi = useMemo(() => {
-    return (props.project?.scmType ?? "").toLowerCase() === "gitlab";
-  }, [props.project]);
+  const provider = useMemo(() => (props.project?.scmType ?? "").toLowerCase(), [props.project]);
+  const providerLabel = provider === "github" ? "PR" : "MR";
+  const canUseApi = provider === "gitlab" || provider === "github";
 
   async function refreshRun() {
     if (!props.runId) return;
@@ -185,19 +185,20 @@ export function RunChangesPanel(props: Props) {
           <button onClick={refresh} disabled={loading}>
             刷新
           </button>
-          {canUseGitlabApi ? (
+          {canUseApi ? (
             mrInfo ? (
               <>
                 <a className="buttonSecondary" href={mrInfo.webUrl || "#"} target="_blank" rel="noreferrer">
-                  打开 MR{mrInfo.iid ? ` !${mrInfo.iid}` : ""}
+                  打开 {providerLabel}
+                  {mrInfo.num ? ` #${mrInfo.num}` : ""}
                 </a>
                 <button onClick={onMergeMr} disabled={mrLoading}>
-                  合并 MR
+                  合并 {providerLabel}
                 </button>
               </>
             ) : (
               <button onClick={onCreateMr} disabled={mrLoading}>
-                创建 MR
+                创建 {providerLabel}
               </button>
             )
           ) : createPrUrl ? (
@@ -210,7 +211,7 @@ export function RunChangesPanel(props: Props) {
 
       {mrInfo ? (
         <div className="muted" style={{ marginTop: 6 }}>
-          MR 状态：{mrInfo.state || "未知"}
+          {providerLabel} 状态：{mrInfo.state || "未知"}
         </div>
       ) : null}
 

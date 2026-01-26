@@ -354,7 +354,7 @@ async function handleBranchCreated(message: any) {
 
 Proxy 已切换为 Node/TypeScript 版本（基于 `@agentclientprotocol/sdk`），用于更完整地跟进 ACP 能力（如 `session/load`、Session Modes 等）。
 
-> 旧版 Go 实现文档仍保留：`GOLANG_PROXY_IMPLEMENTATION.md`
+> 旧版 Go Proxy 已从仓库移除，以下以 Node/TypeScript 版本为准。
 
 ### 项目结构
 
@@ -405,6 +405,14 @@ pnpm dev
 curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
   -H "Content-Type: application/json" `
   -d '{\"name\":\"Demo\",\"repoUrl\":\"https://example.com/repo.git\"}'
+
+# 可选：如需在 Web 端“一键创建 MR/PR”，请在创建 Project 时配置 SCM 信息
+# - GitLab: scmType=gitlab + gitlabProjectId + gitlabAccessToken
+# - GitHub: scmType=github + githubAccessToken
+# 例如：
+# curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
+#   -H "Content-Type: application/json" `
+#   -d '{\"name\":\"Demo\",\"repoUrl\":\"https://github.com/octo-org/octo-repo.git\",\"scmType\":\"github\",\"defaultBranch\":\"main\",\"githubAccessToken\":\"ghp_xxx\"}'
 
 # 1) 创建 Issue（有在线 Agent 时会自动创建 Run 并下发 execute_task）
 curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/issues `

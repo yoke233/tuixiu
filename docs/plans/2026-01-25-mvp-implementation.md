@@ -6,7 +6,7 @@
 
 **Architecture:** 三层结构：`backend/` 负责 REST + WS Orchestrator + DB；`acp-proxy/` 负责 WS ↔ ACP(JSON-RPC/stdin/stdout) 桥接；`frontend/` 负责 Web UI + WS 实时订阅。数据库使用 PostgreSQL + Prisma ORM（迁移由 `prisma migrate` 生成，不手写 SQL）。
 
-**Tech Stack:** Node.js + TypeScript + Fastify + Prisma + Vitest；Go + gorilla/websocket + go test；React + Vite + Vitest + Testing Library。
+**Tech Stack:** Node.js + TypeScript + Fastify + Prisma + Vitest；React + Vite + Vitest + Testing Library。
 
 ---
 
@@ -27,7 +27,7 @@
 - `docker compose up -d`
 - `pnpm -C backend prisma:migrate`
 - `pnpm -C backend dev`
-- `go test ./...` / `go run ./cmd/proxy`（或 `./bin/acp-proxy.exe`）
+- `pnpm -C acp-proxy dev`
 - `pnpm -C frontend dev`
 
 **Verification:**
@@ -53,28 +53,21 @@
 
 ---
 
-### Task 3: acp-proxy 单元测试覆盖（Go）
+### Task 3: acp-proxy 单元测试覆盖（Node/TypeScript）
 
 **Files:**
-- Create: `acp-proxy/internal/config/config_test.go`
-- Create: `acp-proxy/internal/acp/client_test.go`
-- Create: `acp-proxy/internal/proxy/proxy_test.go`（必要时）
-- Modify: `acp-proxy/internal/proxy/proxy.go`（仅做最小可测试性改造：注入 sender / dialer / acp 工厂）
+- Modify: `acp-proxy/src/config.test.ts`
+- (Optional) Create: `acp-proxy/src/acpBridge.test.ts`
+- (Optional) Create: `acp-proxy/src/index.test.ts`
 
-**Step 1: config.Load（RED→GREEN）**
-- 覆盖：必填字段校验、cwd 默认、name 默认、maxConcurrent/heartbeat 默认、agent_command 默认（`npx --yes @zed-industries/codex-acp`）。
+**Step 1: 配置解析（RED→GREEN）**
+- 覆盖：必填字段校验、cwd 默认、max_concurrent/heartbeat 默认、agent_command 默认（`npx --yes @zed-industries/codex-acp`）。
 
-**Step 2: acp.Client（RED→GREEN）**
-- 覆盖：`bytesTrimSpace`、`idKeyFromRaw`（int/string/raw）、`handleLine` 的 4 类分支（notification/request/unknown request/response）。
-- 覆盖：`session/request_permission` 自动选择 `allow_once`；无 option 则 cancelled。
-
-**Step 3: proxy.Proxy（RED→GREEN）**
-- 覆盖：`mock_mode` 下收到 `execute_task` 会发送 text update + prompt_result。
-- 覆盖：非 mock 下失败路径（Initialize/NewSession/Prompt 任一失败）会发送可读错误文本。
-- 覆盖：`session_update` 转发为 `agent_update`（run_id 绑定）。
+**Step 2: ACP 桥接与聚合（可选）**
+- 覆盖：win32 下 `npx` 走 `cmd.exe /c`；`agent_message_chunk` 的聚合 flush 行为。
 
 **Verification:**
-- Run: `pushd acp-proxy; go test ./...; popd`
+- Run: `pnpm -C acp-proxy test`
 - Expected: exit code 0
 
 ---
@@ -115,10 +108,9 @@
 - Modify: `package.json`
 
 **Step 1: 增加根脚本**
-- `test`: backend + frontend + go
-- `test:coverage`: backend/frontend（如设置）+ go
+- `test`: backend + frontend + acp-proxy
+- `test:coverage`: backend/frontend/acp-proxy（如设置）
 
 **Verification:**
 - Run: `pnpm test`
 - Expected: exit code 0
-

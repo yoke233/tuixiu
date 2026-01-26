@@ -560,90 +560,43 @@ VITE_WS_URL=wss://your-domain.com
 
 ## 8. ACP Proxy 初始化
 
-### 8.1 初始化 Golang 项目
+ACP Proxy 已采用 **Node/TypeScript** 实现（基于 `@agentclientprotocol/sdk`），仓库不再包含旧版 Go 实现。
 
-```bash
+### 8.1 安装依赖（一次）
+
+在仓库根目录执行：
+
+```powershell
+pnpm install
+```
+
+### 8.2 配置文件
+
+```powershell
 cd acp-proxy
-
-# 初始化 Go module
-go mod init acp-proxy
-
-# 安装依赖
-go get github.com/gorilla/websocket
-go get github.com/spf13/viper  # 配置管理（可选）
+Copy-Item config.json.example config.json
+notepad config.json
 ```
 
-### 8.2 创建项目结构
+`acp-proxy/config.json` 关键字段说明：
 
-```bash
-mkdir -p cmd/proxy
-mkdir -p internal/agent
-mkdir -p internal/websocket
-mkdir -p internal/config
+- `orchestrator_url`：后端 WS（默认 `ws://localhost:3000/ws/agent`）
+- `cwd`：仓库根目录绝对路径（Run worktree 会覆盖为 run 的 workspace）
+- `agent.id/name/max_concurrent`：注册到后端的 Agent 信息与并发
+- `agent_command`：启动 ACP agent 的命令数组（默认 `["npx","--yes","@zed-industries/codex-acp"]`）
 
-# 创建主入口
-cat > cmd/proxy/main.go << 'EOF'
-package main
+### 8.3 启动
 
-import (
-    "flag"
-    "log"
-    "acp-proxy/internal/config"
-    "acp-proxy/internal/proxy"
-)
+开发模式：
 
-func main() {
-    configPath := flag.String("config", "config.json", "配置文件路径")
-    flag.Parse()
-
-    cfg, err := config.Load(*configPath)
-    if err != nil {
-        log.Fatalf("Failed to load config: %v", err)
-    }
-
-    proxy := proxy.New(cfg)
-    if err := proxy.Start(); err != nil {
-        log.Fatalf("Failed to start proxy: %v", err)
-    }
-}
-EOF
+```powershell
+cd acp-proxy
+pnpm dev
 ```
 
-### 8.3 配置文件模板
+生产模式：
 
-创建 `acp-proxy/config.json.example`:
-
-```json
-{
-  "orchestrator_url": "ws://localhost:3000/ws/agent",
-  "auth_token": "your-auth-token-here",
-  "agent": {
-    "id": "codex-local-1",
-    "name": "Codex Local Agent 1",
-    "command": "codex",
-    "args": ["--acp"],
-    "capabilities": {
-      "languages": ["javascript", "typescript", "python"],
-      "frameworks": ["react", "fastify"],
-      "tools": ["git", "npm"]
-    },
-    "max_concurrent": 2,
-    "workspace": "/path/to/projects"
-  }
-}
-```
-
-使用时复制为 `config.json`:
-
-```bash
-cp config.json.example config.json
-# 编辑 config.json，填入实际值
-```
-
-### 8.4 构建可执行文件
-
-```bash
-# 构建（Node/TypeScript 版 Proxy）
+```powershell
 cd acp-proxy
 pnpm build
 pnpm start

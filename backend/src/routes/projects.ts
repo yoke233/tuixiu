@@ -11,7 +11,8 @@ const createProjectBodySchema = z.object({
   defaultBranch: z.string().min(1).optional(),
   gitlabProjectId: z.coerce.number().int().positive().optional(),
   gitlabAccessToken: z.string().min(1).optional(),
-  gitlabWebhookSecret: z.string().min(1).optional()
+  gitlabWebhookSecret: z.string().min(1).optional(),
+  githubAccessToken: z.string().min(1).optional()
 });
 
 export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
@@ -32,7 +33,8 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
           defaultBranch: body.defaultBranch ?? "main",
           gitlabProjectId: body.gitlabProjectId,
           gitlabAccessToken: body.gitlabAccessToken,
-          gitlabWebhookSecret: body.gitlabWebhookSecret
+          gitlabWebhookSecret: body.gitlabWebhookSecret,
+          githubAccessToken: body.githubAccessToken
         }
       });
       return { success: true, data: { project } };

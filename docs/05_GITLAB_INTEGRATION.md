@@ -2,6 +2,8 @@
 
 本文档说明如何集成 GitLab API 和 Webhook，实现 MR 创建、CI 状态监听等功能。
 
+> 补充：系统也已支持 GitHub PR（同一套 `/api/runs/:id/create-mr` / `/api/runs/:id/merge-mr` 端点），见文末“GitHub PR（已实现）”。
+
 ---
 
 ## 1. GitLab API 概述
@@ -118,6 +120,32 @@ async function createMergeRequest(params: CreateMRParams) {
     web_url: mr.web_url,
   };
 }
+```
+
+---
+
+## 附：GitHub PR（已实现）
+
+### 配置
+
+创建 Project 时：
+
+- `scmType: "github"`
+- `repoUrl`: `https://github.com/<owner>/<repo>.git`（或 GitHub Enterprise 的仓库地址）
+- `githubAccessToken`: `ghp_...` / `github_pat_...`
+
+> 说明：GitHub Enterprise 会根据 `repoUrl` 的 host 自动推导 API base（`https://<host>/api/v3`）。
+
+### API 端点（与 GitLab 共用）
+
+- `POST /api/runs/:id/create-mr`：创建 PR（后端会先 `git push -u origin <branch>`）
+- `POST /api/runs/:id/merge-mr`：合并 PR（merge method：`merge`；若请求带 `squash=true` 则用 `squash`）
+
+### 产物落库
+
+创建 PR 后会写入 `Artifact(type=mr)`，`content.provider = "github"`，并包含：
+
+- `number`（PR 编号）、`webUrl`、`state`、`sourceBranch`、`targetBranch`
 ```
 
 ### 2.3 何时创建 MR

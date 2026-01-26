@@ -55,6 +55,7 @@ export function IssueListPage() {
   const [projectGitlabProjectId, setProjectGitlabProjectId] = useState("");
   const [projectGitlabAccessToken, setProjectGitlabAccessToken] = useState("");
   const [projectGitlabWebhookSecret, setProjectGitlabWebhookSecret] = useState("");
+  const [projectGithubAccessToken, setProjectGithubAccessToken] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
 
   const [issueTitle, setIssueTitle] = useState("");
@@ -205,7 +206,8 @@ export function IssueListPage() {
         defaultBranch: projectDefaultBranch.trim() || undefined,
         gitlabProjectId: Number.isFinite(gitlabProjectId ?? NaN) ? gitlabProjectId : undefined,
         gitlabAccessToken: projectGitlabAccessToken.trim() || undefined,
-        gitlabWebhookSecret: projectGitlabWebhookSecret.trim() || undefined
+        gitlabWebhookSecret: projectGitlabWebhookSecret.trim() || undefined,
+        githubAccessToken: projectGithubAccessToken.trim() || undefined
       });
       setProjectName("");
       setProjectRepoUrl("");
@@ -214,6 +216,7 @@ export function IssueListPage() {
       setProjectGitlabProjectId("");
       setProjectGitlabAccessToken("");
       setProjectGitlabWebhookSecret("");
+      setProjectGithubAccessToken("");
       await refresh();
       setSelectedProjectId(p.id);
     } catch (err) {
@@ -435,6 +438,19 @@ export function IssueListPage() {
                             type="password"
                             value={projectGitlabWebhookSecret}
                             onChange={(e) => setProjectGitlabWebhookSecret(e.target.value)}
+                          />
+                        </label>
+                      </details>
+                    ) : projectScmType === "github" ? (
+                      <details>
+                        <summary>GitHub 配置（可选）</summary>
+                        <label className="label">
+                          GitHub Access Token
+                          <input
+                            type="password"
+                            value={projectGithubAccessToken}
+                            onChange={(e) => setProjectGithubAccessToken(e.target.value)}
+                            placeholder="ghp_... / github_pat_..."
                           />
                         </label>
                       </details>

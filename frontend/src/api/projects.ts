@@ -9,6 +9,7 @@ export type CreateProjectInput = {
   gitlabProjectId?: number;
   gitlabAccessToken?: string;
   gitlabWebhookSecret?: string;
+  githubAccessToken?: string;
 };
 
 export async function listProjects(): Promise<Project[]> {

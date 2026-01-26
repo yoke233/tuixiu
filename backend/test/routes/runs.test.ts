@@ -291,4 +291,152 @@ describe("Runs routes", () => {
     expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
     await server.close();
   });
+
+  it("POST /api/runs/:id/create-mr supports GitHub (creates PR artifact)", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          status: "completed",
+          branchName: "run/r1",
+          workspacePath: "D:\\repo\\.worktrees\\run-r1",
+          issue: {
+            id: "i1",
+            title: "t1",
+            description: "d1",
+            project: {
+              repoUrl: "https://github.com/octo-org/octo-repo.git",
+              scmType: "github",
+              defaultBranch: "main",
+              githubAccessToken: "ghp_xxx"
+            }
+          },
+          artifacts: []
+        }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "pr-1", type: "mr" }) }
+    } as any;
+
+    const gitPush = vi.fn().mockResolvedValue(undefined);
+    const createPullRequest = vi.fn().mockResolvedValue({
+      id: 99,
+      number: 12,
+      title: "t1",
+      state: "open",
+      html_url: "https://github.com/octo-org/octo-repo/pull/12",
+      head: { ref: "run/r1" },
+      base: { ref: "main" }
+    });
+
+    await server.register(
+      makeRunRoutes({
+        prisma,
+        gitPush,
+        github: {
+          parseRepo: () => ({
+            host: "github.com",
+            owner: "octo-org",
+            repo: "octo-repo",
+            webBaseUrl: "https://github.com/octo-org/octo-repo",
+            apiBaseUrl: "https://api.github.com"
+          }),
+          createPullRequest,
+          mergePullRequest: vi.fn(),
+          getPullRequest: vi.fn()
+        }
+      }),
+      { prefix: "/api/runs" }
+    );
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/create-mr",
+      payload: {}
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(true);
+    expect(gitPush).toHaveBeenCalledWith({ cwd: "D:\\repo\\.worktrees\\run-r1", branch: "run/r1" });
+    expect(createPullRequest).toHaveBeenCalled();
+    expect(prisma.artifact.create).toHaveBeenCalled();
+    expect(prisma.run.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "r1" }, data: { status: "waiting_ci" } })
+    );
+    await server.close();
+  });
+
+  it("POST /api/runs/:id/merge-mr supports GitHub (merges PR and marks issue done)", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          issueId: "i1",
+          issue: {
+            id: "i1",
+            project: {
+              repoUrl: "https://github.com/octo-org/octo-repo.git",
+              scmType: "github",
+              githubAccessToken: "ghp_xxx"
+            }
+          },
+          artifacts: [{ id: "pr-1", type: "mr", content: { number: 12 } }]
+        }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      issue: { update: vi.fn().mockResolvedValue({}) },
+      artifact: { update: vi.fn().mockResolvedValue({ id: "pr-1", type: "mr" }) }
+    } as any;
+
+    const mergePullRequest = vi.fn().mockResolvedValue({ merged: true, message: "Merged" });
+    const getPullRequest = vi.fn().mockResolvedValue({
+      id: 99,
+      number: 12,
+      title: "t1",
+      state: "closed",
+      html_url: "https://github.com/octo-org/octo-repo/pull/12",
+      head: { ref: "run/r1" },
+      base: { ref: "main" },
+      merged_at: new Date().toISOString()
+    });
+
+    await server.register(
+      makeRunRoutes({
+        prisma,
+        github: {
+          parseRepo: () => ({
+            host: "github.com",
+            owner: "octo-org",
+            repo: "octo-repo",
+            webBaseUrl: "https://github.com/octo-org/octo-repo",
+            apiBaseUrl: "https://api.github.com"
+          }),
+          createPullRequest: vi.fn(),
+          mergePullRequest,
+          getPullRequest
+        }
+      }),
+      { prefix: "/api/runs" }
+    );
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/merge-mr",
+      payload: {}
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(true);
+    expect(mergePullRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ pullNumber: 12 })
+    );
+    expect(getPullRequest).toHaveBeenCalled();
+    expect(prisma.artifact.update).toHaveBeenCalled();
+    expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
+    expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
+    await server.close();
+  });
 });
