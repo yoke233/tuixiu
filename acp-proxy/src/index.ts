@@ -673,6 +673,28 @@ async function main() {
     }
   };
 
+  const handleCancelTask = async (msg: { run_id: string; session_id?: string }) => {
+    try {
+      if (cfg.mock_mode) {
+        sendUpdate(msg.run_id, {
+          type: "text",
+          text: "[mock] cancel_task",
+        });
+        return;
+      }
+
+      const sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
+      if (!sessionId) return;
+
+      await bridge.cancel(sessionId);
+    } catch (err) {
+      sendUpdate(msg.run_id, {
+        type: "text",
+        text: "取消失败: " + String(err),
+      });
+    }
+  };
+
   const connectLoop = async () => {
     for (;;) {
       try {
@@ -699,6 +721,15 @@ async function main() {
               const msg = JSON.parse(text) as IncomingMessage;
               if (!msg || !isRecord(msg) || typeof msg.type !== "string")
                 return;
+
+              if (msg.type === "cancel_task" && typeof msg.run_id === "string") {
+                void handleCancelTask({
+                  run_id: msg.run_id,
+                  session_id:
+                    typeof msg.session_id === "string" ? msg.session_id : undefined,
+                });
+                return;
+              }
 
               if (
                 msg.type === "execute_task" &&

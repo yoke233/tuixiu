@@ -141,4 +141,12 @@ export class AcpBridge {
     await this.ensureInitialized();
     return await this.conn.prompt({ sessionId, prompt: [{ type: "text", text: prompt }] });
   }
+
+  async cancel(sessionId: string): Promise<void> {
+    await this.ensureConnected();
+    if (!this.conn) throw new Error("ACP connection not ready");
+    await this.ensureInitialized();
+    await this.conn.cancel({ sessionId });
+  }
+
 }
