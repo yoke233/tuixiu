@@ -455,4 +455,90 @@ describe("Runs routes", () => {
     expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
     await server.close();
   });
+
+  it("POST /api/runs/:id/sync-pr supports GitHub (syncs mergeable state)", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          issueId: "i1",
+          issue: {
+            id: "i1",
+            project: {
+              repoUrl: "https://github.com/octo-org/octo-repo.git",
+              scmType: "github",
+              githubAccessToken: "ghp_xxx"
+            }
+          },
+          artifacts: [{ id: "pr-1", type: "pr", content: { number: 12 } }]
+        }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      issue: { update: vi.fn().mockResolvedValue({}) },
+      artifact: { update: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr" }) }
+    } as any;
+
+    const getPullRequest = vi.fn().mockResolvedValue({
+      id: 99,
+      number: 12,
+      title: "t1",
+      state: "open",
+      html_url: "https://github.com/octo-org/octo-repo/pull/12",
+      head: { ref: "run/r1" },
+      base: { ref: "main" },
+      merged_at: null,
+      mergeable: false,
+      mergeable_state: "dirty"
+    });
+
+    await server.register(
+      makeRunRoutes({
+        prisma,
+        github: {
+          parseRepo: () => ({
+            host: "github.com",
+            owner: "octo-org",
+            repo: "octo-repo",
+            webBaseUrl: "https://github.com/octo-org/octo-repo",
+            apiBaseUrl: "https://api.github.com"
+          }),
+          createPullRequest: vi.fn(),
+          mergePullRequest: vi.fn(),
+          getPullRequest
+        }
+      }),
+      { prefix: "/api/runs" }
+    );
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/sync-pr",
+      payload: {}
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(true);
+
+    expect(getPullRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ pullNumber: 12 })
+    );
+
+    expect(prisma.artifact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "pr-1" },
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            mergeable: false,
+            mergeable_state: "dirty"
+          })
+        })
+      })
+    );
+
+    expect(prisma.issue.update).not.toHaveBeenCalled();
+    await server.close();
+  });
 });

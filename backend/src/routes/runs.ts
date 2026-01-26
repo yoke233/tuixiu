@@ -14,6 +14,7 @@ import {
 import {
   createReviewRequestForRun,
   mergeReviewRequestForRun,
+  syncReviewRequestForRun,
 } from "../services/runReviewRequest.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
@@ -203,6 +204,21 @@ export function makeRunRoutes(deps: {
         },
         id,
         body,
+      );
+    });
+
+    server.post("/:id/sync-pr", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const { id } = paramsSchema.parse(request.params);
+
+      return await syncReviewRequestForRun(
+        {
+          prisma: deps.prisma,
+          gitPush,
+          gitlab: deps.gitlab,
+          github: deps.github,
+        },
+        id,
       );
     });
 
