@@ -112,8 +112,8 @@ describe("Issues routes", () => {
     const server = createHttpServer();
     const createWorkspace = vi.fn().mockResolvedValue({
       repoRoot: "D:\\xyad\\tuixiu",
-      branchName: "run/r1",
-      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-r1"
+      branchName: "run/t1-r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-t1-r1"
     });
     const prisma = {
       issue: {
@@ -169,11 +169,121 @@ describe("Issues routes", () => {
     expect(payload.session_id).toBe("r1");
     expect(payload.prompt).toContain("任务标题: t1");
     expect(payload.prompt).toContain("- workspace:");
-    expect(payload.prompt).toContain("run/r1");
+    expect(payload.prompt).toContain("run/t1-r1");
     expect(payload.prompt).toContain("任务描述:");
     expect(payload.prompt).toContain("验收标准:");
     expect(payload.prompt).toContain("约束条件:");
-    expect(payload.cwd).toBe("D:\\xyad\\tuixiu\\.worktrees\\run-r1");
+    expect(payload.cwd).toBe("D:\\xyad\\tuixiu\\.worktrees\\run-t1-r1");
+
+    expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "t1-r1" });
+    await server.close();
+  });
+
+  it("POST /api/issues/:id/start uses GitHub issue number when worktreeName missing", async () => {
+    const server = createHttpServer();
+    const createWorkspace = vi.fn().mockResolvedValue({
+      repoRoot: "D:\\xyad\\tuixiu",
+      branchName: "run/gh-456-fix-login-r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-gh-456-fix-login-r1"
+    });
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "i1",
+          projectId: "p1",
+          title: "Fix login",
+          description: null,
+          status: "pending",
+          acceptanceCriteria: [],
+          constraints: [],
+          testRequirements: null,
+          externalProvider: "github",
+          externalNumber: 456,
+          runs: [],
+          project: { id: "p1", defaultBranch: "main" }
+        }),
+        update: vi.fn().mockResolvedValue({ id: "i1" })
+      },
+      agent: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "a1",
+          proxyId: "proxy-1",
+          status: "online",
+          currentLoad: 0,
+          maxConcurrentRuns: 1
+        }),
+        update: vi.fn().mockResolvedValue({ id: "a1" })
+      },
+      run: {
+        create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }),
+        update: vi.fn().mockResolvedValue({ id: "r1" })
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
+    } as any;
+
+    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/issues/00000000-0000-0000-0000-000000000001/start",
+      payload: { agentId: "00000000-0000-0000-0000-000000000010" }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "gh-456-fix-login-r1" });
+    await server.close();
+  });
+
+  it("POST /api/issues/:id/start forwards user worktreeName when provided", async () => {
+    const server = createHttpServer();
+    const createWorkspace = vi.fn().mockResolvedValue({
+      repoRoot: "D:\\xyad\\tuixiu",
+      branchName: "run/my-feature",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-my-feature"
+    });
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "i1",
+          projectId: "p1",
+          title: "t1",
+          description: null,
+          status: "pending",
+          acceptanceCriteria: [],
+          constraints: [],
+          testRequirements: null,
+          runs: [],
+          project: { id: "p1", defaultBranch: "main" }
+        }),
+        update: vi.fn().mockResolvedValue({ id: "i1" })
+      },
+      agent: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "a1",
+          proxyId: "proxy-1",
+          status: "online",
+          currentLoad: 0,
+          maxConcurrentRuns: 1
+        }),
+        update: vi.fn().mockResolvedValue({ id: "a1" })
+      },
+      run: {
+        create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }),
+        update: vi.fn().mockResolvedValue({ id: "r1" })
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
+    } as any;
+
+    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/issues/00000000-0000-0000-0000-000000000001/start",
+      payload: { agentId: "00000000-0000-0000-0000-000000000010", worktreeName: "my-feature" }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "my-feature" });
     await server.close();
   });
 
@@ -181,8 +291,8 @@ describe("Issues routes", () => {
     const server = createHttpServer();
     const createWorkspace = vi.fn().mockResolvedValue({
       repoRoot: "D:\\xyad\\tuixiu",
-      branchName: "run/r1",
-      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-r1"
+      branchName: "run/t1-r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-t1-r1"
     });
     const prisma = {
       issue: {
@@ -229,6 +339,7 @@ describe("Issues routes", () => {
     const [, payload] = sendToAgent.mock.calls[0];
     expect(payload.prompt).toContain("测试要求:");
     expect(payload.prompt).toContain("需要加单测");
+    expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "t1-r1" });
 
     await server.close();
   });
@@ -237,8 +348,8 @@ describe("Issues routes", () => {
     const server = createHttpServer();
     const createWorkspace = vi.fn().mockResolvedValue({
       repoRoot: "D:\\xyad\\tuixiu",
-      branchName: "run/r1",
-      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-r1"
+      branchName: "run/t1-r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-t1-r1"
     });
     const prisma = {
       issue: {
@@ -307,6 +418,7 @@ describe("Issues routes", () => {
         })
       })
     );
+    expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "t1-r1" });
 
     await server.close();
   });
@@ -315,8 +427,8 @@ describe("Issues routes", () => {
     const server = createHttpServer();
     const createWorkspace = vi.fn().mockResolvedValue({
       repoRoot: "D:\\xyad\\tuixiu",
-      branchName: "run/r1",
-      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-r1"
+      branchName: "run/t1-r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-t1-r1"
     });
     const prisma = {
       issue: {
@@ -365,6 +477,7 @@ describe("Issues routes", () => {
     expect(prisma.run.update).toHaveBeenCalled();
     expect(prisma.issue.update).toHaveBeenCalled();
     expect(prisma.agent.update).toHaveBeenCalled();
+    expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "t1-r1" });
     await server.close();
   });
 

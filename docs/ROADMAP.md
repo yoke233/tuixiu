@@ -7,7 +7,7 @@
 
 - **Node/TypeScript `acp-proxy/`**：WS ↔ ACP（`@agentclientprotocol/sdk`），支持 `session/load` 尝试复用、`cwd` 绑定、chunk 聚合、Windows `npx` 启动兼容
 - **Issue/Run 基本流转**：Issue 默认进入 `pending` 需求池；启动 Run 后进入 `running`；Run 结束进入 `reviewing`
-- **Run 工作区**：每个 Run 自动创建独立 `branch + git worktree`（`.worktrees/run-<runId>`），并把 `cwd` 透传给 proxy/ACP
+- **Run 工作区**：每个 Run 自动创建独立 `branch + git worktree`（`.worktrees/run-<worktreeName>`），并把 `cwd` 透传给 proxy/ACP
 - **变更查看**：Run 详情支持查看变更文件列表与 diff
 - **PR（后端一键）**
   - GitLab：`/api/runs/:id/create-pr`、`/api/runs/:id/merge-pr`

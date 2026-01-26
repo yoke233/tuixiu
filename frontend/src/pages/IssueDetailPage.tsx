@@ -36,6 +36,7 @@ export function IssueDetailPage() {
   const [rolesLoaded, setRolesLoaded] = useState(false);
   const [rolesError, setRolesError] = useState<string | null>(null);
   const [selectedRoleKey, setSelectedRoleKey] = useState<string>("");
+  const [worktreeName, setWorktreeName] = useState<string>("");
   const [chatText, setChatText] = useState<string>("");
   const [sending, setSending] = useState(false);
   const [pausing, setPausing] = useState(false);
@@ -198,7 +199,11 @@ export function IssueDetailPage() {
     setError(null);
     setRefreshing(true);
     try {
-      await startIssue(issueId, { agentId: selectedAgentId || undefined, roleKey: selectedRoleKey || undefined });
+      await startIssue(issueId, {
+        agentId: selectedAgentId || undefined,
+        roleKey: selectedRoleKey || undefined,
+        worktreeName: worktreeName.trim() ? worktreeName.trim() : undefined
+      });
       await refresh({ silent: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -328,6 +333,8 @@ export function IssueDetailPage() {
             rolesError={rolesError}
             selectedRoleKey={selectedRoleKey}
             onSelectedRoleKeyChange={setSelectedRoleKey}
+            worktreeName={worktreeName}
+            onWorktreeNameChange={setWorktreeName}
           />
 
           <section className="card">

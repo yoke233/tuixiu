@@ -36,12 +36,17 @@ export type PromptRunMessage = {
   cwd?: string;
 };
 
+export type CancelTaskMessage = {
+  type: "cancel_task";
+  run_id: string;
+  session_id?: string;
+};
+
 export type SessionCancelMessage = {
   type: "session_cancel";
   run_id: string;
   session_id?: string;
 };
-
 
 export type AgentUpdateMessage = {
   type: "agent_update";
@@ -52,5 +57,6 @@ export type AgentUpdateMessage = {
 export type IncomingMessage =
   | ExecuteTaskMessage
   | PromptRunMessage
+  | CancelTaskMessage
   | SessionCancelMessage
   | { type: string; [k: string]: unknown };

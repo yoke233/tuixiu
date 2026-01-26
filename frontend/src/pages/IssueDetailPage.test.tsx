@@ -115,7 +115,7 @@ describe("IssueDetailPage", () => {
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
     expect(await screen.findByText("r1")).toBeInTheDocument();
-    expect(await screen.findByText("branch")).toBeInTheDocument();
+    expect((await screen.findAllByText("branch")).length).toBeGreaterThan(0);
     expect(await screen.findByText("hi")).toBeInTheDocument();
     expect(await screen.findByText(/工具调用/)).toBeInTheDocument();
 

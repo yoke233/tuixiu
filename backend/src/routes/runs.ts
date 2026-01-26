@@ -14,6 +14,7 @@ import {
 import {
   createReviewRequestForRun,
   mergeReviewRequestForRun,
+  syncReviewRequestForRun,
 } from "../services/runReviewRequest.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
@@ -206,6 +207,21 @@ export function makeRunRoutes(deps: {
       );
     });
 
+    server.post("/:id/sync-pr", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const { id } = paramsSchema.parse(request.params);
+
+      return await syncReviewRequestForRun(
+        {
+          prisma: deps.prisma,
+          gitPush,
+          gitlab: deps.gitlab,
+          github: deps.github,
+        },
+        id,
+      );
+    });
+
     server.post("/:id/prompt", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({ text: z.string().min(1) });
@@ -335,7 +351,16 @@ export function makeRunRoutes(deps: {
       const run = await deps.prisma.run.update({
         where: { id },
         data: { status: "cancelled", completedAt: new Date() },
+        include: { agent: { select: { proxyId: true } } },
       });
+
+      if (deps.sendToAgent) {
+        await deps.sendToAgent(run.agent.proxyId, {
+          type: "cancel_task",
+          run_id: id,
+          session_id: run.acpSessionId ?? undefined,
+        }).catch(() => {});
+      }
 
       await deps.prisma.issue
         .update({ where: { id: run.issueId }, data: { status: "cancelled" } })

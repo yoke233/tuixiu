@@ -26,8 +26,8 @@
 
 - **Acceptance Criteria**
   - Project 支持配置 `workspaceMode`：
-    - `worktree`（现有）：在“当前仓库”下创建 `.worktrees/run-<runId>`。
-    - `clone`（新增）：在 `WORKSPACES_ROOT/run-<runId>` 目录 clone 仓库并 checkout 分支。
+    - `worktree`（现有）：在“当前仓库”下创建 `.worktrees/run-<worktreeName>`。
+    - `clone`（新增）：在 `WORKSPACES_ROOT/run-<worktreeName>` 目录 clone 仓库并 checkout 分支。
   - Project 支持配置 `gitAuthMode`：
     - `https_pat`：使用 GitHub PAT 完成 clone/fetch/push（token 不写入命令行参数，不出现在日志）。
     - `ssh`：使用宿主机已配置的 SSH key（或指定 keyPath/known_hosts），完成 clone/fetch/push。
@@ -70,7 +70,7 @@
     - 更新：`git -C <mirror> fetch --prune`
   - Run 工作区：
     - `git clone --reference-if-able <mirror> <workspacePath>`（无 mirror 时直接 `git clone <repoUrl> ...`）
-    - `git checkout -b run/<runId> origin/<baseBranch>`
+    - `git checkout -b run/<worktreeName> origin/<baseBranch>`
 
 - **Git Auth（C：HTTPS + SSH）**
   - HTTPS(PAT)：
@@ -83,8 +83,44 @@
 - **BoxLite（boxlite_oci）**
   - `acp-proxy` 在 WSL2/Linux/macOS(arm64) 运行，BoxLite 创建 OCI/micro-VM 沙箱并启动 ACP Agent。
   - 挂载策略：
-    - 至少挂载 `WORKSPACES_ROOT` 到容器内 `/workspace`（run 工作区为 `/workspace/run-<runId>` 或 `/workspace/<project>/run-<runId>`）。
+    - 至少挂载 `WORKSPACES_ROOT` 到容器内 `/workspace`（run 工作区为 `/workspace/run-<worktreeName>` 或 `/workspace/<project>/run-<worktreeName>`）。
   - 资源限制：通过 `sandbox.boxlite.cpus/memoryMib` 配置；并发上限受资源与 `agent.max_concurrent` 双重约束。
+
+- **Dev Environment Bootstrap（沙箱内初始化：以 Node/npm 为例）**
+  - 背景：在 `boxlite_oci` 下，ACP Agent 运行在 Linux guest 中；如果在宿主机执行 `pnpm install`（例如宿主是 macOS/Windows），会产生平台不兼容的二进制依赖，导致运行失败。因此「依赖安装/构建」应尽量在沙箱内完成。
+  - 最佳实践（推荐分三层）：
+    1. **Runner Image（OCI 镜像）**：预置稳定工具链（`git`、`bash`、Node 20+、`corepack`、`pnpm`/`npm`），避免 run 时现装。
+    2. **Project Cache（持久化目录，按项目隔离）**：挂载宿主机目录到沙箱 `$HOME/.tuixiu/projects/<projectId>`（或等价路径），用于保存 `pnpm store`/`npm cache`/编译缓存，避免不同项目互相污染。
+    3. **Workspace Bootstrap Script（每个 Run 启动前执行）**：在 Run 工作区内执行依赖安装与最小环境准备（例如 `pnpm install --frozen-lockfile` / `npm ci`），并强制超时、日志采集与脱敏。
+  - 推荐行为（MVP）：
+    - 平台提供一个“默认 bootstrap”（可关闭/可覆盖），根据 lockfile 自动选择包管理器：
+      - `pnpm-lock.yaml` → `pnpm install --frozen-lockfile`
+      - `package-lock.json` → `npm ci`
+      - `yarn.lock` → `yarn install --immutable`
+    - cache 目录默认指向项目隔离目录（示例）：`PNPM_STORE_DIR=$HOME/.tuixiu/projects/<projectId>/pnpm-store`、`NPM_CONFIG_CACHE=$HOME/.tuixiu/projects/<projectId>/npm-cache`
+  - 配置建议（后端/项目级，优先于 role）：
+    - `project.workspaceBootstrapScript`（bash，可选）：默认启用；失败则 Run 直接失败（错误码 `BOOTSTRAP_FAILED`）。
+    - `project.workspaceBootstrapTimeoutSeconds`：默认 900s（安装依赖可能较慢）。
+  - 脚本示例（仅示意）：
+    ```bash
+    set -euo pipefail
+    cd "${TUIXIU_WORKSPACE:-.}"
+    corepack enable >/dev/null 2>&1 || true
+
+    PROJECT_HOME="${HOME}/${TUIXIU_PROJECT_HOME_DIR:-.tuixiu/projects/unknown}"
+    export PNPM_STORE_DIR="${PROJECT_HOME}/pnpm-store"
+    export NPM_CONFIG_CACHE="${PROJECT_HOME}/npm-cache"
+
+    if [ -f pnpm-lock.yaml ]; then
+      pnpm install --frozen-lockfile
+    elif [ -f package-lock.json ]; then
+      npm ci
+    elif [ -f yarn.lock ]; then
+      yarn install --immutable
+    else
+      echo "[bootstrap] no lockfile found, skipping install"
+    fi
+    ```
 
 - **Concurrency（单 Agent 多 session）**
   - `acp-proxy` 必须支持一个 Agent 进程内多个 ACP session 并行（`newSession/loadSession/prompt` 带 `sessionId`）。
@@ -118,5 +154,5 @@
 - **Technical Risks**
   - 不同平台文件系统/路径映射复杂（Windows ↔ WSL2 ↔ Box guest）：需要明确的 `pathMapping` 与统一挂载根目录策略。
   - clone/push 认证：HTTPS token 泄漏风险、SSH key 管理与 known_hosts 校验复杂。
+  - 依赖安装的“平台一致性”：在 macOS/Windows 宿主 + Linux guest 的组合下，必须避免在宿主机生成 `node_modules`（或任何平台相关产物）；应在沙箱内 bootstrap，并使用项目隔离缓存目录加速。
   - 并发带来的资源竞争：单 Agent 多 session 可能导致 CPU/内存争用与输出交织，需要严格的 runId/sessionId 路由与限流。
-

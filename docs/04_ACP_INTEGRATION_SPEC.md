@@ -160,6 +160,7 @@ agent 的 `agent_message_chunk` 可能非常细。proxy 会按 session 维度缓
 | Agent → Server | `heartbeat`      | 心跳                | `{agent_id,timestamp?}` |
 | Server → Agent | `execute_task`   | 启动 Run（首轮执行） | `{run_id,prompt,cwd?}` |
 | Server → Agent | `prompt_run`     | 继续对话（同 Run）  | `{run_id,prompt,session_id?,context?,cwd?}` |
+| Server → Agent | `cancel_task`   | 取消 Run（ACP session/cancel） | `{run_id,session_id?}` |
 | Agent → Server | `agent_update`   | 事件流转发           | `{run_id,content:any}` |
 
 服务器关键行为摘要：

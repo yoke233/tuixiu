@@ -673,6 +673,29 @@ async function main() {
     }
   };
 
+  const handleCancelTask = async (msg: { run_id: string; session_id?: string }) => {
+    try {
+      if (cfg.mock_mode) {
+        sendUpdate(msg.run_id, {
+          type: "text",
+          text: "[mock] cancel_task",
+        });
+        return;
+      }
+
+      const sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
+      if (!sessionId) return;
+
+      await bridge.cancel(sessionId);
+    } catch (err) {
+      sendUpdate(msg.run_id, {
+        type: "text",
+        text: "取消失败: " + String(err),
+      });
+    }
+  };
+
+
   const handleSessionCancel = async (msg: { run_id: string; session_id?: string }) => {
     try {
       if (cfg.mock_mode) {
@@ -694,7 +717,6 @@ async function main() {
 
       setRunSession(msg.run_id, sessionId);
 
-      await bridge.ensureInitialized();
       await bridge.cancel(sessionId);
 
       sendUpdate(msg.run_id, {
@@ -704,11 +726,10 @@ async function main() {
     } catch (err) {
       sendUpdate(msg.run_id, {
         type: "text",
-        text: `暂停失败: ${String(err)}`,
+        text: "暂停失败: " + String(err),
       });
     }
   };
-
 
   const connectLoop = async () => {
     for (;;) {
@@ -736,6 +757,15 @@ async function main() {
               const msg = JSON.parse(text) as IncomingMessage;
               if (!msg || !isRecord(msg) || typeof msg.type !== "string")
                 return;
+
+              if (msg.type === "cancel_task" && typeof msg.run_id === "string") {
+                void handleCancelTask({
+                  run_id: msg.run_id,
+                  session_id:
+                    typeof msg.session_id === "string" ? msg.session_id : undefined,
+                });
+                return;
+              }
 
               if (
                 msg.type === "execute_task" &&
@@ -799,16 +829,14 @@ async function main() {
                     typeof msg.context === "string" ? msg.context : undefined,
                   cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
                 });
-                return;
               }
+
 
               if (msg.type === "session_cancel" && typeof msg.run_id === "string") {
                 void handleSessionCancel({
                   run_id: msg.run_id,
                   session_id:
-                    typeof (msg as any).session_id === "string"
-                      ? (msg as any).session_id
-                      : undefined,
+                    typeof msg.session_id === "string" ? msg.session_id : undefined,
                 });
                 return;
               }

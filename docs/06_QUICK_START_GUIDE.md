@@ -62,8 +62,8 @@ pnpm dev
 
 后端在启动 Run 时会自动创建独立 worktree 与分支：
 
-- worktree：`<repoRoot>/.worktrees/run-<runId>`
-- 分支名：`run/<runId>`
+- worktree：`<repoRoot>/.worktrees/run-<worktreeName>`
+- 分支名：`run/<worktreeName>`
 
 并把 `cwd=<worktreePath>` 透传给 proxy/ACP session，让 agent 在隔离环境里修改代码。  
 **约定**：agent 在该分支上完成修改后应执行 `git commit`，随后由后端负责 `git push` 并创建 PR。

@@ -16,19 +16,21 @@
 
 ## 面向真实用户：接入真实 GitHub（单仓库）
 
-> 当前版本是「单仓库模式」：Run 工作区通过 `git worktree` 在当前仓库根目录创建 `.worktrees/run-<runId>`。  
-> 你要让 Agent 修改哪个 repo，就在那个 repo 的工作目录里启动 `backend`（并确保 `origin` 指向同一个 GitHub repo）。
+> 当前版本默认使用 **本地仓库（worktree 模式）**：后端不会自动从 GitHub clone 仓库。  
+> 你要让 Agent 修改哪个 repo，就在那个 repo 的根目录启动 `backend`，并确保本地能 `git push origin <branch>`。  
+> 如需“Run 自动全量 clone + 缓存 + BoxLite 沙箱”模式，见 `docs/plans/2026-01-26-run-clone-boxlite-prd.md`（规划/设计中）。
 
 ### 准备
 
 - 工具：`git`、Node.js 20+、`pnpm`、Docker（用于 Postgres）
+- 仓库：先在运行 `backend` 的机器上 **clone 一份目标 repo**，并配置好 push 权限（SSH key 或 Git Credential Manager / 账号凭据）
 - Agent：默认 `npx --yes @zed-industries/codex-acp`（或替换为任意 ACP 兼容 Agent）
   - 在运行 `acp-proxy` 的环境里配置好 API Key（例如 `OPENAI_API_KEY`）
 - （可选）`bash`：仅当你使用 RoleTemplate 的 `initScript`（bash）时需要（WSL2 / Git Bash 均可）
 
 ### GitHub 凭据（PAT）
 
-- 用途：导入 GitHub Issue、创建/合并 GitHub PR（同时本地需要能 `git push origin <branch>`）
+- 用途：导入 GitHub Issue、创建/合并 GitHub PR（`git push` 仍依赖本地 Git 的认证配置）
 - Classic PAT（简单）：公共仓库用 `public_repo`，私有仓库用 `repo`
 - Fine-grained PAT（推荐）：对目标仓库授予
   - `Contents: Read & write`
@@ -52,6 +54,7 @@
 
 - Token 会写入数据库（当前无 KMS/加密/权限体系/审计），请仅在可信环境使用，并尽量使用最小权限 PAT
 - Run 会在仓库根目录生成 `.worktrees/`（git worktree）；建议不要手动改动其结构
+- 当前 `worktree` 模式天然绑定“后端启动时所在的仓库目录”：一个 `backend` 实例默认只服务一个 repo；多仓库请多实例或等待 `workspaceMode=clone`（见上方 PRD）
 - RoleTemplate 的 `initScript` 在 `acp-proxy` 所在机器执行，等同运行本地脚本；建议仅管理员可编辑
 
 ---
@@ -289,7 +292,7 @@ projects (1) → issues (N) → runs (N) → events / artifacts
 关键字段（以 Prisma schema 为准）：
 - runs.acpSessionId：Run 绑定的 ACP session
 - runs.workspacePath：Run worktree 路径
-- runs.branchName：默认 `run/<runId>`
+- runs.branchName：默认 `run/<worktreeName>`（可自定义；不填则按 Issue 自动生成）
 - runs.status：pending → running → waiting_ci → completed（CI/Webhook 仍在规划中）
 ```
 
@@ -312,7 +315,7 @@ POST   /api/projects/:id/github/issues/import # 导入/绑定外部 Issue（幂�
 
 # Issues
 POST   /api/issues          # 创建任务
-POST   /api/issues/:id/start # 启动 Run（可选传 agentId/roleKey）
+POST   /api/issues/:id/start # 启动 Run（可选传 agentId/roleKey/worktreeName）
 GET    /api/issues          # 列表
 GET    /api/issues/:id      # 详情
 
@@ -351,7 +354,7 @@ GET    /api/agents          # Agent 列表
   "type": "execute_task",
   "run_id": "run-123",
   "prompt": "任务描述",
-  "cwd": "D:\\repo\\.worktrees\\run-<runId>"
+  "cwd": "D:\\repo\\.worktrees\\run-<worktreeName>"
 }
 
 // Proxy → Orchestrator
