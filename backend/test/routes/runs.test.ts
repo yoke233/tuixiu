@@ -166,6 +166,37 @@ describe("Runs routes", () => {
     await server.close();
   });
 
+  it("POST /api/runs/:id/pause forwards session_cancel to agent", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          acpSessionId: "s1",
+          agent: { proxyId: "proxy-1" },
+        })
+      }
+    } as any;
+
+    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+    await server.register(makeRunRoutes({ prisma, sendToAgent }), { prefix: "/api/runs" });
+
+    const runId = "00000000-0000-0000-0000-000000000001";
+    const res = await server.inject({
+      method: "POST",
+      url: `/api/runs/${runId}/pause`
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { ok: true } });
+    expect(sendToAgent).toHaveBeenCalledWith("proxy-1", {
+      type: "session_cancel",
+      run_id: runId,
+      session_id: "s1"
+    });
+    await server.close();
+  });
+
+
   it("POST /api/runs/:id/create-pr pushes branch and creates PR artifact", async () => {
     const server = createHttpServer();
     const prisma = {
