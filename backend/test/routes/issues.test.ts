@@ -119,6 +119,7 @@ describe("Issues routes", () => {
       issue: {
         findUnique: vi.fn().mockResolvedValue({
           id: "i1",
+          projectId: "p1",
           title: "t1",
           description: "d1",
           status: "pending",
@@ -228,6 +229,84 @@ describe("Issues routes", () => {
     const [, payload] = sendToAgent.mock.calls[0];
     expect(payload.prompt).toContain("测试要求:");
     expect(payload.prompt).toContain("需要加单测");
+
+    await server.close();
+  });
+
+  it("POST /api/issues/:id/start sends init when roleKey provided", async () => {
+    const server = createHttpServer();
+    const createWorkspace = vi.fn().mockResolvedValue({
+      repoRoot: "D:\\xyad\\tuixiu",
+      branchName: "run/r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-r1"
+    });
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "i1",
+          title: "t1",
+          description: "d1",
+          status: "pending",
+          acceptanceCriteria: [],
+          constraints: [],
+          testRequirements: null,
+          runs: [],
+          project: { id: "p1", name: "Demo", repoUrl: "https://github.com/o/r", defaultBranch: "main", githubAccessToken: "ghp_xxx" }
+        }),
+        update: vi.fn().mockResolvedValue({ id: "i1" })
+      },
+      roleTemplate: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "role-1",
+          key: "backend-dev",
+          displayName: "后端开发",
+          promptTemplate: "你是 {{role.name}}，请优先写单测。",
+          initScript: "echo init",
+          initTimeoutSeconds: 120
+        })
+      },
+      agent: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "a1",
+          proxyId: "proxy-1",
+          status: "online",
+          currentLoad: 0,
+          maxConcurrentRuns: 1
+        }),
+        update: vi.fn().mockResolvedValue({ id: "a1" })
+      },
+      run: {
+        create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }),
+        update: vi.fn().mockResolvedValue({ id: "r1" })
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
+    } as any;
+
+    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/issues/00000000-0000-0000-0000-000000000001/start",
+      payload: { agentId: "00000000-0000-0000-0000-000000000010", roleKey: "backend-dev" }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prisma.roleTemplate.findFirst).toHaveBeenCalled();
+
+    const [, payload] = sendToAgent.mock.calls[0];
+    expect(payload.prompt).toContain("角色指令:");
+    expect(payload.prompt).toContain("后端开发");
+    expect(payload.init).toEqual(
+      expect.objectContaining({
+        script: "echo init",
+        timeout_seconds: 120,
+        env: expect.objectContaining({
+          GH_TOKEN: "ghp_xxx",
+          TUIXIU_ROLE_KEY: "backend-dev",
+          TUIXIU_RUN_ID: "r1"
+        })
+      })
+    );
 
     await server.close();
   });

@@ -5,6 +5,13 @@ import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { createRunWorktree } from "../utils/gitWorkspace.js";
 
+function renderTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_m, key) => {
+    const v = vars[key];
+    return typeof v === "string" ? v : "";
+  });
+}
+
 const issueStatusSchema = z.enum([
   "pending",
   "running",
@@ -99,10 +106,11 @@ export function makeIssueRoutes(deps: {
     server.post("/:id/start", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({
-        agentId: z.string().uuid().optional()
+        agentId: z.string().uuid().optional(),
+        roleKey: z.string().min(1).max(100).optional()
       });
       const { id } = paramsSchema.parse(request.params);
-      const { agentId } = bodySchema.parse(request.body ?? {});
+      const { agentId, roleKey } = bodySchema.parse(request.body ?? {});
 
       const issue = await deps.prisma.issue.findUnique({
         where: { id },
@@ -133,12 +141,22 @@ export function makeIssueRoutes(deps: {
         return { success: false, error: { code: "AGENT_BUSY", message: "该 Agent 正忙" } };
       }
 
+      const effectiveRoleKey = roleKey?.trim() ? roleKey.trim() : (issue.project as any)?.defaultRoleKey?.trim() ?? "";
+      const role = effectiveRoleKey
+        ? await deps.prisma.roleTemplate.findFirst({ where: { projectId: issue.projectId, key: effectiveRoleKey } })
+        : null;
+
+      if (effectiveRoleKey && !role) {
+        return { success: false, error: { code: "NO_ROLE", message: "RoleTemplate 不存在" } };
+      }
+
       const run = await deps.prisma.run.create({
         data: {
           id: uuidv7(),
           issueId: issue.id,
           agentId: selectedAgent.id,
-          status: "running"
+          status: "running",
+          metadata: role ? ({ roleKey: role.key } as any) : undefined
         }
       });
 
@@ -206,6 +224,25 @@ export function makeIssueRoutes(deps: {
           "请在该分支上进行修改，并在任务完成后将修改提交（git commit）到该分支。",
         ].join("\n"),
       );
+
+      if (role?.promptTemplate?.trim()) {
+        const rendered = renderTemplate(role.promptTemplate, {
+          workspace: workspacePath,
+          branch: branchName,
+          repoUrl: String(issue.project.repoUrl ?? ""),
+          defaultBranch: String(issue.project.defaultBranch ?? ""),
+          "project.id": String(issue.project.id ?? ""),
+          "project.name": String((issue.project as any).name ?? ""),
+          "issue.id": String(issue.id ?? ""),
+          "issue.title": String(issue.title ?? ""),
+          "issue.description": String(issue.description ?? ""),
+          roleKey: role.key,
+          "role.key": role.key,
+          "role.name": String(role.displayName ?? role.key),
+        });
+        promptParts.push(`角色指令:\n${rendered}`);
+      }
+
       promptParts.push(`任务标题: ${issue.title}`);
       if (issue.description) promptParts.push(`任务描述:\n${issue.description}`);
 
@@ -222,12 +259,37 @@ export function makeIssueRoutes(deps: {
       }
 
       try {
+        const init =
+          role?.initScript?.trim()
+            ? {
+                script: role.initScript,
+                timeout_seconds: role.initTimeoutSeconds,
+                env: {
+                  ...(issue.project.githubAccessToken
+                    ? {
+                        GH_TOKEN: issue.project.githubAccessToken,
+                        GITHUB_TOKEN: issue.project.githubAccessToken
+                      }
+                    : {}),
+                  TUIXIU_PROJECT_ID: issue.projectId,
+                  TUIXIU_PROJECT_NAME: String((issue.project as any).name ?? ""),
+                  TUIXIU_REPO_URL: String(issue.project.repoUrl ?? ""),
+                  TUIXIU_DEFAULT_BRANCH: String(issue.project.defaultBranch ?? ""),
+                  TUIXIU_ROLE_KEY: role.key,
+                  TUIXIU_RUN_ID: run.id,
+                  TUIXIU_WORKSPACE: workspacePath,
+                  TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${issue.projectId}`
+                }
+              }
+            : undefined;
+
         await deps.sendToAgent(selectedAgent.proxyId, {
           type: "execute_task",
           run_id: run.id,
           session_id: run.id,
           prompt: promptParts.join("\n\n"),
-          cwd: workspacePath
+          cwd: workspacePath,
+          init
         });
       } catch (error) {
         await deps.prisma.run.update({

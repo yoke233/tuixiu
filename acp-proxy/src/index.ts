@@ -1,5 +1,6 @@
 import { access } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
+import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import WebSocket from "ws";
 
@@ -31,7 +32,10 @@ function shouldRecreateSession(err: unknown): boolean {
   return msg.includes("session") || msg.includes("sessionid");
 }
 
-function composePromptWithContext(context: string | undefined, prompt: string): string {
+function composePromptWithContext(
+  context: string | undefined,
+  prompt: string,
+): string {
   const ctx = context?.trim();
   if (!ctx) return prompt;
   return [
@@ -46,8 +50,36 @@ function composePromptWithContext(context: string | undefined, prompt: string): 
   ].join("\n");
 }
 
+function redactSecrets(text: string, secrets: string[]): string {
+  let out = text;
+  for (const s of secrets) {
+    if (!s || s.length < 6) continue;
+    out = out.split(s).join("[REDACTED]");
+  }
+  return out;
+}
+
+function pickSecretValues(env: Record<string, string> | undefined): string[] {
+  if (!env) return [];
+  const secretKeys = [
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "OPENAI_API_KEY",
+    "CODEX_API_KEY",
+    "GITLAB_TOKEN",
+    "GITLAB_ACCESS_TOKEN",
+  ];
+  const out: string[] = [];
+  for (const k of secretKeys) {
+    const v = env[k];
+    if (typeof v === "string" && v.trim().length >= 6) out.push(v.trim());
+  }
+  return out;
+}
+
 async function main() {
-  const configPath = pickArg(process.argv.slice(2), "--config") ?? "config.json";
+  const configPath =
+    pickArg(process.argv.slice(2), "--config") ?? "config.json";
   const cfg = await loadConfig(configPath);
 
   const sem = new Semaphore(cfg.agent.max_concurrent);
@@ -65,21 +97,31 @@ async function main() {
 
   if (cfg.sandbox.provider === "boxlite_oci") {
     if (!cfg.sandbox.boxlite?.image?.trim()) {
-      throw new Error("sandbox.provider=boxlite_oci 时必须配置 sandbox.boxlite.image");
+      throw new Error(
+        "sandbox.provider=boxlite_oci 时必须配置 sandbox.boxlite.image",
+      );
     }
 
     if (process.platform === "win32") {
-      throw new Error("BoxLite 不支持 Windows 原生运行，请在 WSL2/Linux 或 macOS(Apple Silicon) 上运行 acp-proxy，或改用 sandbox.provider=host_process");
+      throw new Error(
+        "BoxLite 不支持 Windows 原生运行，请在 WSL2/Linux 或 macOS(Apple Silicon) 上运行 acp-proxy，或改用 sandbox.provider=host_process",
+      );
     }
 
     if (process.platform === "darwin" && process.arch !== "arm64") {
-      throw new Error("BoxLite 仅支持 macOS Apple Silicon(arm64)。Intel Mac 请改用 sandbox.provider=host_process 或在 Linux/WSL2 上运行 acp-proxy");
+      throw new Error(
+        "BoxLite 仅支持 macOS Apple Silicon(arm64)。Intel Mac 请改用 sandbox.provider=host_process 或在 Linux/WSL2 上运行 acp-proxy",
+      );
     }
 
     if (process.platform === "linux") {
-      await access("/dev/kvm", fsConstants.R_OK | fsConstants.W_OK).catch(() => {
-        throw new Error("BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm");
-      });
+      await access("/dev/kvm", fsConstants.R_OK | fsConstants.W_OK).catch(
+        () => {
+          throw new Error(
+            "BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm",
+          );
+        },
+      );
     }
 
     // @ts-expect-error - optional dependency (only needed when sandbox.provider=boxlite_oci)
@@ -94,13 +136,15 @@ async function main() {
   }
 
   const isWsl =
-    process.platform === "linux" && !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
+    process.platform === "linux" &&
+    !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
 
   const mapWindowsPathToWsl = (cwd: string): string => {
     const raw = cwd.trim();
     if (!raw) return raw;
     if (!isWsl) return raw;
-    if (!cfg.pathMapping || cfg.pathMapping.type !== "windows_to_wsl") return raw;
+    if (!cfg.pathMapping || cfg.pathMapping.type !== "windows_to_wsl")
+      return raw;
 
     const m = /^([a-zA-Z]):[\\/](.*)$/.exec(raw);
     if (!m) return raw;
@@ -123,7 +167,9 @@ async function main() {
 
     const candidates = volumes
       .map((v) => ({
-        hostPath: mapWindowsPathToWsl(v.hostPath).replace(/\\/g, "/").replace(/\/+$/, ""),
+        hostPath: mapWindowsPathToWsl(v.hostPath)
+          .replace(/\\/g, "/")
+          .replace(/\/+$/, ""),
         guestPath: v.guestPath.replace(/\\/g, "/").replace(/\/+$/, ""),
       }))
       .filter((v) => v.hostPath && v.guestPath);
@@ -139,19 +185,25 @@ async function main() {
     return `${best.guestPath}${norm.slice(best.hostPath.length)}`;
   };
 
-  const mapCwd = (cwd: string): string => mapHostPathToBox(mapWindowsPathToWsl(cwd));
+  const mapCwd = (cwd: string): string =>
+    mapHostPathToBox(mapWindowsPathToWsl(cwd));
 
   const defaultCwd = mapCwd(cfg.cwd);
 
   let ws: WebSocket | null = null;
 
   const send = (payload: unknown) => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error("ws not connected");
+    if (!ws || ws.readyState !== WebSocket.OPEN)
+      throw new Error("ws not connected");
     ws.send(JSON.stringify(payload));
   };
 
   const sendUpdate = (runId: string, content: unknown) => {
-    const msg: AgentUpdateMessage = { type: "agent_update", run_id: runId, content };
+    const msg: AgentUpdateMessage = {
+      type: "agent_update",
+      run_id: runId,
+      content,
+    };
     try {
       send(msg);
     } catch (err) {
@@ -173,7 +225,11 @@ async function main() {
     const state = chunkBySession.get(sessionId) ?? { buf: "", lastFlush: now };
     state.buf += text;
     chunkBySession.set(sessionId, state);
-    if (text.includes("\n") || state.buf.length >= 256 || now - state.lastFlush >= 200) {
+    if (
+      text.includes("\n") ||
+      state.buf.length >= 256 ||
+      now - state.lastFlush >= 200
+    ) {
       const out = state.buf;
       state.buf = "";
       state.lastFlush = now;
@@ -208,7 +264,10 @@ async function main() {
         })
       : new HostProcessSandbox({ log });
 
-  const launcher = new DefaultAgentLauncher({ sandbox, command: cfg.agent_command });
+  const launcher = new DefaultAgentLauncher({
+    sandbox,
+    command: cfg.agent_command,
+  });
 
   const bridge = new AcpBridge({
     launcher,
@@ -218,7 +277,10 @@ async function main() {
       const runId = sessionToRun.get(sessionId);
       if (!runId) return;
 
-      if (update.sessionUpdate === "agent_message_chunk" && update.content?.type === "text") {
+      if (
+        update.sessionUpdate === "agent_message_chunk" &&
+        update.content?.type === "text"
+      ) {
         const flushed = appendChunk(sessionId, update.content.text);
         if (flushed) sendChunkUpdate(runId, sessionId, flushed);
         return;
@@ -251,11 +313,18 @@ async function main() {
   };
 
   const registerAgent = () => {
-    const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities) ? cfg.agent.capabilities : {};
-    const baseSandbox: Record<string, unknown> = isRecord(baseCaps.sandbox) ? baseCaps.sandbox : {};
-    const baseRuntime: Record<string, unknown> = isRecord(baseCaps.runtime) ? baseCaps.runtime : {};
-    const baseBoxlite: Record<string, unknown> =
-      isRecord(baseSandbox.boxlite) ? (baseSandbox.boxlite as Record<string, unknown>) : {};
+    const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities)
+      ? cfg.agent.capabilities
+      : {};
+    const baseSandbox: Record<string, unknown> = isRecord(baseCaps.sandbox)
+      ? baseCaps.sandbox
+      : {};
+    const baseRuntime: Record<string, unknown> = isRecord(baseCaps.runtime)
+      ? baseCaps.runtime
+      : {};
+    const baseBoxlite: Record<string, unknown> = isRecord(baseSandbox.boxlite)
+      ? (baseSandbox.boxlite as Record<string, unknown>)
+      : {};
 
     const runtime: Record<string, unknown> = {
       ...baseRuntime,
@@ -293,18 +362,170 @@ async function main() {
       await delay(cfg.heartbeat_seconds * 1000, { signal }).catch(() => {});
       if (signal.aborted) break;
       try {
-        send({ type: "heartbeat", agent_id: cfg.agent.id, timestamp: new Date().toISOString() });
+        send({
+          type: "heartbeat",
+          agent_id: cfg.agent.id,
+          timestamp: new Date().toISOString(),
+        });
       } catch {
         // ignore
       }
     }
   };
 
-  const handleExecuteTask = async (msg: { run_id: string; prompt: string; cwd?: string }) => {
+  const runInitScript = async (opts: {
+    runId: string;
+    cwd: string;
+    init?: {
+      script: string;
+      timeout_seconds?: number;
+      env?: Record<string, string>;
+    };
+  }): Promise<boolean> => {
+    const script = opts.init?.script?.trim();
+    if (!script) return true;
+
+    const timeoutSecondsRaw = opts.init?.timeout_seconds ?? 300;
+    const timeoutSeconds = Number.isFinite(timeoutSecondsRaw)
+      ? Math.max(1, Math.min(3600, timeoutSecondsRaw))
+      : 300;
+
+    const env = opts.init?.env
+      ? { ...process.env, ...opts.init.env }
+      : process.env;
+    const secrets = pickSecretValues(opts.init?.env);
+
+    sendUpdate(opts.runId, {
+      type: "text",
+      text: `[init] start (bash, timeout=${timeoutSeconds}s)`,
+    });
+
+    const proc = spawn("bash", ["-lc", script], {
+      cwd: opts.cwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const makeLineSink = (label: "stdout" | "stderr") => {
+      let buf = "";
+      return {
+        onChunk(chunk: Buffer) {
+          buf += chunk.toString("utf8");
+          const parts = buf.split(/\r?\n/g);
+          buf = parts.pop() ?? "";
+          for (const line of parts) {
+            const text = redactSecrets(line, secrets);
+            if (!text.trim()) continue;
+            sendUpdate(opts.runId, {
+              type: "text",
+              text: `[init:${label}] ${text}`,
+            });
+          }
+        },
+        flush() {
+          const text = redactSecrets(buf, secrets);
+          if (text.trim())
+            sendUpdate(opts.runId, {
+              type: "text",
+              text: `[init:${label}] ${text}`,
+            });
+          buf = "";
+        },
+      };
+    };
+
+    const out = makeLineSink("stdout");
+    const err = makeLineSink("stderr");
+    proc.stdout?.on("data", (c: Buffer) => out.onChunk(c));
+    proc.stderr?.on("data", (c: Buffer) => err.onChunk(c));
+
+    const exitP = new Promise<{ code: number | null; signal: string | null }>(
+      (resolve) => {
+        proc.once("exit", (code, signal) => resolve({ code, signal }));
+      },
+    );
+    const errorP = new Promise<Error>((resolve) => {
+      proc.once("error", (e) => resolve(e));
+    });
+
+    const raced = await Promise.race([
+      exitP.then((r) => ({ kind: "exit" as const, ...r })),
+      errorP.then((e) => ({ kind: "error" as const, error: e })),
+      delay(timeoutSeconds * 1000).then(() => ({ kind: "timeout" as const })),
+    ]);
+
+    if (raced.kind === "timeout") {
+      sendUpdate(opts.runId, {
+        type: "text",
+        text: `[init] timeout after ${timeoutSeconds}s`,
+      });
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
+      const { code, signal } = await exitP.catch(() => ({
+        code: null,
+        signal: null,
+      }));
+      out.flush();
+      err.flush();
+      sendUpdate(opts.runId, {
+        type: "init_result",
+        ok: false,
+        exitCode: code,
+        error: `timeout (signal=${String(signal ?? "")})`,
+      });
+      return false;
+    }
+
+    if (raced.kind === "error") {
+      out.flush();
+      err.flush();
+      sendUpdate(opts.runId, {
+        type: "init_result",
+        ok: false,
+        exitCode: null,
+        error: String(raced.error),
+      });
+      return false;
+    }
+
+    out.flush();
+    err.flush();
+
+    if (raced.code === 0) {
+      sendUpdate(opts.runId, { type: "text", text: "[init] done" });
+      sendUpdate(opts.runId, { type: "init_result", ok: true, exitCode: 0 });
+      return true;
+    }
+
+    sendUpdate(opts.runId, {
+      type: "init_result",
+      ok: false,
+      exitCode: raced.code,
+      error: `exitCode=${raced.code}`,
+    });
+    return false;
+  };
+
+  const handleExecuteTask = async (msg: {
+    run_id: string;
+    prompt: string;
+    cwd?: string;
+    init?: {
+      script: string;
+      timeout_seconds?: number;
+      env?: Record<string, string>;
+    };
+  }) => {
     const release = await sem.acquire();
     try {
       if (cfg.mock_mode) {
-        sendUpdate(msg.run_id, { type: "text", text: `[mock] received prompt: ${msg.prompt}` });
+        sendUpdate(msg.run_id, {
+          type: "text",
+          text: `[mock] received prompt: ${msg.prompt}`,
+        });
         sendUpdate(msg.run_id, {
           type: "prompt_result",
           stopReason: "end_turn",
@@ -312,9 +533,16 @@ async function main() {
         return;
       }
 
-      await bridge.ensureInitialized();
-
       const cwd = getRunCwd(msg.run_id, msg.cwd);
+
+      const initOk = await runInitScript({
+        runId: msg.run_id,
+        cwd,
+        init: msg.init,
+      });
+      if (!initOk) return;
+
+      await bridge.ensureInitialized();
 
       let sessionId = runToSession.get(msg.run_id) ?? "";
       if (!sessionId) {
@@ -322,16 +550,25 @@ async function main() {
         sessionId = s.sessionId;
         setRunSession(msg.run_id, sessionId);
 
-        sendUpdate(msg.run_id, { type: "session_created", session_id: sessionId });
+        sendUpdate(msg.run_id, {
+          type: "session_created",
+          session_id: sessionId,
+        });
       }
 
       const res = await bridge.prompt(sessionId, msg.prompt);
       const flushed = flushChunks(sessionId);
       if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
 
-      sendUpdate(msg.run_id, { type: "prompt_result", stopReason: res.stopReason });
+      sendUpdate(msg.run_id, {
+        type: "prompt_result",
+        stopReason: res.stopReason,
+      });
     } catch (err) {
-      sendUpdate(msg.run_id, { type: "text", text: `执行失败: ${String(err)}` });
+      sendUpdate(msg.run_id, {
+        type: "text",
+        text: `执行失败: ${String(err)}`,
+      });
     } finally {
       release();
     }
@@ -347,7 +584,10 @@ async function main() {
     const release = await sem.acquire();
     try {
       if (cfg.mock_mode) {
-        sendUpdate(msg.run_id, { type: "text", text: `[mock] prompt: ${msg.prompt}` });
+        sendUpdate(msg.run_id, {
+          type: "text",
+          text: `[mock] prompt: ${msg.prompt}`,
+        });
         sendUpdate(msg.run_id, {
           type: "prompt_result",
           stopReason: "end_turn",
@@ -364,8 +604,14 @@ async function main() {
         const s = await bridge.newSession(cwd);
         sessionId = s.sessionId;
         setRunSession(msg.run_id, sessionId);
-        sendUpdate(msg.run_id, { type: "session_created", session_id: sessionId });
-        msg = { ...msg, prompt: composePromptWithContext(msg.context, msg.prompt) };
+        sendUpdate(msg.run_id, {
+          type: "session_created",
+          session_id: sessionId,
+        });
+        msg = {
+          ...msg,
+          prompt: composePromptWithContext(msg.context, msg.prompt),
+        };
       } else {
         const sessionPreviouslySeen = sessionToRun.has(sessionId);
         setRunSession(msg.run_id, sessionId);
@@ -375,7 +621,10 @@ async function main() {
         if (!sessionPreviouslySeen) {
           const ok = await bridge.loadSession(sessionId, cwd);
           if (!ok) {
-            sendUpdate(msg.run_id, { type: "text", text: "ACP session 无法 load（可能不支持或已丢失），将尝试直接对话…" });
+            sendUpdate(msg.run_id, {
+              type: "text",
+              text: "ACP session 无法 load（可能不支持或已丢失），将尝试直接对话…",
+            });
           }
         }
       }
@@ -385,25 +634,40 @@ async function main() {
         res = await bridge.prompt(sessionId, msg.prompt);
       } catch (err) {
         if (shouldRecreateSession(err)) {
-          sendUpdate(msg.run_id, { type: "text", text: "⚠️ ACP session 疑似已丢失：将创建新 session 并注入上下文继续…" });
+          sendUpdate(msg.run_id, {
+            type: "text",
+            text: "⚠️ ACP session 疑似已丢失：将创建新 session 并注入上下文继续…",
+          });
           const s = await bridge.newSession(cwd);
           sessionId = s.sessionId;
           setRunSession(msg.run_id, sessionId);
-          sendUpdate(msg.run_id, { type: "session_created", session_id: sessionId });
+          sendUpdate(msg.run_id, {
+            type: "session_created",
+            session_id: sessionId,
+          });
 
           const replay = composePromptWithContext(msg.context, msg.prompt);
           res = await bridge.prompt(sessionId, replay);
         } else {
-          sendUpdate(msg.run_id, { type: "text", text: `ACP prompt 失败：${String(err)}` });
+          sendUpdate(msg.run_id, {
+            type: "text",
+            text: `ACP prompt 失败：${String(err)}`,
+          });
           return;
         }
       }
 
       const flushed = flushChunks(sessionId);
       if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
-      sendUpdate(msg.run_id, { type: "prompt_result", stopReason: res.stopReason });
+      sendUpdate(msg.run_id, {
+        type: "prompt_result",
+        stopReason: res.stopReason,
+      });
     } catch (err) {
-      sendUpdate(msg.run_id, { type: "text", text: `对话失败: ${String(err)}` });
+      sendUpdate(msg.run_id, {
+        type: "text",
+        text: `对话失败: ${String(err)}`,
+      });
     } finally {
       release();
     }
@@ -433,23 +697,69 @@ async function main() {
             try {
               const text = data.toString();
               const msg = JSON.parse(text) as IncomingMessage;
-              if (!msg || !isRecord(msg) || typeof msg.type !== "string") return;
+              if (!msg || !isRecord(msg) || typeof msg.type !== "string")
+                return;
 
-              if (msg.type === "execute_task" && typeof msg.run_id === "string" && typeof msg.prompt === "string") {
+              if (
+                msg.type === "execute_task" &&
+                typeof msg.run_id === "string" &&
+                typeof msg.prompt === "string"
+              ) {
+                const initRaw = (msg as any).init;
+                let init:
+                  | {
+                      script: string;
+                      timeout_seconds?: number;
+                      env?: Record<string, string>;
+                    }
+                  | undefined;
+                if (isRecord(initRaw) && typeof initRaw.script === "string") {
+                  const envRaw = initRaw.env;
+                  const env = isRecord(envRaw)
+                    ? Object.fromEntries(
+                        Object.entries(envRaw).filter(
+                          (entry): entry is [string, string] =>
+                            typeof entry[1] === "string",
+                        ),
+                      )
+                    : undefined;
+                  const timeoutSeconds =
+                    typeof initRaw.timeout_seconds === "number"
+                      ? initRaw.timeout_seconds
+                      : typeof initRaw.timeout_seconds === "string"
+                        ? Number(initRaw.timeout_seconds)
+                        : undefined;
+                  init = {
+                    script: initRaw.script,
+                    timeout_seconds: Number.isFinite(timeoutSeconds as number)
+                      ? (timeoutSeconds as number)
+                      : undefined,
+                    env,
+                  };
+                }
                 void handleExecuteTask({
                   run_id: msg.run_id,
                   prompt: msg.prompt,
                   cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
+                  init,
                 });
                 return;
               }
 
-              if (msg.type === "prompt_run" && typeof msg.run_id === "string" && typeof msg.prompt === "string") {
+              if (
+                msg.type === "prompt_run" &&
+                typeof msg.run_id === "string" &&
+                typeof msg.prompt === "string"
+              ) {
                 void handlePromptRun({
                   run_id: msg.run_id,
                   prompt: msg.prompt,
-                  session_id: typeof msg.session_id === "string" ? msg.session_id : undefined,
-                  context: typeof msg.context === "string" ? msg.context : undefined,
+                  session_id:
+                    typeof msg.session_id === "string"
+                      ? msg.session_id
+                      : undefined,
+                  context:
+                    typeof msg.context === "string" ? msg.context : undefined,
                   cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
                 });
               }

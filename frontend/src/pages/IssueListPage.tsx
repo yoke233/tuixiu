@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { Link, Outlet, useParams } from "react-router-dom";
 
 import { createIssue, listIssues, startIssue, updateIssue } from "../api/issues";
+import { importGitHubIssue } from "../api/githubIssues";
 import { createProject, listProjects } from "../api/projects";
+import { createRole } from "../api/roles";
 import { cancelRun, completeRun } from "../api/runs";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -61,6 +63,13 @@ export function IssueListPage() {
   const [issueTitle, setIssueTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
   const [issueCriteria, setIssueCriteria] = useState("");
+  const [githubImport, setGithubImport] = useState("");
+  const [importingGithub, setImportingGithub] = useState(false);
+  const [roleKey, setRoleKey] = useState("");
+  const [roleDisplayName, setRoleDisplayName] = useState("");
+  const [rolePromptTemplate, setRolePromptTemplate] = useState("");
+  const [roleInitScript, setRoleInitScript] = useState("");
+  const [roleInitTimeoutSeconds, setRoleInitTimeoutSeconds] = useState("300");
   const [searchText, setSearchText] = useState("");
   const [detailWidth, setDetailWidth] = useState<number>(() => {
     try {
@@ -76,6 +85,10 @@ export function IssueListPage() {
     if (selectedProjectId) return selectedProjectId;
     return projects[0]?.id ?? "";
   }, [projects, selectedProjectId]);
+
+  const effectiveProject = useMemo(() => {
+    return effectiveProjectId ? projects.find((p) => p.id === effectiveProjectId) ?? null : null;
+  }, [effectiveProjectId, projects]);
 
   const visibleIssues = useMemo(() => {
     const needle = searchText.trim().toLowerCase();
@@ -248,6 +261,60 @@ export function IssueListPage() {
       setIssueDescription("");
       setIssueCriteria("");
       await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function onImportGithubIssue(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!effectiveProjectId) {
+      setError("请先创建 Project");
+      return;
+    }
+    const raw = githubImport.trim();
+    if (!raw) return;
+
+    setImportingGithub(true);
+    try {
+      const num = Number(raw);
+      const input = Number.isFinite(num) && num > 0 ? { number: Math.floor(num) } : { url: raw };
+      await importGitHubIssue(effectiveProjectId, input);
+      setGithubImport("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImportingGithub(false);
+    }
+  }
+
+  async function onCreateRole(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!effectiveProjectId) {
+      setError("请先创建 Project");
+      return;
+    }
+
+    const key = roleKey.trim();
+    const name = roleDisplayName.trim();
+    if (!key || !name) return;
+
+    try {
+      await createRole(effectiveProjectId, {
+        key,
+        displayName: name,
+        promptTemplate: rolePromptTemplate.trim() || undefined,
+        initScript: roleInitScript.trim() || undefined,
+        initTimeoutSeconds: Number(roleInitTimeoutSeconds) || undefined
+      });
+      setRoleKey("");
+      setRoleDisplayName("");
+      setRolePromptTemplate("");
+      setRoleInitScript("");
+      setRoleInitTimeoutSeconds("300");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -485,6 +552,75 @@ export function IssueListPage() {
                     </label>
                     <button type="submit">提交</button>
                   </form>
+                </section>
+
+                <section className="card">
+                  <h3>导入 GitHub Issue</h3>
+                  {effectiveProject?.scmType?.toLowerCase() === "github" ? (
+                    <form onSubmit={onImportGithubIssue} className="form">
+                      <label className="label">
+                        Issue Number 或 URL
+                        <input
+                          value={githubImport}
+                          onChange={(e) => setGithubImport(e.target.value)}
+                          placeholder="123 或 https://github.com/o/r/issues/123"
+                        />
+                      </label>
+                      <button type="submit" disabled={!githubImport.trim() || importingGithub}>
+                        {importingGithub ? "导入中…" : "导入"}
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="muted">当前 Project 不是 GitHub SCM</div>
+                  )}
+                </section>
+
+                <section className="card">
+                  <h3>创建 RoleTemplate</h3>
+                  <form onSubmit={onCreateRole} className="form">
+                    <label className="label">
+                      Role Key *
+                      <input value={roleKey} onChange={(e) => setRoleKey(e.target.value)} placeholder="backend-dev" />
+                    </label>
+                    <label className="label">
+                      显示名称 *
+                      <input
+                        value={roleDisplayName}
+                        onChange={(e) => setRoleDisplayName(e.target.value)}
+                        placeholder="后端开发"
+                      />
+                    </label>
+                    <label className="label">
+                      Prompt Template（可选）
+                      <textarea
+                        value={rolePromptTemplate}
+                        onChange={(e) => setRolePromptTemplate(e.target.value)}
+                        placeholder="你是 {{role.name}}，请优先写单测。"
+                      />
+                    </label>
+                    <label className="label">
+                      initScript（bash，可选）
+                      <textarea
+                        value={roleInitScript}
+                        onChange={(e) => setRoleInitScript(e.target.value)}
+                        placeholder={"# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init"}
+                      />
+                    </label>
+                    <label className="label">
+                      init 超时秒数（可选）
+                      <input
+                        value={roleInitTimeoutSeconds}
+                        onChange={(e) => setRoleInitTimeoutSeconds(e.target.value)}
+                        placeholder="300"
+                      />
+                    </label>
+                    <button type="submit" disabled={!roleKey.trim() || !roleDisplayName.trim()}>
+                      创建
+                    </button>
+                  </form>
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    initScript 默认在 workspace 执行；建议把持久内容写到 <code>$HOME/.tuixiu/projects/&lt;projectId&gt;</code>。
+                  </div>
                 </section>
               </div>
             </details>

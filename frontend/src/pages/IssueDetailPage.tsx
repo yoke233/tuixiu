@@ -3,6 +3,7 @@ import { Link, useOutletContext, useParams } from "react-router-dom";
 
 import { listAgents } from "../api/agents";
 import { getIssue, startIssue } from "../api/issues";
+import { listRoles } from "../api/roles";
 import { cancelRun, completeRun, getRun, listRunEvents, promptRun } from "../api/runs";
 import { ArtifactList } from "../components/ArtifactList";
 import { RunChangesPanel } from "../components/RunChangesPanel";
@@ -10,7 +11,7 @@ import { RunConsole } from "../components/RunConsole";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useWsClient, type WsMessage } from "../hooks/useWsClient";
-import type { Agent, Event, Issue, Run } from "../types";
+import type { Agent, Event, Issue, RoleTemplate, Run } from "../types";
 
 type IssuesOutletContext = {
   onIssueUpdated?: (issue: Issue) => void;
@@ -72,6 +73,10 @@ export function IssueDetailPage() {
   const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  const [roles, setRoles] = useState<RoleTemplate[]>([]);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
+  const [rolesError, setRolesError] = useState<string | null>(null);
+  const [selectedRoleKey, setSelectedRoleKey] = useState<string>("");
   const [chatText, setChatText] = useState<string>("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -152,6 +157,30 @@ export function IssueDetailPage() {
       });
   }, []);
 
+  useEffect(() => {
+    const projectId = issue?.projectId ?? "";
+    if (!projectId) return;
+
+    setRolesLoaded(false);
+    setRolesError(null);
+    listRoles(projectId)
+      .then((rs) => {
+        setRoles(rs);
+        setRolesLoaded(true);
+      })
+      .catch((err) => {
+        setRolesError(err instanceof Error ? err.message : String(err));
+        setRolesLoaded(true);
+      });
+  }, [issue?.projectId]);
+
+  useEffect(() => {
+    if (!issue) return;
+    if (selectedRoleKey) return;
+    const def = issue.project?.defaultRoleKey;
+    if (typeof def === "string" && def.trim()) setSelectedRoleKey(def.trim());
+  }, [issue, selectedRoleKey]);
+
   const onWs = useCallback(
     (msg: WsMessage) => {
       if (!currentRunId) return;
@@ -209,7 +238,7 @@ export function IssueDetailPage() {
     setError(null);
     setRefreshing(true);
     try {
-      await startIssue(issueId, { agentId: selectedAgentId || undefined });
+      await startIssue(issueId, { agentId: selectedAgentId || undefined, roleKey: selectedRoleKey || undefined });
       await refresh({ silent: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -384,6 +413,21 @@ export function IssueDetailPage() {
             ) : (
               <div className="row gap">
                 <label className="label" style={{ margin: 0 }}>
+                  选择 Role（可选）
+                  <select
+                    value={selectedRoleKey}
+                    onChange={(e) => setSelectedRoleKey(e.target.value)}
+                    disabled={!rolesLoaded && !rolesError}
+                  >
+                    <option value="">项目默认</option>
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.key}>
+                        {r.displayName} ({r.key})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label" style={{ margin: 0 }}>
                   选择 Agent（可选）
                   <select value={selectedAgentId} onChange={(e) => setSelectedAgentId(e.target.value)}>
                     <option value="">自动分配</option>
@@ -408,6 +452,7 @@ export function IssueDetailPage() {
                       {selectedAgentSandbox?.label ? ` · ${selectedAgentSandbox.label}` : ""}
                     </span>
                   ) : null}
+                  {rolesError ? <span>{" · "}Role 加载失败</span> : null}
                 </div>
               </div>
             )}

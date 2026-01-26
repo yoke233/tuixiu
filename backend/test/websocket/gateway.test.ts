@@ -152,6 +152,51 @@ describe("WebSocketGateway", () => {
     expect(clientSocket.sent.some((s) => JSON.parse(s).type === "event_added")).toBe(true);
   });
 
+  it("init_result(ok=false) marks run/issue failed and decrements agent load", async () => {
+    const prisma = {
+      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          status: "running",
+          issueId: "i1",
+          agentId: "a1"
+        }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      issue: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      agent: { update: vi.fn().mockResolvedValue({}) }
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: { type: "init_result", ok: false, exitCode: 1 }
+        })
+      )
+    );
+    await flushMicrotasks();
+
+    expect(prisma.run.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({ status: "failed", failureReason: "init_failed" })
+      })
+    );
+    expect(prisma.issue.updateMany).toHaveBeenCalledWith({
+      where: { id: "i1", status: "running" },
+      data: { status: "failed" }
+    });
+    expect(prisma.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { currentLoad: { decrement: 1 } } });
+  });
+
   it("branch_created persists artifact and broadcasts", async () => {
     const prisma = {
       artifact: { create: vi.fn().mockResolvedValue({ id: "art1", type: "branch" }) },

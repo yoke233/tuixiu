@@ -20,6 +20,11 @@ export type ExecuteTaskMessage = {
   session_id?: string;
   prompt: string;
   cwd?: string;
+  init?: {
+    script: string;
+    timeout_seconds?: number;
+    env?: Record<string, string>;
+  };
 };
 
 export type PromptRunMessage = {

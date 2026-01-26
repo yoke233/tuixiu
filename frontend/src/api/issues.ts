@@ -34,7 +34,7 @@ export async function createIssue(input: CreateIssueInput): Promise<{ issue: Iss
   return data;
 }
 
-export async function startIssue(id: string, input: { agentId?: string }): Promise<{ run: Run }> {
+export async function startIssue(id: string, input: { agentId?: string; roleKey?: string }): Promise<{ run: Run }> {
   const data = await apiPost<{ run: Run }>(`/issues/${id}/start`, input);
   return data;
 }

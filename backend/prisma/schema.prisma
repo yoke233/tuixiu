@@ -58,6 +58,7 @@ model Project {
   repoUrl                String   @db.VarChar(500)
   scmType                String   @default("gitlab") @db.VarChar(20)
   defaultBranch          String   @default("main") @db.VarChar(100)
+  defaultRoleKey         String?  @db.VarChar(100)
   gitlabProjectId        Int?     @unique
   gitlabAccessToken      String?  @db.Text
   gitlabWebhookSecret    String?  @db.VarChar(255)
@@ -68,6 +69,7 @@ model Project {
   updatedAt              DateTime @updatedAt
 
   issues Issue[]
+  roles RoleTemplate[]
 
   @@index([gitlabProjectId])
 }
@@ -84,6 +86,14 @@ model Issue {
   testRequirements   String?     @db.Text
   status             IssueStatus @default(pending)
 
+  externalProvider   String?     @db.VarChar(20)
+  externalId         String?     @db.VarChar(100)
+  externalNumber     Int?
+  externalUrl        String?     @db.VarChar(500)
+  externalState      String?     @db.VarChar(20)
+  externalLabels     Json?
+  lastSyncedAt       DateTime?
+
   assignedAgentId    String?     @db.Uuid
   assignedAgent      Agent?      @relation(fields: [assignedAgentId], references: [id])
 
@@ -99,6 +109,7 @@ model Issue {
   @@index([projectId, status])
   @@index([assignedAgentId])
   @@index([status])
+  @@unique([projectId, externalProvider, externalId])
 }
 
 model Agent {
@@ -199,4 +210,23 @@ model Artifact {
   createdAt DateTime     @default(now())
 
   @@index([runId, type])
+}
+
+model RoleTemplate {
+  id                 String   @id @default(uuid()) @db.Uuid
+  projectId          String   @db.Uuid
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  key                String   @db.VarChar(100)
+  displayName        String   @db.VarChar(255)
+  description        String?  @db.Text
+  promptTemplate     String?  @db.Text
+  initScript         String?  @db.Text
+  initTimeoutSeconds Int      @default(300)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([projectId, key])
+  @@index([projectId])
 }

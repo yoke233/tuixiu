@@ -101,6 +101,7 @@ describe("IssueDetailPage", () => {
         ]
       }
     });
+    mockFetchJsonOnce({ success: true, data: { roles: [] } });
 
     render(
       <ThemeProvider>
@@ -171,6 +172,7 @@ describe("IssueDetailPage", () => {
       }
     });
     mockFetchJsonOnce({ success: true, data: { events: [] } });
+    mockFetchJsonOnce({ success: true, data: { roles: [] } });
 
     // cancel run (POST)
     mockFetchJsonOnce({
@@ -258,6 +260,7 @@ describe("IssueDetailPage", () => {
         headers: { "content-type": "application/json" }
       })
     );
+    mockFetchJsonOnce({ success: true, data: { roles: [] } });
 
     render(
       <ThemeProvider>

@@ -150,6 +150,50 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             }
           }
 
+          if (contentType === "init_result") {
+            const ok = isRecord(message.content) ? (message.content as any).ok : undefined;
+            if (ok === false) {
+              const exitCode = isRecord(message.content) ? (message.content as any).exitCode : undefined;
+              const errText = isRecord(message.content) ? (message.content as any).error : undefined;
+              const details =
+                typeof errText === "string" && errText.trim()
+                  ? errText.trim()
+                  : typeof exitCode === "number"
+                    ? `exitCode=${exitCode}`
+                    : "unknown";
+
+              const run = await deps.prisma.run.findUnique({
+                where: { id: message.run_id },
+                select: { id: true, status: true, issueId: true, agentId: true }
+              });
+
+              if (run && run.status === "running") {
+                await deps.prisma.run
+                  .update({
+                    where: { id: run.id },
+                    data: {
+                      status: "failed",
+                      completedAt: new Date(),
+                      failureReason: "init_failed",
+                      errorMessage: `initScript 失败: ${details}`
+                    }
+                  })
+                  .catch(() => {});
+
+                await deps.prisma.issue
+                  .updateMany({
+                    where: { id: run.issueId, status: "running" },
+                    data: { status: "failed" }
+                  })
+                  .catch(() => {});
+
+                await deps.prisma.agent
+                  .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
+                  .catch(() => {});
+              }
+            }
+          }
+
           broadcastToClients({ type: "event_added", run_id: message.run_id, event: createdEvent });
           return;
         }

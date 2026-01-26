@@ -25,6 +25,7 @@ type ConsoleItem = {
   timestamp: string;
   toolCallId?: string;
   toolCallInfo?: ToolCallInfo;
+  detailsTitle?: string;
 };
 
 function extractToolCallInfo(update: any): ToolCallInfo | null {
@@ -179,6 +180,33 @@ function extractTextFromUpdateContent(content: unknown): string | null {
   return null;
 }
 
+function formatAvailableCommandsUpdate(update: any): { title: string; body: string } | null {
+  const list = update?.availableCommands;
+  if (!Array.isArray(list) || !list.length) return null;
+
+  const lines: string[] = [];
+  for (const cmd of list) {
+    if (!cmd || typeof cmd !== "object") continue;
+    const name = typeof (cmd as any).name === "string" ? String((cmd as any).name) : "";
+    if (!name) continue;
+
+    const description =
+      typeof (cmd as any).description === "string" ? String((cmd as any).description).trim() : "";
+    const hint =
+      (cmd as any).input && typeof (cmd as any).input === "object" && typeof (cmd as any).input.hint === "string"
+        ? String((cmd as any).input.hint).trim()
+        : "";
+
+    const parts: string[] = [name];
+    if (description) parts.push(description);
+    if (hint) parts.push(`hint: ${hint}`);
+    lines.push(`- ${parts.join(" | ")}`);
+  }
+
+  if (!lines.length) return null;
+  return { title: `可用命令（${lines.length}）`, body: lines.join("\n") };
+}
+
 function eventToConsoleItem(e: Event): ConsoleItem {
   if (e.source === "user") {
     const text = (e.payload as any)?.text;
@@ -256,6 +284,22 @@ function eventToConsoleItem(e: Event): ConsoleItem {
           timestamp: e.timestamp,
           toolCallId: toolCallInfo.toolCallId || undefined,
           toolCallInfo: toolCallInfo.toolCallId ? toolCallInfo : undefined
+        };
+      }
+
+      if (sessionUpdate === "available_commands_update") {
+        const formatted = formatAvailableCommandsUpdate(update);
+        const text =
+          formatted?.body ??
+          extractTextFromUpdateContent(update?.content) ??
+          JSON.stringify(update, null, 2);
+        return {
+          id: e.id,
+          role: "system",
+          kind: "block",
+          text,
+          timestamp: e.timestamp,
+          detailsTitle: formatted?.title
         };
       }
 
@@ -369,6 +413,20 @@ export function RunConsole(props: { events: Event[] }) {
   return (
     <div ref={ref} className="console" role="log" aria-label="运行输出">
       {items.map((item) => {
+        if (item.role === "system" && item.detailsTitle) {
+          return (
+            <details key={item.id} className={`consoleItem ${item.role}`}>
+              <summary className="detailsSummary">
+                <span className="toolSummaryRow">
+                  <span className="badge gray">INFO</span>
+                  <span className="toolSummaryTitle">{item.detailsTitle}</span>
+                  <span style={{ marginLeft: "auto" }}>▸</span>
+                </span>
+              </summary>
+              <div className="pre">{item.text}</div>
+            </details>
+          );
+        }
         if (item.role === "system" && item.toolCallInfo) {
           return (
             <details key={item.id} className={`consoleItem ${item.role}`}>
@@ -387,6 +445,7 @@ export function RunConsole(props: { events: Event[] }) {
                     </span>
                   ) : null}
                   <span className="toolSummaryTitle">{getToolTitle(item.toolCallInfo)}</span>
+                  <span style={{ marginLeft: "auto" }}>▸</span>
                 </span>
               </summary>
               <div className="pre">{item.text}</div>

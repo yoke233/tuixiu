@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -149,7 +149,9 @@ describe("IssueListPage", () => {
 
     await userEvent.type(screen.getByLabelText("名称"), "Demo");
     await userEvent.type(screen.getByLabelText("Repo URL"), "https://example.com/repo.git");
-    await userEvent.click(screen.getByRole("button", { name: "创建" }));
+    const projectsCard = screen.getByRole("heading", { name: "Projects" }).closest("section");
+    if (!projectsCard) throw new Error("Projects section not found");
+    await userEvent.click(within(projectsCard).getByRole("button", { name: "创建" }));
 
     expect(await screen.findByLabelText("选择 Project")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Demo" })).toBeInTheDocument();

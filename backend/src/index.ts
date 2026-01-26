@@ -6,8 +6,10 @@ import Fastify from "fastify";
 import { loadEnv } from "./config.js";
 import { prisma } from "./db.js";
 import { makeAgentRoutes } from "./routes/agents.js";
+import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
 import { makeIssueRoutes } from "./routes/issues.js";
 import { makeProjectRoutes } from "./routes/projects.js";
+import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
 import { makeRunRoutes } from "./routes/runs.js";
 import { createWebSocketGateway } from "./websocket/gateway.js";
 
@@ -31,5 +33,7 @@ server.register(makeIssueRoutes({ prisma, sendToAgent: wsGateway.sendToAgent }),
 server.register(makeRunRoutes({ prisma, sendToAgent: wsGateway.sendToAgent }), { prefix: "/api/runs" });
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
+server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
+server.register(makeGitHubIssueRoutes({ prisma }), { prefix: "/api/projects" });
 
 await server.listen({ port: env.PORT, host: env.HOST });

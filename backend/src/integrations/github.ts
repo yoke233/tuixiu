@@ -17,6 +17,18 @@ export type GitHubPullRequest = {
   merged_at?: string | null;
 };
 
+export type GitHubIssue = {
+  id: number;
+  number: number;
+  title: string;
+  body?: string | null;
+  state: "open" | "closed" | string;
+  html_url: string;
+  labels?: unknown[];
+  updated_at?: string;
+  pull_request?: unknown;
+};
+
 export type GitHubMergeResult = {
   merged: boolean;
   message: string;
@@ -120,6 +132,43 @@ async function githubRequest<T>(
   return (await res.json()) as T;
 }
 
+export async function listIssues(
+  auth: GitHubAuth,
+  params: { state?: "open" | "closed" | "all"; page?: number; perPage?: number }
+): Promise<GitHubIssue[]> {
+  const state = params.state ?? "open";
+  const page = params.page ?? 1;
+  const perPage = params.perPage ?? 50;
+  const qs = new URLSearchParams({
+    state,
+    page: String(page),
+    per_page: String(perPage)
+  });
+
+  const items = await githubRequest<GitHubIssue[]>(auth, {
+    method: "GET",
+    path: `/repos/${encodeURIComponent(auth.owner)}/${encodeURIComponent(auth.repo)}/issues?${qs.toString()}`
+  });
+
+  // GitHub 会把 PR 也算在 issues API 里，带 pull_request 字段。
+  return items.filter((i) => !(i as any)?.pull_request);
+}
+
+export async function getIssue(auth: GitHubAuth, params: { issueNumber: number }): Promise<GitHubIssue> {
+  const issue = await githubRequest<GitHubIssue>(auth, {
+    method: "GET",
+    path: `/repos/${encodeURIComponent(auth.owner)}/${encodeURIComponent(auth.repo)}/issues/${encodeURIComponent(
+      String(params.issueNumber)
+    )}`
+  });
+
+  if ((issue as any)?.pull_request) {
+    throw new Error(`GitHub issue ${params.issueNumber} is a pull request`);
+  }
+
+  return issue;
+}
+
 export async function createPullRequest(
   auth: GitHubAuth,
   params: { head: string; base: string; title: string; body?: string }
@@ -169,4 +218,3 @@ export async function getPullRequest(
     )}`
   });
 }
-

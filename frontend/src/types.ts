@@ -14,6 +14,7 @@ export type Project = {
   repoUrl: string;
   scmType: string;
   defaultBranch: string;
+  defaultRoleKey?: string | null;
   createdAt: string;
 };
 
@@ -78,4 +79,27 @@ export type Agent = {
   currentLoad: number;
   maxConcurrentRuns: number;
   createdAt: string;
+};
+
+export type RoleTemplate = {
+  id: string;
+  projectId: string;
+  key: string;
+  displayName: string;
+  description?: string | null;
+  promptTemplate?: string | null;
+  initScript?: string | null;
+  initTimeoutSeconds: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GitHubIssue = {
+  id: string;
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  labels: unknown[];
+  updatedAt?: string | null;
 };
