@@ -69,9 +69,11 @@ export async function getRunChanges(opts: { prisma: PrismaDeps; runId: string })
     throw new RunGitChangeError("Run 暂无 branch 信息", "NO_BRANCH");
   }
 
+  const cwd = typeof run.workspacePath === "string" && run.workspacePath.trim() ? run.workspacePath.trim() : process.cwd();
+
   try {
     const { stdout } = await execFileAsync("git", ["diff", "--name-status", `${baseBranch}...${branch}`], {
-      cwd: process.cwd()
+      cwd
     });
     const files = parseNameStatus(stdout);
     return { baseBranch, branch, files };
@@ -102,9 +104,11 @@ export async function getRunDiff(opts: {
     throw new RunGitChangeError("Run 暂无 branch 信息", "NO_BRANCH");
   }
 
+  const cwd = typeof run.workspacePath === "string" && run.workspacePath.trim() ? run.workspacePath.trim() : process.cwd();
+
   try {
     const { stdout } = await execFileAsync("git", ["diff", `${baseBranch}...${branch}`, "--", opts.path], {
-      cwd: process.cwd(),
+      cwd,
       maxBuffer: 10 * 1024 * 1024
     });
     return { baseBranch, branch, path: opts.path, diff: stdout };

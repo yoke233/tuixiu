@@ -2,8 +2,9 @@ import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import * as gitlab from "../integrations/gitlab.js";
 import * as github from "../integrations/github.js";
+import type { GitAuthProject } from "../utils/gitAuth.js";
 
-export type GitPush = (opts: { cwd: string; branch: string }) => Promise<void>;
+export type GitPush = (opts: { cwd: string; branch: string; project: GitAuthProject }) => Promise<void>;
 
 export type RunReviewDeps = {
   prisma: PrismaDeps;
@@ -30,7 +31,9 @@ function appendGitHubIssueLinkForPrBody(params: {
   if (provider !== "github") return params.body;
 
   const externalNumber = params.issue.externalNumber;
-  if (typeof externalNumber !== "number" || !Number.isFinite(externalNumber) || externalNumber <= 0) return params.body;
+  if (typeof externalNumber !== "number" || !Number.isFinite(externalNumber) || externalNumber <= 0) {
+    return params.body;
+  }
 
   const externalUrl = params.issue.externalUrl?.trim();
   const issueRefRegex = new RegExp(`#${externalNumber}(?!\\d)`);
@@ -86,7 +89,7 @@ export async function createReviewRequestForRun(
   const description = body.description ?? run.issue.description ?? "";
 
   try {
-    await deps.gitPush({ cwd: run.workspacePath ?? process.cwd(), branch });
+    await deps.gitPush({ cwd: run.workspacePath ?? process.cwd(), branch, project });
   } catch (err) {
     return { success: false, error: { code: "GIT_PUSH_FAILED", message: "git push 失败", details: String(err) } };
   }

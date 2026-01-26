@@ -39,6 +39,11 @@ export async function promptRun(id: string, text: string): Promise<void> {
   await apiPost<{ ok: true }>(`/runs/${id}/prompt`, { text });
 }
 
+export async function pauseRun(id: string): Promise<void> {
+  await apiPost<{ ok: true }>(`/runs/${id}/pause`, {});
+}
+
+
 export async function createRunPr(id: string): Promise<Artifact> {
   const data = await apiPost<{ pr: Artifact }>(`/runs/${id}/create-pr`, {});
   return data.pr;

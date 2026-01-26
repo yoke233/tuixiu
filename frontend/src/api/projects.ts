@@ -6,6 +6,8 @@ export type CreateProjectInput = {
   repoUrl: string;
   scmType?: string;
   defaultBranch?: string;
+  workspaceMode?: "worktree" | "clone";
+  gitAuthMode?: "https_pat" | "ssh";
   gitlabProjectId?: number;
   gitlabAccessToken?: string;
   gitlabWebhookSecret?: string;

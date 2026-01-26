@@ -3,12 +3,18 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { toPublicProject } from "../utils/publicProject.js";
+
+const workspaceModeSchema = z.enum(["worktree", "clone"]);
+const gitAuthModeSchema = z.enum(["https_pat", "ssh"]);
 
 const createProjectBodySchema = z.object({
   name: z.string().min(1),
   repoUrl: z.string().min(1),
   scmType: z.string().min(1).optional(),
   defaultBranch: z.string().min(1).optional(),
+  workspaceMode: workspaceModeSchema.optional(),
+  gitAuthMode: gitAuthModeSchema.optional(),
   defaultRoleKey: z.string().min(1).max(100).optional(),
   gitlabProjectId: z.coerce.number().int().positive().optional(),
   gitlabAccessToken: z.string().min(1).optional(),
@@ -20,7 +26,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
   return async (server) => {
     server.get("/", async () => {
       const projects = await deps.prisma.project.findMany({ orderBy: { createdAt: "desc" } });
-      return { success: true, data: { projects } };
+      return { success: true, data: { projects: projects.map((p: any) => toPublicProject(p)) } };
     });
 
     server.post("/", async (request) => {
@@ -32,6 +38,8 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
           repoUrl: body.repoUrl,
           scmType: body.scmType ?? "gitlab",
           defaultBranch: body.defaultBranch ?? "main",
+          workspaceMode: body.workspaceMode ?? "worktree",
+          gitAuthMode: body.gitAuthMode ?? "https_pat",
           defaultRoleKey: body.defaultRoleKey,
           gitlabProjectId: body.gitlabProjectId,
           gitlabAccessToken: body.gitlabAccessToken,
@@ -39,7 +47,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
           githubAccessToken: body.githubAccessToken
         }
       });
-      return { success: true, data: { project } };
+      return { success: true, data: { project: toPublicProject(project as any) } };
     });
 
     server.patch("/:id", async (request) => {
@@ -49,6 +57,8 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
         repoUrl: z.string().min(1).optional(),
         scmType: z.string().min(1).optional(),
         defaultBranch: z.string().min(1).optional(),
+        workspaceMode: workspaceModeSchema.nullable().optional(),
+        gitAuthMode: gitAuthModeSchema.nullable().optional(),
         defaultRoleKey: z.string().min(1).max(100).nullable().optional(),
         gitlabProjectId: z.coerce.number().int().positive().nullable().optional(),
         gitlabAccessToken: z.string().min(1).nullable().optional(),
@@ -69,6 +79,8 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
       if (body.repoUrl !== undefined) data.repoUrl = body.repoUrl;
       if (body.scmType !== undefined) data.scmType = body.scmType;
       if (body.defaultBranch !== undefined) data.defaultBranch = body.defaultBranch;
+      if (body.workspaceMode !== undefined) data.workspaceMode = body.workspaceMode;
+      if (body.gitAuthMode !== undefined) data.gitAuthMode = body.gitAuthMode;
       if (body.defaultRoleKey !== undefined) data.defaultRoleKey = body.defaultRoleKey;
       if (body.gitlabProjectId !== undefined) data.gitlabProjectId = body.gitlabProjectId;
       if (body.gitlabAccessToken !== undefined) data.gitlabAccessToken = body.gitlabAccessToken;
@@ -80,7 +92,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
         data: data as any
       });
 
-      return { success: true, data: { project } };
+      return { success: true, data: { project: toPublicProject(project as any) } };
     });
   };
 }

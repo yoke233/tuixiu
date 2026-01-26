@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import * as acp from "@agentclientprotocol/sdk";
 
-import { AcpBridge } from "./acpBridge";
-import type { AcpTransport, AgentLauncher } from "./launchers/types";
+import { AcpBridge } from "./acpBridge.js";
+import type { AcpTransport, AgentLauncher } from "./launchers/types.js";
 
 describe("AcpBridge concurrency", () => {
   it("dedupes concurrent ensureInitialized() calls", async () => {
@@ -127,4 +127,3 @@ describe("AcpBridge concurrency", () => {
     expect(cancelledSessionId).toBe("s1");
   });
 });
-

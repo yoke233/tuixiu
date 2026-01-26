@@ -32,6 +32,8 @@ describe("IssueListPage", () => {
             repoUrl: "https://example.com/repo.git",
             scmType: "gitlab",
             defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
             createdAt: "2026-01-25T00:00:00.000Z"
           }
         ]
@@ -111,6 +113,8 @@ describe("IssueListPage", () => {
           repoUrl: "https://example.com/repo.git",
           scmType: "gitlab",
           defaultBranch: "main",
+          workspaceMode: "worktree",
+          gitAuthMode: "https_pat",
           createdAt: "2026-01-25T00:00:00.000Z"
         }
       }
@@ -126,6 +130,8 @@ describe("IssueListPage", () => {
             repoUrl: "https://example.com/repo.git",
             scmType: "gitlab",
             defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
             createdAt: "2026-01-25T00:00:00.000Z"
           }
         ]
@@ -169,6 +175,8 @@ describe("IssueListPage", () => {
             repoUrl: "https://example.com/repo.git",
             scmType: "gitlab",
             defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
             createdAt: "2026-01-25T00:00:00.000Z"
           }
         ]
@@ -200,6 +208,8 @@ describe("IssueListPage", () => {
             repoUrl: "https://example.com/repo.git",
             scmType: "gitlab",
             defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
             createdAt: "2026-01-25T00:00:00.000Z"
           }
         ]
