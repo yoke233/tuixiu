@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import type { Event } from "../types";
 
@@ -26,8 +26,27 @@ type ConsoleItem = {
   toolCallId?: string;
   toolCallInfo?: ToolCallInfo;
   detailsTitle?: string;
-  agentChunkType?: "message" | "thought";
+  chunkType?: "agent_message" | "agent_thought" | "user_message";
 };
+
+function ConsoleDetailsBlock(props: {
+  className: string;
+  bordered?: boolean;
+  summary: ReactNode;
+  body: string;
+}) {
+  return (
+    <details className={`${props.className}${props.bordered ? " consoleDetailsBorder" : ""}`}>
+      <summary className="detailsSummary">
+        <span className="toolSummaryRow">
+          {props.summary}
+          <span className="detailsCaret">▸</span>
+        </span>
+      </summary>
+      <div className="pre">{props.body}</div>
+    </details>
+  );
+}
 
 function extractToolCallInfo(update: any): ToolCallInfo | null {
   if (!update || typeof update !== "object") return null;
@@ -208,6 +227,10 @@ function formatAvailableCommandsUpdate(update: any): { title: string; body: stri
   return { title: `可用命令（${lines.length}）`, body: lines.join("\n") };
 }
 
+function stripSideSpaces(s: string): string {
+  return s.trim();
+}
+
 function eventToConsoleItem(e: Event): ConsoleItem {
   if (e.source === "user") {
     const text = (e.payload as any)?.text;
@@ -255,7 +278,19 @@ function eventToConsoleItem(e: Event): ConsoleItem {
           kind: "chunk",
           text: typeof chunkText === "string" ? chunkText : "",
           timestamp: e.timestamp,
-          agentChunkType: sessionUpdate === "agent_thought_chunk" ? "thought" : "message"
+          chunkType: sessionUpdate === "agent_thought_chunk" ? "agent_thought" : "agent_message"
+        };
+      }
+
+      if (sessionUpdate === "user_message_chunk") {
+        const chunkText = update?.content?.text;
+        return {
+          id: e.id,
+          role: "user",
+          kind: "chunk",
+          text: typeof chunkText === "string" ? chunkText : "",
+          timestamp: e.timestamp,
+          chunkType: "user_message"
         };
       }
 
@@ -357,7 +392,7 @@ export function RunConsole(props: { events: Event[] }) {
         last.kind === "chunk" &&
         item.kind === "chunk" &&
         last.role === item.role &&
-        last.agentChunkType === item.agentChunkType
+        last.chunkType === item.chunkType
       ) {
         last.text += item.text;
         last.timestamp = item.timestamp;
@@ -383,7 +418,16 @@ export function RunConsole(props: { events: Event[] }) {
       }
       out.push(item);
     }
-    return out;
+    const finalOut: ConsoleItem[] = [];
+    for (const item of out) {
+      if (item.kind === "chunk" && (item.chunkType === "agent_message" || item.chunkType === "agent_thought")) {
+        const text = stripSideSpaces(item.text);
+        if (!text) continue;
+        item.text = text;
+      }
+      finalOut.push(item);
+    }
+    return finalOut;
   }, [props.events]);
 
   const ref = useRef<HTMLDivElement | null>(null);
@@ -420,39 +464,59 @@ export function RunConsole(props: { events: Event[] }) {
   return (
     <div ref={ref} className="console" role="log" aria-label="运行输出">
       {items.map((item) => {
-        if (item.role === "agent" && item.agentChunkType === "thought") {
+        if (item.role === "user" && item.kind === "chunk" && item.chunkType === "user_message") {
           return (
-            <details key={item.id} className={`consoleItem ${item.role}`}>
-              <summary className="detailsSummary">
-                <span className="toolSummaryRow">
+            <ConsoleDetailsBlock
+              key={item.id}
+              className={`consoleItem ${item.role}`}
+              summary={
+                <>
+                  <span className="badge gray">New Session</span>
+                  <span className="toolSummaryTitle"></span>
+                </>
+              }
+              body={item.text}
+            />
+          );
+        }
+        if (item.role === "agent" && item.kind === "chunk" && item.chunkType === "agent_thought") {
+          return (
+            <ConsoleDetailsBlock
+              key={item.id}
+              className={`consoleItem ${item.role}`}
+              bordered
+              summary={
+                <>
                   <span className="badge gray">THINK</span>
                   <span className="toolSummaryTitle">思考</span>
-                  <span style={{ marginLeft: "auto" }}>▸</span>
-                </span>
-              </summary>
-              <div className="pre">{item.text}</div>
-            </details>
+                </>
+              }
+              body={item.text}
+            />
           );
         }
         if (item.role === "system" && item.detailsTitle) {
           return (
-            <details key={item.id} className={`consoleItem ${item.role}`}>
-              <summary className="detailsSummary">
-                <span className="toolSummaryRow">
+            <ConsoleDetailsBlock
+              key={item.id}
+              className={`consoleItem ${item.role}`}
+              summary={
+                <>
                   <span className="badge gray">INFO</span>
                   <span className="toolSummaryTitle">{item.detailsTitle}</span>
-                  <span style={{ marginLeft: "auto" }}>▸</span>
-                </span>
-              </summary>
-              <div className="pre">{item.text}</div>
-            </details>
+                </>
+              }
+              body={item.text}
+            />
           );
         }
         if (item.role === "system" && item.toolCallInfo) {
           return (
-            <details key={item.id} className={`consoleItem ${item.role}`}>
-              <summary className="detailsSummary">
-                <span className="toolSummaryRow">
+            <ConsoleDetailsBlock
+              key={item.id}
+              className={`consoleItem ${item.role}`}
+              summary={
+                <>
                   <span className="badge gray">TOOL</span>
                   {item.toolCallInfo.kind ? (
                     <span className={kindToBadgeClass(item.toolCallInfo.kind)}>{item.toolCallInfo.kind}</span>
@@ -466,11 +530,10 @@ export function RunConsole(props: { events: Event[] }) {
                     </span>
                   ) : null}
                   <span className="toolSummaryTitle">{getToolTitle(item.toolCallInfo)}</span>
-                  <span style={{ marginLeft: "auto" }}>▸</span>
-                </span>
-              </summary>
-              <div className="pre">{item.text}</div>
-            </details>
+                </>
+              }
+              body={item.text}
+            />
           );
         }
         return (

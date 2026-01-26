@@ -6,59 +6,18 @@ import { getIssue, startIssue } from "../api/issues";
 import { listRoles } from "../api/roles";
 import { cancelRun, completeRun, getRun, listRunEvents, promptRun } from "../api/runs";
 import { ArtifactList } from "../components/ArtifactList";
+import { IssueRunCard } from "../components/IssueRunCard";
 import { RunChangesPanel } from "../components/RunChangesPanel";
 import { RunConsole } from "../components/RunConsole";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useWsClient, type WsMessage } from "../hooks/useWsClient";
 import type { Agent, Event, Issue, RoleTemplate, Run } from "../types";
+import { getAgentEnvLabel, getAgentSandboxLabel } from "../utils/agentLabels";
 
 type IssuesOutletContext = {
   onIssueUpdated?: (issue: Issue) => void;
 };
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === "object" && !Array.isArray(v);
-}
-
-function platformLabel(platform: string | null): string {
-  switch (platform) {
-    case "win32":
-      return "Windows";
-    case "darwin":
-      return "macOS";
-    case "linux":
-      return "Linux";
-    default:
-      return platform ? platform : "未知";
-  }
-}
-
-function getAgentEnvLabel(agent: Agent | null): string | null {
-  if (!agent) return null;
-  const caps = isRecord(agent.capabilities) ? agent.capabilities : null;
-  const runtime = caps && isRecord(caps.runtime) ? caps.runtime : null;
-  const platform = runtime && typeof runtime.platform === "string" ? runtime.platform : null;
-  const isWsl = runtime && typeof runtime.isWsl === "boolean" ? runtime.isWsl : null;
-  if (isWsl) return "WSL2";
-  return platformLabel(platform);
-}
-
-function getAgentSandboxLabel(agent: Agent | null): { label: string; details?: string } | null {
-  if (!agent) return null;
-  const caps = isRecord(agent.capabilities) ? agent.capabilities : null;
-  const sandbox = caps && isRecord(caps.sandbox) ? caps.sandbox : null;
-  const provider = sandbox && typeof sandbox.provider === "string" ? sandbox.provider : null;
-  if (!provider) return null;
-
-  if (provider === "boxlite_oci" && sandbox) {
-    const boxlite = isRecord(sandbox.boxlite) ? sandbox.boxlite : null;
-    const image = boxlite && typeof boxlite.image === "string" ? boxlite.image : "";
-    return { label: "boxlite_oci", details: image || undefined };
-  }
-
-  return { label: provider };
-}
 
 export function IssueDetailPage() {
   const params = useParams();
@@ -325,138 +284,36 @@ export function IssueDetailPage() {
             {issue.description ? <p className="pre">{issue.description}</p> : null}
           </section>
 
-          <section className="card">
-            <div className="row spaceBetween">
-              <h2>Run</h2>
-              <div className="row gap">
-                <button onClick={() => refresh()}>刷新</button>
-                {currentRunId ? (
-                  <>
-                    <button onClick={onCancelRun} disabled={!currentRunId}>
-                      取消 Run
-                    </button>
-                    <button onClick={onCompleteRun} disabled={!currentRunId}>
-                      完成 Run
-                    </button>
-                  </>
-                ) : (
-                  <button onClick={onStartRun} disabled={!canStartRun}>
-                    启动 Run
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {!run && agentsLoaded && !agentsError && availableAgents.length === 0 ? (
-              <div className="muted" style={{ marginTop: 8 }}>
-                当前没有可用的在线 Agent：请先启动 `acp-proxy`（或等待 Agent 空闲）。
-              </div>
-            ) : null}
-
-            {!run && agentsError ? (
-              <div className="muted" style={{ marginTop: 8 }} title={agentsError}>
-                无法获取 Agent 列表：仍可尝试启动 Run（将由后端自动分配；如无 Agent 会返回错误）。
-              </div>
-            ) : null}
-
-            {run ? (
-              <div className="row gap">
-                <div>
-                  <div className="muted">runId</div>
-                  <code>{run.id}</code>
-                </div>
-                <div>
-                  <div className="muted">status</div>
-                  <StatusBadge status={run.status} />
-                </div>
-                <div>
-                  <div className="muted">agentId</div>
-                  <code>{run.agentId}</code>
-                </div>
-                <div>
-                  <div className="muted">agent</div>
-                  <span className="row gap" style={{ alignItems: "center" }}>
-                    {currentAgent ? (
-                      <>
-                        <StatusBadge status={currentAgent.status} />
-                        <span className="muted">{currentAgent.name}</span>
-                      </>
-                    ) : (
-                      <span className="muted">未知</span>
-                    )}
-                    {currentAgent ? (
-                      <span className="muted">
-                        {currentAgent.currentLoad}/{currentAgent.maxConcurrentRuns}
-                      </span>
-                    ) : null}
-                  </span>
-                </div>
-                <div>
-                  <div className="muted">环境</div>
-                  <span className="muted">{currentAgentEnvLabel ?? "未知"}</span>
-                </div>
-                <div>
-                  <div className="muted">sandbox</div>
-                  {currentAgentSandbox ? (
-                    <span className="muted" title={currentAgentSandbox.details ?? ""}>
-                      {currentAgentSandbox.label}
-                    </span>
-                  ) : (
-                    <span className="muted">未知</span>
-                  )}
-                </div>
-                <div>
-                  <div className="muted">session</div>
-                  {sessionKnown ? <code title={sessionId ?? ""}>{sessionId}</code> : <span className="muted">未建立</span>}
-                </div>
-              </div>
-            ) : (
-              <div className="row gap">
-                <label className="label" style={{ margin: 0 }}>
-                  选择 Role（可选）
-                  <select
-                    value={selectedRoleKey}
-                    onChange={(e) => setSelectedRoleKey(e.target.value)}
-                    disabled={!rolesLoaded && !rolesError}
-                  >
-                    <option value="">项目默认</option>
-                    {roles.map((r) => (
-                      <option key={r.id} value={r.key}>
-                        {r.displayName} ({r.key})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label" style={{ margin: 0 }}>
-                  选择 Agent（可选）
-                  <select value={selectedAgentId} onChange={(e) => setSelectedAgentId(e.target.value)}>
-                    <option value="">自动分配</option>
-                    {agents.map((a) => {
-                      const sandbox = getAgentSandboxLabel(a);
-                      const disabled = a.status !== "online" || a.currentLoad >= a.maxConcurrentRuns;
-                      return (
-                        <option key={a.id} value={a.id} disabled={disabled}>
-                          {a.name} ({a.status} {a.currentLoad}/{a.maxConcurrentRuns}
-                          {sandbox?.label ? ` · ${sandbox.label}` : ""})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </label>
-                <div className="muted">
-                  暂无 Run
-                  {selectedAgent ? (
-                    <span>
-                      {" · "}
-                      {selectedAgentEnvLabel ?? "未知"}
-                      {selectedAgentSandbox?.label ? ` · ${selectedAgentSandbox.label}` : ""}
-                    </span>
-                  ) : null}
-                  {rolesError ? <span>{" · "}Role 加载失败</span> : null}
-                </div>
-              </div>
-            )}
-          </section>
+          <IssueRunCard
+            run={run}
+            currentRunId={currentRunId}
+            sessionId={sessionId}
+            sessionKnown={sessionKnown}
+            onRefresh={() => {
+              void refresh();
+            }}
+            onStartRun={onStartRun}
+            onCancelRun={onCancelRun}
+            onCompleteRun={onCompleteRun}
+            canStartRun={canStartRun}
+            agents={agents}
+            agentsLoaded={agentsLoaded}
+            agentsError={agentsError}
+            availableAgentsCount={availableAgents.length}
+            currentAgent={currentAgent}
+            currentAgentEnvLabel={currentAgentEnvLabel}
+            currentAgentSandbox={currentAgentSandbox}
+            selectedAgentId={selectedAgentId}
+            onSelectedAgentIdChange={setSelectedAgentId}
+            selectedAgent={selectedAgent}
+            selectedAgentEnvLabel={selectedAgentEnvLabel}
+            selectedAgentSandbox={selectedAgentSandbox}
+            roles={roles}
+            rolesLoaded={rolesLoaded}
+            rolesError={rolesError}
+            selectedRoleKey={selectedRoleKey}
+            onSelectedRoleKeyChange={setSelectedRoleKey}
+          />
 
           <section className="card">
             <h2>Console</h2>

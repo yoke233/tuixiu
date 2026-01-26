@@ -6,8 +6,15 @@ import { promisify } from "node:util";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { buildContextFromRun } from "../services/runContext.js";
-import { getRunChanges, getRunDiff, RunGitChangeError } from "../services/runGitChanges.js";
-import { createReviewRequestForRun, mergeReviewRequestForRun } from "../services/runReviewRequest.js";
+import {
+  getRunChanges,
+  getRunDiff,
+  RunGitChangeError,
+} from "../services/runGitChanges.js";
+import {
+  createReviewRequestForRun,
+  mergeReviewRequestForRun,
+} from "../services/runReviewRequest.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
 
@@ -34,7 +41,9 @@ export function makeRunRoutes(deps: {
     const gitPush =
       deps.gitPush ??
       (async (opts: { cwd: string; branch: string }) => {
-        await execFileAsync("git", ["push", "-u", "origin", opts.branch], { cwd: opts.cwd });
+        await execFileAsync("git", ["push", "-u", "origin", opts.branch], {
+          cwd: opts.cwd,
+        });
       });
 
     server.get("/:id", async (request) => {
@@ -43,10 +52,13 @@ export function makeRunRoutes(deps: {
 
       const run = await deps.prisma.run.findUnique({
         where: { id },
-        include: { issue: true, agent: true, artifacts: true }
+        include: { issue: true, agent: true, artifacts: true },
       });
       if (!run) {
-        return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+        return {
+          success: false,
+          error: { code: "NOT_FOUND", message: "Run 不存在" },
+        };
       }
       return { success: true, data: { run } };
     });
@@ -54,15 +66,15 @@ export function makeRunRoutes(deps: {
     server.get("/:id/events", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const querySchema = z.object({
-        limit: z.coerce.number().int().positive().max(500).default(200)
+        limit: z.coerce.number().int().positive().max(500).default(200),
       });
       const { id } = paramsSchema.parse(request.params);
       const { limit } = querySchema.parse(request.query);
 
       const events = await deps.prisma.event.findMany({
         where: { runId: id },
-        orderBy: { timestamp: "desc" },
-        take: limit
+        orderBy: { id: "desc" },
+        take: limit,
       });
       return { success: true, data: { events } };
     });
@@ -77,17 +89,34 @@ export function makeRunRoutes(deps: {
       } catch (err) {
         if (err instanceof RunGitChangeError) {
           if (err.code === "NOT_FOUND") {
-            return { success: false, error: { code: "NOT_FOUND", message: err.message } };
+            return {
+              success: false,
+              error: { code: "NOT_FOUND", message: err.message },
+            };
           }
           if (err.code === "NO_BRANCH") {
-            return { success: false, error: { code: "NO_BRANCH", message: err.message } };
+            return {
+              success: false,
+              error: { code: "NO_BRANCH", message: err.message },
+            };
           }
           return {
             success: false,
-            error: { code: "GIT_DIFF_FAILED", message: err.message, details: err.details }
+            error: {
+              code: "GIT_DIFF_FAILED",
+              message: err.message,
+              details: err.details,
+            },
           };
         }
-        return { success: false, error: { code: "GIT_DIFF_FAILED", message: "获取变更失败", details: String(err) } };
+        return {
+          success: false,
+          error: {
+            code: "GIT_DIFF_FAILED",
+            message: "获取变更失败",
+            details: String(err),
+          },
+        };
       }
     });
 
@@ -103,17 +132,34 @@ export function makeRunRoutes(deps: {
       } catch (err) {
         if (err instanceof RunGitChangeError) {
           if (err.code === "NOT_FOUND") {
-            return { success: false, error: { code: "NOT_FOUND", message: err.message } };
+            return {
+              success: false,
+              error: { code: "NOT_FOUND", message: err.message },
+            };
           }
           if (err.code === "NO_BRANCH") {
-            return { success: false, error: { code: "NO_BRANCH", message: err.message } };
+            return {
+              success: false,
+              error: { code: "NO_BRANCH", message: err.message },
+            };
           }
           return {
             success: false,
-            error: { code: "GIT_DIFF_FAILED", message: err.message, details: err.details }
+            error: {
+              code: "GIT_DIFF_FAILED",
+              message: err.message,
+              details: err.details,
+            },
           };
         }
-        return { success: false, error: { code: "GIT_DIFF_FAILED", message: "获取 diff 失败", details: String(err) } };
+        return {
+          success: false,
+          error: {
+            code: "GIT_DIFF_FAILED",
+            message: "获取 diff 失败",
+            details: String(err),
+          },
+        };
       }
     });
 
@@ -122,15 +168,20 @@ export function makeRunRoutes(deps: {
       const bodySchema = z.object({
         title: z.string().min(1).optional(),
         description: z.string().optional(),
-        targetBranch: z.string().min(1).optional()
+        targetBranch: z.string().min(1).optional(),
       });
       const { id } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
 
       return await createReviewRequestForRun(
-        { prisma: deps.prisma, gitPush, gitlab: deps.gitlab, github: deps.github },
+        {
+          prisma: deps.prisma,
+          gitPush,
+          gitlab: deps.gitlab,
+          github: deps.github,
+        },
         id,
-        body
+        body,
       );
     });
 
@@ -138,15 +189,20 @@ export function makeRunRoutes(deps: {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({
         squash: z.boolean().optional(),
-        mergeCommitMessage: z.string().min(1).optional()
+        mergeCommitMessage: z.string().min(1).optional(),
       });
       const { id } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
 
       return await mergeReviewRequestForRun(
-        { prisma: deps.prisma, gitPush, gitlab: deps.gitlab, github: deps.github },
+        {
+          prisma: deps.prisma,
+          gitPush,
+          gitlab: deps.gitlab,
+          github: deps.github,
+        },
         id,
-        body
+        body,
       );
     });
 
@@ -158,10 +214,17 @@ export function makeRunRoutes(deps: {
 
       const run = await deps.prisma.run.findUnique({
         where: { id },
-        include: { agent: true, issue: true, artifacts: { orderBy: { createdAt: "desc" } } }
+        include: {
+          agent: true,
+          issue: true,
+          artifacts: { orderBy: { createdAt: "desc" } },
+        },
       });
       if (!run) {
-        return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+        return {
+          success: false,
+          error: { code: "NOT_FOUND", message: "Run 不存在" },
+        };
       }
 
       await deps.prisma.event.create({
@@ -170,14 +233,14 @@ export function makeRunRoutes(deps: {
           runId: id,
           source: "user",
           type: "user.message",
-          payload: { text } as any
-        }
+          payload: { text } as any,
+        },
       });
 
       if (!deps.sendToAgent) {
         return {
           success: false,
-          error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" }
+          error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" },
         };
       }
 
@@ -185,9 +248,13 @@ export function makeRunRoutes(deps: {
         const recentEvents = await deps.prisma.event.findMany({
           where: { runId: id },
           orderBy: { timestamp: "desc" },
-          take: 200
+          take: 200,
         });
-        const context = buildContextFromRun({ run, issue: run.issue, events: recentEvents });
+        const context = buildContextFromRun({
+          run,
+          issue: run.issue,
+          events: recentEvents,
+        });
 
         await deps.sendToAgent(run.agent.proxyId, {
           type: "prompt_run",
@@ -195,7 +262,7 @@ export function makeRunRoutes(deps: {
           prompt: text,
           session_id: run.acpSessionId ?? undefined,
           context,
-          cwd: run.workspacePath ?? undefined
+          cwd: run.workspacePath ?? undefined,
         });
       } catch (error) {
         return {
@@ -203,8 +270,8 @@ export function makeRunRoutes(deps: {
           error: {
             code: "AGENT_SEND_FAILED",
             message: "发送消息到 Agent 失败",
-            details: String(error)
-          }
+            details: String(error),
+          },
         };
       }
 
@@ -217,12 +284,17 @@ export function makeRunRoutes(deps: {
 
       const run = await deps.prisma.run.update({
         where: { id },
-        data: { status: "cancelled", completedAt: new Date() }
+        data: { status: "cancelled", completedAt: new Date() },
       });
 
-      await deps.prisma.issue.update({ where: { id: run.issueId }, data: { status: "cancelled" } }).catch(() => {});
+      await deps.prisma.issue
+        .update({ where: { id: run.issueId }, data: { status: "cancelled" } })
+        .catch(() => {});
       await deps.prisma.agent
-        .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
+        .update({
+          where: { id: run.agentId },
+          data: { currentLoad: { decrement: 1 } },
+        })
         .catch(() => {});
 
       return { success: true, data: { run } };
@@ -234,12 +306,17 @@ export function makeRunRoutes(deps: {
 
       const run = await deps.prisma.run.update({
         where: { id },
-        data: { status: "completed", completedAt: new Date() }
+        data: { status: "completed", completedAt: new Date() },
       });
 
-      await deps.prisma.issue.update({ where: { id: run.issueId }, data: { status: "reviewing" } }).catch(() => {});
+      await deps.prisma.issue
+        .update({ where: { id: run.issueId }, data: { status: "reviewing" } })
+        .catch(() => {});
       await deps.prisma.agent
-        .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
+        .update({
+          where: { id: run.agentId },
+          data: { currentLoad: { decrement: 1 } },
+        })
         .catch(() => {});
 
       return { success: true, data: { run } };

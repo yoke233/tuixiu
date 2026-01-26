@@ -1,8 +1,50 @@
-# ACP 驱动的 Agent 执行与研发协作系统 - 完整文档集
+# ACP 驱动的 Agent 执行与研发协作系统（TuiXiu）
 
-> **Agent**: Codex CLI  
-> **SCM**: GitLab (自建)  
-> **目标**: MVP 快速上线
+> **默认 Agent**: Codex CLI（通过 `acp-proxy` 启动 ACP Agent）  
+> **SCM**: GitHub（MVP，单仓库）/ GitLab（已接 PR/MR，Issue 导入待补）  
+> **定位**: 从 Issue → Run（Agent 自动改代码）→ PR 的最小闭环
+
+---
+
+## 面向真实用户：接入真实 GitHub（单仓库）
+
+> 当前版本是「单仓库模式」：Run 工作区通过 `git worktree` 在当前仓库根目录创建 `.worktrees/run-<runId>`。  
+> 你要让 Agent 修改哪个 repo，就在那个 repo 的工作目录里启动 `backend`（并确保 `origin` 指向同一个 GitHub repo）。
+
+### 准备
+
+- 工具：`git`、Node.js 20+、`pnpm`、Docker（用于 Postgres）
+- Agent：默认 `npx --yes @zed-industries/codex-acp`（或替换为任意 ACP 兼容 Agent）
+  - 在运行 `acp-proxy` 的环境里配置好 API Key（例如 `OPENAI_API_KEY`）
+- （可选）`bash`：仅当你使用 RoleTemplate 的 `initScript`（bash）时需要（WSL2 / Git Bash 均可）
+
+### GitHub 凭据（PAT）
+
+- 用途：导入 GitHub Issue、创建/合并 GitHub PR（同时本地需要能 `git push origin <branch>`）
+- Classic PAT（简单）：公共仓库用 `public_repo`，私有仓库用 `repo`
+- Fine-grained PAT（推荐）：对目标仓库授予
+  - `Contents: Read & write`
+  - `Pull requests: Read & write`
+  - `Issues: Read-only`（仅导入）
+
+### 首次使用流程（UI）
+
+1. 按下方“快速启动”启动 `backend` + `acp-proxy` + `frontend`
+2. 打开 `http://localhost:5173`
+3. 展开页面中的 **创建 / 配置**：
+   - 创建 Project：`scmType=github`，填写 `repoUrl`（建议与本地 `origin` 对应）、`defaultBranch`、`githubAccessToken`
+   - （可选）导入 GitHub Issue：输入 Issue number 或 URL（例如 `123` / `https://github.com/o/r/issues/123`）
+   - （可选）创建 RoleTemplate：填写 `promptTemplate` / `initScript`（bash）
+4. 从 Issue 列表进入详情页：
+   - 没有 Run 时点击 **启动 Run**（可选选择 Role/Agent）
+   - 在 **Console** 查看输出并可继续对话
+   - 展开 **变更** → 点击 **创建 GitHub PR** →（可选）**合并 GitHub PR**
+
+### 注意事项（MVP）
+
+- Token 会写入数据库（当前无 KMS/加密/权限体系/审计），请仅在可信环境使用，并尽量使用最小权限 PAT
+- Run 会在仓库根目录生成 `.worktrees/`（git worktree）；建议不要手动改动其结构
+- RoleTemplate 的 `initScript` 在 `acp-proxy` 所在机器执行，等同运行本地脚本；建议仅管理员可编辑
 
 ---
 
@@ -27,7 +69,7 @@
 ### 环境搭建（第一步）
 
 5. **[docs/02_ENVIRONMENT_SETUP.md](docs/02_ENVIRONMENT_SETUP.md)**  
-   环境搭建指南 - 工具安装、数据库初始化、GitLab 配置、项目初始化
+   环境搭建指南 - 工具安装、数据库初始化、GitHub/GitLab 配置、项目初始化
 
 ---
 
@@ -36,7 +78,9 @@
 已实现并可本地跑通：
 - `backend/`：Fastify + WebSocket Gateway + Prisma ORM（迁移使用 `prisma migrate` 自动生成/执行）
 - `acp-proxy/`：Node/TypeScript 实现 WS ↔ ACP(JSON-RPC/stdin/stdout)，基于 `@agentclientprotocol/sdk`；默认使用 `npx --yes @zed-industries/codex-acp`
-- `frontend/`：React + Vite Web UI（Issue 列表/详情/创建 + WS 实时刷新）
+- `frontend/`：React + Vite Web UI（Project/Issue/Run/变更/PR）+ WS 实时刷新
+- GitHub：Issue 导入（按 number/URL）+ PR 创建/合并（MVP 先支持 GitHub）
+- RoleTemplate：`promptTemplate` + `initScript`（bash，可选；在 Run 启动前执行）
 - 单元测试：后端/前端/Proxy 均已覆盖并可一键执行
 
 ### 快速启动（Windows / PowerShell）
@@ -57,8 +101,16 @@ pnpm dev
 cd acp-proxy
 Copy-Item config.json.example config.json
 notepad config.json
+$env:OPENAI_API_KEY="..."
 pnpm dev
 ```
+
+编辑 `acp-proxy/config.json` 时至少确认：
+- `orchestrator_url`: `ws://localhost:3000/ws/agent`
+- `cwd`: 当前仓库根目录（建议填写；Run 会覆盖为 worktree 目录）
+- （可选）`pathMapping`: 仅当 `acp-proxy` 跑在 WSL2 且后端传入 Windows 路径时启用 `windows_to_wsl`
+
+> 如你要使用 RoleTemplate 的 `initScript`（bash），请确保运行 proxy 的环境里 `bash` 在 PATH 中（WSL2 / Git Bash）。
 
 再开一个终端启动前端：
 
@@ -67,7 +119,7 @@ cd frontend
 pnpm dev
 ```
 
-浏览器打开 `http://localhost:5173`，先创建 Project，再创建 Issue。
+浏览器打开 `http://localhost:5173`，按页面的 **创建 / 配置** 创建 Project（`scmType=github` + `repoUrl` + `githubAccessToken`），然后创建/导入 Issue 并启动 Run。
 
 > Windows 下如使用命令行调用后端 API，建议用 `curl.exe --noproxy 127.0.0.1 ...`，避免系统代理导致本地请求失败。
 
@@ -236,9 +288,23 @@ projects (1) → issues (N) → runs (N) → events / artifacts
 ### API 端点速查
 
 ```bash
+# Projects
+GET    /api/projects          # Project 列表
+POST   /api/projects          # 创建 Project（配置 repo/token/scmType）
+PATCH  /api/projects/:id      # 更新 Project 配置
+
+# Roles（RoleTemplate）
+GET    /api/projects/:id/roles        # 角色模板列表
+POST   /api/projects/:id/roles        # 创建角色模板
+PATCH  /api/projects/:id/roles/:roleId # 更新角色模板
+
+# GitHub Issues（外部导入）
+GET    /api/projects/:id/github/issues        # 列外部 Issue（分页）
+POST   /api/projects/:id/github/issues/import # 导入/绑定外部 Issue（幂等）
+
 # Issues
 POST   /api/issues          # 创建任务
-POST   /api/issues/:id/start # 启动 Run（可选传 agentId）
+POST   /api/issues/:id/start # 启动 Run（可选传 agentId/roleKey）
 GET    /api/issues          # 列表
 GET    /api/issues/:id      # 详情
 
@@ -251,6 +317,7 @@ GET    /api/runs/:id/diff   # diff（query: path=...）
 POST   /api/runs/:id/create-pr # 创建 PR
 POST   /api/runs/:id/merge-pr  # 合并 PR
 POST   /api/runs/:id/cancel # 取消
+POST   /api/runs/:id/complete # 手动完成
 
 # Agents
 GET    /api/agents          # Agent 列表
@@ -316,9 +383,10 @@ GET    /api/agents          # Agent 列表
 
 **检查**:
 
-1. GitLab Token 是否有效
-2. Run 是否有 `branchName/workspacePath`（启动 Run 时会创建 worktree）
-3. 后端日志是否有 `git push` 或 provider API 调用错误
+1. Project 的 provider token 是否有效（GitHub: `githubAccessToken`；GitLab: `gitlabAccessToken`）且具备创建/合并 PR 权限
+2. 本地是否能 `git push origin <branch>`（推荐使用 SSH remote 或配置好 HTTPS 凭据）
+3. Run 是否有 `branchName/workspacePath`（启动 Run 时会创建 worktree）
+4. 后端日志是否有 `git push` 或 provider API 调用错误
 
 ---
 
