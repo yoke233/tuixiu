@@ -131,7 +131,7 @@ BoxLite 侧要解决的事情：
 
 ## 5. Workspace/Worktree 挂载策略
 
-你当前系统为每个 Run 创建 worktree（例如 `.worktrees/run-<runId>`），BoxLite 模式下建议：
+你当前系统为每个 Run 创建 worktree（例如 `.worktrees/run-<worktreeName>`），BoxLite 模式下建议：
 - 将该 worktree mount 到容器 `/workspace`（rw）
 - `session/new` 的 `cwd` 传 `/workspace`
 

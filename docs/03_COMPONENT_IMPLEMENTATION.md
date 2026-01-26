@@ -64,7 +64,7 @@ ID 生成：
 服务/工具：
 
 - `backend/src/websocket/gateway.ts`：/ws/agent 与 /ws/client，负责 agent 注册、event 落库、前端广播
-- `backend/src/utils/gitWorkspace.ts`：Run worktree 与分支命名（`run/<runId>`）
+- `backend/src/utils/gitWorkspace.ts`：Run worktree 与分支命名（`run/<worktreeName>`）
 - `backend/src/services/runContext.ts`：从 Issue + Events 拼装对话上下文（用于 session 丢失降级）
 - `backend/src/services/runGitChanges.ts`：获取变更文件列表与 diff
 - `backend/src/services/runReviewRequest.ts`：统一 PR 抽象（GitLab MR / GitHub PR）创建/合并
@@ -97,8 +97,8 @@ Run 状态推进：
 
 启动 Run 时创建：
 
-- worktree：`<repoRoot>/.worktrees/run-<runId>`
-- branch：`run/<runId>`
+- worktree：`<repoRoot>/.worktrees/run-<worktreeName>`
+- branch：`run/<worktreeName>`
 
 并将 `cwd=<worktreePath>` 下发给 proxy，使 agent 在隔离工作区内运行。
 

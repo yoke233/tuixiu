@@ -292,7 +292,7 @@ projects (1) → issues (N) → runs (N) → events / artifacts
 关键字段（以 Prisma schema 为准）：
 - runs.acpSessionId：Run 绑定的 ACP session
 - runs.workspacePath：Run worktree 路径
-- runs.branchName：默认 `run/<runId>`
+- runs.branchName：默认 `run/<worktreeName>`（可自定义；不填则按 Issue 自动生成）
 - runs.status：pending → running → waiting_ci → completed（CI/Webhook 仍在规划中）
 ```
 
@@ -315,7 +315,7 @@ POST   /api/projects/:id/github/issues/import # 导入/绑定外部 Issue（幂�
 
 # Issues
 POST   /api/issues          # 创建任务
-POST   /api/issues/:id/start # 启动 Run（可选传 agentId/roleKey）
+POST   /api/issues/:id/start # 启动 Run（可选传 agentId/roleKey/worktreeName）
 GET    /api/issues          # 列表
 GET    /api/issues/:id      # 详情
 
@@ -354,7 +354,7 @@ GET    /api/agents          # Agent 列表
   "type": "execute_task",
   "run_id": "run-123",
   "prompt": "任务描述",
-  "cwd": "D:\\repo\\.worktrees\\run-<runId>"
+  "cwd": "D:\\repo\\.worktrees\\run-<worktreeName>"
 }
 
 // Proxy → Orchestrator

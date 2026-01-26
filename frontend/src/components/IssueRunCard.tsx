@@ -37,6 +37,9 @@ type IssueRunCardProps = {
   rolesError: string | null;
   selectedRoleKey: string;
   onSelectedRoleKeyChange: (roleKey: string) => void;
+
+  worktreeName: string;
+  onWorktreeNameChange: (name: string) => void;
 };
 
 export function IssueRunCard(props: IssueRunCardProps) {
@@ -66,7 +69,9 @@ export function IssueRunCard(props: IssueRunCardProps) {
     rolesLoaded,
     rolesError,
     selectedRoleKey,
-    onSelectedRoleKeyChange
+    onSelectedRoleKeyChange,
+    worktreeName,
+    onWorktreeNameChange
   } = props;
 
   return (
@@ -115,6 +120,18 @@ export function IssueRunCard(props: IssueRunCardProps) {
             <StatusBadge status={run.status} />
           </div>
           <div className="kvItem">
+            <div className="muted">branch</div>
+            {run.branchName ? <code title={run.branchName}>{run.branchName}</code> : <span className="muted">未知</span>}
+          </div>
+          <div className="kvItem">
+            <div className="muted">worktree</div>
+            {run.workspacePath ? (
+              <code title={run.workspacePath}>{run.workspacePath}</code>
+            ) : (
+              <span className="muted">未知</span>
+            )}
+          </div>
+          <div className="kvItem">
             <div className="muted">agentId</div>
             <code title={run.agentId}>{run.agentId}</code>
           </div>
@@ -157,6 +174,17 @@ export function IssueRunCard(props: IssueRunCardProps) {
         </div>
       ) : (
         <div className="row gap">
+          <label className="label" style={{ margin: 0, minWidth: 240 }}>
+            Worktree 名称（可选）
+            <input
+              value={worktreeName}
+              onChange={(e) => onWorktreeNameChange(e.target.value)}
+              placeholder="留空则自动生成（如 gh-123-fix-login-r1）"
+            />
+            <div className="muted" style={{ fontSize: 12 }}>
+              将用于：分支 `run/&lt;name&gt;`，目录 `.worktrees/run-&lt;name&gt;`
+            </div>
+          </label>
           <label className="label" style={{ margin: 0 }}>
             选择 Role（可选）
             <select

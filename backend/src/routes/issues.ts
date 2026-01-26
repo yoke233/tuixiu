@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
-import { createRunWorktree } from "../utils/gitWorkspace.js";
+import { createRunWorktree, suggestRunKey } from "../utils/gitWorkspace.js";
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_m, key) => {
@@ -107,10 +107,11 @@ export function makeIssueRoutes(deps: {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({
         agentId: z.string().uuid().optional(),
-        roleKey: z.string().min(1).max(100).optional()
+        roleKey: z.string().min(1).max(100).optional(),
+        worktreeName: z.string().trim().min(1).max(100).optional()
       });
       const { id } = paramsSchema.parse(request.params);
-      const { agentId, roleKey } = bodySchema.parse(request.body ?? {});
+      const { agentId, roleKey, worktreeName } = bodySchema.parse(request.body ?? {});
 
       const issue = await deps.prisma.issue.findUnique({
         where: { id },
@@ -173,7 +174,18 @@ export function makeIssueRoutes(deps: {
       let branchName = "";
       try {
         const baseBranch = issue.project.defaultBranch || "main";
-        const ws = await (deps.createWorkspace ?? createRunWorktree)({ runId: run.id, baseBranch });
+        const runNumber = (Array.isArray(issue.runs) ? issue.runs.length : 0) + 1;
+        const name =
+          typeof worktreeName === "string" && worktreeName.trim()
+            ? worktreeName.trim()
+            : suggestRunKey({
+                title: issue.title,
+                externalProvider: (issue as any).externalProvider,
+                externalNumber: (issue as any).externalNumber,
+                runNumber
+              });
+
+        const ws = await (deps.createWorkspace ?? createRunWorktree)({ runId: run.id, baseBranch, name });
         workspacePath = ws.workspacePath;
         branchName = ws.branchName;
 

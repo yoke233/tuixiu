@@ -26,8 +26,8 @@
 
 - **Acceptance Criteria**
   - Project 支持配置 `workspaceMode`：
-    - `worktree`（现有）：在“当前仓库”下创建 `.worktrees/run-<runId>`。
-    - `clone`（新增）：在 `WORKSPACES_ROOT/run-<runId>` 目录 clone 仓库并 checkout 分支。
+    - `worktree`（现有）：在“当前仓库”下创建 `.worktrees/run-<worktreeName>`。
+    - `clone`（新增）：在 `WORKSPACES_ROOT/run-<worktreeName>` 目录 clone 仓库并 checkout 分支。
   - Project 支持配置 `gitAuthMode`：
     - `https_pat`：使用 GitHub PAT 完成 clone/fetch/push（token 不写入命令行参数，不出现在日志）。
     - `ssh`：使用宿主机已配置的 SSH key（或指定 keyPath/known_hosts），完成 clone/fetch/push。
@@ -70,7 +70,7 @@
     - 更新：`git -C <mirror> fetch --prune`
   - Run 工作区：
     - `git clone --reference-if-able <mirror> <workspacePath>`（无 mirror 时直接 `git clone <repoUrl> ...`）
-    - `git checkout -b run/<runId> origin/<baseBranch>`
+    - `git checkout -b run/<worktreeName> origin/<baseBranch>`
 
 - **Git Auth（C：HTTPS + SSH）**
   - HTTPS(PAT)：
@@ -83,7 +83,7 @@
 - **BoxLite（boxlite_oci）**
   - `acp-proxy` 在 WSL2/Linux/macOS(arm64) 运行，BoxLite 创建 OCI/micro-VM 沙箱并启动 ACP Agent。
   - 挂载策略：
-    - 至少挂载 `WORKSPACES_ROOT` 到容器内 `/workspace`（run 工作区为 `/workspace/run-<runId>` 或 `/workspace/<project>/run-<runId>`）。
+    - 至少挂载 `WORKSPACES_ROOT` 到容器内 `/workspace`（run 工作区为 `/workspace/run-<worktreeName>` 或 `/workspace/<project>/run-<worktreeName>`）。
   - 资源限制：通过 `sandbox.boxlite.cpus/memoryMib` 配置；并发上限受资源与 `agent.max_concurrent` 双重约束。
 
 - **Dev Environment Bootstrap（沙箱内初始化：以 Node/npm 为例）**
