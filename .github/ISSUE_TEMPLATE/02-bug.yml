@@ -1,0 +1,52 @@
+name: "🐞 Bug Report"
+description: "提交可复现缺陷"
+title: "[Bug] "
+labels: ["type/bug", "status/triage"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围（Area）
+      options:
+        - backend
+        - frontend
+        - acp-proxy
+        - infra
+        - docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 现象描述
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准（建议）
+      placeholder: |
+        - [ ] 修复后复现步骤无法再触发
+        - [ ] 增加/更新测试用例
+    validations:
+      required: false

@@ -1,0 +1,56 @@
+name: Issue auto label
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto label by template fields / keywords
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = (issue.title || "").toLowerCase();
+            const body  = (issue.body  || "").toLowerCase();
+
+            // helper: add labels (avoid duplicates)
+            async function addLabels(labels) {
+              if (!labels.length) return;
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels
+              });
+            }
+
+            // 1) 如果模板没加 labels，这里兜底：按标题前缀识别类型/状态
+            //    你模板标题一般是 [ACP] / [Bug] / [Feature]
+            if (title.startsWith("[acp]")) {
+              await addLabels(["type/task", "status/ready"]);
+            } else if (title.startsWith("[bug]")) {
+              await addLabels(["type/bug", "status/triage"]);
+            } else if (title.startsWith("[feature]")) {
+              await addLabels(["type/feature", "status/triage"]);
+            }
+
+            // 2) 自动识别 area（两种方式：模板字段里写 “模块: backend”，或正文含关键字）
+            //    你 ACP Task 模板里如果有 "模块" 下拉，提交后正文通常会出现类似:
+            //    "模块\n\nbackend"
+            function detectArea() {
+              if (body.includes("acp-proxy") || body.includes("acp proxy")) return "area/acp-proxy";
+              if (body.includes("backend")) return "area/backend";
+              if (body.includes("frontend")) return "area/frontend";
+              if (body.includes("infra")) return "area/infra";
+              if (body.includes("docs")) return "area/docs";
+              return null;
+            }
+
+            const area = detectArea();
+            if (area) await addLabels([area]);

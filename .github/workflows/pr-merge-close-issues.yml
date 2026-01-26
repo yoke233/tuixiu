@@ -1,0 +1,51 @@
+name: Mark linked issues done on merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  mark_done:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find linked issues and label done
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            // GitHub 会识别 PR 描述里的 "Fixes #123" / "Closes #123"
+            // 我们这里简单从 PR body 里抓所有 #数字
+            const body = pr.body || "";
+            const matches = [...body.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10));
+            const issueNumbers = [...new Set(matches)];
+
+            for (const issue_number of issueNumbers) {
+              // 加 status/done，并尽量移除其它状态标签（可选）
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                labels: ["status/done"]
+              });
+
+              // 可选：移除 running/reviewing/ready/triage/blocked（保持状态唯一）
+              const toRemove = ["status/triage","status/ready","status/running","status/reviewing","status/blocked"];
+              for (const name of toRemove) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number,
+                    name
+                  });
+                } catch (e) {
+                  // ignore if label not present
+                }
+              }
+            }

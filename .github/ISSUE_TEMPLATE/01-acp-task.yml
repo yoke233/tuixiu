@@ -1,0 +1,72 @@
+name: "🤖 ACP Task (Issue → Run → PR)"
+description: "按 tuixiu/ACP 闭环创建可执行任务卡"
+title: "[ACP] "
+labels: ["type/task", "status/ready"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: 模块（Area）
+      options:
+        - backend
+        - frontend
+        - acp-proxy
+        - infra
+        - docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 优先级（Priority）
+      options:
+        - P0（必须）
+        - P1（应该）
+        - P2（可选）
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标（Goal）
+      description: 一句话说明交付物是什么
+      placeholder: "例如：支持 xxx 接口返回 yyy 字段，并补齐测试"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 上下文（Context）
+      description: 相关文件/现状/约束；越具体越好
+      placeholder: |
+        - 相关路径/模块：
+        - 现有行为：
+        - 期望行为：
+        - 约束（最小修改/兼容性等）：
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准（Acceptance Criteria）
+      placeholder: |
+        - [ ] 功能点A满足...
+        - [ ] 覆盖单测/回归点...
+        - [ ] CI通过（如有）
+    validations:
+      required: true
+
+  - type: textarea
+    id: runhint
+    attributes:
+      label: 给 Agent 的执行提示（可选）
+      placeholder: |
+        - 最小修改原则
+        - 修改范围限制（例如仅 worktree 内）
+        - 如何本地验证/回归
+    validations:
+      required: false
