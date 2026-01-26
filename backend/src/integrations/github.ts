@@ -15,6 +15,10 @@ export type GitHubPullRequest = {
   head: { ref: string };
   base: { ref: string };
   merged_at?: string | null;
+  mergeable?: boolean | null;
+  mergeable_state?: string | null;
+  draft?: boolean;
+  updated_at?: string;
 };
 
 export type GitHubIssue = {
