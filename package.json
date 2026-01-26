@@ -4,8 +4,8 @@
   "packageManager": "pnpm@10.10.0",
   "scripts": {
     "dev": "pnpm -r dev",
-    "test": "pnpm -r test && cd acp-proxy && go test ./...",
-    "test:coverage": "pnpm -r test:coverage && cd acp-proxy && go test -cover ./...",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   }

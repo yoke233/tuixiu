@@ -73,12 +73,29 @@ describe("WebSocketGateway", () => {
     });
   });
 
-  it("agent_update persists event and prompt_result completes run/issue and broadcasts", async () => {
+  it("agent_update persists event and broadcasts", async () => {
     const prisma = {
-      event: { create: vi.fn().mockResolvedValue({}) },
-      run: { update: vi.fn().mockResolvedValue({ agentId: "a1", issueId: "i1" }) },
+      event: {
+        create: vi.fn().mockResolvedValue({
+          id: "e1",
+          runId: "r1",
+          source: "acp",
+          type: "acp.update.received",
+          payload: { type: "prompt_result" },
+          timestamp: new Date()
+        })
+      },
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          status: "running",
+          issueId: "i1",
+          agentId: "a1"
+        }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      issue: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       agent: { update: vi.fn().mockResolvedValue({}) },
-      issue: { update: vi.fn().mockResolvedValue({}) }
     } as any;
 
     const gateway = createWebSocketGateway({ prisma });
@@ -94,15 +111,51 @@ describe("WebSocketGateway", () => {
     await flushMicrotasks();
 
     expect(prisma.event.create).toHaveBeenCalled();
+    expect(prisma.run.findUnique).toHaveBeenCalledWith({
+      where: { id: "r1" },
+      select: { id: true, status: true, issueId: true, agentId: true }
+    });
     expect(prisma.run.update).toHaveBeenCalled();
+    expect(prisma.issue.updateMany).toHaveBeenCalledWith({
+      where: { id: "i1", status: "running" },
+      data: { status: "reviewing" }
+    });
     expect(prisma.agent.update).toHaveBeenCalled();
-    expect(prisma.issue.update).toHaveBeenCalled();
+    const msg = clientSocket.sent.map((s) => JSON.parse(s)).find((m) => m.type === "event_added");
+    expect(msg).toBeTruthy();
+    expect(msg.run_id).toBe("r1");
+    expect(msg.event).toBeTruthy();
+  });
+
+  it("session_created updates run.acpSessionId", async () => {
+    const prisma = {
+      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+      run: { update: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    const clientSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+    gateway.__testing.handleClientConnection(clientSocket as any);
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(JSON.stringify({ type: "agent_update", run_id: "r1", content: { type: "session_created", session_id: "s1" } }))
+    );
+    await flushMicrotasks();
+
+    expect(prisma.run.update).toHaveBeenCalledWith({
+      where: { id: "r1" },
+      data: { acpSessionId: "s1" }
+    });
     expect(clientSocket.sent.some((s) => JSON.parse(s).type === "event_added")).toBe(true);
   });
 
   it("branch_created persists artifact and broadcasts", async () => {
     const prisma = {
-      artifact: { create: vi.fn().mockResolvedValue({}) }
+      artifact: { create: vi.fn().mockResolvedValue({ id: "art1", type: "branch" }) },
+      run: { update: vi.fn().mockResolvedValue({}) },
     } as any;
 
     const gateway = createWebSocketGateway({ prisma });
@@ -118,7 +171,11 @@ describe("WebSocketGateway", () => {
     await flushMicrotasks();
 
     expect(prisma.artifact.create).toHaveBeenCalled();
-    expect(clientSocket.sent.some((s) => JSON.parse(s).type === "artifact_added")).toBe(true);
+    expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { branchName: "acp/test" } });
+    const msg = clientSocket.sent.map((s) => JSON.parse(s)).find((m) => m.type === "artifact_added");
+    expect(msg).toBeTruthy();
+    expect(msg.run_id).toBe("r1");
+    expect(msg.artifact).toBeTruthy();
   });
 
   it("client close removes from broadcast list", async () => {

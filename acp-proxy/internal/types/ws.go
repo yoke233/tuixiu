@@ -25,9 +25,15 @@ type ExecuteTaskMessage struct {
 	Prompt    string `json:"prompt"`
 }
 
+type PromptRunMessage struct {
+	Type   string `json:"type"`
+	RunID  string `json:"run_id"`
+	SessionID string `json:"session_id,omitempty"`
+	Prompt string `json:"prompt"`
+}
+
 type AgentUpdateMessage struct {
 	Type    string      `json:"type"`
 	RunID   string      `json:"run_id"`
 	Content interface{} `json:"content"`
 }
-

@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 import type { PrismaDeps, SendToAgent } from "../deps.js";
+import { uuidv7 } from "../utils/uuid.js";
+import { createRunWorktree } from "../utils/gitWorkspace.js";
 
 const issueStatusSchema = z.enum([
   "pending",
@@ -11,6 +13,8 @@ const issueStatusSchema = z.enum([
   "failed",
   "cancelled"
 ]);
+
+const mutableIssueStatusSchema = z.enum(["pending", "reviewing", "done", "failed", "cancelled"]);
 
 const createIssueBodySchema = z.object({
   projectId: z.string().uuid().optional(),
@@ -24,6 +28,7 @@ const createIssueBodySchema = z.object({
 export function makeIssueRoutes(deps: {
   prisma: PrismaDeps;
   sendToAgent: SendToAgent;
+  createWorkspace?: typeof createRunWorktree;
 }): FastifyPluginAsync {
   return async (server) => {
     server.get("/", async (request) => {
@@ -76,6 +81,7 @@ export function makeIssueRoutes(deps: {
 
       const issue = await deps.prisma.issue.create({
         data: {
+          id: uuidv7(),
           projectId: project.id,
           title: body.title,
           description: body.description,
@@ -85,24 +91,54 @@ export function makeIssueRoutes(deps: {
         }
       });
 
-      const onlineAgents = await deps.prisma.agent.findMany({
-        where: { status: "online" },
-        orderBy: { createdAt: "asc" }
+      // 默认只创建 Issue，进入需求池（pending）。
+      // 后续由 /api/issues/:id/start 指定 Agent 并启动 Run。
+      return { success: true, data: { issue } };
+    });
+
+    server.post("/:id/start", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const bodySchema = z.object({
+        agentId: z.string().uuid().optional()
       });
-      const selectedAgent = onlineAgents.find(
-        (a: { currentLoad: number; maxConcurrentRuns: number }) =>
-          a.currentLoad < a.maxConcurrentRuns,
-      );
-      if (!selectedAgent) {
-        return { success: true, data: { issue } };
+      const { id } = paramsSchema.parse(request.params);
+      const { agentId } = bodySchema.parse(request.body ?? {});
+
+      const issue = await deps.prisma.issue.findUnique({
+        where: { id },
+        include: { project: true, runs: { orderBy: { createdAt: "desc" } } }
+      });
+      if (!issue) {
+        return { success: false, error: { code: "NOT_FOUND", message: "Issue 不存在" } };
+      }
+      if (issue.status === "running") {
+        return { success: false, error: { code: "ALREADY_RUNNING", message: "Issue 正在运行中" } };
+      }
+
+      const selectedAgent = agentId
+        ? await deps.prisma.agent.findUnique({ where: { id: agentId } })
+        : (
+            await deps.prisma.agent.findMany({
+              where: { status: "online" },
+              orderBy: { createdAt: "asc" }
+            })
+          ).find(
+            (a: { currentLoad: number; maxConcurrentRuns: number }) => a.currentLoad < a.maxConcurrentRuns,
+          ) ?? null;
+
+      if (!selectedAgent || selectedAgent.status !== "online") {
+        return { success: false, error: { code: "NO_AGENT", message: "没有可用的 Agent" } };
+      }
+      if (selectedAgent.currentLoad >= selectedAgent.maxConcurrentRuns) {
+        return { success: false, error: { code: "AGENT_BUSY", message: "该 Agent 正忙" } };
       }
 
       const run = await deps.prisma.run.create({
         data: {
+          id: uuidv7(),
           issueId: issue.id,
           agentId: selectedAgent.id,
-          status: "running",
-          acpSessionId: issue.id
+          status: "running"
         }
       });
 
@@ -115,27 +151,83 @@ export function makeIssueRoutes(deps: {
         data: { currentLoad: { increment: 1 } }
       });
 
+      let workspacePath = "";
+      let branchName = "";
+      try {
+        const baseBranch = issue.project.defaultBranch || "main";
+        const ws = await (deps.createWorkspace ?? createRunWorktree)({ runId: run.id, baseBranch });
+        workspacePath = ws.workspacePath;
+        branchName = ws.branchName;
+
+        await deps.prisma.run.update({
+          where: { id: run.id },
+          data: {
+            workspaceType: "worktree",
+            workspacePath,
+            branchName
+          }
+        });
+        await deps.prisma.artifact.create({
+          data: {
+            id: uuidv7(),
+            runId: run.id,
+            type: "branch",
+            content: { branch: branchName, baseBranch, workspacePath } as any
+          }
+        });
+      } catch (error) {
+        await deps.prisma.run.update({
+          where: { id: run.id },
+          data: { status: "failed", completedAt: new Date(), errorMessage: `创建 worktree 失败: ${String(error)}` }
+        });
+        await deps.prisma.issue.update({ where: { id: issue.id }, data: { status: "failed" } }).catch(() => {});
+        await deps.prisma.agent
+          .update({ where: { id: selectedAgent.id }, data: { currentLoad: { decrement: 1 } } })
+          .catch(() => {});
+
+        return {
+          success: false,
+          error: {
+            code: "WORKSPACE_FAILED",
+            message: "创建 Run 工作区失败",
+            details: String(error)
+          },
+          data: { issue, run }
+        };
+      }
+
       const promptParts: string[] = [];
+      promptParts.push(
+        [
+          "你正在一个独立的 Git worktree 中执行任务：",
+          `- workspace: ${workspacePath}`,
+          `- branch: ${branchName}`,
+          "",
+          "请在该分支上进行修改，并在任务完成后将修改提交（git commit）到该分支。",
+        ].join("\n"),
+      );
       promptParts.push(`任务标题: ${issue.title}`);
       if (issue.description) promptParts.push(`任务描述:\n${issue.description}`);
-      const acceptance = body.acceptanceCriteria;
+
+      const acceptance = Array.isArray(issue.acceptanceCriteria) ? issue.acceptanceCriteria : [];
       if (acceptance.length) {
-        promptParts.push(`验收标准:\n${acceptance.map((x) => `- ${x}`).join("\n")}`);
+        promptParts.push(`验收标准:\n${acceptance.map((x) => `- ${String(x)}`).join("\n")}`);
       }
-      const constraints = body.constraints;
+      const constraints = Array.isArray(issue.constraints) ? issue.constraints : [];
       if (constraints.length) {
-        promptParts.push(`约束条件:\n${constraints.map((x) => `- ${x}`).join("\n")}`);
+        promptParts.push(`约束条件:\n${constraints.map((x) => `- ${String(x)}`).join("\n")}`);
       }
-      if (body.testRequirements) {
-        promptParts.push(`测试要求:\n${body.testRequirements}`);
+      if (issue.testRequirements) {
+        promptParts.push(`测试要求:\n${issue.testRequirements}`);
       }
 
       try {
         await deps.sendToAgent(selectedAgent.proxyId, {
           type: "execute_task",
           run_id: run.id,
-          session_id: run.acpSessionId ?? run.id,
-          prompt: promptParts.join("\n\n")
+          session_id: run.id,
+          prompt: promptParts.join("\n\n"),
+          cwd: workspacePath
         });
       } catch (error) {
         await deps.prisma.run.update({
@@ -161,7 +253,38 @@ export function makeIssueRoutes(deps: {
         };
       }
 
-      return { success: true, data: { issue, run } };
+      return { success: true, data: { run } };
+    });
+
+    server.patch("/:id", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const bodySchema = z.object({
+        status: mutableIssueStatusSchema.optional()
+      });
+
+      const { id } = paramsSchema.parse(request.params);
+      const { status } = bodySchema.parse(request.body ?? {});
+
+      const issue = await deps.prisma.issue.findUnique({ where: { id } });
+      if (!issue) {
+        return { success: false, error: { code: "NOT_FOUND", message: "Issue 不存在" } };
+      }
+      if (issue.status === "running") {
+        return {
+          success: false,
+          error: { code: "ISSUE_RUNNING", message: "Issue 正在运行中，请先完成/取消 Run" }
+        };
+      }
+      if (!status) {
+        return { success: true, data: { issue } };
+      }
+
+      const updated = await deps.prisma.issue.update({
+        where: { id },
+        data: { status }
+      });
+
+      return { success: true, data: { issue: updated } };
     });
   };
 }

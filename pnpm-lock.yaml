@@ -8,6 +8,37 @@ importers:
 
   .: {}
 
+  acp-proxy:
+    dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: ^0.5.1
+        version: 0.5.1
+      ws:
+        specifier: ^8.18.1
+        version: 8.19.0
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.5
+        version: 22.19.7
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
+      '@vitest/coverage-v8':
+        specifier: ^3.2.4
+        version: 3.2.4(vitest@3.2.4(@types/node@22.19.7)(jiti@2.6.1)(jsdom@26.1.0)(tsx@4.21.0))
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.7)(jiti@2.6.1)(jsdom@26.1.0)(tsx@4.21.0)
+
   backend:
     dependencies:
       '@fastify/cors':
@@ -143,6 +174,9 @@ packages:
 
   '@adobe/css-tools@4.4.4':
     resolution: {integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg==}
+
+  '@agentclientprotocol/sdk@0.5.1':
+    resolution: {integrity: sha512-9bq2TgjhLBSUSC5jE04MEe+Hqw8YePzKghhYZ9QcjOyonY3q2oJfX6GoSO83hURpEnsqEPIrex6VZN3+61fBJg==}
 
   '@ampproject/remapping@2.3.0':
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
@@ -2103,6 +2137,10 @@ packages:
 snapshots:
 
   '@adobe/css-tools@4.4.4': {}
+
+  '@agentclientprotocol/sdk@0.5.1':
+    dependencies:
+      zod: 3.25.76
 
   '@ampproject/remapping@2.3.0':
     dependencies:

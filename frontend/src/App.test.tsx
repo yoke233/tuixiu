@@ -1,9 +1,14 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Outlet } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./pages/IssueListPage", () => ({
-  IssueListPage: () => <div>IssueListPage</div>
+  IssueListPage: () => (
+    <div>
+      IssueListPage
+      <Outlet />
+    </div>
+  )
 }));
 vi.mock("./pages/IssueDetailPage", () => ({
   IssueDetailPage: () => <div>IssueDetailPage</div>
@@ -32,4 +37,3 @@ describe("App routes", () => {
     await waitFor(() => expect(screen.getByText("IssueDetailPage")).toBeInTheDocument());
   });
 });
-

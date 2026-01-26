@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IssueListPage } from "./IssueListPage";
+import { ThemeProvider } from "../theme";
 
 function mockFetchJsonOnce(body: unknown) {
   (globalThis.fetch as any).mockResolvedValueOnce(
@@ -56,13 +57,19 @@ describe("IssueListPage", () => {
     });
 
     render(
-      <MemoryRouter>
-        <IssueListPage />
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/issues"]}>
+          <Routes>
+            <Route path="/issues" element={<IssueListPage />}>
+              <Route index element={<div>empty</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
-    expect(await screen.findByRole("link", { name: "Fix README" })).toBeInTheDocument();
-    expect(screen.getByText("Issues")).toBeInTheDocument();
+    expect(await screen.findByText("Fix README")).toBeInTheDocument();
+    expect(screen.getByText("看板")).toBeInTheDocument();
   });
 
   it("shows error when creating issue without project", async () => {
@@ -70,13 +77,20 @@ describe("IssueListPage", () => {
     mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
 
     render(
-      <MemoryRouter>
-        <IssueListPage />
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/issues"]}>
+          <Routes>
+            <Route path="/issues" element={<IssueListPage />}>
+              <Route index element={<div>empty</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
-    await waitFor(() => expect(screen.getByText("暂无 Project，请先创建")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("请先创建 Project")).toBeInTheDocument());
 
+    await userEvent.click(screen.getByText("创建 / 配置"));
     await userEvent.type(screen.getByLabelText("Issue 标题"), "Test issue");
     await userEvent.click(screen.getByRole("button", { name: "提交" }));
 
@@ -120,12 +134,18 @@ describe("IssueListPage", () => {
     mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
 
     render(
-      <MemoryRouter>
-        <IssueListPage />
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/issues"]}>
+          <Routes>
+            <Route path="/issues" element={<IssueListPage />}>
+              <Route index element={<div>empty</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
-    await waitFor(() => expect(screen.getByText("暂无 Project，请先创建")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("创建 / 配置"));
 
     await userEvent.type(screen.getByLabelText("名称"), "Demo");
     await userEvent.type(screen.getByLabelText("Repo URL"), "https://example.com/repo.git");
@@ -161,17 +181,10 @@ describe("IssueListPage", () => {
           id: "i1",
           projectId: "p1",
           title: "Fix README",
-          status: "running",
+          status: "pending",
           createdAt: "2026-01-25T00:00:00.000Z",
           runs: []
         },
-        run: {
-          id: "r1",
-          issueId: "i1",
-          agentId: "a1",
-          status: "running",
-          startedAt: "2026-01-25T00:00:00.000Z"
-        }
       }
     });
     // refresh after creation
@@ -198,7 +211,7 @@ describe("IssueListPage", () => {
             id: "i1",
             projectId: "p1",
             title: "Fix README",
-            status: "running",
+            status: "pending",
             createdAt: "2026-01-25T00:00:00.000Z",
             runs: []
           }
@@ -210,15 +223,22 @@ describe("IssueListPage", () => {
     });
 
     render(
-      <MemoryRouter>
-        <IssueListPage />
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/issues"]}>
+          <Routes>
+            <Route path="/issues" element={<IssueListPage />}>
+              <Route index element={<div>empty</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
     await waitFor(() => expect(screen.getByLabelText("选择 Project")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("创建 / 配置"));
     await userEvent.type(screen.getByLabelText("Issue 标题"), "Fix README");
     await userEvent.click(screen.getByRole("button", { name: "提交" }));
 
-    expect(await screen.findByRole("link", { name: "Fix README" })).toBeInTheDocument();
+    expect(await screen.findByText("Fix README")).toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 
 import type { PrismaDeps } from "../deps.js";
+import { uuidv7 } from "../utils/uuid.js";
 
 type AgentRegisterMessage = {
   type: "register_agent";
@@ -72,6 +73,7 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
           await deps.prisma.agent.upsert({
             where: { proxyId },
             create: {
+              id: uuidv7(),
               name: message.agent.name,
               proxyId,
               status: "online",
@@ -101,8 +103,9 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
         }
 
         if (message.type === "agent_update") {
-          await deps.prisma.event.create({
+          const createdEvent = await deps.prisma.event.create({
             data: {
+              id: uuidv7(),
               runId: message.run_id,
               source: "acp",
               type: "acp.update.received",
@@ -110,32 +113,60 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             }
           });
 
-          if (isRecord(message.content) && message.content.type === "prompt_result") {
-            const run = await deps.prisma.run.update({
+          const contentType = isRecord(message.content) ? message.content.type : undefined;
+          if (contentType === "session_created") {
+            const sessionId = isRecord(message.content) ? message.content.session_id : undefined;
+            if (typeof sessionId === "string" && sessionId) {
+              await deps.prisma.run
+                .update({
+                  where: { id: message.run_id },
+                  data: { acpSessionId: sessionId }
+                })
+                .catch(() => {});
+            }
+          }
+          if (contentType === "prompt_result") {
+            const run = await deps.prisma.run.findUnique({
               where: { id: message.run_id },
-              data: { status: "completed", completedAt: new Date() }
+              select: { id: true, status: true, issueId: true, agentId: true }
             });
-            await deps.prisma.agent
-              .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
-              .catch(() => {});
-            await deps.prisma.issue
-              .update({ where: { id: run.issueId }, data: { status: "done" } })
-              .catch(() => {});
+
+            if (run && run.status === "running") {
+              await deps.prisma.run.update({
+                where: { id: run.id },
+                data: { status: "completed", completedAt: new Date() }
+              });
+
+              await deps.prisma.issue
+                .updateMany({
+                  where: { id: run.issueId, status: "running" },
+                  data: { status: "reviewing" }
+                })
+                .catch(() => {});
+
+              await deps.prisma.agent
+                .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
+                .catch(() => {});
+            }
           }
 
-          broadcastToClients({ type: "event_added", run_id: message.run_id });
+          broadcastToClients({ type: "event_added", run_id: message.run_id, event: createdEvent });
           return;
         }
 
         if (message.type === "branch_created") {
-          await deps.prisma.artifact.create({
+          const createdArtifact = await deps.prisma.artifact.create({
             data: {
+              id: uuidv7(),
               runId: message.run_id,
               type: "branch",
               content: { branch: message.branch } as any
             }
           });
-          broadcastToClients({ type: "artifact_added", run_id: message.run_id });
+          await deps.prisma.run
+            .update({ where: { id: message.run_id }, data: { branchName: message.branch } })
+            .catch(() => {});
+          broadcastToClients({ type: "artifact_added", run_id: message.run_id, artifact: createdArtifact });
           return;
         }
       } catch (error) {

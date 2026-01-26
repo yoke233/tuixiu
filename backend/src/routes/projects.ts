@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
+import { uuidv7 } from "../utils/uuid.js";
 
 const createProjectBodySchema = z.object({
   name: z.string().min(1),
@@ -24,6 +25,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
       const body = createProjectBodySchema.parse(request.body);
       const project = await deps.prisma.project.create({
         data: {
+          id: uuidv7(),
           name: body.name,
           repoUrl: body.repoUrl,
           scmType: body.scmType ?? "gitlab",

@@ -21,6 +21,10 @@ export default defineConfig([
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
+      'react-refresh/only-export-components': [
+        'error',
+        { allowExportNames: ['Theme', 'useTheme'], allowConstantExport: true },
+      ],
     },
   },
 ])

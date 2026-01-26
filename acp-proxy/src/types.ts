@@ -1,0 +1,40 @@
+export type RegisterAgentMessage = {
+  type: "register_agent";
+  agent: {
+    id: string;
+    name: string;
+    capabilities?: unknown;
+    max_concurrent?: number;
+  };
+};
+
+export type HeartbeatMessage = {
+  type: "heartbeat";
+  agent_id: string;
+  timestamp?: string;
+};
+
+export type ExecuteTaskMessage = {
+  type: "execute_task";
+  run_id: string;
+  session_id?: string;
+  prompt: string;
+  cwd?: string;
+};
+
+export type PromptRunMessage = {
+  type: "prompt_run";
+  run_id: string;
+  session_id?: string;
+  prompt: string;
+  context?: string;
+  cwd?: string;
+};
+
+export type AgentUpdateMessage = {
+  type: "agent_update";
+  run_id: string;
+  content: unknown;
+};
+
+export type IncomingMessage = ExecuteTaskMessage | PromptRunMessage | { type: string; [k: string]: unknown };

@@ -1,5 +1,5 @@
-import { apiGet, apiPost } from "./client";
-import type { Issue, Run } from "../types";
+import { apiGet, apiPatch, apiPost } from "./client";
+import type { Issue, IssueStatus, Run } from "../types";
 
 export type ListIssuesResult = {
   issues: Issue[];
@@ -34,3 +34,12 @@ export async function createIssue(input: CreateIssueInput): Promise<{ issue: Iss
   return data;
 }
 
+export async function startIssue(id: string, input: { agentId?: string }): Promise<{ run: Run }> {
+  const data = await apiPost<{ run: Run }>(`/issues/${id}/start`, input);
+  return data;
+}
+
+export async function updateIssue(id: string, input: { status?: Exclude<IssueStatus, "running"> }): Promise<Issue> {
+  const data = await apiPatch<{ issue: Issue }>(`/issues/${id}`, input);
+  return data.issue;
+}

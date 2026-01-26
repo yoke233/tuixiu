@@ -28,7 +28,7 @@ wsGateway.init(server);
 server.register(makeIssueRoutes({ prisma, sendToAgent: wsGateway.sendToAgent }), {
   prefix: "/api/issues"
 });
-server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
+server.register(makeRunRoutes({ prisma, sendToAgent: wsGateway.sendToAgent }), { prefix: "/api/runs" });
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 

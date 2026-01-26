@@ -37,6 +37,7 @@ describe("Projects routes", () => {
 
     expect(prisma.project.create).toHaveBeenCalledWith({
       data: {
+        id: expect.any(String),
         name: "Demo",
         repoUrl: "https://example.com/repo.git",
         scmType: "gitlab",

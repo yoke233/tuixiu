@@ -9,6 +9,7 @@ build/
 .next/
 
 .tmp/
+.worktrees/
 
 backend/coverage/
 backend/.prisma/

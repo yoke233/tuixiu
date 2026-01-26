@@ -1,7 +1,7 @@
 #root {
   min-height: 100vh;
-  background: #0b1220;
-  color: #e6edf7;
+  background: var(--bg);
+  color: var(--fg);
 }
 
 .container {
@@ -32,8 +32,8 @@
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 16px;
   backdrop-filter: blur(8px);
@@ -54,7 +54,7 @@
 }
 
 .muted {
-  color: rgba(230, 237, 247, 0.72);
+  color: var(--muted);
   font-size: 14px;
 }
 
@@ -68,8 +68,8 @@
 input,
 textarea,
 select {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   color: inherit;
   border-radius: 10px;
   padding: 10px 12px;
@@ -81,13 +81,19 @@ textarea {
 }
 
 button {
-  background: #2dd4bf;
-  color: #06201b;
+  background: var(--accent);
+  color: var(--accent-text);
   border: 0;
   border-radius: 10px;
   padding: 10px 12px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.buttonSecondary {
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--card-border);
 }
 
 button:disabled {
@@ -96,7 +102,7 @@ button:disabled {
 }
 
 a {
-  color: #7dd3fc;
+  color: var(--link);
   text-decoration: none;
 }
 
@@ -105,8 +111,8 @@ a:hover {
 }
 
 .alert {
-  background: rgba(239, 68, 68, 0.16);
-  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 16px;
@@ -122,7 +128,7 @@ a:hover {
 .table td {
   text-align: left;
   padding: 10px 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid var(--card-border);
 }
 
 .form h3 {
@@ -135,7 +141,7 @@ a:hover {
   border-radius: 999px;
   padding: 3px 10px;
   font-size: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--card-border);
 }
 
 .badge.gray {
@@ -166,17 +172,432 @@ a:hover {
 }
 
 .listItem {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--list-bg);
 }
 
 .pre {
   margin-top: 8px;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--pre-bg);
   border-radius: 12px;
   padding: 10px;
   overflow: auto;
   font-size: 12px;
+}
+
+.console {
+  background: var(--console-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 12px;
+  height: 420px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.consoleItem {
+  padding: 6px 8px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.consoleItem.system {
+  color: var(--muted);
+  background: var(--console-system-bg);
+}
+
+.consoleItem.user {
+  margin-left: auto;
+  max-width: 92%;
+  background: var(--console-user-bg);
+  color: var(--console-user-text);
+}
+
+.consoleInput {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.consoleInput input {
+  flex: 1;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.detailEmpty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+}
+
+.issuesShell {
+  min-height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
+
+.issuesTopBar {
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.issuesTopBar h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.issuesTopActions input {
+  min-width: 260px;
+}
+
+.issuesSplit {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  --detail-width: 520px;
+}
+
+@media (min-width: 980px) {
+  .issuesSplit.hasDetail {
+    grid-template-columns: 1fr 8px var(--detail-width);
+  }
+}
+
+.issuesBoard {
+  padding: 16px 18px;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  min-width: 0;
+}
+
+.issuesDetail {
+  border-left: none;
+  background: var(--bg);
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.splitter {
+  display: none;
+}
+
+@media (min-width: 980px) {
+  .splitter {
+    display: block;
+    cursor: col-resize;
+    background: transparent;
+    position: relative;
+    outline: none;
+  }
+
+  .splitter::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-left: 1px solid var(--card-border);
+    border-right: 1px solid var(--card-border);
+    opacity: 0.5;
+  }
+
+  .splitter:hover::before,
+  .issuesSplit.resizing .splitter::before,
+  .splitter:focus-visible::before {
+    opacity: 1;
+    background: color-mix(in oklab, var(--accent), transparent 92%);
+  }
+}
+
+.issuesDetail .container {
+  max-width: none;
+  padding: 18px;
+}
+
+.boardHeader {
+  margin-bottom: 14px;
+}
+
+.boardHeader h2 {
+  margin: 0;
+}
+
+.boardTools summary {
+  cursor: pointer;
+  user-select: none;
+  padding: 10px 0 0;
+  color: var(--muted);
+}
+
+.kanban {
+  display: flex;
+  gap: 12px;
+  overflow: auto;
+  padding-bottom: 16px;
+  scrollbar-gutter: stable both-edges;
+  height: 100%;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.kanbanCol {
+  min-width: 280px;
+  max-width: 320px;
+  flex: 0 0 280px;
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  background: var(--list-bg);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+}
+
+.kanbanCol.dropTarget {
+  border-color: color-mix(in oklab, var(--accent), var(--card-border) 40%);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 85%);
+}
+
+.kanbanColHeader {
+  padding: 12px 12px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.kanbanColTitle {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+.kanbanColBody {
+  padding: 12px;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.kanbanEmpty {
+  padding: 10px 6px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  border: 1px solid var(--card-border);
+}
+
+.dotGray {
+  background: rgba(148, 163, 184, 0.65);
+}
+
+.dotBlue {
+  background: rgba(59, 130, 246, 0.8);
+}
+
+.dotGreen {
+  background: rgba(34, 197, 94, 0.75);
+}
+
+.dotRed {
+  background: rgba(239, 68, 68, 0.75);
+}
+
+.dotPurple {
+  background: rgba(168, 85, 247, 0.75);
+}
+
+.issueCard {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  text-decoration: none;
+  color: inherit;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.issueCard[draggable="true"] {
+  cursor: grab;
+}
+
+.issueCard.dragging {
+  opacity: 0.65;
+  cursor: grabbing;
+}
+
+.issueCard:hover {
+  transform: translateY(-1px);
+}
+
+.issueCard.selected {
+  border-color: color-mix(in oklab, var(--accent), var(--card-border) 50%);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 80%);
+}
+
+.issueTitle {
+  font-weight: 650;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 210px;
+}
+
+.issueMeta {
+  gap: 8px;
+}
+
+.detailStack {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.detailTwoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+@media (max-width: 980px) {
+  .detailTwoCol {
+    grid-template-columns: 1fr;
+  }
+}
+
+.changesGrid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 12px;
+  min-height: 280px;
+}
+
+.changesFiles {
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--list-bg);
+  overflow: auto;
+  max-height: 420px;
+}
+
+.fileRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid var(--card-border);
+  border-radius: 0;
+}
+
+.fileRow:hover {
+  background: color-mix(in oklab, var(--card-bg), transparent 40%);
+}
+
+.fileRow.active {
+  background: color-mix(in oklab, var(--accent), transparent 92%);
+  box-shadow: inset 3px 0 0 color-mix(in oklab, var(--accent), transparent 35%);
+}
+
+.fileStatus {
+  min-width: 56px;
+  opacity: 0.8;
+}
+
+.filePath {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.changesDiff {
+  min-width: 0;
+}
+
+.changesDiff .pre {
+  height: 420px;
+  overflow: auto;
+}
+
+@media (max-width: 860px) {
+  .changesGrid {
+    grid-template-columns: 1fr;
+  }
+  .changesFiles {
+    max-height: 220px;
+  }
+  .changesDiff .pre {
+    height: 320px;
+  }
+}
+
+.detailsSummary {
+  cursor: pointer;
+  user-select: none;
+  color: var(--muted);
+  font-weight: 700;
+  list-style: none;
+}
+
+.detailsSummary::-webkit-details-marker {
+  display: none;
+}
+
+details[open] .detailsSummary {
+  color: inherit;
+}
+
+.toolSummaryRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolSummaryTitle {
+  font-weight: 600;
 }

@@ -32,7 +32,7 @@
 
 已实现并可本地跑通：
 - `backend/`：Fastify + WebSocket Gateway + Prisma ORM（迁移使用 `prisma migrate` 自动生成/执行）
-- `acp-proxy/`：Go 实现 WS ↔ ACP(JSON-RPC/stdin/stdout)；默认使用 `npx --yes @zed-industries/codex-acp`
+- `acp-proxy/`：Node/TypeScript 实现 WS ↔ ACP(JSON-RPC/stdin/stdout)，基于 `@agentclientprotocol/sdk`；默认使用 `npx --yes @zed-industries/codex-acp`
 - `frontend/`：React + Vite Web UI（Issue 列表/详情/创建 + WS 实时刷新）
 - 单元测试：后端/前端/Proxy 均已覆盖并可一键执行
 
@@ -54,7 +54,7 @@ pnpm dev
 cd acp-proxy
 Copy-Item config.json.example config.json
 notepad config.json
-go run ./cmd/proxy
+pnpm dev
 ```
 
 再开一个终端启动前端：

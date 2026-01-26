@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IssueDetailPage } from "./IssueDetailPage";
+import { ThemeProvider } from "../theme";
 
 function mockFetchJsonOnce(body: unknown) {
   (globalThis.fetch as any).mockResolvedValueOnce(
@@ -35,6 +36,12 @@ describe("IssueDetailPage", () => {
         }
       }
     });
+
+    // agents list (1 call)
+    mockFetchJsonOnce({
+      success: true,
+      data: { agents: [] }
+    });
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -61,85 +68,70 @@ describe("IssueDetailPage", () => {
       data: {
         events: [
           {
-            id: "e1",
-            runId: "r1",
-            source: "acp",
-            type: "acp.update.received",
-            payload: { type: "text", text: "hi" },
-            timestamp: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
-    });
-
-    // second refresh triggered by WS (3 calls)
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        issue: {
-          id: "i1",
-          projectId: "p1",
-          title: "Fix README",
-          description: "desc",
-          status: "running",
-          createdAt: "2026-01-25T00:00:00.000Z",
-          runs: [{ id: "r1", issueId: "i1", agentId: "a1", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }]
-        }
-      }
-    });
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        run: {
-          id: "r1",
-          issueId: "i1",
-          agentId: "a1",
-          status: "running",
-          startedAt: "2026-01-25T00:00:00.000Z",
-          artifacts: []
-        }
-      }
-    });
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        events: [
-          {
-            id: "e1",
-            runId: "r1",
-            source: "acp",
-            type: "acp.update.received",
-            payload: { type: "text", text: "hi" },
-            timestamp: "2026-01-25T00:00:00.000Z"
-          },
-          {
             id: "e2",
             runId: "r1",
             source: "acp",
             type: "acp.update.received",
-            payload: { type: "text", text: "again" },
-            timestamp: "2026-01-25T00:00:01.000Z"
+            payload: {
+              type: "session_update",
+              update: {
+                kind: "execute",
+                title: "Run node \"...\" bootstrap",
+                status: "in_progress",
+                rawInput: {
+                  cwd: "D:\\xyad\\tuixiu",
+                  call_id: "call_test_tool_1",
+                  command: ["C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-Command", "echo hi"]
+                },
+                toolCallId: "call_test_tool_1",
+                sessionUpdate: "tool_call"
+              },
+              session: "s1"
+            },
+            timestamp: "2026-01-25T00:00:00.100Z"
+          },
+          {
+            id: "e1",
+            runId: "r1",
+            source: "acp",
+            type: "acp.update.received",
+            payload: { type: "text", text: "hi" },
+            timestamp: "2026-01-25T00:00:00.000Z"
           }
         ]
       }
     });
 
     render(
-      <MemoryRouter initialEntries={["/issues/i1"]}>
-        <Routes>
-          <Route path="/issues/:id" element={<IssueDetailPage />} />
-        </Routes>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/issues/i1"]}>
+          <Routes>
+            <Route path="/issues/:id" element={<IssueDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
     expect(await screen.findByText("r1")).toBeInTheDocument();
     expect(await screen.findByText("branch")).toBeInTheDocument();
-    expect(await screen.findByText(/acp.update.received/)).toBeInTheDocument();
+    expect(await screen.findByText("hi")).toBeInTheDocument();
+    expect(await screen.findByText(/工具调用/)).toBeInTheDocument();
 
     const WS = (globalThis as any).MockWebSocket;
     const instance = WS.instances[WS.instances.length - 1];
-    instance.emitMessage({ type: "event_added", run_id: "r1" });
+    instance.emitMessage({
+      type: "event_added",
+      run_id: "r1",
+      event: {
+        id: "e9",
+        runId: "r1",
+        source: "acp",
+        type: "acp.update.received",
+        payload: { type: "text", text: "again" },
+        timestamp: "2026-01-25T00:00:01.000Z"
+      }
+    });
 
     await waitFor(() => expect(screen.getByText(/again/)).toBeInTheDocument());
   });
@@ -158,6 +150,12 @@ describe("IssueDetailPage", () => {
           runs: [{ id: "r1", issueId: "i1", agentId: "a1", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }]
         }
       }
+    });
+
+    // agents list (1 call)
+    mockFetchJsonOnce({
+      success: true,
+      data: { agents: [] }
     });
     mockFetchJsonOnce({
       success: true,
@@ -189,12 +187,43 @@ describe("IssueDetailPage", () => {
       }
     });
 
+    // refresh after cancel (3 calls)
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issue: {
+          id: "i1",
+          projectId: "p1",
+          title: "Fix README",
+          status: "cancelled",
+          createdAt: "2026-01-25T00:00:00.000Z",
+          runs: [{ id: "r1", issueId: "i1", agentId: "a1", status: "cancelled", startedAt: "2026-01-25T00:00:00.000Z" }]
+        }
+      }
+    });
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        run: {
+          id: "r1",
+          issueId: "i1",
+          agentId: "a1",
+          status: "cancelled",
+          startedAt: "2026-01-25T00:00:00.000Z",
+          artifacts: []
+        }
+      }
+    });
+    mockFetchJsonOnce({ success: true, data: { events: [] } });
+
     render(
-      <MemoryRouter initialEntries={["/issues/i1"]}>
-        <Routes>
-          <Route path="/issues/:id" element={<IssueDetailPage />} />
-        </Routes>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/issues/i1"]}>
+          <Routes>
+            <Route path="/issues/:id" element={<IssueDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();

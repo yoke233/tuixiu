@@ -1,6 +1,7 @@
 packages:
   - backend
   - frontend
+  - acp-proxy
 onlyBuiltDependencies:
   - '@prisma/client'
   - '@prisma/engines'

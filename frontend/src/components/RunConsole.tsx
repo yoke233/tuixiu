@@ -1,0 +1,404 @@
+import { useEffect, useMemo, useRef } from "react";
+
+import type { Event } from "../types";
+
+type ConsoleRole = "user" | "agent" | "system";
+type ConsoleKind = "chunk" | "block";
+
+type ToolCallInfo = {
+  toolCallId: string;
+  title?: string;
+  kind?: string;
+  status?: string;
+  cwd?: string;
+  command?: string;
+  exitCode?: number;
+  output?: string;
+  stderr?: string;
+};
+
+type ConsoleItem = {
+  id: string;
+  role: ConsoleRole;
+  kind: ConsoleKind;
+  text: string;
+  timestamp: string;
+  toolCallId?: string;
+  toolCallInfo?: ToolCallInfo;
+};
+
+function extractToolCallInfo(update: any): ToolCallInfo | null {
+  if (!update || typeof update !== "object") return null;
+
+  const title = typeof update.title === "string" ? update.title : "";
+  const kind = typeof update.kind === "string" ? update.kind : "";
+  const status = typeof update.status === "string" ? update.status : "";
+
+  const rawInput = update.rawInput as any;
+  const rawOutput = update.rawOutput as any;
+  const raw = rawInput ?? rawOutput;
+
+  const toolCallId =
+    typeof update.toolCallId === "string"
+      ? update.toolCallId
+      : typeof raw?.call_id === "string"
+        ? raw.call_id
+        : "";
+  const cwd = typeof raw?.cwd === "string" ? raw.cwd : "";
+
+  const command = raw?.command;
+  let cmdText = "";
+  if (Array.isArray(command)) {
+    cmdText = command.filter((x: unknown) => typeof x === "string").join(" ");
+  } else if (typeof command === "string") {
+    cmdText = command;
+  } else if (Array.isArray(raw?.parsed_cmd) && raw.parsed_cmd.length) {
+    const first = raw.parsed_cmd[0] as any;
+    if (first && typeof first === "object" && typeof first.cmd === "string") {
+      cmdText = first.cmd;
+    }
+  }
+
+  const exitCode =
+    typeof rawOutput?.exit_code === "number"
+      ? rawOutput.exit_code
+      : typeof rawOutput?.exitCode === "number"
+        ? rawOutput.exitCode
+        : undefined;
+
+  const stdout = typeof rawOutput?.stdout === "string" ? rawOutput.stdout : "";
+  const stderr = typeof rawOutput?.stderr === "string" ? rawOutput.stderr : "";
+  const formattedOutput =
+    typeof rawOutput?.formatted_output === "string"
+      ? rawOutput.formatted_output
+      : typeof rawOutput?.aggregated_output === "string"
+        ? rawOutput.aggregated_output
+        : "";
+
+  const output = formattedOutput || stdout;
+
+  return {
+    toolCallId,
+    title: title || undefined,
+    kind: kind || undefined,
+    status: status || undefined,
+    cwd: cwd || undefined,
+    command: cmdText || undefined,
+    exitCode,
+    output: output || undefined,
+    stderr: stderr || undefined
+  };
+}
+
+function formatToolCallInfo(info: ToolCallInfo | null): string | null {
+  if (!info) return null;
+  const metaParts: string[] = [];
+  if (info.kind) metaParts.push(info.kind);
+  if (info.status) metaParts.push(info.status);
+
+  const head = `（工具调用${metaParts.length ? `: ${metaParts.join(" / ")}` : ""}${info.title ? ` - ${info.title}` : ""}）`;
+  const lines = [head];
+  if (info.toolCallId) lines.push(`toolCallId: ${info.toolCallId}`);
+  if (info.cwd) lines.push(`cwd: ${info.cwd}`);
+  if (info.command) lines.push(`command: ${info.command}`);
+  if (typeof info.exitCode === "number") lines.push(`exitCode: ${info.exitCode}`);
+  if (info.output) lines.push(`output:\n${info.output}`);
+  if (info.stderr && info.stderr.trim()) lines.push(`stderr:\n${info.stderr}`);
+  return lines.join("\n");
+}
+
+function getToolTitle(info: ToolCallInfo): string {
+  return info.title || info.command || info.toolCallId || "tool_call";
+}
+
+function kindToBadgeClass(kind: string): string {
+  if (kind === "delete") return "badge red";
+  if (kind === "edit") return "badge orange";
+  if (kind === "execute") return "badge blue";
+  if (kind === "read") return "badge purple";
+  if (kind === "search") return "badge blue";
+  if (kind === "fetch") return "badge blue";
+  if (kind === "move") return "badge blue";
+  if (kind === "think") return "badge gray";
+  return "badge gray";
+}
+
+function statusToBadgeClass(status: string): string {
+  if (status === "pending") return "badge gray";
+  if (status === "in_progress") return "badge orange";
+  if (status === "completed") return "badge green";
+  if (status === "failed") return "badge red";
+  if (status === "cancelled") return "badge gray";
+  return "badge gray";
+}
+
+function exitToBadgeClass(exitCode: number): string {
+  return exitCode === 0 ? "badge green" : "badge red";
+}
+
+function mergeToolCallInfo(a: ToolCallInfo, b: ToolCallInfo): ToolCallInfo {
+  const pick = <T,>(left: T | undefined, right: T | undefined) => (right ?? left);
+  return {
+    toolCallId: a.toolCallId,
+    title: pick(a.title, b.title),
+    kind: pick(a.kind, b.kind),
+    status: pick(a.status, b.status),
+    cwd: pick(a.cwd, b.cwd),
+    command: pick(a.command, b.command),
+    exitCode: pick(a.exitCode, b.exitCode),
+    output: pick(a.output, b.output),
+    stderr: pick(a.stderr, b.stderr)
+  };
+}
+
+function extractTextFromUpdateContent(content: unknown): string | null {
+  if (!content) return null;
+  if (typeof content === "string") return content;
+  if (typeof content !== "object") return null;
+
+  const rec = content as Record<string, unknown>;
+  if (typeof rec.text === "string") return rec.text;
+
+  if (Array.isArray(rec.content)) {
+    const parts: string[] = [];
+    for (const item of rec.content) {
+      if (!item || typeof item !== "object") continue;
+      const ir = item as Record<string, unknown>;
+      const inner = ir.content;
+      if (inner && typeof inner === "object" && typeof (inner as any).text === "string") {
+        parts.push(String((inner as any).text));
+        continue;
+      }
+      if (typeof ir.text === "string") {
+        parts.push(ir.text);
+      }
+    }
+    return parts.length ? parts.join("") : null;
+  }
+
+  return null;
+}
+
+function eventToConsoleItem(e: Event): ConsoleItem {
+  if (e.source === "user") {
+    const text = (e.payload as any)?.text;
+    return {
+      id: e.id,
+      role: "user",
+      kind: "block",
+      text: typeof text === "string" ? text : JSON.stringify(e.payload, null, 2),
+      timestamp: e.timestamp
+    };
+  }
+
+  if (e.source === "acp" && e.type === "acp.update.received") {
+    const payload = e.payload as any;
+
+    if (payload?.type === "text" && typeof payload.text === "string") {
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: payload.text,
+        timestamp: e.timestamp
+      };
+    }
+
+    if (payload?.type === "prompt_result") {
+      const stopReason = typeof payload.stopReason === "string" ? payload.stopReason : "end_turn";
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: `（本轮结束: ${stopReason}）`,
+        timestamp: e.timestamp
+      };
+    }
+
+    if (payload?.type === "session_update" && payload.update) {
+      const update = payload.update as any;
+      const sessionUpdate = typeof update.sessionUpdate === "string" ? update.sessionUpdate : "";
+
+      if (sessionUpdate === "agent_message_chunk" || sessionUpdate === "agent_thought_chunk") {
+        const chunkText = update?.content?.text;
+        return {
+          id: e.id,
+          role: "agent",
+          kind: "chunk",
+          text: typeof chunkText === "string" ? chunkText : "",
+          timestamp: e.timestamp
+        };
+      }
+
+      if (sessionUpdate === "tool_call") {
+        const toolCallInfo = extractToolCallInfo(update) ?? { toolCallId: "" };
+        const text = formatToolCallInfo(toolCallInfo) ?? JSON.stringify(update, null, 2);
+        return {
+          id: e.id,
+          role: "system",
+          kind: "block",
+          text,
+          timestamp: e.timestamp,
+          toolCallId: toolCallInfo.toolCallId || undefined,
+          toolCallInfo: toolCallInfo.toolCallId ? toolCallInfo : undefined
+        };
+      }
+
+      
+      if (sessionUpdate === "tool_call_update") {
+        const toolCallInfo = extractToolCallInfo(update) ?? { toolCallId: "" };
+        const text = formatToolCallInfo(toolCallInfo) ?? JSON.stringify(update, null, 2);
+        return {
+          id: e.id,
+          role: "system",
+          kind: "block",
+          text,
+          timestamp: e.timestamp,
+          toolCallId: toolCallInfo.toolCallId || undefined,
+          toolCallInfo: toolCallInfo.toolCallId ? toolCallInfo : undefined
+        };
+      }
+
+      const text =
+        extractTextFromUpdateContent(update?.content) ??
+        extractTextFromUpdateContent(update) ??
+        JSON.stringify(update, null, 2);
+
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text,
+        timestamp: e.timestamp
+      };
+    }
+
+    return {
+      id: e.id,
+      role: "system",
+      kind: "block",
+      text: JSON.stringify(payload ?? null, null, 2),
+      timestamp: e.timestamp
+    };
+  }
+
+  return {
+    id: e.id,
+    role: "system",
+    kind: "block",
+    text: `${e.type}: ${e.payload ? JSON.stringify(e.payload, null, 2) : ""}`.trim(),
+    timestamp: e.timestamp
+  };
+}
+
+export function RunConsole(props: { events: Event[] }) {
+  const items = useMemo(() => {
+    const ordered = [...props.events];
+    // 后端按 timestamp desc 返回 events，这里只做 reverse，避免排序打散 chunk。
+    if (ordered.length >= 2) {
+      const first = String(ordered[0]?.timestamp ?? "");
+      const last = String(ordered[ordered.length - 1]?.timestamp ?? "");
+      if (first > last) ordered.reverse();
+    }
+
+    const out: ConsoleItem[] = [];
+    for (const e of ordered) {
+      const item = eventToConsoleItem(e);
+      if (!item.text) continue;
+
+      const last = out[out.length - 1];
+      if (last && last.kind === "chunk" && item.kind === "chunk" && last.role === item.role) {
+        last.text += item.text;
+        last.timestamp = item.timestamp;
+        continue;
+      }
+      if (
+        last &&
+        last.kind === "block" &&
+        item.kind === "block" &&
+        last.role === "system" &&
+        item.role === "system" &&
+        last.toolCallId &&
+        item.toolCallId &&
+        last.toolCallId === item.toolCallId &&
+        last.toolCallInfo &&
+        item.toolCallInfo
+      ) {
+        const merged = mergeToolCallInfo(last.toolCallInfo, item.toolCallInfo);
+        last.toolCallInfo = merged;
+        last.text = formatToolCallInfo(merged) ?? last.text;
+        last.timestamp = item.timestamp;
+        continue;
+      }
+      out.push(item);
+    }
+    return out;
+  }, [props.events]);
+
+  const ref = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const updateStickiness = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = distance < 40;
+    };
+
+    updateStickiness();
+    el.addEventListener("scroll", updateStickiness, { passive: true });
+    return () => el.removeEventListener("scroll", updateStickiness);
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (!stickToBottomRef.current) return;
+
+    if (typeof (el as any).scrollTo === "function") {
+      (el as any).scrollTo({ top: el.scrollHeight });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [items]);
+
+  if (!items.length) return <div className="muted">暂无输出</div>;
+
+  return (
+    <div ref={ref} className="console" role="log" aria-label="运行输出">
+      {items.map((item) => {
+        if (item.role === "system" && item.toolCallInfo) {
+          return (
+            <details key={item.id} className={`consoleItem ${item.role}`}>
+              <summary className="detailsSummary">
+                <span className="toolSummaryRow">
+                  <span className="badge gray">TOOL</span>
+                  {item.toolCallInfo.kind ? (
+                    <span className={kindToBadgeClass(item.toolCallInfo.kind)}>{item.toolCallInfo.kind}</span>
+                  ) : null}
+                  {item.toolCallInfo.status ? (
+                    <span className={statusToBadgeClass(item.toolCallInfo.status)}>{item.toolCallInfo.status}</span>
+                  ) : null}
+                  {typeof item.toolCallInfo.exitCode === "number" ? (
+                    <span className={exitToBadgeClass(item.toolCallInfo.exitCode)}>
+                      exit {item.toolCallInfo.exitCode}
+                    </span>
+                  ) : null}
+                  <span className="toolSummaryTitle">{getToolTitle(item.toolCallInfo)}</span>
+                </span>
+              </summary>
+              <div className="pre">{item.text}</div>
+            </details>
+          );
+        }
+        return (
+          <div key={item.id} className={`consoleItem ${item.role}`}>
+            {item.role === "user" ? `你: ${item.text}` : item.text}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

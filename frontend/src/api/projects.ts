@@ -4,6 +4,11 @@ import type { Project } from "../types";
 export type CreateProjectInput = {
   name: string;
   repoUrl: string;
+  scmType?: string;
+  defaultBranch?: string;
+  gitlabProjectId?: number;
+  gitlabAccessToken?: string;
+  gitlabWebhookSecret?: string;
 };
 
 export async function listProjects(): Promise<Project[]> {
@@ -15,4 +20,3 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   const data = await apiPost<{ project: Project }>("/projects", input);
   return data.project;
 }
-

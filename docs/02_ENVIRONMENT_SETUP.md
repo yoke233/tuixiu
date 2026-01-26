@@ -643,13 +643,10 @@ cp config.json.example config.json
 ### 8.4 构建可执行文件
 
 ```bash
-# 构建当前平台
-go build -o acp-proxy cmd/proxy/main.go
-
-# 跨平台编译
-GOOS=windows GOARCH=amd64 go build -o acp-proxy-windows.exe cmd/proxy/main.go
-GOOS=darwin GOARCH=amd64 go build -o acp-proxy-macos cmd/proxy/main.go
-GOOS=linux GOARCH=amd64 go build -o acp-proxy-linux cmd/proxy/main.go
+# 构建（Node/TypeScript 版 Proxy）
+cd acp-proxy
+pnpm build
+pnpm start
 ```
 
 ---

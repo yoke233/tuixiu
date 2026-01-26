@@ -91,8 +91,7 @@ describe("Issues routes", () => {
     const server = createHttpServer();
     const prisma = {
       project: { findFirst: vi.fn().mockResolvedValue({ id: "p1" }) },
-      issue: { create: vi.fn().mockResolvedValue({ id: "i1", title: "t1" }) },
-      agent: { findMany: vi.fn().mockResolvedValue([]) }
+      issue: { create: vi.fn().mockResolvedValue({ id: "i1", title: "t1" }) }
     } as any;
 
     const sendToAgent = vi.fn();
@@ -109,30 +108,52 @@ describe("Issues routes", () => {
     await server.close();
   });
 
-  it("POST /api/issues schedules run and sends execute_task", async () => {
+  it("POST /api/issues/:id/start schedules run and sends execute_task", async () => {
     const server = createHttpServer();
+    const createWorkspace = vi.fn().mockResolvedValue({
+      repoRoot: "D:\\xyad\\tuixiu",
+      branchName: "run/r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-r1"
+    });
     const prisma = {
-      project: { findFirst: vi.fn().mockResolvedValue({ id: "p1" }) },
       issue: {
-        create: vi.fn().mockResolvedValue({ id: "i1", title: "t1", description: "d1" }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: "i1",
+          title: "t1",
+          description: "d1",
+          status: "pending",
+          acceptanceCriteria: ["a1"],
+          constraints: ["c1"],
+          testRequirements: null,
+          runs: [],
+          project: { id: "p1", defaultBranch: "main" }
+        }),
         update: vi.fn().mockResolvedValue({ id: "i1" })
       },
       agent: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: "a1", proxyId: "proxy-1", status: "online", currentLoad: 0, maxConcurrentRuns: 1 }
-        ]),
+        findUnique: vi.fn().mockResolvedValue({
+          id: "a1",
+          proxyId: "proxy-1",
+          status: "online",
+          currentLoad: 0,
+          maxConcurrentRuns: 1
+        }),
         update: vi.fn().mockResolvedValue({ id: "a1" })
       },
-      run: { create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }) }
+      run: {
+        create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }),
+        update: vi.fn().mockResolvedValue({ id: "r1" })
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
     const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeIssueRoutes({ prisma, sendToAgent }), { prefix: "/api/issues" });
+    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
-      url: "/api/issues",
-      payload: { title: "t1", description: "d1", acceptanceCriteria: ["a1"], constraints: ["c1"] }
+      url: "/api/issues/00000000-0000-0000-0000-000000000001/start",
+      payload: { agentId: "00000000-0000-0000-0000-000000000010" }
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -146,45 +167,63 @@ describe("Issues routes", () => {
     expect(payload.run_id).toBe("r1");
     expect(payload.session_id).toBe("r1");
     expect(payload.prompt).toContain("任务标题: t1");
+    expect(payload.prompt).toContain("- workspace:");
+    expect(payload.prompt).toContain("run/r1");
     expect(payload.prompt).toContain("任务描述:");
     expect(payload.prompt).toContain("验收标准:");
     expect(payload.prompt).toContain("约束条件:");
+    expect(payload.cwd).toBe("D:\\xyad\\tuixiu\\.worktrees\\run-r1");
     await server.close();
   });
 
-  it("POST /api/issues uses projectId and includes testRequirements", async () => {
+  it("POST /api/issues/:id/start includes testRequirements when present", async () => {
     const server = createHttpServer();
+    const createWorkspace = vi.fn().mockResolvedValue({
+      repoRoot: "D:\\xyad\\tuixiu",
+      branchName: "run/r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-r1"
+    });
     const prisma = {
-      project: { findUnique: vi.fn().mockResolvedValue({ id: "p1" }) },
       issue: {
-        create: vi.fn().mockResolvedValue({ id: "i1", title: "t1" }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: "i1",
+          title: "t1",
+          description: null,
+          status: "pending",
+          acceptanceCriteria: [],
+          constraints: [],
+          testRequirements: "需要加单测",
+          runs: [],
+          project: { id: "p1", defaultBranch: "main" }
+        }),
         update: vi.fn().mockResolvedValue({ id: "i1" })
       },
       agent: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: "a1", proxyId: "proxy-1", status: "online", currentLoad: 0, maxConcurrentRuns: 1 }
-        ]),
+        findUnique: vi.fn().mockResolvedValue({
+          id: "a1",
+          proxyId: "proxy-1",
+          status: "online",
+          currentLoad: 0,
+          maxConcurrentRuns: 1
+        }),
         update: vi.fn().mockResolvedValue({ id: "a1" })
       },
-      run: { create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: "i1" }) }
+      run: {
+        create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: "i1" }),
+        update: vi.fn().mockResolvedValue({ id: "r1" })
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
     const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeIssueRoutes({ prisma, sendToAgent }), { prefix: "/api/issues" });
+    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
-      url: "/api/issues",
-      payload: {
-        projectId: "00000000-0000-0000-0000-000000000003",
-        title: "t1",
-        testRequirements: "需要加单测"
-      }
+      url: "/api/issues/00000000-0000-0000-0000-000000000001/start",
+      payload: { agentId: "00000000-0000-0000-0000-000000000010" }
     });
     expect(res.statusCode).toBe(200);
-    expect(prisma.project.findUnique).toHaveBeenCalledWith({
-      where: { id: "00000000-0000-0000-0000-000000000003" }
-    });
 
     const [, payload] = sendToAgent.mock.calls[0];
     expect(payload.prompt).toContain("测试要求:");
@@ -193,33 +232,52 @@ describe("Issues routes", () => {
     await server.close();
   });
 
-  it("POST /api/issues marks run failed when sendToAgent throws", async () => {
+  it("POST /api/issues/:id/start marks run failed when sendToAgent throws", async () => {
     const server = createHttpServer();
+    const createWorkspace = vi.fn().mockResolvedValue({
+      repoRoot: "D:\\xyad\\tuixiu",
+      branchName: "run/r1",
+      workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-r1"
+    });
     const prisma = {
-      project: { findFirst: vi.fn().mockResolvedValue({ id: "p1" }) },
       issue: {
-        create: vi.fn().mockResolvedValue({ id: "i1", title: "t1" }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: "i1",
+          title: "t1",
+          description: null,
+          status: "pending",
+          acceptanceCriteria: [],
+          constraints: [],
+          testRequirements: null,
+          runs: [],
+          project: { id: "p1", defaultBranch: "main" }
+        }),
         update: vi.fn().mockResolvedValue({ id: "i1" })
       },
       agent: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: "a1", proxyId: "proxy-1", status: "online", currentLoad: 0, maxConcurrentRuns: 1 }
-        ]),
+        findUnique: vi.fn().mockResolvedValue({
+          id: "a1",
+          proxyId: "proxy-1",
+          status: "online",
+          currentLoad: 0,
+          maxConcurrentRuns: 1
+        }),
         update: vi.fn().mockResolvedValue({ id: "a1" })
       },
       run: {
         create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: "i1" }),
         update: vi.fn().mockResolvedValue({ id: "r1" })
-      }
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
     const sendToAgent = vi.fn().mockRejectedValue(new Error("boom"));
-    await server.register(makeIssueRoutes({ prisma, sendToAgent }), { prefix: "/api/issues" });
+    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
-      url: "/api/issues",
-      payload: { title: "t1" }
+      url: "/api/issues/00000000-0000-0000-0000-000000000001/start",
+      payload: { agentId: "00000000-0000-0000-0000-000000000010" }
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -228,6 +286,56 @@ describe("Issues routes", () => {
     expect(prisma.run.update).toHaveBeenCalled();
     expect(prisma.issue.update).toHaveBeenCalled();
     expect(prisma.agent.update).toHaveBeenCalled();
+    await server.close();
+  });
+
+  it("PATCH /api/issues/:id updates status when not running", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({ id: "i1", status: "pending" }),
+        update: vi.fn().mockResolvedValue({ id: "i1", status: "done" })
+      }
+    } as any;
+
+    await server.register(makeIssueRoutes({ prisma, sendToAgent: vi.fn() }), { prefix: "/api/issues" });
+
+    const id = "00000000-0000-0000-0000-000000000001";
+    const res = await server.inject({
+      method: "PATCH",
+      url: `/api/issues/${id}`,
+      payload: { status: "done" }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { issue: { id: "i1", status: "done" } } });
+    expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id }, data: { status: "done" } });
+
+    await server.close();
+  });
+
+  it("PATCH /api/issues/:id returns ISSUE_RUNNING when issue is running", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({ id: "i1", status: "running" }),
+        update: vi.fn()
+      }
+    } as any;
+
+    await server.register(makeIssueRoutes({ prisma, sendToAgent: vi.fn() }), { prefix: "/api/issues" });
+
+    const res = await server.inject({
+      method: "PATCH",
+      url: "/api/issues/00000000-0000-0000-0000-000000000001",
+      payload: { status: "done" }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: false,
+      error: { code: "ISSUE_RUNNING", message: "Issue 正在运行中，请先完成/取消 Run" }
+    });
+    expect(prisma.issue.update).not.toHaveBeenCalled();
+
     await server.close();
   });
 });

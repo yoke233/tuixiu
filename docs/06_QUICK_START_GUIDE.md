@@ -350,22 +350,22 @@ async function handleBranchCreated(message: any) {
 
 ## 第三步：ACP Proxy (半天)
 
-### 完整实现（Golang）
+### 完整实现（Node/TypeScript）
 
-**完整代码见**: `GOLANG_PROXY_IMPLEMENTATION.md`
+Proxy 已切换为 Node/TypeScript 版本（基于 `@agentclientprotocol/sdk`），用于更完整地跟进 ACP 能力（如 `session/load`、Session Modes 等）。
+
+> 旧版 Go 实现文档仍保留：`GOLANG_PROXY_IMPLEMENTATION.md`
 
 ### 项目结构
 
 ```
 acp-proxy/
-├── cmd/proxy/main.go          # 主入口
-├── internal/
-│   ├── config/config.go       # 配置管理
-│   ├── proxy/proxy.go         # 核心逻辑
-│   └── types/types.go         # 类型定义
+├── src/index.ts               # 主入口（WS ↔ ACP）
+├── src/acpBridge.ts           # ACP SDK 桥接（spawn + ndjson）
+├── src/config.ts              # 配置管理
+├── src/semaphore.ts           # 并发控制
 ├── config.json                # 配置文件
-├── go.mod                     # 依赖管理
-└── README.md
+└── package.json               # 依赖管理
 ```
 
 ### 快速开始（Windows/pwsh）
@@ -374,70 +374,10 @@ acp-proxy/
 cd acp-proxy
 Copy-Item config.json.example config.json
 notepad config.json
-go run ./cmd/proxy
+pnpm dev
 ```
 
 > 说明：若本机 `codex` CLI 不支持 `--acp`，Proxy 默认使用 `npx --yes @zed-industries/codex-acp` 启动 ACP Agent。
-
-### 核心代码片段
-
-```go
-// 启动 Proxy
-func (p *Proxy) Start() error {
-    // 1. 连接 WebSocket
-    if err := p.connectWebSocket(); err != nil {
-        return err
-    }
-
-    // 2. 注册 Agent
-    if err := p.registerAgent(); err != nil {
-        return err
-    }
-
-    // 3. 启动监听 goroutines
-    go p.websocketListener()
-    go p.heartbeatLoop()
-
-    <-p.stopChan
-    return nil
-}
-
-// 处理任务
-func (p *Proxy) handleExecuteTask(msg WebSocketMessage) {
-    // 启动 Agent 子进程
-    if p.agentCmd == nil {
-        p.startAgentProcess()
-    }
-
-    // 转换为 JSON-RPC
-    jsonrpcReq := JSONRPCMessage{
-        JSONRPC: "2.0",
-        Method:  "session/prompt",
-        Params: map[string]interface{}{
-            "sessionId": msg.SessionID,
-            "prompt": []map[string]interface{}{
-                {"type": "text", "text": msg.Prompt},
-            },
-        },
-    }
-
-    // 写入 Agent stdin
-    p.writeToAgent(jsonrpcReq)
-}
-```
-
-### 跨平台编译
-
-```bash
-# Windows
-GOOS=windows GOARCH=amd64 go build -o acp-proxy-windows.exe cmd/proxy/main.go
-
-# macOS
-GOOS=darwin GOARCH=amd64 go build -o acp-proxy-macos cmd/proxy/main.go
-
-# Linux
-GOOS=linux GOARCH=amd64 go build -o acp-proxy-linux cmd/proxy/main.go
-```
 
 ---
 

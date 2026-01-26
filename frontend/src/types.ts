@@ -22,6 +22,7 @@ export type IssueStatus = "pending" | "running" | "reviewing" | "done" | "failed
 export type Issue = {
   id: string;
   projectId: string;
+  project?: Project;
   title: string;
   description?: string | null;
   status: IssueStatus;
@@ -35,6 +36,9 @@ export type Run = {
   id: string;
   issueId: string;
   agentId: string;
+  acpSessionId?: string | null;
+  workspacePath?: string | null;
+  branchName?: string | null;
   status: RunStatus;
   startedAt: string;
   completedAt?: string | null;
@@ -62,3 +66,14 @@ export type Artifact = {
   createdAt: string;
 };
 
+export type AgentStatus = "online" | "offline" | "degraded" | "suspended";
+
+export type Agent = {
+  id: string;
+  name: string;
+  proxyId: string;
+  status: AgentStatus;
+  currentLoad: number;
+  maxConcurrentRuns: number;
+  createdAt: string;
+};

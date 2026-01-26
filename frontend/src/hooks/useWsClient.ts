@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
+import type { Artifact, Event } from "../types";
+
 export type WsMessage = {
   type: string;
   run_id?: string;
+  event?: Event;
+  artifact?: Artifact;
 };
 
 function getWsUrl(): string {
@@ -37,4 +41,3 @@ export function useWsClient(onMessage: (msg: WsMessage) => void) {
 
   return { status, url };
 }
-

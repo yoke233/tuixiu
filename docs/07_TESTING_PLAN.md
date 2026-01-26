@@ -26,7 +26,7 @@
 
 | 层级           | 测试内容                        | 工具                             |
 | -------------- | ------------------------------- | -------------------------------- |
-| **单元测试**   | 纯函数、工具类、协议转换        | Jest (后端) / Go testing (Proxy) |
+| **单元测试**   | 纯函数、工具类、协议转换        | Vitest (后端/前端/Proxy) |
 | **集成测试**   | API 接口、数据库操作、WebSocket | Supertest / Go testing           |
 | **端到端测试** | 完整流程（Issue → MR → Done）   | 手动测试 + Playwright（未来）    |
 
@@ -548,10 +548,10 @@ jobs:
           go-version: "1.21"
 
       - name: Install dependencies
-        run: cd acp-proxy && go mod download
+        run: cd acp-proxy && pnpm install
 
       - name: Run tests
-        run: cd acp-proxy && go test ./...
+        run: cd acp-proxy && pnpm test
 ```
 
 ---
