@@ -432,17 +432,28 @@ export function RunConsole(props: { events: Event[] }) {
 
   const ref = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+  const lastScrollTopRef = useRef(0);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
+    lastScrollTopRef.current = el.scrollTop;
+
     const updateStickiness = () => {
-      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      stickToBottomRef.current = distance < 40;
+      const currentScrollTop = el.scrollTop;
+      const previousScrollTop = lastScrollTopRef.current;
+      lastScrollTopRef.current = currentScrollTop;
+
+      if (currentScrollTop < previousScrollTop) {
+        stickToBottomRef.current = false;
+        return;
+      }
+
+      const distance = el.scrollHeight - currentScrollTop - el.clientHeight;
+      stickToBottomRef.current = distance <= 1;
     };
 
-    updateStickiness();
     el.addEventListener("scroll", updateStickiness, { passive: true });
     return () => el.removeEventListener("scroll", updateStickiness);
   }, []);
