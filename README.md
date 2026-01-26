@@ -6,6 +6,14 @@
 
 ---
 
+## 一分钟看懂
+
+这是一套把「Issue 需求」交给 **ACP 兼容 Coding Agent** 执行，并把结果沉淀为「可审查的 PR」的本地协作系统。
+
+**典型闭环**：创建 Project（仓库 + Token）→ 导入/创建 Issue → 启动 Run（创建 `git worktree` 工作区）→ Console 实时输出 → 查看变更/diff → 一键创建/合并 PR。
+
+**仓库组成**：`backend/`（Orchestrator）+ `acp-proxy/`（WS ↔ ACP 桥接与 Agent 启动）+ `frontend/`（Web UI）+ `docs/`（文档）+ `docker-compose.yml`（Postgres）。
+
 ## 面向真实用户：接入真实 GitHub（单仓库）
 
 > 当前版本是「单仓库模式」：Run 工作区通过 `git worktree` 在当前仓库根目录创建 `.worktrees/run-<runId>`。  
