@@ -34,6 +34,7 @@ export type PromptRunMessage = {
   prompt: string;
   context?: string;
   cwd?: string;
+  resume?: boolean;
 };
 
 export type CancelTaskMessage = {

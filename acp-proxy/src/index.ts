@@ -84,9 +84,18 @@ async function main() {
 
   const sem = new Semaphore(cfg.agent.max_concurrent);
 
-  const runToSession = new Map<string, string>();
-  const sessionToRun = new Map<string, string>();
-  const chunkBySession = new Map<string, ChunkState>();
+  type RunState = {
+    cwd: string;
+    bridge: AcpBridge;
+    sessionId: string;
+    seenSessionIds: Set<string>;
+    loadingSessionId: string | null;
+    lastUsedAt: number;
+    inFlight: number;
+  };
+
+  const runStates = new Map<string, RunState>();
+  const chunkByStream = new Map<string, ChunkState>();
   const runToCwd = new Map<string, string>();
 
   const log = (msg: string, extra?: Record<string, unknown>) => {
@@ -211,8 +220,10 @@ async function main() {
     }
   };
 
-  const flushChunks = (sessionId: string): string => {
-    const state = chunkBySession.get(sessionId);
+  const streamKey = (runId: string, sessionId: string) => `${runId}:${sessionId}`;
+
+  const flushChunks = (runId: string, sessionId: string): string => {
+    const state = chunkByStream.get(streamKey(runId, sessionId));
     if (!state || !state.buf) return "";
     const out = state.buf;
     state.buf = "";
@@ -220,11 +231,12 @@ async function main() {
     return out;
   };
 
-  const appendChunk = (sessionId: string, text: string): string => {
+  const appendChunk = (runId: string, sessionId: string, text: string): string => {
     const now = Date.now();
-    const state = chunkBySession.get(sessionId) ?? { buf: "", lastFlush: now };
+    const key = streamKey(runId, sessionId);
+    const state = chunkByStream.get(key) ?? { buf: "", lastFlush: now };
     state.buf += text;
-    chunkBySession.set(sessionId, state);
+    chunkByStream.set(key, state);
     if (
       text.includes("\n") ||
       state.buf.length >= 256 ||
@@ -269,34 +281,82 @@ async function main() {
     command: cfg.agent_command,
   });
 
-  const bridge = new AcpBridge({
-    launcher,
-    cwd: defaultCwd,
-    log,
-    onSessionUpdate: (sessionId, update) => {
-      const runId = sessionToRun.get(sessionId);
-      if (!runId) return;
+  const createRunState = (
+    runId: string,
+    cwd: string,
+    seed?: { sessionId?: string },
+  ): RunState => {
+    const state: RunState = {
+      cwd,
+      bridge: null as any,
+      sessionId: typeof seed?.sessionId === "string" ? seed.sessionId : "",
+      seenSessionIds: new Set<string>(),
+      loadingSessionId: null,
+      lastUsedAt: Date.now(),
+      inFlight: 0,
+    };
 
-      if (
-        update.sessionUpdate === "agent_message_chunk" &&
-        update.content?.type === "text"
-      ) {
-        const flushed = appendChunk(sessionId, update.content.text);
+    state.bridge = new AcpBridge({
+      launcher,
+      cwd,
+      log,
+      onSessionUpdate: (sessionId, update) => {
+        if (state.loadingSessionId === sessionId) return;
+        state.lastUsedAt = Date.now();
+
+        if (
+          update.sessionUpdate === "agent_message_chunk" &&
+          update.content?.type === "text"
+        ) {
+          const flushed = appendChunk(runId, sessionId, update.content.text);
+          if (flushed) sendChunkUpdate(runId, sessionId, flushed);
+          return;
+        }
+
+        const flushed = flushChunks(runId, sessionId);
         if (flushed) sendChunkUpdate(runId, sessionId, flushed);
-        return;
-      }
 
-      const flushed = flushChunks(sessionId);
-      if (flushed) sendChunkUpdate(runId, sessionId, flushed);
+        sendUpdate(runId, { type: "session_update", session: sessionId, update });
+      },
+    });
 
-      sendUpdate(runId, { type: "session_update", session: sessionId, update });
-    },
-  });
-
-  const setRunSession = (runId: string, sessionId: string) => {
-    runToSession.set(runId, sessionId);
-    sessionToRun.set(sessionId, runId);
+    return state;
   };
+
+  const getOrCreateRunState = (runId: string, cwd: string): RunState => {
+    const existing = runStates.get(runId);
+    if (!existing) {
+      const created = createRunState(runId, cwd);
+      runStates.set(runId, created);
+      return created;
+    }
+
+    existing.lastUsedAt = Date.now();
+    if (existing.cwd === cwd) return existing;
+
+    log("run cwd changed; respawn agent", { runId, from: existing.cwd, to: cwd });
+    existing.bridge.close();
+
+    const recreated = createRunState(runId, cwd, { sessionId: existing.sessionId });
+    runStates.set(runId, recreated);
+    return recreated;
+  };
+
+  const idleTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [runId, state] of runStates) {
+      if (state.inFlight > 0) continue;
+      const idleMs = now - state.lastUsedAt;
+      if (idleMs < 30 * 60 * 1000) continue;
+      log("run idle; close agent", { runId, idleSeconds: Math.round(idleMs / 1000) });
+      state.bridge.close();
+      runStates.delete(runId);
+      for (const key of chunkByStream.keys()) {
+        if (key.startsWith(`${runId}:`)) chunkByStream.delete(key);
+      }
+    }
+  }, 60_000);
+  idleTimer.unref?.();
 
   const setRunCwd = (runId: string, cwd: string) => {
     const value = mapCwd(cwd);
@@ -542,28 +602,35 @@ async function main() {
       });
       if (!initOk) return;
 
-      await bridge.ensureInitialized();
+      const state = getOrCreateRunState(msg.run_id, cwd);
+      state.inFlight += 1;
+      try {
+        await state.bridge.ensureInitialized();
 
-      let sessionId = runToSession.get(msg.run_id) ?? "";
-      if (!sessionId) {
-        const s = await bridge.newSession(cwd);
-        sessionId = s.sessionId;
-        setRunSession(msg.run_id, sessionId);
+        let sessionId = state.sessionId;
+        if (!sessionId) {
+          const s = await state.bridge.newSession(cwd);
+          sessionId = s.sessionId;
+          state.sessionId = sessionId;
+          state.seenSessionIds.add(sessionId);
+
+          sendUpdate(msg.run_id, {
+            type: "session_created",
+            session_id: sessionId,
+          });
+        }
+
+        const res = await state.bridge.prompt(sessionId, msg.prompt);
+        const flushed = flushChunks(msg.run_id, sessionId);
+        if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
 
         sendUpdate(msg.run_id, {
-          type: "session_created",
-          session_id: sessionId,
+          type: "prompt_result",
+          stopReason: res.stopReason,
         });
+      } finally {
+        state.inFlight = Math.max(0, state.inFlight - 1);
       }
-
-      const res = await bridge.prompt(sessionId, msg.prompt);
-      const flushed = flushChunks(sessionId);
-      if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
-
-      sendUpdate(msg.run_id, {
-        type: "prompt_result",
-        stopReason: res.stopReason,
-      });
     } catch (err) {
       sendUpdate(msg.run_id, {
         type: "text",
@@ -580,6 +647,7 @@ async function main() {
     session_id?: string;
     context?: string;
     cwd?: string;
+    resume?: boolean;
   }) => {
     const release = await sem.acquire();
     try {
@@ -595,74 +663,88 @@ async function main() {
         return;
       }
 
-      await bridge.ensureInitialized();
-
       const cwd = getRunCwd(msg.run_id, msg.cwd);
-
-      let sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
-      if (!sessionId) {
-        const s = await bridge.newSession(cwd);
-        sessionId = s.sessionId;
-        setRunSession(msg.run_id, sessionId);
-        sendUpdate(msg.run_id, {
-          type: "session_created",
-          session_id: sessionId,
-        });
-        msg = {
-          ...msg,
-          prompt: composePromptWithContext(msg.context, msg.prompt),
-        };
-      } else {
-        const sessionPreviouslySeen = sessionToRun.has(sessionId);
-        setRunSession(msg.run_id, sessionId);
-
-        // 仅当本进程没见过该 session 时，尝试 load 历史会话。
-        // 若 load 失败（agent 不支持 / session 不存在），不自动新建 session，避免上下文丢失。
-        if (!sessionPreviouslySeen) {
-          const ok = await bridge.loadSession(sessionId, cwd);
-          if (!ok) {
-            sendUpdate(msg.run_id, {
-              type: "text",
-              text: "ACP session 无法 load（可能不支持或已丢失），将尝试直接对话…",
-            });
-          }
-        }
-      }
-
-      let res: { stopReason: string };
+      const state = getOrCreateRunState(msg.run_id, cwd);
+      state.inFlight += 1;
       try {
-        res = await bridge.prompt(sessionId, msg.prompt);
-      } catch (err) {
-        if (shouldRecreateSession(err)) {
-          sendUpdate(msg.run_id, {
-            type: "text",
-            text: "⚠️ ACP session 疑似已丢失：将创建新 session 并注入上下文继续…",
-          });
-          const s = await bridge.newSession(cwd);
+        await state.bridge.ensureInitialized();
+
+        let sessionId = msg.session_id || state.sessionId || "";
+        if (!sessionId) {
+          const s = await state.bridge.newSession(cwd);
           sessionId = s.sessionId;
-          setRunSession(msg.run_id, sessionId);
+          state.sessionId = sessionId;
+          state.seenSessionIds.add(sessionId);
           sendUpdate(msg.run_id, {
             type: "session_created",
             session_id: sessionId,
           });
-
-          const replay = composePromptWithContext(msg.context, msg.prompt);
-          res = await bridge.prompt(sessionId, replay);
+          msg = {
+            ...msg,
+            prompt: composePromptWithContext(msg.context, msg.prompt),
+          };
         } else {
-          sendUpdate(msg.run_id, {
-            type: "text",
-            text: `ACP prompt 失败：${String(err)}`,
-          });
-          return;
-        }
-      }
+          state.sessionId = sessionId;
+          const sessionPreviouslySeen = state.seenSessionIds.has(sessionId);
 
-      const flushed = flushChunks(sessionId);
-      if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
-      sendUpdate(msg.run_id, {
-        type: "prompt_result",
-        stopReason: res.stopReason,
-      });
+          // 仅当本进程没见过该 session 时，尝试 load 历史会话。
+          // 若 load 失败（agent 不支持 / session 不存在），不自动新建 session，避免上下文丢失。
+          if (!sessionPreviouslySeen) {
+            let ok = false;
+            try {
+              state.loadingSessionId = sessionId;
+              ok = await state.bridge.loadSession(sessionId, cwd);
+            } finally {
+              state.loadingSessionId = null;
+            }
+            state.seenSessionIds.add(sessionId);
+            if (!ok) {
+              sendUpdate(msg.run_id, {
+                type: "text",
+                text: "ACP session 无法 load（可能不支持或已丢失），将尝试直接对话…",
+              });
+            }
+          }
+        }
+
+        let res: { stopReason: string };
+        try {
+          res = await state.bridge.prompt(sessionId, msg.prompt);
+        } catch (err) {
+          if (shouldRecreateSession(err)) {
+            sendUpdate(msg.run_id, {
+              type: "text",
+              text: "⚠️ ACP session 疑似已丢失：将创建新 session 并注入上下文继续…",
+            });
+            const s = await state.bridge.newSession(cwd);
+            sessionId = s.sessionId;
+            state.sessionId = sessionId;
+            state.seenSessionIds.add(sessionId);
+            sendUpdate(msg.run_id, {
+              type: "session_created",
+              session_id: sessionId,
+            });
+
+            const replay = composePromptWithContext(msg.context, msg.prompt);
+            res = await state.bridge.prompt(sessionId, replay);
+          } else {
+            sendUpdate(msg.run_id, {
+              type: "text",
+              text: `ACP prompt 失败：${String(err)}`,
+            });
+            return;
+          }
+        }
+
+        const flushed = flushChunks(msg.run_id, sessionId);
+        if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
+        sendUpdate(msg.run_id, {
+          type: "prompt_result",
+          stopReason: res.stopReason,
+        });
+      } finally {
+        state.inFlight = Math.max(0, state.inFlight - 1);
+      }
     } catch (err) {
       sendUpdate(msg.run_id, {
         type: "text",
@@ -683,10 +765,17 @@ async function main() {
         return;
       }
 
-      const sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
+      const cwd = getRunCwd(msg.run_id);
+      const state = getOrCreateRunState(msg.run_id, cwd);
+      const sessionId = msg.session_id || state.sessionId || "";
       if (!sessionId) return;
 
-      await bridge.cancel(sessionId);
+      state.inFlight += 1;
+      try {
+        await state.bridge.cancel(sessionId);
+      } finally {
+        state.inFlight = Math.max(0, state.inFlight - 1);
+      }
     } catch (err) {
       sendUpdate(msg.run_id, {
         type: "text",
@@ -706,7 +795,10 @@ async function main() {
         return;
       }
 
-      const sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
+      const cwd = getRunCwd(msg.run_id);
+      const state = getOrCreateRunState(msg.run_id, cwd);
+
+      const sessionId = msg.session_id || state.sessionId || "";
       if (!sessionId) {
         sendUpdate(msg.run_id, {
           type: "text",
@@ -715,9 +807,15 @@ async function main() {
         return;
       }
 
-      setRunSession(msg.run_id, sessionId);
+      state.sessionId = sessionId;
+      state.seenSessionIds.add(sessionId);
 
-      await bridge.cancel(sessionId);
+      state.inFlight += 1;
+      try {
+        await state.bridge.cancel(sessionId);
+      } finally {
+        state.inFlight = Math.max(0, state.inFlight - 1);
+      }
 
       sendUpdate(msg.run_id, {
         type: "text",
@@ -828,6 +926,7 @@ async function main() {
                   context:
                     typeof msg.context === "string" ? msg.context : undefined,
                   cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
+                  resume: (msg as any).resume === true,
                 });
               }
 

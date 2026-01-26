@@ -23,7 +23,7 @@ ACP（Agent Client Protocol）是基于 JSON-RPC 2.0 的协议，常见传输方
 本仓库的链路：
 
 ```
-[Web UI] ⇄ (ws/client) ⇄ [Orchestrator backend] ⇄ (ws/agent) ⇄ [acp-proxy] ⇄ (stdio/NDJSON) ⇄ [ACP agent 子进程]
+[Web UI] ⇄ (ws/client) ⇄ [Orchestrator backend] ⇄ (ws/agent) ⇄ [acp-proxy] ⇄ (stdio/NDJSON) ⇄ [ACP agent 子进程(按 Run 隔离)]
 ```
 
 ACP session 是“一段对话/线程”的上下文载体。要跨进程重启恢复对话，必须依赖 `session/load`，且前提是 agent 在 `initialize` 响应里声明支持 `loadSession`。
@@ -34,7 +34,7 @@ ACP session 是“一段对话/线程”的上下文载体。要跨进程重启�
 
 ### 2.1 初始化
 
-proxy 启动 agent 子进程后会先发起 `initialize`，确认协议版本与能力（尤其是 `agentCapabilities.loadSession`）。
+proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 worktree/workspace），并在启动后先发起 `initialize`，确认协议版本与能力（尤其是 `agentCapabilities.loadSession`）。
 
 ### 2.2 Session 建立/恢复
 
@@ -66,7 +66,7 @@ proxy 启动 agent 子进程后会先发起 `initialize`，确认协议版本与
 │           ↓                                         │
 │  ┌───────────────────────────────────────────────┐ │
 │  │  Session Router                                │ │
-│  │  - runId ↔ sessionId 映射                       │ │
+│  │  - runId ↔ (bridge/process/sessionId) 映射      │ │
 │  │  - session/load（可选）                         │ │
 │  │  - chunk 聚合                                   │ │
 │  └────────┬──────────────────────────────────────┘ │
@@ -86,7 +86,7 @@ proxy 启动 agent 子进程后会先发起 `initialize`，确认协议版本与
 - `acp-proxy/src/index.ts`
   - WebSocket 连接与重连、心跳
   - 处理 `execute_task` / `prompt_run`
-  - 管理 `runId → sessionId`、`sessionId → runId`
+  - 维护 `runId → (bridge/agent 子进程, sessionId)` 的运行态映射（每个 Run 独立 cwd/worktree）
   - 对 `agent_message_chunk` 做缓冲聚合（减少 UI 抖动）
   - 使用 `Semaphore` 限制并发 Run
 - `acp-proxy/src/acpBridge.ts`
@@ -159,13 +159,13 @@ agent 的 `agent_message_chunk` 可能非常细。proxy 会按 session 维度缓
 | Server → Agent | `register_ack`   | 注册确认            | `{success:true}` |
 | Agent → Server | `heartbeat`      | 心跳                | `{agent_id,timestamp?}` |
 | Server → Agent | `execute_task`   | 启动 Run（首轮执行） | `{run_id,prompt,cwd?}` |
-| Server → Agent | `prompt_run`     | 继续对话（同 Run）  | `{run_id,prompt,session_id?,context?,cwd?}` |
+| Server → Agent | `prompt_run`     | 继续对话（同 Run）/断线重连恢复 | `{run_id,prompt,session_id?,context?,cwd?,resume?}` |
 | Server → Agent | `cancel_task`   | 取消 Run（ACP session/cancel） | `{run_id,session_id?}` |
 | Agent → Server | `agent_update`   | 事件流转发           | `{run_id,content:any}` |
 
 服务器关键行为摘要：
 
-- `register_agent`：upsert `Agent`，置 `online`，回 `register_ack`
+- `register_agent`：upsert `Agent`，置 `online`，回 `register_ack`；并**自动下发**该 agent 仍处于 `running` 状态的 Run（`prompt_run{resume:true,...}`），用于断线重连/重启后的恢复
 - `heartbeat`：刷新 `Agent.lastHeartbeat`
 - `agent_update`：
   - 落库 `Event`（`source=acp`，`type=acp.update.received`）

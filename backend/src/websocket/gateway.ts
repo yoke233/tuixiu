@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 
 import type { PrismaDeps } from "../deps.js";
+import { buildContextFromRun } from "../services/runContext.js";
 import { uuidv7 } from "../utils/uuid.js";
 
 type AgentRegisterMessage = {
@@ -45,6 +46,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
   const agentConnections = new Map<string, WebSocket>();
   const clientConnections = new Set<WebSocket>();
+
+  async function resumeRunningRuns(opts: { proxyId: string; agentId: string; socket: WebSocket }) {
+    const runs = await deps.prisma.run.findMany({
+      where: { agentId: opts.agentId, status: "running" },
+      include: { issue: true, artifacts: true },
+      orderBy: { startedAt: "asc" }
+    });
+
+    for (const run of runs as any[]) {
+      const events = await deps.prisma.event.findMany({
+        where: { runId: run.id },
+        orderBy: { timestamp: "desc" },
+        take: 200
+      });
+      const context = buildContextFromRun({
+        run,
+        issue: run.issue,
+        events
+      });
+
+      opts.socket.send(
+        JSON.stringify({
+          type: "prompt_run",
+          run_id: run.id,
+          session_id: run.acpSessionId ?? undefined,
+          prompt:
+            "（系统）检测到 acp-proxy 断线重连/重启。请在当前工作目录(该 Run 的 workspace)检查进度（git status/最近改动/已有 commit）后继续完成任务；若你判断任务已完成，请输出总结并结束。",
+          context,
+          cwd: run.workspacePath ?? undefined,
+          resume: true
+        })
+      );
+    }
+  }
 
   function broadcastToClients(payload: unknown) {
     const data = JSON.stringify(payload);
@@ -177,7 +212,7 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
           proxyId = message.agent.id;
           agentConnections.set(proxyId, socket);
 
-          await deps.prisma.agent.upsert({
+          const agentRecord = await deps.prisma.agent.upsert({
             where: { proxyId },
             create: {
               id: uuidv7(),
@@ -198,6 +233,8 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
           });
 
           socket.send(JSON.stringify({ type: "register_ack", success: true }));
+
+          void resumeRunningRuns({ proxyId, agentId: (agentRecord as any).id, socket }).catch(logError);
           return;
         }
 
