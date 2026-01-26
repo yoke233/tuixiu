@@ -22,6 +22,25 @@ export type RunReviewDeps = {
   };
 };
 
+function appendGitHubIssueLinkForPrBody(params: {
+  body: string;
+  issue: { externalProvider?: string | null; externalNumber?: number | null; externalUrl?: string | null };
+}): string {
+  const provider = String(params.issue.externalProvider ?? "").toLowerCase();
+  if (provider !== "github") return params.body;
+
+  const externalNumber = params.issue.externalNumber;
+  if (typeof externalNumber !== "number" || !Number.isFinite(externalNumber) || externalNumber <= 0) return params.body;
+
+  const externalUrl = params.issue.externalUrl?.trim();
+  const issueRefRegex = new RegExp(`#${externalNumber}(?!\\d)`);
+  if (issueRefRegex.test(params.body)) return params.body;
+  if (externalUrl && params.body.includes(externalUrl)) return params.body;
+
+  const trimmed = params.body.trimEnd();
+  return `${trimmed}${trimmed ? "\n\n" : ""}Closes #${externalNumber}`;
+}
+
 export async function createReviewRequestForRun(
   deps: RunReviewDeps,
   runId: string,
@@ -144,8 +163,9 @@ export async function createReviewRequestForRun(
     };
 
     let pr: github.GitHubPullRequest;
+    const prBody = appendGitHubIssueLinkForPrBody({ body: description, issue: run.issue });
     try {
-      pr = await createPullRequest(auth, { head: branch, base: targetBranch, title, body: description });
+      pr = await createPullRequest(auth, { head: branch, base: targetBranch, title, body: prBody });
     } catch (err) {
       return {
         success: false,
@@ -333,6 +353,152 @@ export async function mergeReviewRequestForRun(
           merge_commit_message: body.mergeCommitMessage
         } as any
       }
+    });
+
+    if (merged) {
+      await deps.prisma.issue.update({ where: { id: run.issueId }, data: { status: "done" } }).catch(() => {});
+      await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed" } }).catch(() => {});
+    }
+
+    return { success: true, data: { pr: updated } };
+  }
+
+  return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub" } };
+}
+
+export async function syncReviewRequestForRun(
+  deps: RunReviewDeps,
+  runId: string,
+): Promise<{
+  success: boolean;
+  data?: { pr: unknown };
+  error?: { code: string; message: string; details?: string };
+}> {
+  const inferGitlabBaseUrl = deps.gitlab?.inferBaseUrl ?? gitlab.inferGitlabBaseUrl;
+  const getMergeRequest = deps.gitlab?.getMergeRequest ?? gitlab.getMergeRequest;
+  const parseGitHubRepo = deps.github?.parseRepo ?? github.parseGitHubRepo;
+  const getPullRequest = deps.github?.getPullRequest ?? github.getPullRequest;
+
+  const run = await deps.prisma.run.findUnique({
+    where: { id: runId },
+    include: {
+      issue: { include: { project: true } },
+      artifacts: { orderBy: { createdAt: "desc" } },
+    },
+  });
+  if (!run) {
+    return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+  }
+
+  const project = run.issue.project;
+  const scm = String(project.scmType ?? "").toLowerCase();
+
+  const prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  if (!prArtifact) {
+    return { success: false, error: { code: "NO_PR", message: "Run 暂无 PR 产物" } };
+  }
+
+  const content = (prArtifact.content ?? {}) as any;
+  if (scm === "gitlab") {
+    if (!project.gitlabProjectId || !project.gitlabAccessToken) {
+      return {
+        success: false,
+        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab projectId/token" },
+      };
+    }
+
+    const baseUrl = inferGitlabBaseUrl(project.repoUrl);
+    if (!baseUrl) {
+      return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 repoUrl 推导 GitLab baseUrl" } };
+    }
+
+    const iid = Number(content.iid);
+    if (!Number.isFinite(iid) || iid <= 0) {
+      return { success: false, error: { code: "BAD_PR", message: "PR 产物缺少 iid" } };
+    }
+
+    const auth: gitlab.GitLabAuth = {
+      baseUrl,
+      projectId: project.gitlabProjectId,
+      accessToken: project.gitlabAccessToken,
+    };
+
+    let mergeRequest: gitlab.GitLabMergeRequest;
+    try {
+      mergeRequest = await getMergeRequest(auth, { iid });
+    } catch (err) {
+      return { success: false, error: { code: "GITLAB_API_FAILED", message: "获取 GitLab PR 失败", details: String(err) } };
+    }
+
+    const updated = await deps.prisma.artifact.update({
+      where: { id: prArtifact.id },
+      data: {
+        content: {
+          ...content,
+          state: mergeRequest.state,
+          merge_status: mergeRequest.merge_status,
+          detailed_merge_status: mergeRequest.detailed_merge_status,
+        } as any,
+      },
+    });
+
+    if (String(mergeRequest.state).toLowerCase() === "merged") {
+      await deps.prisma.issue.update({ where: { id: run.issueId }, data: { status: "done" } }).catch(() => {});
+      await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed" } }).catch(() => {});
+    }
+
+    return { success: true, data: { pr: updated } };
+  }
+
+  if (scm === "github") {
+    const token = project.githubAccessToken;
+    if (!token) {
+      return { success: false, error: { code: "NO_GITHUB_CONFIG", message: "Project 未配置 GitHub token" } };
+    }
+
+    const parsed = parseGitHubRepo(project.repoUrl);
+    if (!parsed) {
+      return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 repoUrl 解析 GitHub owner/repo" } };
+    }
+
+    const number = Number(content.number);
+    if (!Number.isFinite(number) || number <= 0) {
+      return { success: false, error: { code: "BAD_PR", message: "PR 产物缺少 number" } };
+    }
+
+    const auth: github.GitHubAuth = {
+      apiBaseUrl: parsed.apiBaseUrl,
+      owner: parsed.owner,
+      repo: parsed.repo,
+      accessToken: token,
+    };
+
+    let pr: github.GitHubPullRequest;
+    try {
+      pr = await getPullRequest(auth, { pullNumber: number });
+    } catch (err) {
+      return { success: false, error: { code: "GITHUB_API_FAILED", message: "获取 GitHub PR 失败", details: String(err) } };
+    }
+
+    const merged = Boolean(pr.merged_at);
+    const nextState = merged ? "merged" : (typeof pr.state === "string" ? pr.state : "unknown");
+
+    const updated = await deps.prisma.artifact.update({
+      where: { id: prArtifact.id },
+      data: {
+        content: {
+          ...content,
+          webUrl: pr.html_url,
+          state: nextState,
+          title: pr.title,
+          sourceBranch: pr.head?.ref,
+          targetBranch: pr.base?.ref,
+          merged,
+          merged_at: pr.merged_at ?? null,
+          mergeable: pr.mergeable ?? null,
+          mergeable_state: pr.mergeable_state ?? null,
+        } as any,
+      },
     });
 
     if (merged) {

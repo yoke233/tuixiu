@@ -27,23 +27,35 @@ type ConsoleItem = {
   toolCallInfo?: ToolCallInfo;
   detailsTitle?: string;
   chunkType?: "agent_message" | "agent_thought" | "user_message";
+  plan?: {
+    entries: Array<{
+      status: string;
+      content: string;
+      priority?: string;
+    }>;
+  };
 };
 
 function ConsoleDetailsBlock(props: {
   className: string;
   bordered?: boolean;
+  defaultOpen?: boolean;
   summary: ReactNode;
-  body: string;
+  body: ReactNode;
+  bodyClassName?: string;
 }) {
   return (
-    <details className={`${props.className}${props.bordered ? " consoleDetailsBorder" : ""}`}>
+    <details
+      className={`${props.className}${props.bordered ? " consoleDetailsBorder" : ""}`}
+      open={props.defaultOpen}
+    >
       <summary className="detailsSummary">
         <span className="toolSummaryRow">
           {props.summary}
           <span className="detailsCaret">▸</span>
         </span>
       </summary>
-      <div className="pre">{props.body}</div>
+      <div className={props.bodyClassName ?? "pre"}>{props.body}</div>
     </details>
   );
 }
@@ -153,6 +165,13 @@ function statusToBadgeClass(status: string): string {
   return "badge gray";
 }
 
+function priorityToBadgeClass(priority: string): string {
+  if (priority === "high") return "badge red";
+  if (priority === "medium") return "badge orange";
+  if (priority === "low") return "badge gray";
+  return "badge gray";
+}
+
 function exitToBadgeClass(exitCode: number): string {
   return exitCode === 0 ? "badge green" : "badge red";
 }
@@ -231,6 +250,22 @@ function stripSideSpaces(s: string): string {
   return s.trim();
 }
 
+function extractPlan(update: any): ConsoleItem["plan"] | null {
+  const entries = update?.entries;
+  if (!Array.isArray(entries) || !entries.length) return null;
+  const out: Array<{ status: string; content: string; priority?: string }> = [];
+  for (const e of entries) {
+    if (!e || typeof e !== "object") continue;
+    const status = typeof (e as any).status === "string" ? String((e as any).status).trim() : "";
+    const content = typeof (e as any).content === "string" ? String((e as any).content).trim() : "";
+    const priority = typeof (e as any).priority === "string" ? String((e as any).priority).trim() : "";
+    if (!status || !content) continue;
+    out.push({ status, content, priority: priority || undefined });
+  }
+  if (!out.length) return null;
+  return { entries: out };
+}
+
 function eventToConsoleItem(e: Event): ConsoleItem {
   if (e.source === "user") {
     const text = (e.payload as any)?.text;
@@ -291,6 +326,18 @@ function eventToConsoleItem(e: Event): ConsoleItem {
           text: typeof chunkText === "string" ? chunkText : "",
           timestamp: e.timestamp,
           chunkType: "user_message"
+        };
+      }
+
+      if (sessionUpdate === "plan") {
+        const plan = extractPlan(update);
+        return {
+          id: e.id,
+          role: "system",
+          kind: "block",
+          text: "",
+          timestamp: e.timestamp,
+          plan: plan ?? undefined
         };
       }
 
@@ -384,7 +431,7 @@ export function RunConsole(props: { events: Event[] }) {
     const out: ConsoleItem[] = [];
     for (const e of ordered) {
       const item = eventToConsoleItem(e);
-      if (!item.text) continue;
+      if (!item.text && !item.plan) continue;
 
       const last = out[out.length - 1];
       if (
@@ -470,11 +517,52 @@ export function RunConsole(props: { events: Event[] }) {
     }
   }, [items]);
 
-  if (!items.length) return <div className="muted">暂无输出</div>;
+  if (!items.length) return <div className="muted">暂无输出（无日志）</div>;
 
   return (
     <div ref={ref} className="console" role="log" aria-label="运行输出">
       {items.map((item) => {
+        if (item.role === "system" && item.plan) {
+          const entries = item.plan.entries;
+          const counts = entries.reduce(
+            (acc, e) => {
+              if (e.status === "completed") acc.completed += 1;
+              else if (e.status === "in_progress") acc.in_progress += 1;
+              else acc.pending += 1;
+              return acc;
+            },
+            { completed: 0, in_progress: 0, pending: 0 }
+          );
+          return (
+            <ConsoleDetailsBlock
+              key={item.id}
+              className={`consoleItem ${item.role}`}
+              defaultOpen
+              summary={
+                <>
+                  <span className="badge gray">PLAN</span>
+                  <span className="toolSummaryTitle">
+                    计划（{counts.completed}/{entries.length}）
+                  </span>
+                  {counts.in_progress ? <span className="badge orange">in_progress {counts.in_progress}</span> : null}
+                  {counts.pending ? <span className="badge gray">pending {counts.pending}</span> : null}
+                </>
+              }
+              bodyClassName="planBody"
+              body={
+                <div className="planList">
+                  {entries.map((e, idx) => (
+                    <div key={`${idx}-${e.status}-${e.content}`} className="planItem">
+                      <span className={statusToBadgeClass(e.status)}>{e.status}</span>
+                      {e.priority ? <span className={priorityToBadgeClass(e.priority)}>{e.priority}</span> : null}
+                      <span className="planContent">{e.content}</span>
+                    </div>
+                  ))}
+                </div>
+              }
+            />
+          );
+        }
         if (item.role === "user" && item.kind === "chunk" && item.chunkType === "user_message") {
           return (
             <ConsoleDetailsBlock

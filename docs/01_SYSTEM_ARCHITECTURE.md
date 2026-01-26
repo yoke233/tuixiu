@@ -54,10 +54,10 @@
 
 ### 2.2 启动 Run：选择/自动分配 Agent + 创建 worktree
 
-1. Web UI 调用 `POST /api/issues/:id/start`（可选传 `agentId`）
+1. Web UI 调用 `POST /api/issues/:id/start`（可选传 `agentId/roleKey/worktreeName`）
 2. backend 选择可用 Agent（在线且未满载）
 3. backend 创建 Run（`status=running`）
-4. backend 创建独立 Git worktree 与分支（`run/<runId>`，路径 `.worktrees/run-<runId>`）
+4. backend 创建独立 Git worktree 与分支（`run/<worktreeName>`，路径 `.worktrees/run-<worktreeName>`）
 5. backend 通过 `/ws/agent` 下发 `execute_task { run_id, prompt, cwd }`
 
 实现参考：

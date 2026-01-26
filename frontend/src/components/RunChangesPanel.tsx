@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { createRunPr, getRun, getRunChanges, getRunDiff, mergeRunPr, type RunChanges } from "../api/runs";
+import {
+  createRunPr,
+  getRun,
+  getRunChanges,
+  getRunDiff,
+  mergeRunPr,
+  promptRun,
+  syncRunPr,
+  type RunChanges,
+} from "../api/runs";
 import type { Project, Run } from "../types";
 
 type Props = {
@@ -81,8 +90,22 @@ export function RunChangesPanel(props: Props) {
     const c = prArtifact.content as any;
     const webUrl = (typeof c?.webUrl === "string" && c.webUrl) || (typeof c?.web_url === "string" && c.web_url) || "";
     const state = (typeof c?.state === "string" && c.state) || "";
+    const mergeable = typeof c?.mergeable === "boolean" ? c.mergeable : null;
+    const mergeableState = (typeof c?.mergeable_state === "string" && c.mergeable_state) || "";
+    const sourceBranch =
+      (typeof c?.sourceBranch === "string" && c.sourceBranch) || (typeof c?.source_branch === "string" && c.source_branch) || "";
+    const targetBranch =
+      (typeof c?.targetBranch === "string" && c.targetBranch) || (typeof c?.target_branch === "string" && c.target_branch) || "";
     const idNumRaw = typeof c?.iid === "number" ? c.iid : typeof c?.number === "number" ? c.number : Number(c?.iid ?? c?.number);
-    return { webUrl, state, num: Number.isFinite(idNumRaw) ? idNumRaw : null };
+    return {
+      webUrl,
+      state,
+      mergeable,
+      mergeableState,
+      sourceBranch,
+      targetBranch,
+      num: Number.isFinite(idNumRaw) ? idNumRaw : null,
+    };
   }, [prArtifact]);
 
   const provider = useMemo(() => (props.project?.scmType ?? "").toLowerCase(), [props.project]);
@@ -158,7 +181,86 @@ export function RunChangesPanel(props: Props) {
     setPrLoading(true);
     setError(null);
     try {
+      const synced = await syncRunPr(props.runId);
+      const c = synced.content as any;
+      const mergeable = typeof c?.mergeable === "boolean" ? c.mergeable : null;
+      const mergeableState = typeof c?.mergeable_state === "string" ? c.mergeable_state : "";
+      if (mergeableState === "dirty") {
+        setError("GitHub 显示该 PR 存在合并冲突（mergeable_state=dirty），请先解决冲突再合并。");
+        await refreshRun();
+        return;
+      }
+      if (mergeable === false) {
+        const detail = mergeableState ? `（mergeable_state=${mergeableState}）` : "";
+        setError(`该 PR 当前不可合并${detail}，请先同步/修复阻塞项后再重试。`);
+        await refreshRun();
+        return;
+      }
+
       await mergeRunPr(props.runId);
+      await refreshRun();
+      props.onAfterAction?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrLoading(false);
+    }
+  }
+
+  async function onSyncPr() {
+    if (!props.runId) return;
+    setPrLoading(true);
+    setError(null);
+    try {
+      await syncRunPr(props.runId);
+      await refreshRun();
+      props.onAfterAction?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrLoading(false);
+    }
+  }
+
+  async function onAskAgentToFixMerge() {
+    if (!props.runId) return;
+    setPrLoading(true);
+    setError(null);
+    try {
+      const run = props.run ?? (await getRun(props.runId));
+      const base = prInfo?.targetBranch || changes?.baseBranch || props.project?.defaultBranch || "main";
+      const head = prInfo?.sourceBranch || changes?.branch || run.branchName || "";
+      const workspace = run.workspacePath || "";
+      const url = prInfo?.webUrl || "";
+
+      const title = prInfo?.mergeableState === "dirty" ? "解决合并冲突" : "更新分支以便可合并";
+      const hint =
+        prInfo?.mergeableState === "dirty"
+          ? "GitHub 标记为 mergeable_state=dirty（有冲突）。"
+          : prInfo?.mergeableState
+            ? `GitHub mergeable_state=${prInfo.mergeableState}。`
+            : "GitHub mergeable 状态未知。";
+
+      const lines = [
+        `请帮我${title}并推送到远端分支，然后回复“已推送”。`,
+        url ? `PR: ${url}` : "",
+        head ? `分支: ${head}` : "",
+        base ? `目标分支: ${base}` : "",
+        workspace ? `工作区: ${workspace}` : "",
+        "",
+        hint,
+        "",
+        "建议步骤（在当前 worktree 执行）：",
+        "1) git fetch origin",
+        `2) git merge origin/${base}`,
+        "3) 解决冲突后：git add -A",
+        "4) git commit -m \"chore: resolve merge conflicts\"",
+        "5) git push",
+        "",
+        "要求：不引入无关改动；确保 tests/lint 通过（如项目有）。",
+      ].filter(Boolean);
+
+      await promptRun(props.runId, lines.join("\n"));
       await refreshRun();
       props.onAfterAction?.();
     } catch (e) {
@@ -192,7 +294,18 @@ export function RunChangesPanel(props: Props) {
                   打开 {providerLabel}
                   {prInfo.num ? ` #${prInfo.num}` : ""}
                 </a>
-                <button onClick={onMergePr} disabled={prLoading}>
+                <button onClick={onSyncPr} disabled={prLoading}>
+                  同步 {providerLabel} 状态
+                </button>
+                {prInfo.mergeableState === "dirty" || prInfo.mergeableState === "behind" ? (
+                  <button onClick={onAskAgentToFixMerge} disabled={prLoading}>
+                    让 Agent {prInfo.mergeableState === "dirty" ? "解决冲突" : "更新分支"}
+                  </button>
+                ) : null}
+                <button
+                  onClick={onMergePr}
+                  disabled={prLoading || prInfo.mergeableState === "dirty" || prInfo.mergeable === false}
+                >
                   合并 {providerLabel}
                 </button>
               </>
@@ -211,7 +324,17 @@ export function RunChangesPanel(props: Props) {
 
       {prInfo ? (
         <div className="muted" style={{ marginTop: 6 }}>
-          {providerLabel} 状态：{prInfo.state || "未知"}
+          {providerLabel} 状态：
+          {prInfo.state || "未知"}
+          {prInfo.mergeableState === "dirty"
+            ? "（有合并冲突）"
+            : prInfo.mergeableState
+              ? `（mergeable_state: ${prInfo.mergeableState}）`
+              : prInfo.mergeable === true
+                ? "（可合并）"
+                : prInfo.mergeable === false
+                  ? "（不可合并）"
+                  : ""}
         </div>
       ) : null}
 

@@ -62,8 +62,8 @@ pnpm dev
 
 后端在启动 Run 时会自动创建独立 worktree 与分支：
 
-- worktree：`<repoRoot>/.worktrees/run-<runId>`
-- 分支名：`run/<runId>`
+- worktree：`<repoRoot>/.worktrees/run-<worktreeName>`
+- 分支名：`run/<worktreeName>`
 
 并把 `cwd=<worktreePath>` 透传给 proxy/ACP session，让 agent 在隔离环境里修改代码。  
 **约定**：agent 在该分支上完成修改后应执行 `git commit`，随后由后端负责 `git push` 并创建 PR。
@@ -120,6 +120,7 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
 - `cwd`: repo 根目录（运行中会覆盖为 worktree cwd）
+- `agent.max_concurrent`: 单个 Agent 的并发 Run 上限（ACP 支持多 `session`；>1 时可并行多个 Run，但更吃 CPU/内存）
 - `agent_command`: 默认 `["npx","--yes","@zed-industries/codex-acp"]`（可替换为任意 ACP 兼容 Agent）
 - `sandbox.provider`: 默认 `host_process`（`boxlite_oci` 仅 WSL2/Linux/macOS Apple Silicon 可用）
 - `pathMapping`: 可选（仅当你在 WSL 内运行 proxy 且后端传入 Windows 路径时使用，把 `D:\\...` 转成 `/mnt/d/...`）

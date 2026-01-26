@@ -636,3 +636,32 @@ details[open] .detailsSummary {
 .consoleDetailsBorder {
   border: 1px solid var(--card-border);
 }
+
+.planBody {
+  margin-top: 8px;
+}
+
+.planList {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: var(--pre-bg);
+  border-radius: 12px;
+}
+
+.planItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--card-bg), transparent 40%);
+  border: 1px solid color-mix(in oklab, var(--card-border), transparent 40%);
+}
+
+.planContent {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

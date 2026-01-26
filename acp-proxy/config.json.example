@@ -12,9 +12,9 @@
   "agent": {
     "id": "codex-local-1",
     "name": "codex-local-1",
-    "max_concurrent": 1,
+    "max_concurrent": 5,
     "capabilities": {
-      "languages": ["typescript", "go"],
+      "languages": ["typescript"],
       "tools": ["git", "docker", "pnpm"]
     }
   },

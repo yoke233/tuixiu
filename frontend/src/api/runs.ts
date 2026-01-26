@@ -48,3 +48,8 @@ export async function mergeRunPr(id: string): Promise<Artifact> {
   const data = await apiPost<{ pr: Artifact }>(`/runs/${id}/merge-pr`, {});
   return data.pr;
 }
+
+export async function syncRunPr(id: string): Promise<Artifact> {
+  const data = await apiPost<{ pr: Artifact }>(`/runs/${id}/sync-pr`, {});
+  return data.pr;
+}

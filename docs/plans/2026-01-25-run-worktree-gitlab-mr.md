@@ -41,7 +41,7 @@
 - Modify: `.gitignore`
 
 **Step 1: 为每个 Run 分配 `branchName/workspacePath`**
-- 规则：`branchName = run/<runId>`；`workspacePath = <repo>/.worktrees/run-<runId>`
+- 规则：`branchName = run/<worktreeName>`；`workspacePath = <repo>/.worktrees/run-<worktreeName>`
 - 使用：`git worktree add -b <branch> <path> <baseBranch>`
 
 **Step 2: 写入数据库**
