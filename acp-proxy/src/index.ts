@@ -673,6 +673,43 @@ async function main() {
     }
   };
 
+  const handleSessionCancel = async (msg: { run_id: string; session_id?: string }) => {
+    try {
+      if (cfg.mock_mode) {
+        sendUpdate(msg.run_id, {
+          type: "text",
+          text: "[mock] session/cancel",
+        });
+        return;
+      }
+
+      const sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
+      if (!sessionId) {
+        sendUpdate(msg.run_id, {
+          type: "text",
+          text: "无法暂停：ACP sessionId 未知（尚未建立或尚未同步）",
+        });
+        return;
+      }
+
+      setRunSession(msg.run_id, sessionId);
+
+      await bridge.ensureInitialized();
+      await bridge.cancel(sessionId);
+
+      sendUpdate(msg.run_id, {
+        type: "text",
+        text: "已向 Agent 发送暂停请求（ACP session/cancel）",
+      });
+    } catch (err) {
+      sendUpdate(msg.run_id, {
+        type: "text",
+        text: `暂停失败: ${String(err)}`,
+      });
+    }
+  };
+
+
   const connectLoop = async () => {
     for (;;) {
       try {
@@ -762,6 +799,18 @@ async function main() {
                     typeof msg.context === "string" ? msg.context : undefined,
                   cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
                 });
+                return;
+              }
+
+              if (msg.type === "session_cancel" && typeof msg.run_id === "string") {
+                void handleSessionCancel({
+                  run_id: msg.run_id,
+                  session_id:
+                    typeof (msg as any).session_id === "string"
+                      ? (msg as any).session_id
+                      : undefined,
+                });
+                return;
               }
             } catch (err) {
               log("bad ws message", { err: String(err) });

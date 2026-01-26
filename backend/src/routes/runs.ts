@@ -278,6 +278,56 @@ export function makeRunRoutes(deps: {
       return { success: true, data: { ok: true } };
     });
 
+    server.post("/:id/pause", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const { id } = paramsSchema.parse(request.params);
+
+      const run = await deps.prisma.run.findUnique({
+        where: { id },
+        include: { agent: true },
+      });
+      if (!run) {
+        return {
+          success: false,
+          error: { code: "NOT_FOUND", message: "Run 不存在" },
+        };
+      }
+
+      if (!deps.sendToAgent) {
+        return {
+          success: false,
+          error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" },
+        };
+      }
+
+      if (!run.acpSessionId) {
+        return {
+          success: false,
+          error: { code: "NO_ACP_SESSION", message: "ACP session 尚未建立，无法暂停" },
+        };
+      }
+
+      try {
+        await deps.sendToAgent(run.agent.proxyId, {
+          type: "session_cancel",
+          run_id: id,
+          session_id: run.acpSessionId,
+        });
+      } catch (error) {
+        return {
+          success: false,
+          error: {
+            code: "AGENT_SEND_FAILED",
+            message: "发送暂停到 Agent 失败",
+            details: String(error),
+          },
+        };
+      }
+
+      return { success: true, data: { ok: true } };
+    });
+
+
     server.post("/:id/cancel", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const { id } = paramsSchema.parse(request.params);

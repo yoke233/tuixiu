@@ -279,4 +279,65 @@ describe("IssueDetailPage", () => {
     expect(btn).not.toBeDisabled();
     expect(screen.queryByText(/当前没有可用的在线 Agent/)).not.toBeInTheDocument();
   });
+
+  it("pauses agent via /api/runs/:id/pause when run is running", async () => {
+    // initial refresh (3 calls)
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issue: {
+          id: "i1",
+          projectId: "p1",
+          title: "Fix README",
+          status: "running",
+          createdAt: "2026-01-25T00:00:00.000Z",
+          runs: [{ id: "r1", issueId: "i1", agentId: "a1", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }]
+        }
+      }
+    });
+
+    // agents list (1 call)
+    mockFetchJsonOnce({ success: true, data: { agents: [] } });
+
+    // run + events (2 calls)
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        run: {
+          id: "r1",
+          issueId: "i1",
+          agentId: "a1",
+          status: "running",
+          acpSessionId: "s1",
+          startedAt: "2026-01-25T00:00:00.000Z",
+          artifacts: []
+        }
+      }
+    });
+    mockFetchJsonOnce({ success: true, data: { events: [] } });
+    mockFetchJsonOnce({ success: true, data: { roles: [] } });
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/issues/i1"]}>
+          <Routes>
+            <Route path="/issues/:id" element={<IssueDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
+    );
+
+    expect(await screen.findByText("Fix README")).toBeInTheDocument();
+
+    const pauseBtn = await screen.findByRole("button", { name: "暂停 Agent" });
+
+    // pause (POST)
+    mockFetchJsonOnce({ success: true, data: { ok: true } });
+    pauseBtn.click();
+
+    await waitFor(() =>
+      expect((globalThis.fetch as any).mock.calls.some((c: any[]) => String(c[0]).includes("/runs/r1/pause"))).toBe(true)
+    );
+  });
+
 });
