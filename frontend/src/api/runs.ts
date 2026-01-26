@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from "./client";
-import type { Artifact, Event, Run } from "../types";
+import type { Approval, Artifact, Event, Run } from "../types";
 
 export type RunChangeFile = { path: string; status: string; oldPath?: string };
 export type RunChanges = { baseBranch: string; branch: string; files: RunChangeFile[] };
@@ -52,6 +52,11 @@ export async function createRunPr(id: string): Promise<Artifact> {
 export async function mergeRunPr(id: string): Promise<Artifact> {
   const data = await apiPost<{ pr: Artifact }>(`/runs/${id}/merge-pr`, {});
   return data.pr;
+}
+
+export async function requestMergeRunPr(id: string): Promise<Approval> {
+  const data = await apiPost<{ approval: Approval }>(`/runs/${id}/request-merge-pr`, {});
+  return data.approval;
 }
 
 export async function syncRunPr(id: string): Promise<Artifact> {

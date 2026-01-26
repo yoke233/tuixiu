@@ -27,7 +27,14 @@ const envSchema = z.object({
   GITLAB_ACCESS_TOKEN: z.string().optional(),
   GITLAB_PROJECT_ID: z.string().optional(),
   GITLAB_WEBHOOK_SECRET: z.string().optional(),
-  GITHUB_WEBHOOK_SECRET: z.string().optional()
+  GITHUB_WEBHOOK_SECRET: z.string().optional(),
+  MESSAGE_WEBHOOK_SECRET: z.string().optional(),
+
+  PM_AUTOMATION_ENABLED: z.string().optional(),
+  PM_LLM_BASE_URL: z.string().optional(),
+  PM_LLM_MODEL: z.string().optional(),
+  PM_LLM_API_KEY: z.string().optional(),
+  PM_LLM_TIMEOUT_MS: z.coerce.number().int().positive().optional()
 });
 
 export type Env = z.infer<typeof envSchema>;

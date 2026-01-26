@@ -39,6 +39,13 @@ export type GitHubMergeResult = {
   sha?: string;
 };
 
+export type GitHubIssueComment = {
+  id: number;
+  html_url: string;
+  body?: string | null;
+  created_at?: string;
+};
+
 export type ParsedGitHubRepo = {
   host: string;
   owner: string;
@@ -171,6 +178,19 @@ export async function getIssue(auth: GitHubAuth, params: { issueNumber: number }
   }
 
   return issue;
+}
+
+export async function createIssueComment(
+  auth: GitHubAuth,
+  params: { issueNumber: number; body: string }
+): Promise<GitHubIssueComment> {
+  return await githubRequest<GitHubIssueComment>(auth, {
+    method: "POST",
+    path: `/repos/${encodeURIComponent(auth.owner)}/${encodeURIComponent(auth.repo)}/issues/${encodeURIComponent(
+      String(params.issueNumber)
+    )}/comments`,
+    body: { body: params.body }
+  });
 }
 
 export async function createPullRequest(

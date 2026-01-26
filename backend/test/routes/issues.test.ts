@@ -660,6 +660,95 @@ describe("Issues routes", () => {
     await server.close();
   });
 
+  it("POST /api/issues/:id/start comments on GitHub issue when GitHub token exists", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ id: 1, html_url: "https://github.com/o/r/issues/123#issuecomment-1" })
+    });
+    const originalFetch = (globalThis as any).fetch;
+    (globalThis as any).fetch = fetchMock;
+
+    try {
+      const server = createHttpServer();
+      const createWorkspace = vi.fn().mockResolvedValue({
+        repoRoot: "D:\\xyad\\tuixiu",
+        branchName: "run/gh-123-t1-r1",
+        workspacePath: "D:\\xyad\\tuixiu\\.worktrees\\run-gh-123-t1-r1"
+      });
+      const prisma = {
+        issue: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "i1",
+            projectId: "p1",
+            title: "t1",
+            description: null,
+            status: "pending",
+            acceptanceCriteria: [],
+            constraints: [],
+            testRequirements: null,
+            externalProvider: "github",
+            externalNumber: 123,
+            runs: [],
+            project: {
+              id: "p1",
+              defaultBranch: "main",
+              repoUrl: "https://github.com/o/r",
+              githubAccessToken: "ghp_test"
+            }
+          }),
+          update: vi.fn().mockResolvedValue({ id: "i1" })
+        },
+        agent: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "a1",
+            proxyId: "proxy-1",
+            name: "codex-local-1",
+            status: "online",
+            currentLoad: 0,
+            maxConcurrentRuns: 1
+          }),
+          update: vi.fn().mockResolvedValue({ id: "a1" })
+        },
+        roleTemplate: { findFirst: vi.fn().mockResolvedValue(null) },
+        run: {
+          create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }),
+          update: vi.fn().mockResolvedValue({ id: "r1" })
+        },
+        artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
+      } as any;
+
+      const sendToAgent = vi.fn().mockResolvedValue(undefined);
+      await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+
+      const res = await server.inject({
+        method: "POST",
+        url: "/api/issues/00000000-0000-0000-0000-000000000001/start",
+        payload: { agentId: "00000000-0000-0000-0000-000000000010" }
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      const [url1, init1] = fetchMock.mock.calls[0];
+      expect(String(url1)).toContain("https://api.github.com/repos/o/r/issues/123/comments");
+      expect(init1.method).toBe("POST");
+      const body1 = JSON.parse(String(init1.body));
+      expect(String(body1.body)).toContain("已分配执行者");
+      expect(String(body1.body)).toContain("codex-local-1");
+      expect(String(body1.body)).toContain("`r1`");
+
+      const [url2, init2] = fetchMock.mock.calls[1];
+      expect(String(url2)).toContain("https://api.github.com/repos/o/r/issues/123/comments");
+      const body2 = JSON.parse(String(init2.body));
+      expect(String(body2.body)).toContain("开始执行");
+      expect(String(body2.body)).toContain("`run/gh-123-t1-r1`");
+
+      await server.close();
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+    }
+  });
+
   it("PATCH /api/issues/:id archives completed issue", async () => {
     const server = createHttpServer();
     const prisma = {

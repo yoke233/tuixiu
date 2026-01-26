@@ -25,6 +25,7 @@ describe("AdminPage", () => {
   it("toggles showArchivedIssues setting", async () => {
     mockFetchJsonOnce({ success: true, data: { projects: [] } });
     mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
+    mockFetchJsonOnce({ success: true, data: { approvals: [] } });
 
     render(
       <ThemeProvider>
@@ -80,6 +81,7 @@ describe("AdminPage", () => {
         offset: 0
       }
     });
+    mockFetchJsonOnce({ success: true, data: { approvals: [] } });
 
     mockFetchJsonOnce({
       success: true,
@@ -132,6 +134,7 @@ describe("AdminPage", () => {
         offset: 0
       }
     });
+    mockFetchJsonOnce({ success: true, data: { approvals: [] } });
 
     render(
       <ThemeProvider>

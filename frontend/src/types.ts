@@ -70,6 +70,26 @@ export type Artifact = {
   createdAt: string;
 };
 
+export type ApprovalAction = "merge_pr";
+
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "executing" | "executed" | "failed";
+
+export type Approval = {
+  id: string;
+  runId: string;
+  createdAt: string;
+  action: ApprovalAction;
+  status: ApprovalStatus;
+  requestedBy: string | null;
+  requestedAt: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  reason: string | null;
+  issueId?: string | null;
+  issueTitle?: string | null;
+  projectId?: string | null;
+};
+
 export type AgentStatus = "online" | "offline" | "degraded" | "suspended";
 
 export type Agent = {
@@ -105,4 +125,19 @@ export type GitHubIssue = {
   url: string;
   labels: unknown[];
   updatedAt?: string | null;
+};
+
+export type PmRisk = "low" | "medium" | "high";
+
+export type PmAnalysis = {
+  summary: string;
+  risk: PmRisk;
+  questions: string[];
+  recommendedRoleKey?: string | null;
+  recommendedAgentId?: string | null;
+};
+
+export type PmAnalysisMeta = {
+  source: "llm" | "fallback";
+  model?: string;
 };
