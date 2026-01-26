@@ -227,7 +227,9 @@ describe("Runs routes", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.success).toBe(true);
-    expect(gitPush).toHaveBeenCalledWith({ cwd: "D:\\repo\\.worktrees\\run-r1", branch: "run/r1" });
+    expect(gitPush).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "D:\\repo\\.worktrees\\run-r1", branch: "run/r1" }),
+    );
     expect(createMergeRequest).toHaveBeenCalled();
     expect(prisma.artifact.create).toHaveBeenCalled();
     expect(prisma.run.update).toHaveBeenCalledWith(
@@ -374,7 +376,9 @@ describe("Runs routes", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.success).toBe(true);
-    expect(gitPush).toHaveBeenCalledWith({ cwd: "D:\\repo\\.worktrees\\run-r1", branch: "run/r1" });
+    expect(gitPush).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "D:\\repo\\.worktrees\\run-r1", branch: "run/r1" }),
+    );
     expect(createPullRequest).toHaveBeenCalled();
     expect(prisma.artifact.create).toHaveBeenCalled();
     expect(prisma.run.update).toHaveBeenCalledWith(

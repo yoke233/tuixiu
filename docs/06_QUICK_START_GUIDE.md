@@ -6,7 +6,7 @@
 
 ## 1. 启动（Windows / PowerShell）
 
-先按 `docs/02_ENVIRONMENT_SETUP.md` 完成环境与数据库迁移，然后在三个终端分别启动：
+先按 `docs/02_ENVIRONMENT_SETUP.md` 完成环境与数据库准备（`backend` 的 `pnpm dev` 会自动应用 Prisma 迁移），然后在三个终端分别启动：
 
 ```powershell
 # 终端 1：backend
@@ -60,17 +60,19 @@ pnpm dev
 
 ## 3. Run 工作区与分支（关键约定）
 
-后端在启动 Run 时会自动创建独立 worktree 与分支：
+后端在启动 Run 时会自动创建独立工作区与分支（两种模式）：
 
-- worktree：`<repoRoot>/.worktrees/run-<worktreeName>`
+- `workspaceMode=worktree`（默认）：`<repoRoot>/.worktrees/run-<worktreeName>`（需要在该 repo 目录里启动 `backend`）
+- `workspaceMode=clone`：`<WORKSPACES_ROOT>/run-<runId>`（默认 `$HOME/.tuixiu/workspaces`），并维护 `REPO_CACHE_ROOT/<projectId>.git` mirror 缓存（best-effort）用于加速 clone（默认 `$HOME/.tuixiu/repo-cache`）
 - 分支名：`run/<worktreeName>`
 
-并把 `cwd=<worktreePath>` 透传给 proxy/ACP session，让 agent 在隔离环境里修改代码。  
+并把 `cwd=<workspacePath>` 透传给 proxy/ACP session，让 agent 在隔离环境里修改代码。  
 **约定**：agent 在该分支上完成修改后应执行 `git commit`，随后由后端负责 `git push` 并创建 PR。
 
 实现参考：
 
 - worktree：`backend/src/utils/gitWorkspace.ts`
+- clone/worktree 统一入口：`backend/src/utils/runWorkspace.ts`
 - 启动 Run：`backend/src/routes/issues.ts`
 
 ---
@@ -89,7 +91,7 @@ pnpm dev
 ```powershell
 curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
   -H "Content-Type: application/json" `
-  -d '{\"name\":\"demo\",\"repoUrl\":\"https://gitlab.example.com/group/repo\",\"scmType\":\"gitlab\",\"defaultBranch\":\"main\",\"gitlabProjectId\":123,\"gitlabAccessToken\":\"<token>\"}'
+  -d '{\"name\":\"demo\",\"repoUrl\":\"https://gitlab.example.com/group/repo\",\"scmType\":\"gitlab\",\"defaultBranch\":\"main\",\"workspaceMode\":\"clone\",\"gitAuthMode\":\"https_pat\",\"gitlabProjectId\":123,\"gitlabAccessToken\":\"<token>\"}'
 ```
 
 ### 4.2 Issue（需求池）
@@ -119,7 +121,7 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 最小配置项：
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
-- `cwd`: repo 根目录（运行中会覆盖为 worktree cwd）
+- `cwd`: repo 根目录（运行中会覆盖为 Run 的 workspace cwd）
 - `agent.max_concurrent`: 单个 Agent 的并发 Run 上限（ACP 支持多 `session`；>1 时可并行多个 Run，但更吃 CPU/内存）
 - `agent_command`: 默认 `["npx","--yes","@zed-industries/codex-acp"]`（可替换为任意 ACP 兼容 Agent）
 - `sandbox.provider`: 默认 `host_process`（`boxlite_oci` 仅 WSL2/Linux/macOS Apple Silicon 可用）

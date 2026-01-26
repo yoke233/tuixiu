@@ -54,6 +54,8 @@ export function IssueListPage() {
   const [projectRepoUrl, setProjectRepoUrl] = useState("");
   const [projectScmType, setProjectScmType] = useState("gitlab");
   const [projectDefaultBranch, setProjectDefaultBranch] = useState("main");
+  const [projectWorkspaceMode, setProjectWorkspaceMode] = useState<"worktree" | "clone">("worktree");
+  const [projectGitAuthMode, setProjectGitAuthMode] = useState<"https_pat" | "ssh">("https_pat");
   const [projectGitlabProjectId, setProjectGitlabProjectId] = useState("");
   const [projectGitlabAccessToken, setProjectGitlabAccessToken] = useState("");
   const [projectGitlabWebhookSecret, setProjectGitlabWebhookSecret] = useState("");
@@ -217,6 +219,8 @@ export function IssueListPage() {
         repoUrl: projectRepoUrl.trim(),
         scmType: projectScmType.trim() || undefined,
         defaultBranch: projectDefaultBranch.trim() || undefined,
+        workspaceMode: projectWorkspaceMode,
+        gitAuthMode: projectGitAuthMode,
         gitlabProjectId: Number.isFinite(gitlabProjectId ?? NaN) ? gitlabProjectId : undefined,
         gitlabAccessToken: projectGitlabAccessToken.trim() || undefined,
         gitlabWebhookSecret: projectGitlabWebhookSecret.trim() || undefined,
@@ -226,6 +230,8 @@ export function IssueListPage() {
       setProjectRepoUrl("");
       setProjectScmType("gitlab");
       setProjectDefaultBranch("main");
+      setProjectWorkspaceMode("worktree");
+      setProjectGitAuthMode("https_pat");
       setProjectGitlabProjectId("");
       setProjectGitlabAccessToken("");
       setProjectGitlabWebhookSecret("");
@@ -478,6 +484,26 @@ export function IssueListPage() {
                     <label className="label">
                       默认分支
                       <input value={projectDefaultBranch} onChange={(e) => setProjectDefaultBranch(e.target.value)} />
+                    </label>
+                    <label className="label">
+                      工作区模式
+                      <select
+                        value={projectWorkspaceMode}
+                        onChange={(e) => setProjectWorkspaceMode(e.target.value as "worktree" | "clone")}
+                      >
+                        <option value="worktree">worktree（本机仓库）</option>
+                        <option value="clone">clone（Run 全量 clone）</option>
+                      </select>
+                    </label>
+                    <label className="label">
+                      Git 认证
+                      <select
+                        value={projectGitAuthMode}
+                        onChange={(e) => setProjectGitAuthMode(e.target.value as "https_pat" | "ssh")}
+                      >
+                        <option value="https_pat">https_pat（token）</option>
+                        <option value="ssh">ssh</option>
+                      </select>
                     </label>
                     {projectScmType === "gitlab" ? (
                       <details>

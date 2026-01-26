@@ -16,6 +16,7 @@ import {
   mergeReviewRequestForRun,
   syncReviewRequestForRun,
 } from "../services/runReviewRequest.js";
+import { createGitProcessEnv } from "../utils/gitAuth.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
 
@@ -24,7 +25,7 @@ const execFileAsync = promisify(execFile);
 export function makeRunRoutes(deps: {
   prisma: PrismaDeps;
   sendToAgent?: SendToAgent;
-  gitPush?: (opts: { cwd: string; branch: string }) => Promise<void>;
+  gitPush?: (opts: { cwd: string; branch: string; project: any }) => Promise<void>;
   gitlab?: {
     inferBaseUrl?: typeof gitlab.inferGitlabBaseUrl;
     createMergeRequest?: typeof gitlab.createMergeRequest;
@@ -41,10 +42,16 @@ export function makeRunRoutes(deps: {
   return async (server) => {
     const gitPush =
       deps.gitPush ??
-      (async (opts: { cwd: string; branch: string }) => {
-        await execFileAsync("git", ["push", "-u", "origin", opts.branch], {
-          cwd: opts.cwd,
-        });
+      (async (opts: { cwd: string; branch: string; project: any }) => {
+        const { env, cleanup } = await createGitProcessEnv(opts.project);
+        try {
+          await execFileAsync("git", ["push", "-u", "origin", opts.branch], {
+            cwd: opts.cwd,
+            env,
+          });
+        } finally {
+          await cleanup();
+        }
       });
 
     server.get("/:id", async (request) => {

@@ -3,7 +3,28 @@ import { z } from "zod";
 
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { toPublicProject } from "../utils/publicProject.js";
 import { createRunWorktree, suggestRunKey } from "../utils/gitWorkspace.js";
+
+type WorkspaceMode = "worktree" | "clone";
+
+type CreateWorkspaceResult = {
+  workspaceMode?: WorkspaceMode;
+  workspacePath: string;
+  branchName: string;
+  baseBranch?: string;
+  repoRoot?: string;
+  gitAuthMode?: string | null;
+  timingsMs?: Record<string, number>;
+};
+
+function toPublicIssue<T extends { project?: unknown }>(issue: T): T {
+  const anyIssue = issue as any;
+  if (anyIssue && anyIssue.project) {
+    return { ...anyIssue, project: toPublicProject(anyIssue.project) };
+  }
+  return issue;
+}
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_m, key) => {
@@ -35,7 +56,11 @@ const createIssueBodySchema = z.object({
 export function makeIssueRoutes(deps: {
   prisma: PrismaDeps;
   sendToAgent: SendToAgent;
-  createWorkspace?: typeof createRunWorktree;
+  createWorkspace?: (opts: {
+    runId: string;
+    baseBranch: string;
+    name: string;
+  }) => Promise<CreateWorkspaceResult>;
 }): FastifyPluginAsync {
   return async (server) => {
     server.get("/", async (request) => {
@@ -58,7 +83,10 @@ export function makeIssueRoutes(deps: {
         })
       ]);
 
-      return { success: true, data: { issues, total, limit, offset } };
+      return {
+        success: true,
+        data: { issues: issues.map((i: any) => toPublicIssue(i)), total, limit, offset }
+      };
     });
 
     server.get("/:id", async (request) => {
@@ -72,7 +100,7 @@ export function makeIssueRoutes(deps: {
       if (!issue) {
         return { success: false, error: { code: "NOT_FOUND", message: "Issue 不存在" } };
       }
-      return { success: true, data: { issue } };
+      return { success: true, data: { issue: toPublicIssue(issue as any) } };
     });
 
     server.post("/", async (request) => {
@@ -172,6 +200,7 @@ export function makeIssueRoutes(deps: {
 
       let workspacePath = "";
       let branchName = "";
+      let workspaceMode: WorkspaceMode = "worktree";
       try {
         const baseBranch = issue.project.defaultBranch || "main";
         const runNumber = (Array.isArray(issue.runs) ? issue.runs.length : 0) + 1;
@@ -186,15 +215,37 @@ export function makeIssueRoutes(deps: {
               });
 
         const ws = await (deps.createWorkspace ?? createRunWorktree)({ runId: run.id, baseBranch, name });
+
         workspacePath = ws.workspacePath;
         branchName = ws.branchName;
+        workspaceMode = ws.workspaceMode === "clone" ? "clone" : "worktree";
+        const baseBranchSnapshot = ws.baseBranch?.trim() ? ws.baseBranch.trim() : baseBranch;
+        const timingsMsSnapshot = ws.timingsMs && typeof ws.timingsMs === "object" ? ws.timingsMs : {};
+
+        const caps = (selectedAgent as any)?.capabilities;
+        const sandboxProvider =
+          caps && typeof caps === "object" && (caps as any).sandbox && typeof (caps as any).sandbox === "object"
+            ? (caps as any).sandbox.provider
+            : null;
+
+        const snapshot = {
+          workspaceMode,
+          workspacePath,
+          branchName,
+          baseBranch: baseBranchSnapshot,
+          gitAuthMode: ws.gitAuthMode ?? (issue.project as any)?.gitAuthMode ?? null,
+          sandbox: { provider: sandboxProvider },
+          agent: { max_concurrent: selectedAgent.maxConcurrentRuns },
+          timingsMs: timingsMsSnapshot,
+        };
 
         await deps.prisma.run.update({
           where: { id: run.id },
           data: {
-            workspaceType: "worktree",
+            workspaceType: workspaceMode,
             workspacePath,
-            branchName
+            branchName,
+            metadata: role ? ({ roleKey: role.key, snapshot } as any) : ({ snapshot } as any),
           }
         });
         await deps.prisma.artifact.create({
@@ -202,13 +253,13 @@ export function makeIssueRoutes(deps: {
             id: uuidv7(),
             runId: run.id,
             type: "branch",
-            content: { branch: branchName, baseBranch, workspacePath } as any
+            content: { branch: branchName, baseBranch: baseBranchSnapshot, workspacePath, workspaceMode } as any
           }
         });
       } catch (error) {
         await deps.prisma.run.update({
           where: { id: run.id },
-          data: { status: "failed", completedAt: new Date(), errorMessage: `创建 worktree 失败: ${String(error)}` }
+          data: { status: "failed", completedAt: new Date(), errorMessage: `创建 workspace 失败: ${String(error)}` }
         });
         await deps.prisma.issue.update({ where: { id: issue.id }, data: { status: "failed" } }).catch(() => {});
         await deps.prisma.agent
@@ -222,14 +273,16 @@ export function makeIssueRoutes(deps: {
             message: "创建 Run 工作区失败",
             details: String(error)
           },
-          data: { issue, run }
+          data: { issue: toPublicIssue(issue as any), run }
         };
       }
 
       const promptParts: string[] = [];
       promptParts.push(
         [
-          "你正在一个独立的 Git worktree 中执行任务：",
+          workspaceMode === "clone"
+            ? "你正在一个独立的 Git clone 工作区中执行任务："
+            : "你正在一个独立的 Git worktree 中执行任务：",
           `- workspace: ${workspacePath}`,
           `- branch: ${branchName}`,
           "",
@@ -323,7 +376,7 @@ export function makeIssueRoutes(deps: {
             message: "发送任务到 Agent 失败",
             details: String(error)
           },
-          data: { issue, run }
+          data: { issue: toPublicIssue(issue as any), run }
         };
       }
 
