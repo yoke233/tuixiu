@@ -59,6 +59,113 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
     ws.send(JSON.stringify(payload));
   }
 
+  const CHUNK_SESSION_UPDATES = new Set(["agent_message_chunk", "agent_thought_chunk", "user_message_chunk"]);
+  const CHUNK_FLUSH_INTERVAL_MS = 800;
+  const CHUNK_MAX_BUFFER_CHARS = 16_000;
+  type BufferedChunkSegment = {
+    session: string | null;
+    sessionUpdate: string;
+    text: string;
+  };
+  type RunChunkBuffer = {
+    segments: BufferedChunkSegment[];
+    totalChars: number;
+    timer: NodeJS.Timeout | null;
+  };
+  const chunkBuffersByRun = new Map<string, RunChunkBuffer>();
+  const runQueue = new Map<string, Promise<void>>();
+
+  function enqueueRunTask(runId: string, task: () => Promise<void>): Promise<void> {
+    const prev = runQueue.get(runId) ?? Promise.resolve();
+    const next = prev
+      .catch(() => {})
+      .then(task)
+      .finally(() => {
+        if (runQueue.get(runId) === next) runQueue.delete(runId);
+      });
+    runQueue.set(runId, next);
+    return next;
+  }
+
+  function extractChunkSegment(content: unknown): BufferedChunkSegment | null {
+    if (!isRecord(content)) return null;
+    if (content.type !== "session_update") return null;
+
+    const update = content.update;
+    if (!isRecord(update)) return null;
+    const sessionUpdate = typeof update.sessionUpdate === "string" ? update.sessionUpdate : "";
+    if (!CHUNK_SESSION_UPDATES.has(sessionUpdate)) return null;
+
+    const updContent = update.content;
+    if (!isRecord(updContent)) return null;
+    if (updContent.type !== "text") return null;
+    const text = typeof updContent.text === "string" ? updContent.text : "";
+    if (!text) return null;
+
+    const session = typeof content.session === "string" && content.session ? content.session : null;
+    return { session, sessionUpdate, text };
+  }
+
+  async function flushRunChunkBuffer(runId: string) {
+    const buf = chunkBuffersByRun.get(runId);
+    if (!buf || !buf.segments.length) return;
+
+    if (buf.timer) clearTimeout(buf.timer);
+    chunkBuffersByRun.delete(runId);
+
+    for (const seg of buf.segments) {
+      const createdEvent = await deps.prisma.event.create({
+        data: {
+          id: uuidv7(),
+          runId,
+          source: "acp",
+          type: "acp.update.received",
+          payload: {
+            type: "session_update",
+            session: seg.session ?? undefined,
+            update: {
+              sessionUpdate: seg.sessionUpdate,
+              content: { type: "text", text: seg.text }
+            }
+          } as any
+        }
+      });
+      broadcastToClients({ type: "event_added", run_id: runId, event: createdEvent });
+    }
+  }
+
+  async function bufferChunkSegment(runId: string, seg: BufferedChunkSegment, logError: (err: unknown) => void): Promise<void> {
+    const existing = chunkBuffersByRun.get(runId);
+    const buf: RunChunkBuffer =
+      existing ??
+      {
+        segments: [],
+        totalChars: 0,
+        timer: null
+      };
+
+    const last = buf.segments.length ? buf.segments[buf.segments.length - 1] : null;
+    if (last && last.session === seg.session && last.sessionUpdate === seg.sessionUpdate) {
+      last.text += seg.text;
+    } else {
+      buf.segments.push(seg);
+    }
+    buf.totalChars += seg.text.length;
+    chunkBuffersByRun.set(runId, buf);
+
+    if (buf.totalChars >= CHUNK_MAX_BUFFER_CHARS) {
+      await flushRunChunkBuffer(runId);
+      return;
+    }
+
+    if (!buf.timer) {
+      buf.timer = setTimeout(() => {
+        void enqueueRunTask(runId, () => flushRunChunkBuffer(runId)).catch(logError);
+      }, CHUNK_FLUSH_INTERVAL_MS);
+      buf.timer.unref?.();
+    }
+  }
+
   function handleAgentConnection(socket: WebSocket, logError: (err: unknown) => void) {
     let proxyId: string | null = null;
 
@@ -103,87 +210,55 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
         }
 
         if (message.type === "agent_update") {
-          const createdEvent = await deps.prisma.event.create({
-            data: {
-              id: uuidv7(),
-              runId: message.run_id,
-              source: "acp",
-              type: "acp.update.received",
-              payload: message.content as any
-            }
-          });
-
-          const contentType = isRecord(message.content) ? message.content.type : undefined;
-          if (contentType === "session_created") {
-            const sessionId = isRecord(message.content) ? message.content.session_id : undefined;
-            if (typeof sessionId === "string" && sessionId) {
-              await deps.prisma.run
-                .update({
-                  where: { id: message.run_id },
-                  data: { acpSessionId: sessionId }
-                })
-                .catch(() => {});
-            }
+          const chunkSeg = extractChunkSegment(message.content);
+          if (chunkSeg) {
+            await enqueueRunTask(message.run_id, async () => {
+              await bufferChunkSegment(message.run_id, chunkSeg, logError);
+            });
+            return;
           }
-          if (contentType === "prompt_result") {
-            const run = await deps.prisma.run.findUnique({
-              where: { id: message.run_id },
-              select: { id: true, status: true, issueId: true, agentId: true }
+
+          await enqueueRunTask(message.run_id, async () => {
+            await flushRunChunkBuffer(message.run_id);
+
+            const createdEvent = await deps.prisma.event.create({
+              data: {
+                id: uuidv7(),
+                runId: message.run_id,
+                source: "acp",
+                type: "acp.update.received",
+                payload: message.content as any
+              }
             });
 
-            if (run && run.status === "running") {
-              await deps.prisma.run.update({
-                where: { id: run.id },
-                data: { status: "completed", completedAt: new Date() }
-              });
-
-              await deps.prisma.issue
-                .updateMany({
-                  where: { id: run.issueId, status: "running" },
-                  data: { status: "reviewing" }
-                })
-                .catch(() => {});
-
-              await deps.prisma.agent
-                .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
-                .catch(() => {});
+            const contentType = isRecord(message.content) ? message.content.type : undefined;
+            if (contentType === "session_created") {
+              const sessionId = isRecord(message.content) ? message.content.session_id : undefined;
+              if (typeof sessionId === "string" && sessionId) {
+                await deps.prisma.run
+                  .update({
+                    where: { id: message.run_id },
+                    data: { acpSessionId: sessionId }
+                  })
+                  .catch(() => {});
+              }
             }
-          }
-
-          if (contentType === "init_result") {
-            const ok = isRecord(message.content) ? (message.content as any).ok : undefined;
-            if (ok === false) {
-              const exitCode = isRecord(message.content) ? (message.content as any).exitCode : undefined;
-              const errText = isRecord(message.content) ? (message.content as any).error : undefined;
-              const details =
-                typeof errText === "string" && errText.trim()
-                  ? errText.trim()
-                  : typeof exitCode === "number"
-                    ? `exitCode=${exitCode}`
-                    : "unknown";
-
+            if (contentType === "prompt_result") {
               const run = await deps.prisma.run.findUnique({
                 where: { id: message.run_id },
                 select: { id: true, status: true, issueId: true, agentId: true }
               });
 
               if (run && run.status === "running") {
-                await deps.prisma.run
-                  .update({
-                    where: { id: run.id },
-                    data: {
-                      status: "failed",
-                      completedAt: new Date(),
-                      failureReason: "init_failed",
-                      errorMessage: `initScript 失败: ${details}`
-                    }
-                  })
-                  .catch(() => {});
+                await deps.prisma.run.update({
+                  where: { id: run.id },
+                  data: { status: "completed", completedAt: new Date() }
+                });
 
                 await deps.prisma.issue
                   .updateMany({
                     where: { id: run.issueId, status: "running" },
-                    data: { status: "failed" }
+                    data: { status: "reviewing" }
                   })
                   .catch(() => {});
 
@@ -192,25 +267,72 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                   .catch(() => {});
               }
             }
-          }
 
-          broadcastToClients({ type: "event_added", run_id: message.run_id, event: createdEvent });
+            if (contentType === "init_result") {
+              const ok = isRecord(message.content) ? (message.content as any).ok : undefined;
+              if (ok === false) {
+                const exitCode = isRecord(message.content) ? (message.content as any).exitCode : undefined;
+                const errText = isRecord(message.content) ? (message.content as any).error : undefined;
+                const details =
+                  typeof errText === "string" && errText.trim()
+                    ? errText.trim()
+                    : typeof exitCode === "number"
+                      ? `exitCode=${exitCode}`
+                      : "unknown";
+
+                const run = await deps.prisma.run.findUnique({
+                  where: { id: message.run_id },
+                  select: { id: true, status: true, issueId: true, agentId: true }
+                });
+
+                if (run && run.status === "running") {
+                  await deps.prisma.run
+                    .update({
+                      where: { id: run.id },
+                      data: {
+                        status: "failed",
+                        completedAt: new Date(),
+                        failureReason: "init_failed",
+                        errorMessage: `initScript 失败: ${details}`
+                      }
+                    })
+                    .catch(() => {});
+
+                  await deps.prisma.issue
+                    .updateMany({
+                      where: { id: run.issueId, status: "running" },
+                      data: { status: "failed" }
+                    })
+                    .catch(() => {});
+
+                  await deps.prisma.agent
+                    .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
+                    .catch(() => {});
+                }
+              }
+            }
+
+            broadcastToClients({ type: "event_added", run_id: message.run_id, event: createdEvent });
+          });
           return;
         }
 
         if (message.type === "branch_created") {
-          const createdArtifact = await deps.prisma.artifact.create({
-            data: {
-              id: uuidv7(),
-              runId: message.run_id,
-              type: "branch",
-              content: { branch: message.branch } as any
-            }
+          await enqueueRunTask(message.run_id, async () => {
+            await flushRunChunkBuffer(message.run_id);
+            const createdArtifact = await deps.prisma.artifact.create({
+              data: {
+                id: uuidv7(),
+                runId: message.run_id,
+                type: "branch",
+                content: { branch: message.branch } as any
+              }
+            });
+            await deps.prisma.run
+              .update({ where: { id: message.run_id }, data: { branchName: message.branch } })
+              .catch(() => {});
+            broadcastToClients({ type: "artifact_added", run_id: message.run_id, artifact: createdArtifact });
           });
-          await deps.prisma.run
-            .update({ where: { id: message.run_id }, data: { branchName: message.branch } })
-            .catch(() => {});
-          broadcastToClients({ type: "artifact_added", run_id: message.run_id, artifact: createdArtifact });
           return;
         }
       } catch (error) {

@@ -127,6 +127,94 @@ describe("WebSocketGateway", () => {
     expect(msg.event).toBeTruthy();
   });
 
+  it("coalesces agent_message_chunk session_update before persisting", async () => {
+    let n = 0;
+    const prisma = {
+      event: {
+        create: vi.fn().mockImplementation(async ({ data }: any) => {
+          n += 1;
+          return {
+            id: `e${n}`,
+            runId: data.runId,
+            source: data.source,
+            type: data.type,
+            payload: data.payload,
+            timestamp: new Date()
+          };
+        })
+      }
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    const clientSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+    gateway.__testing.handleClientConnection(clientSocket as any);
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: {
+            type: "session_update",
+            session: "s1",
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "hello " }
+            }
+          }
+        })
+      )
+    );
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: {
+            type: "session_update",
+            session: "s1",
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "world" }
+            }
+          }
+        })
+      )
+    );
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: { type: "text", text: "[done]" }
+        })
+      )
+    );
+
+    await flushMicrotasks();
+
+    expect(prisma.event.create).toHaveBeenCalledTimes(2);
+    const payload = prisma.event.create.mock.calls[0][0].data.payload;
+    expect(payload).toMatchObject({
+      type: "session_update",
+      session: "s1",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "hello world" }
+      }
+    });
+
+    const msg = clientSocket.sent.map((s) => JSON.parse(s)).filter((m) => m.type === "event_added");
+    expect(msg.length).toBe(2);
+  });
+
   it("session_created updates run.acpSessionId", async () => {
     const prisma = {
       event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
