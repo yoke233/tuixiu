@@ -1,3 +1,5 @@
+import { access } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import WebSocket from "ws";
 
@@ -5,6 +7,9 @@ import { loadConfig } from "./config.js";
 import { Semaphore } from "./semaphore.js";
 import type { AgentUpdateMessage, IncomingMessage } from "./types.js";
 import { AcpBridge } from "./acpBridge.js";
+import { DefaultAgentLauncher } from "./launchers/defaultLauncher.js";
+import { HostProcessSandbox } from "./sandbox/hostProcessSandbox.js";
+import { BoxliteSandbox } from "./sandbox/boxliteSandbox.js";
 
 function pickArg(args: string[], name: string): string | null {
   const idx = args.indexOf(name);
@@ -58,6 +63,86 @@ async function main() {
     else console.log(head);
   };
 
+  if (cfg.sandbox.provider === "boxlite_oci") {
+    if (!cfg.sandbox.boxlite?.image?.trim()) {
+      throw new Error("sandbox.provider=boxlite_oci 时必须配置 sandbox.boxlite.image");
+    }
+
+    if (process.platform === "win32") {
+      throw new Error("BoxLite 不支持 Windows 原生运行，请在 WSL2/Linux 或 macOS(Apple Silicon) 上运行 acp-proxy，或改用 sandbox.provider=host_process");
+    }
+
+    if (process.platform === "darwin" && process.arch !== "arm64") {
+      throw new Error("BoxLite 仅支持 macOS Apple Silicon(arm64)。Intel Mac 请改用 sandbox.provider=host_process 或在 Linux/WSL2 上运行 acp-proxy");
+    }
+
+    if (process.platform === "linux") {
+      await access("/dev/kvm", fsConstants.R_OK | fsConstants.W_OK).catch(() => {
+        throw new Error("BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm");
+      });
+    }
+
+    // @ts-expect-error - optional dependency (only needed when sandbox.provider=boxlite_oci)
+    await import("@boxlite-ai/boxlite").catch(async () => {
+      // @ts-expect-error - optional dependency (package name differs by release channel)
+      await import("boxlite").catch(() => {
+        throw new Error(
+          "未安装 BoxLite Node SDK。请在 WSL2/Linux/macOS(Apple Silicon) 环境执行: pnpm -C acp-proxy add @boxlite-ai/boxlite（或 pnpm -C acp-proxy add boxlite）",
+        );
+      });
+    });
+  }
+
+  const isWsl =
+    process.platform === "linux" && !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
+
+  const mapWindowsPathToWsl = (cwd: string): string => {
+    const raw = cwd.trim();
+    if (!raw) return raw;
+    if (!isWsl) return raw;
+    if (!cfg.pathMapping || cfg.pathMapping.type !== "windows_to_wsl") return raw;
+
+    const m = /^([a-zA-Z]):[\\/](.*)$/.exec(raw);
+    if (!m) return raw;
+
+    const drive = m[1].toLowerCase();
+    const rest = m[2].replace(/\\/g, "/");
+    const mountRoot = cfg.pathMapping.wslMountRoot.replace(/[\\/]+$/, "");
+
+    return rest ? `${mountRoot}/${drive}/${rest}` : `${mountRoot}/${drive}`;
+  };
+
+  const mapHostPathToBox = (cwd: string): string => {
+    const raw = cwd.trim();
+    if (!raw) return raw;
+    if (cfg.sandbox.provider !== "boxlite_oci") return raw;
+    const volumes = cfg.sandbox.boxlite?.volumes ?? [];
+    if (!volumes.length) return raw;
+
+    const norm = raw.replace(/\\/g, "/");
+
+    const candidates = volumes
+      .map((v) => ({
+        hostPath: mapWindowsPathToWsl(v.hostPath).replace(/\\/g, "/").replace(/\/+$/, ""),
+        guestPath: v.guestPath.replace(/\\/g, "/").replace(/\/+$/, ""),
+      }))
+      .filter((v) => v.hostPath && v.guestPath);
+
+    let best: { hostPath: string; guestPath: string } | null = null;
+    for (const v of candidates) {
+      if (norm === v.hostPath || norm.startsWith(`${v.hostPath}/`)) {
+        if (!best || v.hostPath.length > best.hostPath.length) best = v;
+      }
+    }
+
+    if (!best) return norm;
+    return `${best.guestPath}${norm.slice(best.hostPath.length)}`;
+  };
+
+  const mapCwd = (cwd: string): string => mapHostPathToBox(mapWindowsPathToWsl(cwd));
+
+  const defaultCwd = mapCwd(cfg.cwd);
+
   let ws: WebSocket | null = null;
 
   const send = (payload: unknown) => {
@@ -108,9 +193,26 @@ async function main() {
     });
   };
 
+  const sandbox =
+    cfg.sandbox.provider === "boxlite_oci"
+      ? new BoxliteSandbox({
+          log,
+          config: {
+            image: cfg.sandbox.boxlite?.image ?? "",
+            workingDir: cfg.sandbox.boxlite?.workingDir,
+            volumes: cfg.sandbox.boxlite?.volumes,
+            env: cfg.sandbox.boxlite?.env,
+            cpus: cfg.sandbox.boxlite?.cpus,
+            memoryMib: cfg.sandbox.boxlite?.memoryMib,
+          },
+        })
+      : new HostProcessSandbox({ log });
+
+  const launcher = new DefaultAgentLauncher({ sandbox, command: cfg.agent_command });
+
   const bridge = new AcpBridge({
-    command: cfg.agent_command,
-    cwd: cfg.cwd,
+    launcher,
+    cwd: defaultCwd,
     log,
     onSessionUpdate: (sessionId, update) => {
       const runId = sessionToRun.get(sessionId);
@@ -135,7 +237,7 @@ async function main() {
   };
 
   const setRunCwd = (runId: string, cwd: string) => {
-    const value = cwd.trim();
+    const value = mapCwd(cwd);
     if (!value) return;
     runToCwd.set(runId, value);
   };
@@ -143,9 +245,9 @@ async function main() {
   const getRunCwd = (runId: string, incomingCwd?: string): string => {
     if (typeof incomingCwd === "string" && incomingCwd.trim()) {
       setRunCwd(runId, incomingCwd);
-      return incomingCwd.trim();
+      return runToCwd.get(runId) ?? defaultCwd;
     }
-    return runToCwd.get(runId) ?? cfg.cwd;
+    return runToCwd.get(runId) ?? defaultCwd;
   };
 
   const registerAgent = () => {

@@ -9,12 +9,60 @@ const agentSchema = z.object({
   capabilities: z.unknown().optional(),
 });
 
+const boxliteVolumeSchema = z.preprocess(
+  (v) => {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return v;
+    const obj = v as Record<string, unknown>;
+    if (
+      typeof obj.source === "string" &&
+      typeof obj.target === "string" &&
+      typeof obj.hostPath !== "string" &&
+      typeof obj.guestPath !== "string"
+    ) {
+      return { hostPath: obj.source, guestPath: obj.target, readOnly: obj.readOnly };
+    }
+    return v;
+  },
+  z.object({
+    hostPath: z.string().min(1),
+    guestPath: z.string().min(1),
+    readOnly: z.boolean().optional(),
+  }),
+);
+
+const sandboxSchema = z
+  .object({
+    provider: z.enum(["host_process", "boxlite_oci"]).default("host_process"),
+    boxlite: z
+      .object({
+        image: z.string().min(1).optional(),
+        workingDir: z.string().min(1).optional(),
+        volumes: z
+          .array(boxliteVolumeSchema)
+          .optional(),
+        env: z.record(z.string()).optional(),
+        cpus: z.coerce.number().positive().optional(),
+        memoryMib: z.coerce.number().int().positive().optional(),
+      })
+      .optional(),
+  })
+  .default({ provider: "host_process" });
+
+const pathMappingSchema = z
+  .object({
+    type: z.literal("windows_to_wsl"),
+    wslMountRoot: z.string().min(1).default("/mnt"),
+  })
+  .optional();
+
 const configSchema = z.object({
   orchestrator_url: z.string().min(1),
   auth_token: z.string().optional(),
   cwd: z.string().min(1).optional(),
+  pathMapping: pathMappingSchema,
   heartbeat_seconds: z.coerce.number().int().positive().default(30),
   mock_mode: z.boolean().default(false),
+  sandbox: sandboxSchema,
   agent_command: z.array(z.string().min(1)).default(["npx", "--yes", "@zed-industries/codex-acp"]),
   agent: agentSchema,
 });

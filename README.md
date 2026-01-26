@@ -139,7 +139,7 @@ pnpm test:coverage
 
 **关键决策点**:
 
-- [ ] 技术栈确认（Node.js vs Python）
+- [x] 技术栈已确定（Node.js + TypeScript）
 - [ ] Agent 选型（Codex vs 其他）
 - [ ] 部署方式（本地 Proxy vs 云端 Gateway）
 - [ ] 团队配置（2 人 vs 3 人）
@@ -162,8 +162,9 @@ pnpm test:coverage
 1. 数据库 Schema（30 分钟）→ 参考 03 文档
 2. API 框架搭建（2 小时）→ 参考 03 文档
 3. WebSocket Gateway（4 小时）→ 参考 03 文档
-4. GitLab 集成（4 小时）→ 参考 05 文档
-5. 调度器实现（4 小时）→ 参考 03 文档
+4. Issue 启动 Run + worktree（4 小时）→ 参考 01/03 文档
+5. Run 对话/事件/变更 diff（4 小时）→ 参考 03/04/06 文档
+6. PR（GitLab/GitHub）创建/合并（4 小时）→ 参考 03/05 文档
 
 ---
 
@@ -202,17 +203,17 @@ pnpm test:coverage
 
 ## 📋 文档清单
 
-| 文件名                                 | 页数 | 关键内容                     | 优先级    |
-| -------------------------------------- | ---- | ---------------------------- | --------- |
-| PRD_ACP_Driven_Dev_Collab_System_v2.md | 40+  | 产品定位、数据模型、流程设计 | P0        |
-| 00_POC_IMPLEMENTATION_GUIDE.md         | 15+  | 里程碑、团队分工、风险       | P0        |
-| 01_SYSTEM_ARCHITECTURE.md              | 25+  | 架构图、组件职责、技术选型   | P0        |
-| 02_ENVIRONMENT_SETUP.md                | 18+  | 工具安装、配置文件           | P0        |
-| 03_COMPONENT_IMPLEMENTATION.md         | 28+  | 数据库 Schema、API、算法     | P0        |
-| 04_ACP_INTEGRATION_SPEC.md             | 20+  | ACP 协议、Proxy 实现         | **P0** ⭐ |
-| 05_GITLAB_INTEGRATION.md               | 15+  | GitLab API、Webhook          | P0        |
-| 06_QUICK_START_GUIDE.md                | 20+  | 完整代码片段、快速启动       | **P0** ⭐ |
-| 07_TESTING_PLAN.md                     | 12+  | 测试用例、验收标准           | P1        |
+| 文件 | 关键内容 | 优先级 |
+| --- | --- | --- |
+| `PRD_ACP_Driven_Dev_Collab_System_v2.md` | 产品定位、数据模型、流程设计 | P0 |
+| `docs/00_POC_IMPLEMENTATION_GUIDE.md` | PoC 总览与范围边界（以 `docs/ROADMAP.md` 为进度准） | P0 |
+| `docs/01_SYSTEM_ARCHITECTURE.md` | 真实架构与数据流（当前仓库） | P0 |
+| `docs/02_ENVIRONMENT_SETUP.md` | 环境搭建（当前仓库） | P0 |
+| `docs/03_COMPONENT_IMPLEMENTATION.md` | 代码导航与关键入口（当前仓库） | P0 |
+| `docs/04_ACP_INTEGRATION_SPEC.md` | ACP/Session/Proxy 关键机制（当前仓库） | **P0** ⭐ |
+| `docs/06_QUICK_START_GUIDE.md` | 快速跑通一次闭环（UI + API） | **P0** ⭐ |
+| `docs/05_GITLAB_INTEGRATION.md` | GitLab MR（系统统一称 PR）与当前实现边界 | P1 |
+| `docs/07_TESTING_PLAN.md` | 测试与验收（持续更新） | P1 |
 
 ---
 
@@ -220,16 +221,16 @@ pnpm test:coverage
 
 ### 数据库关键表
 
-```sql
--- 核心表关系
+```
 projects (1) → issues (N) → runs (N) → events / artifacts
-                              ↓
-                            agents (N)
+                              ↑
+                            agents (1)
 
--- 关键字段
-runs.status: pending → running → waiting_ci → completed
-runs.acp_session_id: 绑定 ACP 会话
-runs.branch_name: 格式 acp/issue-{id}/run-{short_id}
+关键字段（以 Prisma schema 为准）：
+- runs.acpSessionId：Run 绑定的 ACP session
+- runs.workspacePath：Run worktree 路径
+- runs.branchName：默认 `run/<runId>`
+- runs.status：pending → running → waiting_ci → completed（CI/Webhook 仍在规划中）
 ```
 
 ### API 端点速查
@@ -237,12 +238,18 @@ runs.branch_name: 格式 acp/issue-{id}/run-{short_id}
 ```bash
 # Issues
 POST   /api/issues          # 创建任务
+POST   /api/issues/:id/start # 启动 Run（可选传 agentId）
 GET    /api/issues          # 列表
 GET    /api/issues/:id      # 详情
 
 # Runs
 GET    /api/runs/:id        # Run 详情
 GET    /api/runs/:id/events # 事件时间线
+POST   /api/runs/:id/prompt # 继续对话
+GET    /api/runs/:id/changes # 变更文件
+GET    /api/runs/:id/diff   # diff（query: path=...）
+POST   /api/runs/:id/create-pr # 创建 PR
+POST   /api/runs/:id/merge-pr  # 合并 PR
 POST   /api/runs/:id/cancel # 取消
 
 # Agents
@@ -268,29 +275,22 @@ GET    /api/agents          # Agent 列表
 {
   "type": "execute_task",
   "run_id": "run-123",
-  "session_id": "sess-abc",
-  "prompt": "任务描述"
+  "prompt": "任务描述",
+  "cwd": "D:\\repo\\.worktrees\\run-<runId>"
 }
 
 // Proxy → Orchestrator
 {
   "type": "agent_update",
   "run_id": "run-123",
-  "content": "进度更新",
-  "timestamp": "..."
+  "content": { "type": "session_update", "session": "sess_xxx", "update": { "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": "..." } } }
 }
 ```
 
-### GitLab API 关键
+### PR（GitLab/GitHub）关键
 
-```bash
-# 创建 Merge Request（GitLab）
-POST /api/v4/projects/:id/merge_requests
-Headers: PRIVATE-TOKEN: glpat-xxx
-
-# 查询 Pipeline
-GET /api/v4/projects/:id/pipelines/:pipeline_id
-```
+- 统一端点：`POST /api/runs/:id/create-pr`、`POST /api/runs/:id/merge-pr`
+- GitLab/MR 细节：见 `docs/05_GITLAB_INTEGRATION.md`
 
 ---
 
@@ -300,7 +300,7 @@ GET /api/v4/projects/:id/pipelines/:pipeline_id
 
 **检查**:
 
-1. Orchestrator 是否运行: `curl http://localhost:3000/api/issues`
+1. Orchestrator 是否运行: `curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/projects`
 2. WebSocket 是否可访问: `wscat -c ws://localhost:3000/ws/agent`
 3. Proxy 配置中的 URL 是否正确
 
@@ -308,17 +308,17 @@ GET /api/v4/projects/:id/pipelines/:pipeline_id
 
 **检查**:
 
-1. 手动测试 Codex: `echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | codex --acp`
-2. 查看 Proxy 日志: `tail -f proxy.log`
-3. 检查 stderr 是否有错误
+1. 查看 `acp-proxy` 终端输出（`pnpm dev`）
+2. 检查 `acp-proxy/config.json` 的 `agent_command`（Windows 下可用 `where.exe npx` 验证）
+3. 确认 backend 已连接到 proxy（Agent 列表 `GET /api/agents`）
 
 ### Q: PR 未创建？
 
 **检查**:
 
 1. GitLab Token 是否有效
-2. Proxy 是否检测到 "branch created"
-3. Orchestrator 日志是否有 API 调用错误
+2. Run 是否有 `branchName/workspacePath`（启动 Run 时会创建 worktree）
+3. 后端日志是否有 `git push` 或 provider API 调用错误
 
 ---
 
@@ -344,13 +344,16 @@ GET /api/v4/projects/:id/pipelines/:pipeline_id
 
 ## 🎯 成功标准（MVP）
 
-运行 10 个真实任务，至少 7 个成功完成：
+最小闭环至少跑通 1 次（建议累计 10 个真实任务）：
 
-- [x] 创建 Issue
-- [x] Agent 自动执行
-- [x] 创建 PR
-- [x] CI 运行
-- [x] 合并后标记 Done
+- [x] 创建 Project（配置 repo + token）
+- [x] 创建 Issue（进入 pending 需求池）
+- [x] 启动 Run（选择/自动分配 Agent + worktree）
+- [x] RunConsole 实时输出 + 可继续对话
+- [x] 查看变更与 diff
+- [x] 创建 PR（GitLab MR / GitHub PR）
+- [x] 合并 PR 并推进 Issue done
+- [ ] CI/Webhook 闭环（待实现，见 `docs/ROADMAP.md`）
 
 **预期时间**: 3-4 周
 
@@ -365,18 +368,18 @@ project-root/
 ├── backend/           # Orchestrator
 ├── frontend/          # Web UI
 ├── acp-proxy/         # ACP Proxy
-├── database/          # 迁移脚本
-├── docker/            # Docker 配置
-└── docs/              # 本文档集
+├── docs/              # 文档集
+├── docker-compose.yml # Postgres（开发用）
+└── pnpm-workspace.yaml
 ```
 
 ### 最终文档
 
-- [ ] 系统架构图（更新版）
-- [ ] API 文档（Swagger）
-- [ ] 部署手册
-- [ ] 用户操作手册
-- [ ] 测试报告
+- [x] 系统架构图（见 `docs/01_SYSTEM_ARCHITECTURE.md`）
+- [ ] API 文档（可选：OpenAPI/Swagger）
+- [x] 部署/启动手册（见 `docs/02_ENVIRONMENT_SETUP.md`、`docs/06_QUICK_START_GUIDE.md`）
+- [ ] 用户操作手册（后续补充）
+- [ ] 测试报告（后续补充）
 
 ---
 

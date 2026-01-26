@@ -1,485 +1,176 @@
-# 快速开始实施手册
+# 快速开始手册（当前仓库）
 
-本文档整合了组件实现、部署和测试的关键要点，让你能快速启动 MVP。
-
----
-
-## 第一步：启动数据库 + Prisma 迁移（10 分钟）
-
-本仓库数据库层使用 **Prisma ORM**（见 `backend/prisma/schema.prisma`），迁移通过 `prisma migrate` 自动生成/执行，**不需要手写 SQL**。
-
-### 1) 启动 PostgreSQL（Docker Compose）
-
-```powershell
-docker compose up -d
-```
-
-### 2) 配置后端环境变量
-
-```powershell
-Copy-Item backend/.env.example backend/.env
-```
-
-### 3) 执行迁移（创建/更新表结构）
-
-```powershell
-cd backend
-pnpm prisma:migrate
-```
+本文档面向“直接跑起来并完成一次完整闭环”。不再包含旧版“从零搭建/示例伪代码”，真实实现以仓库代码为准。
 
 ---
 
-## 第二步：后端 Orchestrator (1 天)
+## 1. 启动（Windows / PowerShell）
 
-### 启动后端（Fastify + Prisma）
-
-仓库已在 `backend/` 中实现 Orchestrator（REST API + WebSocket Gateway + Prisma ORM），直接启动即可：
+先按 `docs/02_ENVIRONMENT_SETUP.md` 完成环境与数据库迁移，然后在三个终端分别启动：
 
 ```powershell
+# 终端 1：backend
 cd backend
 pnpm dev
 ```
 
-验证（Windows/pwsh 注意使用 `curl.exe` 并关闭代理）：
-
 ```powershell
-curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/projects
-```
-
-> 下方的“关键代码片段”属于文档示例，真实实现以仓库代码为准。
-
-### 最小可用代码结构
-
-```
-backend/
-├── src/
-│   ├── index.ts              # 入口
-│   ├── config.ts             # 配置
-│   ├── db.ts                 # 数据库连接
-│   ├── routes/
-│   │   ├── issues.ts         # Issue API
-│   │   ├── runs.ts           # Run API
-│   │   ├── agents.ts         # Agent API
-│   │   └── webhooks.ts       # GitLab Webhook
-│   ├── services/
-│   │   ├── scheduler.ts      # 任务调度器
-│   │   └── gitlab.ts         # GitLab API 客户端
-│   └── websocket/
-│       ├── gateway.ts        # WebSocket 服务器
-│       └── handlers.ts       # 消息处理器
-└── package.json
-```
-
-### 关键代码片段
-
-#### `src/index.ts` (入口)
-
-```typescript
-import fastify from "fastify";
-import cors from "@fastify/cors";
-import websocket from "@fastify/websocket";
-import dotenv from "dotenv";
-
-import issueRoutes from "./routes/issues";
-import runRoutes from "./routes/runs";
-import agentRoutes from "./routes/agents";
-import webhookRoutes from "./routes/webhooks";
-import { initWebSocketGateway } from "./websocket/gateway";
-
-dotenv.config();
-
-const server = fastify({ logger: true });
-
-// 中间件
-server.register(cors);
-server.register(websocket);
-
-// 路由
-server.register(issueRoutes, { prefix: "/api/issues" });
-server.register(runRoutes, { prefix: "/api/runs" });
-server.register(agentRoutes, { prefix: "/api/agents" });
-server.register(webhookRoutes, { prefix: "/webhooks" });
-
-// WebSocket
-initWebSocketGateway(server);
-
-// 启动
-const start = async () => {
-  try {
-    await server.listen({
-      port: Number(process.env.PORT) || 3000,
-      host: "0.0.0.0",
-    });
-    console.log("Server running on http://localhost:3000");
-  } catch (err) {
-    server.log.error(err);
-    process.exit(1);
-  }
-};
-
-start();
-```
-
-#### `src/db.ts` (数据库连接)
-
-```typescript
-import { Pool } from "pg";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-export const query = (text: string, params?: any[]) => {
-  return pool.query(text, params);
-};
-
-export default pool;
-```
-
-#### `src/routes/issues.ts` (Issue API)
-
-```typescript
-import { FastifyInstance } from "fastify";
-import { query } from "../db";
-import { scheduleTask } from "../services/scheduler";
-
-export default async function (server: FastifyInstance) {
-  // 创建 Issue
-  server.post("/", async (request, reply) => {
-    const { title, description, acceptance_criteria } = request.body as any;
-
-    const result = await query(
-      `INSERT INTO issues (title, description, acceptance_criteria, project_id) 
-       VALUES ($1, $2, $3, (SELECT id FROM projects LIMIT 1))
-       RETURNING *`,
-      [title, description, JSON.stringify(acceptance_criteria)],
-    );
-
-    const issue = result.rows[0];
-
-    // 自动调度任务
-    await scheduleTask(issue.id);
-
-    return { success: true, issue };
-  });
-
-  // 列表
-  server.get("/", async (request, reply) => {
-    const result = await query("SELECT * FROM issues ORDER BY created_at DESC");
-    return { issues: result.rows };
-  });
-
-  // 详情
-  server.get("/:id", async (request, reply) => {
-    const { id } = request.params as any;
-    const result = await query("SELECT * FROM issues WHERE id = $1", [id]);
-
-    if (result.rows.length === 0) {
-      return reply.status(404).send({ error: "Issue not found" });
-    }
-
-    return { issue: result.rows[0] };
-  });
-}
-```
-
-#### `src/services/scheduler.ts` (调度器)
-
-```typescript
-import { query } from "../db";
-import { v4 as uuidv4 } from "uuid";
-import { sendTaskToAgent } from "../websocket/gateway";
-
-export async function scheduleTask(issueId: string) {
-  // 1. 查询 Issue
-  const issueResult = await query("SELECT * FROM issues WHERE id = $1", [
-    issueId,
-  ]);
-  const issue = issueResult.rows[0];
-
-  // 2. 选择可用的 Agent
-  const agentResult = await query(
-    `SELECT * FROM agents 
-     WHERE status = 'online' 
-     AND current_load < max_concurrent_runs 
-     LIMIT 1`,
-  );
-
-  if (agentResult.rows.length === 0) {
-    throw new Error("No available agent");
-  }
-
-  const agent = agentResult.rows[0];
-
-  // 3. 创建 Run
-  const sessionId = `sess-${uuidv4()}`;
-  const branchName = `acp/issue-${issue.id}/run-${uuidv4().slice(0, 8)}`;
-
-  const runResult = await query(
-    `INSERT INTO runs (issue_id, agent_id, acp_session_id, branch_name, status)
-     VALUES ($1, $2, $3, $4, 'pending')
-     RETURNING *`,
-    [issue.id, agent.id, sessionId, branchName],
-  );
-
-  const run = runResult.rows[0];
-
-  // 4. 发送任务给 Agent
-  const prompt = `
-任务: ${issue.title}
-
-描述: ${issue.description}
-
-验收标准:
-${issue.acceptance_criteria.map((c: string, i: number) => `${i + 1}. ${c}`).join("\n")}
-
-请在分支 ${branchName} 上完成开发，并创建 PR。
-  `;
-
-  await sendTaskToAgent(agent.id, {
-    run_id: run.id,
-    session_id: sessionId,
-    prompt,
-  });
-
-  // 5. 更新状态
-  await query(`UPDATE runs SET status = 'running' WHERE id = $1`, [run.id]);
-  await query(
-    `UPDATE agents SET current_load = current_load + 1 WHERE id = $1`,
-    [agent.id],
-  );
-
-  console.log(`✅ Task scheduled: Run ${run.id} → Agent ${agent.id}`);
-
-  return run;
-}
-```
-
-#### `src/websocket/gateway.ts` (WebSocket 网关)
-
-```typescript
-import { FastifyInstance } from "fastify";
-import { WebSocket } from "ws";
-
-const agentConnections = new Map<string, WebSocket>();
-
-export function initWebSocketGateway(server: FastifyInstance) {
-  server.get("/ws/agent", { websocket: true }, (connection, req) => {
-    console.log("Agent connected");
-
-    let agentId: string | null = null;
-
-    connection.socket.on("message", async (data) => {
-      const message = JSON.parse(data.toString());
-
-      if (message.type === "register_agent") {
-        agentId = message.agent.id;
-        agentConnections.set(agentId, connection.socket);
-
-        // 更新数据库
-        await query(
-          `INSERT INTO agents (id, name, proxy_id, capabilities, status, max_concurrent_runs)
-           VALUES ($1, $2, $3, $4, 'online', $5)
-           ON CONFLICT (proxy_id) DO UPDATE SET status = 'online', last_heartbeat = NOW()`,
-          [
-            agentId,
-            message.agent.name,
-            agentId,
-            JSON.stringify(message.agent.capabilities),
-            message.agent.max_concurrent,
-          ],
-        );
-
-        connection.socket.send(
-          JSON.stringify({
-            type: "register_ack",
-            success: true,
-          }),
-        );
-
-        console.log(`✅ Agent registered: ${agentId}`);
-      } else if (message.type === "heartbeat") {
-        await query(`UPDATE agents SET last_heartbeat = NOW() WHERE id = $1`, [
-          message.agent_id,
-        ]);
-      } else if (message.type === "agent_update") {
-        // 保存事件
-        await query(
-          `INSERT INTO events (run_id, source, type, payload)
-           VALUES ($1, 'acp', 'acp.update', $2)`,
-          [message.run_id, JSON.stringify(message.content)],
-        );
-
-        // TODO: 推送给 Web UI
-      } else if (message.type === "branch_created") {
-        await handleBranchCreated(message);
-      }
-    });
-
-    connection.socket.on("close", () => {
-      if (agentId) {
-        agentConnections.delete(agentId);
-        query(`UPDATE agents SET status = 'offline' WHERE id = $1`, [agentId]);
-        console.log(`Agent disconnected: ${agentId}`);
-      }
-    });
-  });
-}
-
-export async function sendTaskToAgent(agentId: string, task: any) {
-  const ws = agentConnections.get(agentId);
-  if (!ws) {
-    throw new Error("Agent not connected");
-  }
-
-  ws.send(
-    JSON.stringify({
-      type: "execute_task",
-      ...task,
-    }),
-  );
-}
-
-async function handleBranchCreated(message: any) {
-  // 调用 GitLab API 创建 PR（见 GitLab 集成文档）
-  // ...
-}
-```
-
----
-
-## 第三步：ACP Proxy (半天)
-
-### 完整实现（Node/TypeScript）
-
-Proxy 已切换为 Node/TypeScript 版本（基于 `@agentclientprotocol/sdk`），用于更完整地跟进 ACP 能力（如 `session/load`、Session Modes 等）。
-
-> 旧版 Go Proxy 已从仓库移除，以下以 Node/TypeScript 版本为准。
-
-### 项目结构
-
-```
-acp-proxy/
-├── src/index.ts               # 主入口（WS ↔ ACP）
-├── src/acpBridge.ts           # ACP SDK 桥接（spawn + ndjson）
-├── src/config.ts              # 配置管理
-├── src/semaphore.ts           # 并发控制
-├── config.json                # 配置文件
-└── package.json               # 依赖管理
-```
-
-### 快速开始（Windows/pwsh）
-
-```powershell
+# 终端 2：proxy
 cd acp-proxy
 Copy-Item config.json.example config.json
 notepad config.json
 pnpm dev
 ```
 
-> 说明：若本机 `codex` CLI 不支持 `--acp`，Proxy 默认使用 `npx --yes @zed-industries/codex-acp` 启动 ACP Agent。
-
----
-
-## 第四步：前端 Web UI (1 天)
-
-### 快速启动（React + Vite）
-
-前端已在 `frontend/` 中实现（Issue 列表 / 详情 / 创建 + WS 实时刷新），直接启动即可：
-
 ```powershell
+# 终端 3：frontend
 cd frontend
 pnpm dev
 ```
 
-默认地址：`http://localhost:5173`
+浏览器打开：`http://localhost:5173`
 
 ---
 
-## 第五步：端到端测试 (半天)
+## 1.1 启动（Linux / WSL2）
 
-### 测试用例
+- 纯 Linux：三段命令与 Windows 相同（分别在 `backend/`、`acp-proxy/`、`frontend/` 运行 `pnpm dev`）。
+- A 形态（backend/frontend 在 Windows，proxy 在 WSL2）：WSL2 内启动 `acp-proxy` 时，`orchestrator_url` 不能用 `localhost`，需要配置为 Windows Host IP；并开启 `pathMapping` 把 `D:\\...` 转成 `/mnt/d/...`。
+
+---
+
+## 1.2 启动（macOS）
+
+- 默认建议 `sandbox.provider=host_process`（本机直跑），`orchestrator_url` 可继续用 `ws://localhost:3000/ws/agent`。
+- 如需 `sandbox.provider=boxlite_oci`：仅 Apple Silicon(arm64) 且 macOS 12+；Intel Mac 暂不支持。
+
+---
+
+## 2. 最小闭环（推荐用 UI）
+
+1. 创建 Project（填写 `repoUrl` + SCM token）
+2. 创建 Issue（进入 `pending` 需求池）
+3. 在 Issue 详情页点击“启动 Run”（选择/自动分配 Agent）
+4. 观察右侧控制台输出（RunConsole）与状态变化
+5. 在下方输入框继续对话（同一个 Run/session）
+6. 查看变更（files + diff）
+7. 点击“一键创建 PR”，进入 Review 流程（当前为后端直连 GitLab/GitHub API）
+
+---
+
+## 3. Run 工作区与分支（关键约定）
+
+后端在启动 Run 时会自动创建独立 worktree 与分支：
+
+- worktree：`<repoRoot>/.worktrees/run-<runId>`
+- 分支名：`run/<runId>`
+
+并把 `cwd=<worktreePath>` 透传给 proxy/ACP session，让 agent 在隔离环境里修改代码。  
+**约定**：agent 在该分支上完成修改后应执行 `git commit`，随后由后端负责 `git push` 并创建 PR。
+
+实现参考：
+
+- worktree：`backend/src/utils/gitWorkspace.ts`
+- 启动 Run：`backend/src/routes/issues.ts`
+
+---
+
+## 4. 关键 API（给脚本/调试用）
+
+> Windows/pwsh 调本地 API：建议用 `curl.exe --noproxy 127.0.0.1 ...`
+
+### 4.1 Project
+
+- `GET /api/projects`
+- `POST /api/projects`
+
+示例：
 
 ```powershell
-# 0) 先创建 Project（数据库里没有 Project 时创建 Issue 会返回 NO_PROJECT）
 curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
   -H "Content-Type: application/json" `
-  -d '{\"name\":\"Demo\",\"repoUrl\":\"https://example.com/repo.git\"}'
+  -d '{\"name\":\"demo\",\"repoUrl\":\"https://gitlab.example.com/group/repo\",\"scmType\":\"gitlab\",\"defaultBranch\":\"main\",\"gitlabProjectId\":123,\"gitlabAccessToken\":\"<token>\"}'
+```
 
-# 可选：如需在 Web 端“一键创建 PR”，请在创建 Project 时配置 SCM 信息
-# - GitLab: scmType=gitlab + gitlabProjectId + gitlabAccessToken
-# - GitHub: scmType=github + githubAccessToken
-# 例如：
-# curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
-#   -H "Content-Type: application/json" `
-#   -d '{\"name\":\"Demo\",\"repoUrl\":\"https://github.com/octo-org/octo-repo.git\",\"scmType\":\"github\",\"defaultBranch\":\"main\",\"githubAccessToken\":\"ghp_xxx\"}'
+### 4.2 Issue（需求池）
 
-# 1) 创建 Issue（有在线 Agent 时会自动创建 Run 并下发 execute_task）
-curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/issues `
-  -H "Content-Type: application/json" `
-  -d '{\"title\":\"修复 README 拼写错误\",\"description\":\"README 中有多个拼写错误\",\"acceptanceCriteria\":[\"修复所有拼写错误\"]}'
+- `POST /api/issues`：创建 Issue（进入 `pending`）
+- `POST /api/issues/:id/start`：启动 Run（可选传 `agentId`）
+- `GET /api/issues/:id`：详情（包含 runs 列表）
 
-# 2) 查看 Agent 列表（Proxy 连接后应为 online）
-curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/agents
+### 4.3 Run（对话/变更/PR）
 
-# 3) 查询 Issue / Run / Events
-curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/issues/{issue_id}
-curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/runs/{run_id}
-curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/runs/{run_id}/events
+- `GET /api/runs/:id`：Run 详情（含 `acpSessionId/workspacePath/branchName/artifacts`）
+- `GET /api/runs/:id/events`：事件流（后端按 timestamp desc 返回）
+- `POST /api/runs/:id/prompt`：继续对话（后端会尽量复用 `Run.acpSessionId`）
+- `GET /api/runs/:id/changes` / `GET /api/runs/:id/diff?path=...`：变更列表与 diff
+- `POST /api/runs/:id/create-pr`：创建 PR（GitLab MR / GitHub PR）
+- `POST /api/runs/:id/merge-pr`：合并 PR
+
+实现参考：
+
+- Run routes：`backend/src/routes/runs.ts`
+- PR：`backend/src/services/runReviewRequest.ts`
+
+---
+
+## 5. Proxy 配置（acp-proxy/config.json）
+
+最小配置项：
+
+- `orchestrator_url`: `ws://localhost:3000/ws/agent`
+- `cwd`: repo 根目录（运行中会覆盖为 worktree cwd）
+- `agent_command`: 默认 `["npx","--yes","@zed-industries/codex-acp"]`（可替换为任意 ACP 兼容 Agent）
+- `sandbox.provider`: 默认 `host_process`（`boxlite_oci` 仅 WSL2/Linux/macOS Apple Silicon 可用）
+- `pathMapping`: 可选（仅当你在 WSL 内运行 proxy 且后端传入 Windows 路径时使用，把 `D:\\...` 转成 `/mnt/d/...`）
+
+示例：替换为其它 ACP agent 启动命令：
+
+```json
+{ "agent_command": ["npx", "--yes", "<some-acp-agent>"] }
+```
+
+示例：使用 BoxLite（`sandbox.provider=boxlite_oci`）在 OCI/micro-VM 里运行 ACP Agent：
+
+```json
+{
+  "sandbox": {
+    "provider": "boxlite_oci",
+    "boxlite": {
+      "image": "ghcr.io/<org>/codex-acp:latest",
+      "workingDir": "/workspace",
+      "env": { "OPENAI_API_KEY": "<key>" },
+      "volumes": [{ "hostPath": "/mnt/d/repo/tuixiu", "guestPath": "/workspace" }]
+    }
+  }
+}
+```
+
+> 镜像参考：`docs/references/agent-images/codex-acp/Dockerfile`（建议构建并推送到 registry，供 BoxLite 拉取）。
+
+WSL2/Linux 最短链路（假设已准备好可拉取的镜像）：
+
+```bash
+pnpm -C acp-proxy add @boxlite-ai/boxlite
+# 编辑 acp-proxy/config.json：按上面的 boxlite_oci 示例配置 image/volumes/pathMapping
+pnpm -C acp-proxy dev
+```
+
+Windows 下如遇 `spawn npx ENOENT`，请先确认 `where.exe npx` 可用；proxy 已内置 `cmd.exe /c` shim（`acp-proxy/src/sandbox/hostProcessSandbox.ts`）。
+
+---
+
+## 6. 一键验证
+
+```powershell
+pnpm test
+pnpm test:coverage
 ```
 
 ---
 
-## 常见问题排查
+## 7. 常见排错
 
-### 1. Agent 连接失败
-
-**检查**:
-
-```powershell
-# Orchestrator 是否运行
-curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/issues
-
-# WebSocket 是否可访问（无需全局安装）
-npx --yes wscat -c ws://localhost:3000/ws/agent
-```
-
-### 2. Codex 无输出
-
-**检查**:
-
-```powershell
-# 手动测试 ACP Agent（若本机 codex CLI 不支持 --acp）
-'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}' | npx --yes @zed-industries/codex-acp
-
-# Proxy 默认打印到控制台；如你把输出重定向到文件：
-Get-Content -Wait .\\proxy.log
-```
-
-### 3. PR 未创建
-
-**检查**:
-
-```powershell
-# GitLab Token 是否正确（后续 GitLab 集成时使用）
-curl.exe -H "PRIVATE-TOKEN: $env:GITLAB_ACCESS_TOKEN" "$env:GITLAB_URL/api/v4/projects/$env:GITLAB_PROJECT_ID"
-
-# Proxy 是否检测到 "branch created"（如你把输出重定向到文件）
-Select-String -Path .\\proxy.log -Pattern "branch created" -CaseSensitive:$false
-```
-
----
-
-## 下一步优化
-
-MVP 运行后，按以下顺序优化:
-
-1. **Web UI 实时更新**（WebSocket 推送）
-2. **Review 闭环**（评论聚合 + 返工）
-3. **失败诊断**（自动收集日志）
-4. **重试/接管**（一键操作）
-5. **监控告警**（Grafana Dashboard）
-
----
-
-**祝顺利！🚀**
+- 前端列表/详情不更新：确认 WS 已连接（页面顶部 `WS: connected`）以及 backend 端口正确
+- 无法继续对话：确认 Agent 在线（`GET /api/agents`）且 Run 已绑定 `acpSessionId`
+- PR 创建失败：检查 Project 的 token/权限、以及分支是否已 push（后端会在创建 PR 前 `git push`）

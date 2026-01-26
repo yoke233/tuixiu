@@ -1,20 +1,20 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
+
+import type { AcpTransport, AgentLauncher } from "./launchers/types.js";
 
 type SessionUpdateFn = (sessionId: string, update: acp.SessionNotification["update"]) => void;
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
 
 export class AcpBridge {
-  private proc: ChildProcessWithoutNullStreams | null = null;
+  private transport: AcpTransport | null = null;
   private conn: acp.ClientSideConnection | null = null;
   private initialized = false;
   private lastInitResult: acp.InitializeResponse | null = null;
 
   constructor(
     private readonly opts: {
-      command: string[];
+      launcher: AgentLauncher;
       cwd: string;
       log: Logger;
       onSessionUpdate: SessionUpdateFn;
@@ -22,54 +22,24 @@ export class AcpBridge {
   ) {}
 
   private kill() {
-    const proc = this.proc;
-    this.proc = null;
+    const transport = this.transport;
+    this.transport = null;
     this.conn = null;
     this.initialized = false;
     this.lastInitResult = null;
-    if (proc && !proc.killed) {
-      try {
-        proc.kill();
-      } catch {
-        // ignore
-      }
-    }
+    if (transport) void transport.close().catch(() => {});
   }
 
-  private ensureSpawned() {
-    if (this.proc && this.conn) return;
+  private async ensureConnected(): Promise<void> {
+    if (this.transport && this.conn) return;
 
-    if (!this.opts.command.length) throw new Error("agent_command 为空");
-    const [rawCmd, ...args] = this.opts.command;
-
-    const lower = rawCmd.toLowerCase();
-    const useCmdShim =
-      process.platform === "win32" &&
-      (lower === "npx" ||
-        lower === "npm" ||
-        lower === "pnpm" ||
-        lower === "yarn" ||
-        lower.endsWith(".cmd") ||
-        lower.endsWith(".bat"));
-
-    const spawnCmd = useCmdShim ? (process.env.ComSpec ?? "cmd.exe") : rawCmd;
-    const spawnArgs = useCmdShim ? ["/d", "/s", "/c", rawCmd, ...args] : args;
-
-    this.opts.log("spawn acp agent", { cmd: spawnCmd, args: spawnArgs, cwd: this.opts.cwd });
-    const proc = spawn(spawnCmd, spawnArgs, { cwd: this.opts.cwd, stdio: ["pipe", "pipe", "pipe"] });
-    proc.on("exit", (code, signal) => {
-      this.opts.log("acp agent exited", { code, signal });
-      this.kill();
-    });
-    proc.on("error", (err) => {
-      this.opts.log("acp agent error", { err: String(err) });
+    const transport = await this.opts.launcher.launch({ cwd: this.opts.cwd });
+    transport.onExit?.((info) => {
+      this.opts.log("acp agent exited", info);
       this.kill();
     });
 
-    const input = Writable.toWeb(proc.stdin);
-    const output = Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>;
-
-    const stream = acp.ndJsonStream(input, output);
+    const stream = acp.ndJsonStream(transport.input, transport.output);
 
     const clientImpl: acp.Client = {
       requestPermission: async (params) => {
@@ -91,12 +61,12 @@ export class AcpBridge {
       },
     };
 
-    this.proc = proc;
+    this.transport = transport;
     this.conn = new acp.ClientSideConnection((_agent) => clientImpl, stream);
   }
 
   async ensureInitialized(): Promise<acp.InitializeResponse> {
-    this.ensureSpawned();
+    await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     if (this.initialized && this.lastInitResult) return this.lastInitResult;
 
@@ -114,14 +84,14 @@ export class AcpBridge {
   }
 
   async newSession(cwd: string): Promise<acp.NewSessionResponse> {
-    this.ensureSpawned();
+    await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
     return await this.conn.newSession({ cwd, mcpServers: [] });
   }
 
   async loadSession(sessionId: string, cwd: string): Promise<boolean> {
-    this.ensureSpawned();
+    await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
 
@@ -134,7 +104,7 @@ export class AcpBridge {
   }
 
   async prompt(sessionId: string, prompt: string): Promise<acp.PromptResponse> {
-    this.ensureSpawned();
+    await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
     return await this.conn.prompt({ sessionId, prompt: [{ type: "text", text: prompt }] });

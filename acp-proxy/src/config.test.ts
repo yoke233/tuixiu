@@ -26,6 +26,7 @@ describe("loadConfig", () => {
     expect(cfg.agent.name).toBe("codex-local-1");
     expect(cfg.agent.max_concurrent).toBe(2);
     expect(cfg.agent.capabilities).toEqual({ tools: ["git"] });
+    expect(cfg.sandbox.provider).toBe("host_process");
+    expect(cfg.pathMapping).toBeUndefined();
   });
 });
-
