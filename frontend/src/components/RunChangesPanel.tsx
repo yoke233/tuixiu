@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { approveApproval, rejectApproval } from "../api/approvals";
 import {
   createRunPr,
   getRun,
   getRunChanges,
   getRunDiff,
-  mergeRunPr,
   promptRun,
+  requestMergeRunPr,
   syncRunPr,
   type RunChanges,
 } from "../api/runs";
@@ -83,6 +84,20 @@ export function RunChangesPanel(props: Props) {
   const prArtifact = useMemo(() => {
     const arts = props.run?.artifacts ?? [];
     return arts.find((a) => a.type === "pr") ?? null;
+  }, [props.run]);
+
+  const mergeApproval = useMemo(() => {
+    const arts = props.run?.artifacts ?? [];
+    const reports = arts.filter((a) => a.type === "report");
+    const sorted = [...reports].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    for (const art of sorted) {
+      const content = art.content as any;
+      if (!content || typeof content !== "object") continue;
+      if (content.kind !== "approval_request") continue;
+      if (content.action !== "merge_pr") continue;
+      return { artifact: art, content };
+    }
+    return null;
   }, [props.run]);
 
   const prInfo = useMemo(() => {
@@ -197,7 +212,54 @@ export function RunChangesPanel(props: Props) {
         return;
       }
 
-      await mergeRunPr(props.runId);
+      await requestMergeRunPr(props.runId);
+      await refreshRun();
+      props.onAfterAction?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrLoading(false);
+    }
+  }
+
+  async function onApproveMerge() {
+    if (!mergeApproval?.artifact?.id) return;
+    if (!props.runId) return;
+    setPrLoading(true);
+    setError(null);
+    try {
+      const synced = await syncRunPr(props.runId);
+      const c = synced.content as any;
+      const mergeable = typeof c?.mergeable === "boolean" ? c.mergeable : null;
+      const mergeableState = typeof c?.mergeable_state === "string" ? c.mergeable_state : "";
+      if (mergeableState === "dirty") {
+        setError("GitHub 显示该 PR 存在合并冲突（mergeable_state=dirty），请先解决冲突再合并。");
+        await refreshRun();
+        return;
+      }
+      if (mergeable === false) {
+        const detail = mergeableState ? `（mergeable_state=${mergeableState}）` : "";
+        setError(`该 PR 当前不可合并${detail}，请先同步/修复阻塞项后再重试。`);
+        await refreshRun();
+        return;
+      }
+
+      await approveApproval(mergeApproval.artifact.id);
+      await refreshRun();
+      props.onAfterAction?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrLoading(false);
+    }
+  }
+
+  async function onRejectMerge() {
+    if (!mergeApproval?.artifact?.id) return;
+    setPrLoading(true);
+    setError(null);
+    try {
+      await rejectApproval(mergeApproval.artifact.id);
       await refreshRun();
       props.onAfterAction?.();
     } catch (e) {
@@ -303,12 +365,34 @@ export function RunChangesPanel(props: Props) {
                     让 Agent {prInfo.mergeableState === "dirty" ? "解决冲突" : "更新分支"}
                   </button>
                 ) : null}
-                <button
-                  onClick={onMergePr}
-                  disabled={prLoading || prInfo.mergeableState === "dirty" || prInfo.mergeable === false}
-                >
-                  合并 {providerLabel}
-                </button>
+                {mergeApproval?.content?.status === "pending" ? (
+                  <>
+                    <span className="muted" style={{ marginLeft: 4 }}>
+                      待审批
+                    </span>
+                    <button onClick={onApproveMerge} disabled={prLoading}>
+                      批准并合并
+                    </button>
+                    <button onClick={onRejectMerge} disabled={prLoading}>
+                      拒绝
+                    </button>
+                  </>
+                ) : mergeApproval?.content?.status === "executing" ? (
+                  <button disabled>
+                    正在合并…
+                  </button>
+                ) : mergeApproval?.content?.status === "executed" ? (
+                  <button disabled>
+                    已合并
+                  </button>
+                ) : (
+                  <button
+                    onClick={onMergePr}
+                    disabled={prLoading || prInfo.mergeableState === "dirty" || prInfo.mergeable === false}
+                  >
+                    发起合并审批
+                  </button>
+                )}
               </>
             ) : (
               <button onClick={onCreatePr} disabled={prLoading}>

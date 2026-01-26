@@ -13,6 +13,7 @@
 5. `docs/06_QUICK_START_GUIDE.md`：快速跑通一次闭环（UI + API）
 6. `docs/05_GITLAB_INTEGRATION.md`：GitLab MR（系统统一称 PR）与当前实现边界
 7. `docs/07_TESTING_PLAN.md`：测试与验收（将持续更新）
+8. `docs/08_PRD_AI_PROJECT_MANAGER.md`：AI 项目管理员（PM Agent）PRD（分阶段方案）
 
 ---
 

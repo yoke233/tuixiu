@@ -52,6 +52,7 @@ export function makeGitHubWebhookRoutes(deps: {
   prisma: PrismaDeps;
   webhookSecret?: string;
   parseRepo?: typeof github.parseGitHubRepo;
+  onIssueUpserted?: (issueId: string, reason: string) => void;
 }): FastifyPluginAsync {
   return async (server) => {
     const parseRepo = deps.parseRepo ?? github.parseGitHubRepo;
@@ -61,7 +62,6 @@ export function makeGitHubWebhookRoutes(deps: {
       "/github",
       {
         // GitHub webhook 签名校验需要原始 body
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         preParsing: (request: any, _reply: any, payload: any, done: any) => {
           const chunks: Buffer[] = [];
           payload.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -179,6 +179,7 @@ export function makeGitHubWebhookRoutes(deps: {
             } as any
           });
 
+          deps.onIssueUpserted?.((updated as any).id, `github_webhook:${payload.action}`);
           return { success: true, data: { ok: true, projectId: project.id, issueId: (updated as any).id, created: false } };
         }
 
@@ -201,12 +202,14 @@ export function makeGitHubWebhookRoutes(deps: {
             } as any
           });
 
+          deps.onIssueUpserted?.((created as any).id, `github_webhook:${payload.action}`);
           return { success: true, data: { ok: true, projectId: project.id, issueId: (created as any).id, created: true } };
         } catch (err) {
           const again = await deps.prisma.issue.findFirst({
             where: { projectId: project.id, externalProvider: "github", externalId }
           });
           if (again) {
+            deps.onIssueUpserted?.((again as any).id, `github_webhook:${payload.action}`);
             return { success: true, data: { ok: true, projectId: project.id, issueId: (again as any).id, created: false } };
           }
           return { success: false, error: { code: "CREATE_FAILED", message: "写入 Issue 失败", details: String(err) } };

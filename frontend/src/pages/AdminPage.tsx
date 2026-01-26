@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { approveApproval, listApprovals, rejectApproval } from "../api/approvals";
 import { createIssue, listIssues, updateIssue } from "../api/issues";
 import { importGitHubIssue } from "../api/githubIssues";
 import { createProject, listProjects } from "../api/projects";
 import { createRole } from "../api/roles";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { Issue, IssueStatus, Project } from "../types";
+import type { Approval, Issue, IssueStatus, Project } from "../types";
 import { getShowArchivedIssues, setShowArchivedIssues } from "../utils/settings";
 
 function splitLines(s: string): string[] {
@@ -23,8 +24,10 @@ function isArchivableStatus(status: IssueStatus): boolean {
 export function AdminPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [approvalBusyId, setApprovalBusyId] = useState<string>("");
 
   const [showArchivedOnBoard, setShowArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -73,9 +76,10 @@ export function AdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const [ps, is] = await Promise.all([listProjects(), listIssues()]);
+      const [ps, is, aps] = await Promise.all([listProjects(), listIssues(), listApprovals({ status: "pending", limit: 100 })]);
       setProjects(ps);
       setIssues(is.issues);
+      setApprovals(aps);
       if (!selectedProjectId && ps[0]?.id) setSelectedProjectId(ps[0].id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -219,6 +223,32 @@ export function AdminPage() {
     }
   }
 
+  async function onApproveApproval(id: string) {
+    setError(null);
+    setApprovalBusyId(id);
+    try {
+      await approveApproval(id, "admin");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApprovalBusyId("");
+    }
+  }
+
+  async function onRejectApproval(id: string) {
+    setError(null);
+    setApprovalBusyId(id);
+    try {
+      await rejectApproval(id, { actor: "admin", reason: "rejected by admin" });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApprovalBusyId("");
+    }
+  }
+
   function onShowArchivedOnBoardChange(next: boolean) {
     setShowArchivedOnBoard(next);
     setShowArchivedIssues(next);
@@ -245,6 +275,42 @@ export function AdminPage() {
           {error}
         </div>
       ) : null}
+
+      <section className="card" style={{ marginBottom: 16 }}>
+        <h2 style={{ marginTop: 0 }}>审批队列</h2>
+        {approvals.length ? (
+          <ul className="list">
+            {approvals.map((a) => (
+              <li key={a.id} className="listItem">
+                <div className="row spaceBetween">
+                  <div>
+                    <code>{a.action}</code>
+                    <span className="muted" style={{ marginLeft: 10 }}>
+                      {a.issueTitle ?? a.issueId ?? a.runId}
+                    </span>
+                  </div>
+                  <div className="row gap">
+                    <Link to={a.issueId ? `/issues/${a.issueId}` : "/issues"}>打开</Link>
+                    <button onClick={() => onApproveApproval(a.id)} disabled={loading || approvalBusyId === a.id}>
+                      批准
+                    </button>
+                    <button onClick={() => onRejectApproval(a.id)} disabled={loading || approvalBusyId === a.id}>
+                      拒绝
+                    </button>
+                  </div>
+                </div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  状态：{a.status}
+                  {a.requestedBy ? ` · 请求人：${a.requestedBy}` : ""}
+                  {a.requestedAt ? ` · 请求时间：${new Date(a.requestedAt).toLocaleString()}` : ""}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="muted">暂无待审批动作</div>
+        )}
+      </section>
 
       <section className="card" style={{ marginBottom: 16 }}>
         <h2 style={{ marginTop: 0 }}>平台设置</h2>

@@ -16,6 +16,7 @@ import {
   mergeReviewRequestForRun,
   syncReviewRequestForRun,
 } from "../services/runReviewRequest.js";
+import { requestMergePrApproval } from "../services/approvalRequests.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
@@ -212,6 +213,24 @@ export function makeRunRoutes(deps: {
         id,
         body,
       );
+    });
+
+    server.post("/:id/request-merge-pr", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const bodySchema = z.object({
+        requestedBy: z.string().min(1).max(100).optional(),
+        squash: z.boolean().optional(),
+        mergeCommitMessage: z.string().min(1).optional(),
+      });
+      const { id } = paramsSchema.parse(request.params);
+      const body = bodySchema.parse(request.body ?? {});
+
+      return await requestMergePrApproval({
+        prisma: deps.prisma,
+        runId: id,
+        requestedBy: body.requestedBy,
+        payload: { squash: body.squash, mergeCommitMessage: body.mergeCommitMessage },
+      });
     });
 
     server.post("/:id/sync-pr", async (request) => {
