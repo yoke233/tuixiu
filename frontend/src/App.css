@@ -101,6 +101,13 @@ select {
   padding: 10px 12px;
 }
 
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 4px;
+}
+
 textarea {
   min-height: 90px;
   resize: vertical;

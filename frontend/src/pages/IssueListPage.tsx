@@ -1,26 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Link, Outlet, useParams } from "react-router-dom";
+import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
 
-import { createIssue, listIssues, startIssue, updateIssue } from "../api/issues";
-import { importGitHubIssue } from "../api/githubIssues";
-import { createProject, listProjects } from "../api/projects";
-import { createRole } from "../api/roles";
+import { listIssues, startIssue, updateIssue } from "../api/issues";
+import { listProjects } from "../api/projects";
 import { cancelRun, completeRun } from "../api/runs";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type { Issue, IssueStatus, Project } from "../types";
-
-function splitLines(s: string): string[] {
-  return s
-    .split(/\r?\n/g)
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
+import { getShowArchivedIssues } from "../utils/settings";
 
 export function IssueListPage() {
   const params = useParams();
   const selectedIssueId = params.id ?? "";
   const hasDetail = !!selectedIssueId;
+  const navigate = useNavigate();
 
   const splitRef = useRef<HTMLDivElement | null>(null);
   const resizeStateRef = useRef<{ active: boolean; width: number }>({ active: false, width: 520 });
@@ -50,28 +43,8 @@ export function IssueListPage() {
 
   const outletContext = useMemo(() => ({ onIssueUpdated }), [onIssueUpdated]);
 
-  const [projectName, setProjectName] = useState("");
-  const [projectRepoUrl, setProjectRepoUrl] = useState("");
-  const [projectScmType, setProjectScmType] = useState("gitlab");
-  const [projectDefaultBranch, setProjectDefaultBranch] = useState("main");
-  const [projectWorkspaceMode, setProjectWorkspaceMode] = useState<"worktree" | "clone">("worktree");
-  const [projectGitAuthMode, setProjectGitAuthMode] = useState<"https_pat" | "ssh">("https_pat");
-  const [projectGitlabProjectId, setProjectGitlabProjectId] = useState("");
-  const [projectGitlabAccessToken, setProjectGitlabAccessToken] = useState("");
-  const [projectGitlabWebhookSecret, setProjectGitlabWebhookSecret] = useState("");
-  const [projectGithubAccessToken, setProjectGithubAccessToken] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
-
-  const [issueTitle, setIssueTitle] = useState("");
-  const [issueDescription, setIssueDescription] = useState("");
-  const [issueCriteria, setIssueCriteria] = useState("");
-  const [githubImport, setGithubImport] = useState("");
-  const [importingGithub, setImportingGithub] = useState(false);
-  const [roleKey, setRoleKey] = useState("");
-  const [roleDisplayName, setRoleDisplayName] = useState("");
-  const [rolePromptTemplate, setRolePromptTemplate] = useState("");
-  const [roleInitScript, setRoleInitScript] = useState("");
-  const [roleInitTimeoutSeconds, setRoleInitTimeoutSeconds] = useState("300");
+  const [showArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [searchText, setSearchText] = useState("");
   const [detailWidth, setDetailWidth] = useState<number>(() => {
     try {
@@ -88,19 +61,17 @@ export function IssueListPage() {
     return projects[0]?.id ?? "";
   }, [projects, selectedProjectId]);
 
-  const effectiveProject = useMemo(() => {
-    return effectiveProjectId ? projects.find((p) => p.id === effectiveProjectId) ?? null : null;
-  }, [effectiveProjectId, projects]);
-
   const visibleIssues = useMemo(() => {
     const needle = searchText.trim().toLowerCase();
-    const filtered = issues.filter((i) => i.projectId === effectiveProjectId);
+    const filtered = issues.filter(
+      (i) => i.projectId === effectiveProjectId && (showArchivedOnBoard || !i.archivedAt)
+    );
     if (!needle) return filtered;
     return filtered.filter((i) => {
       const t = `${i.title ?? ""}\n${i.description ?? ""}`.toLowerCase();
       return t.includes(needle);
     });
-  }, [effectiveProjectId, issues, searchText]);
+  }, [effectiveProjectId, issues, searchText, showArchivedOnBoard]);
 
   const issuesByStatus = useMemo(() => {
     const map: Record<IssueStatus, Issue[]> = {
@@ -207,125 +178,6 @@ export function IssueListPage() {
     }
   }, [detailWidth]);
 
-  async function onCreateProject(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      const gitlabProjectIdRaw = projectGitlabProjectId.trim();
-      const gitlabProjectId = gitlabProjectIdRaw ? Number(gitlabProjectIdRaw) : undefined;
-
-      const p = await createProject({
-        name: projectName.trim(),
-        repoUrl: projectRepoUrl.trim(),
-        scmType: projectScmType.trim() || undefined,
-        defaultBranch: projectDefaultBranch.trim() || undefined,
-        workspaceMode: projectWorkspaceMode,
-        gitAuthMode: projectGitAuthMode,
-        gitlabProjectId: Number.isFinite(gitlabProjectId ?? NaN) ? gitlabProjectId : undefined,
-        gitlabAccessToken: projectGitlabAccessToken.trim() || undefined,
-        gitlabWebhookSecret: projectGitlabWebhookSecret.trim() || undefined,
-        githubAccessToken: projectGithubAccessToken.trim() || undefined
-      });
-      setProjectName("");
-      setProjectRepoUrl("");
-      setProjectScmType("gitlab");
-      setProjectDefaultBranch("main");
-      setProjectWorkspaceMode("worktree");
-      setProjectGitAuthMode("https_pat");
-      setProjectGitlabProjectId("");
-      setProjectGitlabAccessToken("");
-      setProjectGitlabWebhookSecret("");
-      setProjectGithubAccessToken("");
-      await refresh();
-      setSelectedProjectId(p.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function onCreateIssue(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      if (!issueTitle.trim()) {
-        setError("Issue 标题不能为空");
-        return;
-      }
-      if (!effectiveProjectId) {
-        setError("请先创建 Project");
-        return;
-      }
-
-      await createIssue({
-        projectId: effectiveProjectId,
-        title: issueTitle.trim(),
-        description: issueDescription.trim() ? issueDescription.trim() : undefined,
-        acceptanceCriteria: splitLines(issueCriteria),
-      });
-
-      setIssueTitle("");
-      setIssueDescription("");
-      setIssueCriteria("");
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function onImportGithubIssue(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!effectiveProjectId) {
-      setError("请先创建 Project");
-      return;
-    }
-    const raw = githubImport.trim();
-    if (!raw) return;
-
-    setImportingGithub(true);
-    try {
-      const num = Number(raw);
-      const input = Number.isFinite(num) && num > 0 ? { number: Math.floor(num) } : { url: raw };
-      await importGitHubIssue(effectiveProjectId, input);
-      setGithubImport("");
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setImportingGithub(false);
-    }
-  }
-
-  async function onCreateRole(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!effectiveProjectId) {
-      setError("请先创建 Project");
-      return;
-    }
-
-    const key = roleKey.trim();
-    const name = roleDisplayName.trim();
-    if (!key || !name) return;
-
-    try {
-      await createRole(effectiveProjectId, {
-        key,
-        displayName: name,
-        promptTemplate: rolePromptTemplate.trim() || undefined,
-        initScript: roleInitScript.trim() || undefined,
-        initTimeoutSeconds: Number(roleInitTimeoutSeconds) || undefined
-      });
-      setRoleKey("");
-      setRoleDisplayName("");
-      setRolePromptTemplate("");
-      setRoleInitScript("");
-      setRoleInitTimeoutSeconds("300");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
   const columns = useMemo(
     () =>
       [
@@ -414,6 +266,9 @@ export function IssueListPage() {
             placeholder="搜索 Issue…"
           />
           <ThemeToggle />
+          <button type="button" className="buttonSecondary" onClick={() => navigate("/admin")}>
+            管理
+          </button>
           <button onClick={() => refresh()} disabled={loading}>
             刷新
           </button>
@@ -450,206 +305,6 @@ export function IssueListPage() {
                 {loading ? "加载中…" : effectiveProjectId ? `共 ${visibleIssues.length} 个 Issue` : "请先创建 Project"}
               </div>
             </div>
-
-            <details className="boardTools">
-              <summary>创建 / 配置</summary>
-              <div className="grid2">
-                <section className="card">
-                  <h3>Projects</h3>
-                  {loading ? (
-                    <div className="muted">加载中…</div>
-                  ) : projects.length ? (
-                    <div className="muted">当前共 {projects.length} 个</div>
-                  ) : (
-                    <div className="muted">暂无 Project，请先创建</div>
-                  )}
-
-                  <form onSubmit={onCreateProject} className="form">
-                    <label className="label">
-                      名称
-                      <input value={projectName} onChange={(e) => setProjectName(e.target.value)} />
-                    </label>
-                    <label className="label">
-                      Repo URL
-                      <input value={projectRepoUrl} onChange={(e) => setProjectRepoUrl(e.target.value)} />
-                    </label>
-                    <label className="label">
-                      SCM
-                      <select value={projectScmType} onChange={(e) => setProjectScmType(e.target.value)}>
-                        <option value="gitlab">gitlab</option>
-                        <option value="github">github</option>
-                        <option value="gitee">gitee</option>
-                      </select>
-                    </label>
-                    <label className="label">
-                      默认分支
-                      <input value={projectDefaultBranch} onChange={(e) => setProjectDefaultBranch(e.target.value)} />
-                    </label>
-                    <label className="label">
-                      工作区模式
-                      <select
-                        value={projectWorkspaceMode}
-                        onChange={(e) => setProjectWorkspaceMode(e.target.value as "worktree" | "clone")}
-                      >
-                        <option value="worktree">worktree（本机仓库）</option>
-                        <option value="clone">clone（Run 全量 clone）</option>
-                      </select>
-                    </label>
-                    <label className="label">
-                      Git 认证
-                      <select
-                        value={projectGitAuthMode}
-                        onChange={(e) => setProjectGitAuthMode(e.target.value as "https_pat" | "ssh")}
-                      >
-                        <option value="https_pat">https_pat（token）</option>
-                        <option value="ssh">ssh</option>
-                      </select>
-                    </label>
-                    {projectScmType === "gitlab" ? (
-                      <details>
-                        <summary>GitLab 配置（可选）</summary>
-                        <label className="label">
-                          GitLab Project ID
-                          <input
-                            value={projectGitlabProjectId}
-                            onChange={(e) => setProjectGitlabProjectId(e.target.value)}
-                            placeholder="12345"
-                          />
-                        </label>
-                        <label className="label">
-                          GitLab Access Token
-                          <input
-                            type="password"
-                            value={projectGitlabAccessToken}
-                            onChange={(e) => setProjectGitlabAccessToken(e.target.value)}
-                            placeholder="glpat-..."
-                          />
-                        </label>
-                        <label className="label">
-                          GitLab Webhook Secret（可选）
-                          <input
-                            type="password"
-                            value={projectGitlabWebhookSecret}
-                            onChange={(e) => setProjectGitlabWebhookSecret(e.target.value)}
-                          />
-                        </label>
-                      </details>
-                    ) : projectScmType === "github" ? (
-                      <details>
-                        <summary>GitHub 配置（可选）</summary>
-                        <label className="label">
-                          GitHub Access Token
-                          <input
-                            type="password"
-                            value={projectGithubAccessToken}
-                            onChange={(e) => setProjectGithubAccessToken(e.target.value)}
-                            placeholder="ghp_... / github_pat_..."
-                          />
-                        </label>
-                      </details>
-                    ) : null}
-                    <button type="submit" disabled={!projectName.trim() || !projectRepoUrl.trim()}>
-                      创建
-                    </button>
-                  </form>
-                </section>
-
-                <section className="card">
-                  <h3>创建 Issue（进入需求池）</h3>
-                  <form onSubmit={onCreateIssue} className="form">
-                    <label className="label">
-                      标题 *
-                      <input
-                        aria-label="Issue 标题"
-                        value={issueTitle}
-                        onChange={(e) => setIssueTitle(e.target.value)}
-                      />
-                    </label>
-                    <label className="label">
-                      描述
-                      <textarea
-                        value={issueDescription}
-                        onChange={(e) => setIssueDescription(e.target.value)}
-                      />
-                    </label>
-                    <label className="label">
-                      验收标准（每行一条）
-                      <textarea value={issueCriteria} onChange={(e) => setIssueCriteria(e.target.value)} />
-                    </label>
-                    <button type="submit">提交</button>
-                  </form>
-                </section>
-
-                <section className="card">
-                  <h3>导入 GitHub Issue</h3>
-                  {effectiveProject?.scmType?.toLowerCase() === "github" ? (
-                    <form onSubmit={onImportGithubIssue} className="form">
-                      <label className="label">
-                        Issue Number 或 URL
-                        <input
-                          value={githubImport}
-                          onChange={(e) => setGithubImport(e.target.value)}
-                          placeholder="123 或 https://github.com/o/r/issues/123"
-                        />
-                      </label>
-                      <button type="submit" disabled={!githubImport.trim() || importingGithub}>
-                        {importingGithub ? "导入中…" : "导入"}
-                      </button>
-                    </form>
-                  ) : (
-                    <div className="muted">当前 Project 不是 GitHub SCM</div>
-                  )}
-                </section>
-
-                <section className="card">
-                  <h3>创建 RoleTemplate</h3>
-                  <form onSubmit={onCreateRole} className="form">
-                    <label className="label">
-                      Role Key *
-                      <input value={roleKey} onChange={(e) => setRoleKey(e.target.value)} placeholder="backend-dev" />
-                    </label>
-                    <label className="label">
-                      显示名称 *
-                      <input
-                        value={roleDisplayName}
-                        onChange={(e) => setRoleDisplayName(e.target.value)}
-                        placeholder="后端开发"
-                      />
-                    </label>
-                    <label className="label">
-                      Prompt Template（可选）
-                      <textarea
-                        value={rolePromptTemplate}
-                        onChange={(e) => setRolePromptTemplate(e.target.value)}
-                        placeholder="你是 {{role.name}}，请优先写单测。"
-                      />
-                    </label>
-                    <label className="label">
-                      initScript（bash，可选）
-                      <textarea
-                        value={roleInitScript}
-                        onChange={(e) => setRoleInitScript(e.target.value)}
-                        placeholder={"# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init"}
-                      />
-                    </label>
-                    <label className="label">
-                      init 超时秒数（可选）
-                      <input
-                        value={roleInitTimeoutSeconds}
-                        onChange={(e) => setRoleInitTimeoutSeconds(e.target.value)}
-                        placeholder="300"
-                      />
-                    </label>
-                    <button type="submit" disabled={!roleKey.trim() || !roleDisplayName.trim()}>
-                      创建
-                    </button>
-                  </form>
-                  <div className="muted" style={{ marginTop: 8 }}>
-                    initScript 默认在 workspace 执行；建议把持久内容写到 <code>$HOME/.tuixiu/projects/&lt;projectId&gt;</code>。
-                  </div>
-                </section>
-              </div>
-            </details>
           </section>
 
           <section className="kanban" aria-label="Issues 看板">
