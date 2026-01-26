@@ -60,6 +60,7 @@
 
 - Token 会写入数据库（当前无 KMS/加密/权限体系/审计），请仅在可信环境使用，并尽量使用最小权限 PAT
 - Run 工作区：`worktree` 模式会在仓库根目录生成 `.worktrees/`（天然绑定 `backend` 启动所在 repo）；`clone` 模式会在 `WORKSPACES_ROOT` 下创建 `run-*` 并维护 `REPO_CACHE_ROOT`（两者均支持 TTL 清理）
+- worktreeName 默认从 Issue 标题生成 **ASCII slug**（避免中文等字符进入分支/路径）；如需更短更贴近语义的名称，可在后端启用 `WORKTREE_NAME_LLM=1`（会把标题发给 LLM），并配置 `WORKTREE_NAME_LLM_API_KEY`/`OPENAI_API_KEY`
 - RoleTemplate 的 `initScript` 在 `acp-proxy` 所在机器执行，等同运行本地脚本；建议仅管理员可编辑
 
 ---

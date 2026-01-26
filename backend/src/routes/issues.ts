@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { toPublicProject } from "../utils/publicProject.js";
-import { createRunWorktree, suggestRunKey } from "../utils/gitWorkspace.js";
+import { createRunWorktree, suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
 
 type WorkspaceMode = "worktree" | "clone";
 
@@ -207,7 +207,7 @@ export function makeIssueRoutes(deps: {
         const name =
           typeof worktreeName === "string" && worktreeName.trim()
             ? worktreeName.trim()
-            : suggestRunKey({
+            : await suggestRunKeyWithLlm({
                 title: issue.title,
                 externalProvider: (issue as any).externalProvider,
                 externalNumber: (issue as any).externalNumber,
