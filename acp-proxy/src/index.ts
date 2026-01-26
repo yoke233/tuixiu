@@ -795,7 +795,10 @@ async function main() {
         return;
       }
 
-      const sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
+      const cwd = getRunCwd(msg.run_id);
+      const state = getOrCreateRunState(msg.run_id, cwd);
+
+      const sessionId = msg.session_id || state.sessionId || "";
       if (!sessionId) {
         sendUpdate(msg.run_id, {
           type: "text",
@@ -804,9 +807,15 @@ async function main() {
         return;
       }
 
-      setRunSession(msg.run_id, sessionId);
+      state.sessionId = sessionId;
+      state.seenSessionIds.add(sessionId);
 
-      await bridge.cancel(sessionId);
+      state.inFlight += 1;
+      try {
+        await state.bridge.cancel(sessionId);
+      } finally {
+        state.inFlight = Math.max(0, state.inFlight - 1);
+      }
 
       sendUpdate(msg.run_id, {
         type: "text",
