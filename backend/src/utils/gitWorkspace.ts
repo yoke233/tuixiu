@@ -61,12 +61,12 @@ function normalizeRunKeyAscii(input: string): string {
   // Windows 文件名不允许：<>:"/\|?*
   // Git 分支名不允许：空格、~ ^ : ? * [ \ 以及控制字符
   const replaced = raw
-    .replaceAll(/[\/\\]/g, "-")
+    .replaceAll(/[/\\]/g, "-")
     .replaceAll(/\s+/g, "-")
-    .replaceAll(/[\u0000-\u001F\u007F]/g, "")
-    .replaceAll(/[<>:"|?*~^\[\]]/g, "-")
+    .replaceAll(/\p{Cc}/gu, "")
+    .replaceAll(/[<>:"|?*~^[\]]/g, "-")
     // 仅保留 ascii slug：避免中文等字符进入 worktree/branch
-    .replaceAll(/[^a-z0-9.\-]/g, "-");
+    .replaceAll(/[^a-z0-9.-]/g, "-");
 
   // 避免 git ref 禁止的片段：..、@{、.lock
   let s = replaced.replaceAll("..", "-").replaceAll("@{", "-").replaceAll(".lock", "-lock");
@@ -74,8 +74,8 @@ function normalizeRunKeyAscii(input: string): string {
   s = s
     .replaceAll(/-+/g, "-")
     .replaceAll(/\.+/g, ".")
-    .replaceAll(/^[\-.]+/g, "")
-    .replaceAll(/[\-.]+$/g, "")
+    .replaceAll(/^[-.]+/g, "")
+    .replaceAll(/[-.]+$/g, "")
     .trim();
 
   // 兼顾 Windows：末尾不能是空格/点
@@ -93,7 +93,10 @@ function truthyEnv(value: string | undefined): boolean {
 }
 
 function hasNonAscii(input: string): boolean {
-  return /[^\x00-\x7F]/.test(input);
+  for (let i = 0; i < input.length; i++) {
+    if (input.charCodeAt(i) > 0x7f) return true;
+  }
+  return false;
 }
 
 export function suggestRunKey(opts: {
@@ -176,7 +179,7 @@ async function requestLlmSlug(title: string): Promise<string> {
     if (!content) return "";
 
     const firstLine = content.split(/\r?\n/)[0]?.trim() ?? "";
-    const unwrapped = firstLine.replaceAll(/^`+|`+$/g, "").replaceAll(/^\"+|\"+$/g, "").trim();
+    const unwrapped = firstLine.replaceAll(/^`+|`+$/g, "").replaceAll(/^"+|"+$/g, "").trim();
     const normalized = normalizeRunKeyAscii(unwrapped).replaceAll(/\.+/g, "-");
     const slug = normalized.replaceAll(/[^a-z0-9-]/g, "-").replaceAll(/-+/g, "-").replaceAll(/^-+|-+$/g, "");
     return truncateUnicode(slug, 30);
