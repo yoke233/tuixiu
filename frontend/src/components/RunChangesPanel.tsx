@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { createRunMr, getRun, getRunChanges, getRunDiff, mergeRunMr, type RunChanges } from "../api/runs";
+import { createRunPr, getRun, getRunChanges, getRunDiff, mergeRunPr, type RunChanges } from "../api/runs";
 import type { Project, Run } from "../types";
 
 type Props = {
@@ -69,24 +69,24 @@ export function RunChangesPanel(props: Props) {
   const [selectedPath, setSelectedPath] = useState<string>("");
   const [diff, setDiff] = useState<string>("");
   const [diffLoading, setDiffLoading] = useState(false);
-  const [mrLoading, setMrLoading] = useState(false);
+  const [prLoading, setPrLoading] = useState(false);
 
-  const mrArtifact = useMemo(() => {
+  const prArtifact = useMemo(() => {
     const arts = props.run?.artifacts ?? [];
-    return arts.find((a) => a.type === "mr") ?? null;
+    return arts.find((a) => a.type === "pr") ?? null;
   }, [props.run]);
 
-  const mrInfo = useMemo(() => {
-    if (!mrArtifact) return null;
-    const c = mrArtifact.content as any;
+  const prInfo = useMemo(() => {
+    if (!prArtifact) return null;
+    const c = prArtifact.content as any;
     const webUrl = (typeof c?.webUrl === "string" && c.webUrl) || (typeof c?.web_url === "string" && c.web_url) || "";
     const state = (typeof c?.state === "string" && c.state) || "";
     const idNumRaw = typeof c?.iid === "number" ? c.iid : typeof c?.number === "number" ? c.number : Number(c?.iid ?? c?.number);
     return { webUrl, state, num: Number.isFinite(idNumRaw) ? idNumRaw : null };
-  }, [mrArtifact]);
+  }, [prArtifact]);
 
   const provider = useMemo(() => (props.project?.scmType ?? "").toLowerCase(), [props.project]);
-  const providerLabel = provider === "github" ? "PR" : "MR";
+  const providerLabel = "PR";
   const canUseApi = provider === "gitlab" || provider === "github";
 
   async function refreshRun() {
@@ -138,33 +138,33 @@ export function RunChangesPanel(props: Props) {
     return buildCreatePrUrl({ project: props.project, baseBranch: changes.baseBranch, branch: changes.branch });
   }, [changes, props.project]);
 
-  async function onCreateMr() {
+  async function onCreatePr() {
     if (!props.runId) return;
-    setMrLoading(true);
+    setPrLoading(true);
     setError(null);
     try {
-      await createRunMr(props.runId);
+      await createRunPr(props.runId);
       await refreshRun();
       props.onAfterAction?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setMrLoading(false);
+      setPrLoading(false);
     }
   }
 
-  async function onMergeMr() {
+  async function onMergePr() {
     if (!props.runId) return;
-    setMrLoading(true);
+    setPrLoading(true);
     setError(null);
     try {
-      await mergeRunMr(props.runId);
+      await mergeRunPr(props.runId);
       await refreshRun();
       props.onAfterAction?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setMrLoading(false);
+      setPrLoading(false);
     }
   }
 
@@ -186,32 +186,32 @@ export function RunChangesPanel(props: Props) {
             刷新
           </button>
           {canUseApi ? (
-            mrInfo ? (
+            prInfo ? (
               <>
-                <a className="buttonSecondary" href={mrInfo.webUrl || "#"} target="_blank" rel="noreferrer">
+                <a className="buttonSecondary" href={prInfo.webUrl || "#"} target="_blank" rel="noreferrer">
                   打开 {providerLabel}
-                  {mrInfo.num ? ` #${mrInfo.num}` : ""}
+                  {prInfo.num ? ` #${prInfo.num}` : ""}
                 </a>
-                <button onClick={onMergeMr} disabled={mrLoading}>
+                <button onClick={onMergePr} disabled={prLoading}>
                   合并 {providerLabel}
                 </button>
               </>
             ) : (
-              <button onClick={onCreateMr} disabled={mrLoading}>
+              <button onClick={onCreatePr} disabled={prLoading}>
                 创建 {providerLabel}
               </button>
             )
           ) : createPrUrl ? (
             <a className="buttonSecondary" href={createPrUrl} target="_blank" rel="noreferrer">
-              打开 MR/PR 页面
+              打开 PR 页面
             </a>
           ) : null}
         </div>
       </div>
 
-      {mrInfo ? (
+      {prInfo ? (
         <div className="muted" style={{ marginTop: 6 }}>
-          {providerLabel} 状态：{mrInfo.state || "未知"}
+          {providerLabel} 状态：{prInfo.state || "未知"}
         </div>
       ) : null}
 

@@ -28,7 +28,7 @@
 | -------------- | ------------------------------- | -------------------------------- |
 | **单元测试**   | 纯函数、工具类、协议转换        | Vitest (后端/前端/Proxy) |
 | **集成测试**   | API 接口、数据库操作、WebSocket | Supertest / Go testing           |
-| **端到端测试** | 完整流程（Issue → MR → Done）   | 手动测试 + Playwright（未来）    |
+| **端到端测试** | 完整流程（Issue → PR → Done）   | 手动测试 + Playwright（未来）    |
 
 ---
 
@@ -250,19 +250,19 @@ import { createMergeRequest } from "../src/services/gitlab";
 
 describe("GitLab Integration", () => {
   it("should create merge request", async () => {
-    const mr = await createMergeRequest({
+    const pr = await createMergeRequest({
       projectId: Number(process.env.GITLAB_PROJECT_ID),
       sourceBranch: "test-branch",
       targetBranch: "main",
-      title: "Test MR",
+      title: "Test PR",
       description: "Test description",
     });
 
-    expect(mr).toHaveProperty("id");
-    expect(mr).toHaveProperty("web_url");
+    expect(pr).toHaveProperty("id");
+    expect(pr).toHaveProperty("web_url");
 
-    // 清理：关闭 MR
-    // await closeMergeRequest(mr.id);
+    // 清理：关闭 PR
+    // await closeMergeRequest(pr.id);
   });
 });
 ```
@@ -285,9 +285,9 @@ describe("GitLab Integration", () => {
 1. 创建 Issue: "修复 README 拼写错误"
 2. 系统自动分配 Agent
 3. Agent 执行任务
-4. 创建 MR
+4. 创建 PR
 5. CI 运行并通过
-6. 手动合并 MR
+6. 手动合并 PR
 7. 任务标记为 Done
 
 **验证点**:
@@ -295,7 +295,7 @@ describe("GitLab Integration", () => {
 - [ ] Issue 创建成功（status: pending）
 - [ ] Run 创建成功（status: running）
 - [ ] Agent 收到任务（Proxy 日志）
-- [ ] MR 创建成功（GitLab 上可见）
+- [ ] PR 创建成功（GitLab 上可见）
 - [ ] CI 触发（GitLab Pipeline 运行）
 - [ ] 事件时间线完整（至少 5 个事件）
 - [ ] 最终状态正确（status: done）
@@ -311,7 +311,7 @@ describe("GitLab Integration", () => {
 **步骤**:
 
 1. 创建 Issue: "添加一个会导致测试失败的功能"
-2. Agent 执行并创建 MR
+2. Agent 执行并创建 PR
 3. CI 运行失败
 4. 检查系统是否正确记录失败
 
@@ -417,10 +417,10 @@ curl -X POST http://localhost:3000/webhooks/gitlab \
 - [x] 可以创建 Issue
 - [x] Agent 可以连接并注册
 - [x] Agent 可以接收任务
-- [x] 可以创建 MR
+- [x] 可以创建 PR
 - [x] Webhook 可以接收 GitLab 事件
 - [x] 事件时间线记录完整
-- [x] MR 合并后任务标记为 Done
+- [x] PR 合并后任务标记为 Done
 
 #### Should Have (P1)
 
@@ -474,7 +474,7 @@ curl -X POST http://localhost:3000/webhooks/gitlab \
 #### 失败用例
 
 1. **集成测试 - GitLab API**
-   - 现象: 创建 MR 超时
+   - 现象: 创建 PR 超时
    - 原因: 网络不稳定
    - 解决: 增加重试机制
 
@@ -573,7 +573,7 @@ jobs:
 - [ ] 可以创建 Issue
 - [ ] Agent 可以注册
 - [ ] 任务可以执行
-- [ ] MR 可以创建
+- [ ] PR 可以创建
 - [ ] Webhook 可以接收
 - [ ] 事件时间线正常
 
@@ -582,7 +582,7 @@ jobs:
 - [ ] 任务列表可见
 - [ ] 任务详情可见
 - [ ] 时间线显示正常
-- [ ] MR 链接可点击
+- [ ] PR 链接可点击
 
 ### 性能检查
 

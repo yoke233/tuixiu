@@ -270,7 +270,7 @@ CREATE TABLE artifacts (
 
   -- 产物类型
   type VARCHAR(50) NOT NULL,
-  -- 'branch' | 'mr' | 'patch' | 'report' | 'ci_result'
+  -- 'branch' | 'pr' | 'patch' | 'report' | 'ci_result'
 
   -- 产物内容
   content JSONB NOT NULL,
@@ -330,10 +330,10 @@ export enum EventType {
   // Git 相关事件
   GIT_BRANCH_CREATED = "git.branch.created",
   GIT_COMMIT_PUSHED = "git.commit.pushed",
-  GIT_MR_CREATED = "git.mr.created",
-  GIT_MR_UPDATED = "git.mr.updated",
-  GIT_MR_MERGED = "git.mr.merged",
-  GIT_MR_CLOSED = "git.mr.closed",
+  GIT_PR_CREATED = "git.pr.created",
+  GIT_PR_UPDATED = "git.pr.updated",
+  GIT_PR_MERGED = "git.pr.merged",
+  GIT_PR_CLOSED = "git.pr.closed",
 
   // CI 相关事件
   CI_CHECK_STARTED = "ci.check.started",
@@ -1087,7 +1087,7 @@ ${issue.test_requirements}
 ## 工作分支
 请在分支 \`${branchName}\` 上完成开发。
 
-完成后请创建 Merge Request 到 main 分支。
+完成后请创建 PR 到 main 分支。
     `.trim();
   }
 }
@@ -1421,7 +1421,7 @@ logger.debug({ message }, "WebSocket message received");
 
 - **ERROR**: 系统错误，需要立即处理
 - **WARN**: 警告信息，如 Agent 离线、CI 失败
-- **INFO**: 重要事件，如任务创建、MR 创建
+- **INFO**: 重要事件，如任务创建、PR 创建
 - **DEBUG**: 调试信息，如 WebSocket 消息详情
 
 ---

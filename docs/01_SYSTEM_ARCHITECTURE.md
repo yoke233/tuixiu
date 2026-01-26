@@ -130,7 +130,7 @@
 [用户看到实时进度]
 ```
 
-#### 流程 2: Agent 创建 MR
+#### 流程 2: Agent 创建 PR
 
 ```
 [Codex CLI]
@@ -153,12 +153,12 @@
    ↓
 [GitLab Server]
    │
-   │ 5. MR Created
+   │ 5. PR Created
    ↓
 [Orchestrator]
    │
-   │ 6. Save Artifact (type: 'mr')
-   │ 7. Create Event (type: 'git.mr.created')
+   │ 6. Save Artifact (type: 'pr')
+   │ 7. Create Event (type: 'git.pr.created')
    │ 8. Update Run status → 'waiting_ci'
    ↓
 [PostgreSQL]
@@ -167,7 +167,7 @@
    ↓
 [Web UI]
    │
-   │ 10. Display MR Link
+   │ 10. Display PR Link
    ↓
 [用户点击跳转到 GitLab]
 ```
@@ -219,7 +219,7 @@
    │
    │ 11. Show Green Check ✅
    ↓
-[用户可以合并 MR]
+[用户可以合并 PR]
 ```
 
 ---
@@ -317,16 +317,16 @@ Run 状态定义:
 
 状态转换规则:
   pending → running         (Agent 开始执行)
-  running → waiting_ci      (MR 已创建)
-  waiting_ci → completed    (CI 通过 + 用户合并 MR)
+  running → waiting_ci      (PR 已创建)
+  waiting_ci → completed    (CI 通过 + 用户合并 PR)
   running → failed          (Agent 报错 or 超时)
   * → cancelled             (用户主动取消)
 
 事件触发状态变更:
   - agent_started        → pending → running
-  - mr_created           → running → waiting_ci
+  - pr_created           → running → waiting_ci
   - ci_passed            → (不改变状态，只记录)
-  - mr_merged            → waiting_ci → completed
+  - pr_merged            → waiting_ci → completed
   - agent_error          → running → failed
   - timeout              → running → failed
 ```
@@ -358,8 +358,8 @@ Run 状态定义:
 ```
 功能:
   1. API 调用:
-     - 创建 MR
-     - 查询 MR 状态
+     - 创建 PR
+     - 查询 PR 状态
      - 查询 CI Pipeline
 
   2. Webhook 处理:
@@ -373,7 +373,7 @@ Run 状态定义:
   - webhook_secret: "random-secret-string"
 
 关键 API 调用:
-  创建 MR:
+  创建 PR（GitLab Merge Request）:
     POST /api/v4/projects/:project_id/merge_requests
     Body: {
       source_branch: "acp/issue-123/run-456",
@@ -579,14 +579,14 @@ JSON-RPC → WebSocket:
   │  │  10:30 Agent 开始执行             │  │
   │  │  10:31 正在分析代码...            │  │
   │  │  10:32 创建分支: acp/123/run-456 │  │
-  │  │  10:35 MR 已创建: !456           │  │
+  │  │  10:35 PR 已创建: !456           │  │
   │  │  10:40 CI 运行中...               │  │
   │  └──────────────────────────────────┘  │
   │                                        │
   │  Right Panel (40%):                    │
   │  ┌──────────────────────────────────┐  │
   │  │  产物:                            │  │
-  │  │  - MR: !456 [查看] ✅             │  │
+  │  │  - PR: !456 [查看] ✅             │  │
   │  │  - 分支: acp/123/run-456         │  │
   │  ├──────────────────────────────────┤  │
   │  │  Agent 信息:                      │  │
@@ -749,7 +749,7 @@ CREATE TABLE events (
 CREATE TABLE artifacts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   run_id UUID NOT NULL REFERENCES runs(id),
-  type VARCHAR(50) NOT NULL,  -- 'branch' | 'mr' | 'patch'
+  type VARCHAR(50) NOT NULL,  -- 'branch' | 'pr' | 'patch'
   content JSONB NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
@@ -931,7 +931,7 @@ volumes:
 ```
 ERROR   - 系统错误（需要立即处理）
 WARN    - 警告（如 Agent 离线、CI 失败）
-INFO    - 重要事件（如任务创建、MR 创建）
+INFO    - 重要事件（如任务创建、PR 创建）
 DEBUG   - 调试信息（如 WebSocket 消息详情）
 ```
 

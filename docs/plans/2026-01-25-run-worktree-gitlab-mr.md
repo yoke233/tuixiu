@@ -92,12 +92,12 @@
 
 **Step 1: 根据 `Project.repoUrl` 推导 GitLab baseUrl（含 git@host:path）**
 
-**Step 2: `POST /api/runs/:id/create-mr`**
+**Step 2: `POST /api/runs/:id/create-pr`**
 - 先 `git push -u origin <branch>`
 - 再调用 `POST /projects/:id/merge_requests`
-- 创建 `Artifact(type=mr)`，必要时把 `Run.status` 置为 `waiting_ci`
+- 创建 `Artifact(type=pr)`，必要时把 `Run.status` 置为 `waiting_ci`
 
-**Step 3: `POST /api/runs/:id/merge-mr`（可选）**
+**Step 3: `POST /api/runs/:id/merge-pr`（可选）**
 - 调用 `PUT /projects/:id/merge_requests/:iid/merge`
 - merged 后把 `Issue.status=done`
 
@@ -114,11 +114,10 @@
 - Modify: `frontend/src/api/runs.ts`
 - Test: `frontend/src/pages/IssueDetailPage.test.tsx`
 
-**Step 1: RunChangesPanel 增加 “创建 MR / 打开 MR / 合并 MR / 刷新状态”**
+**Step 1: RunChangesPanel 增加 “创建 PR / 打开 PR / 合并 PR / 刷新状态”**
 
 **Step 2: 会话提示文案调整**
 - 优先提示：若已有 `sessionId` 会尝试 `session/load`；只有在无法恢复时才降级为“注入上下文新建”
 
 **Step 3: 验证**
 - Run: `pnpm -r test`
-

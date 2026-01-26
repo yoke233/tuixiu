@@ -56,7 +56,7 @@ export type Event = {
   timestamp: string;
 };
 
-export type ArtifactType = "branch" | "mr" | "patch" | "report" | "ci_result";
+export type ArtifactType = "branch" | "pr" | "patch" | "report" | "ci_result";
 
 export type Artifact = {
   id: string;

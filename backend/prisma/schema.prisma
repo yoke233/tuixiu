@@ -46,7 +46,7 @@ enum EventSource {
 
 enum ArtifactType {
   branch
-  mr
+  pr
   patch
   report
   ci_result

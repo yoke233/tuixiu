@@ -2,7 +2,7 @@
 
 本文档说明如何集成 GitLab API 和 Webhook，实现 MR 创建、CI 状态监听等功能。
 
-> 补充：系统也已支持 GitHub PR（同一套 `/api/runs/:id/create-mr` / `/api/runs/:id/merge-mr` 端点），见文末“GitHub PR（已实现）”。
+> 补充：系统也已支持 GitHub PR（同一套 `/api/runs/:id/create-pr` / `/api/runs/:id/merge-pr` 端点），见文末“GitHub PR（已实现）”。
 
 ---
 
@@ -138,12 +138,12 @@ async function createMergeRequest(params: CreateMRParams) {
 
 ### API 端点（与 GitLab 共用）
 
-- `POST /api/runs/:id/create-mr`：创建 PR（后端会先 `git push -u origin <branch>`）
-- `POST /api/runs/:id/merge-mr`：合并 PR（merge method：`merge`；若请求带 `squash=true` 则用 `squash`）
+- `POST /api/runs/:id/create-pr`：创建 PR（后端会先 `git push -u origin <branch>`）
+- `POST /api/runs/:id/merge-pr`：合并 PR（merge method：`merge`；若请求带 `squash=true` 则用 `squash`）
 
 ### 产物落库
 
-创建 PR 后会写入 `Artifact(type=mr)`，`content.provider = "github"`，并包含：
+创建 PR 后会写入 `Artifact(type=pr)`，`content.provider = "github"`，并包含：
 
 - `number`（PR 编号）、`webUrl`、`state`、`sourceBranch`、`targetBranch`
 ```
@@ -161,11 +161,11 @@ async function createMergeRequest(params: CreateMRParams) {
    ↓
 [Orchestrator] → GitLab API: Create MR
    ↓
-[Orchestrator] → DB: Save Artifact (type: 'mr', content: {mr_url, ...})
+[Orchestrator] → DB: Save Artifact (type: 'pr', content: {mr_url, ...})
    ↓
 [Orchestrator] → WebSocket: Push to Web UI
    ↓
-[Web UI] → Display: "MR 已创建: !456 [查看]"
+[Web UI] → Display: "PR 已创建: !456 [查看]"
 ```
 
 **实现要点**:
@@ -204,7 +204,7 @@ ${issue.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
   // 4. 保存 Artifact
   await Artifact.create({
     run_id: run.id,
-    type: "mr",
+    type: "pr",
     content: {
       mr_id: mr.id,
       mr_iid: mr.iid,
@@ -220,7 +220,7 @@ ${issue.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
   await Event.create({
     run_id: run.id,
     source: "gitlab",
-    type: "git.mr.created",
+    type: "git.pr.created",
     payload: { mr_url: mr.web_url },
   });
 }
@@ -355,7 +355,7 @@ async function handleMRMerged(runId: string, mrData: any) {
   await Event.create({
     run_id: runId,
     source: "gitlab",
-    type: "git.mr.merged",
+    type: "git.pr.merged",
     payload: { mr_url: mrData.url },
   });
 
@@ -468,7 +468,7 @@ async function pollCIStatus(runId: string) {
   const run = await Run.findById(runId);
   const artifact = await Artifact.findOne({
     run_id: runId,
-    type: "mr",
+    type: "pr",
   });
 
   if (!artifact) return;

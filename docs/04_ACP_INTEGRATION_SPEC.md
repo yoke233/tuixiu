@@ -773,12 +773,12 @@ class WebSocketGateway {
    │            branch: "acp/123/run-456"}
    ↓
 [Orchestrator]
-   │ 13. Call GitLab API to create MR
-   │ 14. Save Artifact (type: 'mr')
+   │ 13. Call GitLab API to create PR
+   │ 14. Save Artifact (type: 'pr')
    │ 15. Update Run status → 'waiting_ci'
    ↓
 [Web UI]
-   │ 16. Display MR link
+   │ 16. Display PR link
 ```
 
 ---

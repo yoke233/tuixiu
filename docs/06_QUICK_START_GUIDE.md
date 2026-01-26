@@ -233,7 +233,7 @@ export async function scheduleTask(issueId: string) {
 验收标准:
 ${issue.acceptance_criteria.map((c: string, i: number) => `${i + 1}. ${c}`).join("\n")}
 
-请在分支 ${branchName} 上完成开发，并创建 Merge Request。
+请在分支 ${branchName} 上完成开发，并创建 PR。
   `;
 
   await sendTaskToAgent(agent.id, {
@@ -341,7 +341,7 @@ export async function sendTaskToAgent(agentId: string, task: any) {
 }
 
 async function handleBranchCreated(message: any) {
-  // 调用 GitLab API 创建 MR（见 GitLab 集成文档）
+  // 调用 GitLab API 创建 PR（见 GitLab 集成文档）
   // ...
 }
 ```
@@ -406,7 +406,7 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
   -H "Content-Type: application/json" `
   -d '{\"name\":\"Demo\",\"repoUrl\":\"https://example.com/repo.git\"}'
 
-# 可选：如需在 Web 端“一键创建 MR/PR”，请在创建 Project 时配置 SCM 信息
+# 可选：如需在 Web 端“一键创建 PR”，请在创建 Project 时配置 SCM 信息
 # - GitLab: scmType=gitlab + gitlabProjectId + gitlabAccessToken
 # - GitHub: scmType=github + githubAccessToken
 # 例如：
@@ -456,7 +456,7 @@ npx --yes wscat -c ws://localhost:3000/ws/agent
 Get-Content -Wait .\\proxy.log
 ```
 
-### 3. MR 未创建
+### 3. PR 未创建
 
 **检查**:
 

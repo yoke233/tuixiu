@@ -39,12 +39,12 @@ export async function promptRun(id: string, text: string): Promise<void> {
   await apiPost<{ ok: true }>(`/runs/${id}/prompt`, { text });
 }
 
-export async function createRunMr(id: string): Promise<Artifact> {
-  const data = await apiPost<{ mr: Artifact }>(`/runs/${id}/create-mr`, {});
-  return data.mr;
+export async function createRunPr(id: string): Promise<Artifact> {
+  const data = await apiPost<{ pr: Artifact }>(`/runs/${id}/create-pr`, {});
+  return data.pr;
 }
 
-export async function mergeRunMr(id: string): Promise<Artifact> {
-  const data = await apiPost<{ mr: Artifact }>(`/runs/${id}/merge-mr`, {});
-  return data.mr;
+export async function mergeRunPr(id: string): Promise<Artifact> {
+  const data = await apiPost<{ pr: Artifact }>(`/runs/${id}/merge-pr`, {});
+  return data.pr;
 }

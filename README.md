@@ -90,7 +90,7 @@ pnpm test:coverage
    stdio 协议转换、Proxy 实现、WebSocket 桥接、错误处理
 
 7. **[docs/05_GITLAB_INTEGRATION.md](docs/05_GITLAB_INTEGRATION.md)**  
-   GitLab 集成文档 - API 调用、Webhook 配置、MR 创建、CI 状态回写
+   GitLab 集成文档 - API 调用、Webhook 配置、PR 创建、CI 状态回写
 
 8. **[docs/06_QUICK_START_GUIDE.md](docs/06_QUICK_START_GUIDE.md)**  
    ⭐ **快速开始** - 数据库 Schema、后端代码、Proxy 实现、前端要点  
@@ -284,7 +284,7 @@ GET    /api/agents          # Agent 列表
 ### GitLab API 关键
 
 ```bash
-# 创建 MR
+# 创建 Merge Request（GitLab）
 POST /api/v4/projects/:id/merge_requests
 Headers: PRIVATE-TOKEN: glpat-xxx
 
@@ -312,7 +312,7 @@ GET /api/v4/projects/:id/pipelines/:pipeline_id
 2. 查看 Proxy 日志: `tail -f proxy.log`
 3. 检查 stderr 是否有错误
 
-### Q: MR 未创建？
+### Q: PR 未创建？
 
 **检查**:
 
@@ -348,7 +348,7 @@ GET /api/v4/projects/:id/pipelines/:pipeline_id
 
 - [x] 创建 Issue
 - [x] Agent 自动执行
-- [x] 创建 MR
+- [x] 创建 PR
 - [x] CI 运行
 - [x] 合并后标记 Done
 

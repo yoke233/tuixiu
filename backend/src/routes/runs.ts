@@ -117,7 +117,7 @@ export function makeRunRoutes(deps: {
       }
     });
 
-    server.post("/:id/create-mr", async (request) => {
+    server.post("/:id/create-pr", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({
         title: z.string().min(1).optional(),
@@ -134,7 +134,7 @@ export function makeRunRoutes(deps: {
       );
     });
 
-    server.post("/:id/merge-mr", async (request) => {
+    server.post("/:id/merge-pr", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({
         squash: z.boolean().optional(),

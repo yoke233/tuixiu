@@ -150,7 +150,7 @@ describe("Runs routes", () => {
     await server.close();
   });
 
-  it("POST /api/runs/:id/create-mr pushes branch and creates MR artifact", async () => {
+  it("POST /api/runs/:id/create-pr pushes branch and creates PR artifact", async () => {
     const server = createHttpServer();
     const prisma = {
       run: {
@@ -175,7 +175,7 @@ describe("Runs routes", () => {
         }),
         update: vi.fn().mockResolvedValue({})
       },
-      artifact: { create: vi.fn().mockResolvedValue({ id: "mr-1", type: "mr" }) }
+      artifact: { create: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr" }) }
     } as any;
 
     const gitPush = vi.fn().mockResolvedValue(undefined);
@@ -205,7 +205,7 @@ describe("Runs routes", () => {
 
     const res = await server.inject({
       method: "POST",
-      url: "/api/runs/00000000-0000-0000-0000-000000000001/create-mr",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/create-pr",
       payload: {}
     });
     expect(res.statusCode).toBe(200);
@@ -220,7 +220,7 @@ describe("Runs routes", () => {
     await server.close();
   });
 
-  it("POST /api/runs/:id/merge-mr merges MR and marks issue done", async () => {
+  it("POST /api/runs/:id/merge-pr merges PR and marks issue done", async () => {
     const server = createHttpServer();
     const prisma = {
       run: {
@@ -236,12 +236,12 @@ describe("Runs routes", () => {
               gitlabAccessToken: "tok"
             }
           },
-          artifacts: [{ id: "mr-1", type: "mr", content: { iid: 7 } }]
+          artifacts: [{ id: "pr-1", type: "pr", content: { iid: 7 } }]
         }),
         update: vi.fn().mockResolvedValue({})
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
-      artifact: { update: vi.fn().mockResolvedValue({ id: "mr-1", type: "mr", content: { iid: 7, state: "merged" } }) }
+      artifact: { update: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr", content: { iid: 7, state: "merged" } }) }
     } as any;
 
     const mergeMergeRequest = vi.fn().mockResolvedValue({
@@ -278,7 +278,7 @@ describe("Runs routes", () => {
 
     const res = await server.inject({
       method: "POST",
-      url: "/api/runs/00000000-0000-0000-0000-000000000001/merge-mr",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/merge-pr",
       payload: {}
     });
     expect(res.statusCode).toBe(200);
@@ -292,7 +292,7 @@ describe("Runs routes", () => {
     await server.close();
   });
 
-  it("POST /api/runs/:id/create-mr supports GitHub (creates PR artifact)", async () => {
+  it("POST /api/runs/:id/create-pr supports GitHub (creates PR artifact)", async () => {
     const server = createHttpServer();
     const prisma = {
       run: {
@@ -316,7 +316,7 @@ describe("Runs routes", () => {
         }),
         update: vi.fn().mockResolvedValue({})
       },
-      artifact: { create: vi.fn().mockResolvedValue({ id: "pr-1", type: "mr" }) }
+      artifact: { create: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr" }) }
     } as any;
 
     const gitPush = vi.fn().mockResolvedValue(undefined);
@@ -352,7 +352,7 @@ describe("Runs routes", () => {
 
     const res = await server.inject({
       method: "POST",
-      url: "/api/runs/00000000-0000-0000-0000-000000000001/create-mr",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/create-pr",
       payload: {}
     });
     expect(res.statusCode).toBe(200);
@@ -367,7 +367,7 @@ describe("Runs routes", () => {
     await server.close();
   });
 
-  it("POST /api/runs/:id/merge-mr supports GitHub (merges PR and marks issue done)", async () => {
+  it("POST /api/runs/:id/merge-pr supports GitHub (merges PR and marks issue done)", async () => {
     const server = createHttpServer();
     const prisma = {
       run: {
@@ -382,12 +382,12 @@ describe("Runs routes", () => {
               githubAccessToken: "ghp_xxx"
             }
           },
-          artifacts: [{ id: "pr-1", type: "mr", content: { number: 12 } }]
+          artifacts: [{ id: "pr-1", type: "pr", content: { number: 12 } }]
         }),
         update: vi.fn().mockResolvedValue({})
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
-      artifact: { update: vi.fn().mockResolvedValue({ id: "pr-1", type: "mr" }) }
+      artifact: { update: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr" }) }
     } as any;
 
     const mergePullRequest = vi.fn().mockResolvedValue({ merged: true, message: "Merged" });
@@ -423,7 +423,7 @@ describe("Runs routes", () => {
 
     const res = await server.inject({
       method: "POST",
-      url: "/api/runs/00000000-0000-0000-0000-000000000001/merge-mr",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/merge-pr",
       payload: {}
     });
     expect(res.statusCode).toBe(200);

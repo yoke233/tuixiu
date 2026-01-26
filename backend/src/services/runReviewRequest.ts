@@ -28,7 +28,7 @@ export async function createReviewRequestForRun(
   body: { title?: string; description?: string; targetBranch?: string }
 ): Promise<{
   success: boolean;
-  data?: { mr: unknown };
+  data?: { pr: unknown };
   error?: { code: string; message: string; details?: string };
 }> {
   const inferGitlabBaseUrl = deps.gitlab?.inferBaseUrl ?? gitlab.inferGitlabBaseUrl;
@@ -47,9 +47,9 @@ export async function createReviewRequestForRun(
     return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
   }
 
-  const existingMr = run.artifacts.find((a: any) => a.type === "mr");
-  if (existingMr) {
-    return { success: true, data: { mr: existingMr } };
+  const existingPr = run.artifacts.find((a: any) => a.type === "pr");
+  if (existingPr) {
+    return { success: true, data: { pr: existingPr } };
   }
 
   const project = run.issue.project;
@@ -91,13 +91,13 @@ export async function createReviewRequestForRun(
       accessToken: project.gitlabAccessToken
     };
 
-    let mr: gitlab.GitLabMergeRequest;
+    let mergeRequest: gitlab.GitLabMergeRequest;
     try {
-      mr = await createMergeRequest(auth, { sourceBranch: branch, targetBranch, title, description });
+      mergeRequest = await createMergeRequest(auth, { sourceBranch: branch, targetBranch, title, description });
     } catch (err) {
       return {
         success: false,
-        error: { code: "GITLAB_MR_FAILED", message: "创建 GitLab MR 失败", details: String(err) }
+        error: { code: "GITLAB_PR_FAILED", message: "创建 GitLab PR 失败", details: String(err) }
       };
     }
 
@@ -105,24 +105,24 @@ export async function createReviewRequestForRun(
       data: {
         id: uuidv7(),
         runId: run.id,
-        type: "mr",
+        type: "pr",
         content: {
           provider: "gitlab",
           baseUrl,
           projectId: project.gitlabProjectId,
-          iid: mr.iid,
-          id: mr.id,
-          webUrl: mr.web_url,
-          state: mr.state,
-          title: mr.title,
-          sourceBranch: mr.source_branch,
-          targetBranch: mr.target_branch
+          iid: mergeRequest.iid,
+          id: mergeRequest.id,
+          webUrl: mergeRequest.web_url,
+          state: mergeRequest.state,
+          title: mergeRequest.title,
+          sourceBranch: mergeRequest.source_branch,
+          targetBranch: mergeRequest.target_branch
         } as any
       }
     });
 
     await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
-    return { success: true, data: { mr: created } };
+    return { success: true, data: { pr: created } };
   }
 
   if (scm === "github") {
@@ -157,7 +157,7 @@ export async function createReviewRequestForRun(
       data: {
         id: uuidv7(),
         runId: run.id,
-        type: "mr",
+        type: "pr",
         content: {
           provider: "github",
           apiBaseUrl: parsed.apiBaseUrl,
@@ -175,7 +175,7 @@ export async function createReviewRequestForRun(
     });
 
     await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
-    return { success: true, data: { mr: created } };
+    return { success: true, data: { pr: created } };
   }
 
   return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub" } };
@@ -187,7 +187,7 @@ export async function mergeReviewRequestForRun(
   body: { squash?: boolean; mergeCommitMessage?: string }
 ): Promise<{
   success: boolean;
-  data?: { mr: unknown };
+  data?: { pr: unknown };
   error?: { code: string; message: string; details?: string };
 }> {
   const inferGitlabBaseUrl = deps.gitlab?.inferBaseUrl ?? gitlab.inferGitlabBaseUrl;
@@ -211,12 +211,12 @@ export async function mergeReviewRequestForRun(
   const project = run.issue.project;
   const scm = String(project.scmType ?? "").toLowerCase();
 
-  const mrArtifact = run.artifacts.find((a: any) => a.type === "mr") as any;
-  if (!mrArtifact) {
-    return { success: false, error: { code: "NO_MR", message: "Run 暂无 MR 产物" } };
+  const prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  if (!prArtifact) {
+    return { success: false, error: { code: "NO_PR", message: "Run 暂无 PR 产物" } };
   }
 
-  const content = (mrArtifact.content ?? {}) as any;
+  const content = (prArtifact.content ?? {}) as any;
   if (scm === "gitlab") {
     if (!project.gitlabProjectId || !project.gitlabAccessToken) {
       return {
@@ -232,7 +232,7 @@ export async function mergeReviewRequestForRun(
 
     const iid = Number(content.iid);
     if (!Number.isFinite(iid) || iid <= 0) {
-      return { success: false, error: { code: "BAD_MR", message: "MR 产物缺少 iid" } };
+      return { success: false, error: { code: "BAD_PR", message: "PR 产物缺少 iid" } };
     }
 
     const auth: gitlab.GitLabAuth = {
@@ -241,38 +241,42 @@ export async function mergeReviewRequestForRun(
       accessToken: project.gitlabAccessToken
     };
 
-    let mr: gitlab.GitLabMergeRequest;
+    let mergeRequest: gitlab.GitLabMergeRequest;
     try {
-      mr = await mergeMergeRequest(auth, { iid, squash: body.squash, mergeCommitMessage: body.mergeCommitMessage });
+      mergeRequest = await mergeMergeRequest(auth, {
+        iid,
+        squash: body.squash,
+        mergeCommitMessage: body.mergeCommitMessage
+      });
     } catch (err) {
-      return { success: false, error: { code: "GITLAB_MERGE_FAILED", message: "合并 MR 失败", details: String(err) } };
+      return { success: false, error: { code: "GITLAB_MERGE_FAILED", message: "合并 PR 失败", details: String(err) } };
     }
 
-    // best-effort: refresh MR state after merge (some GitLab instances are eventually consistent)
+    // best-effort: refresh state after merge (some GitLab instances are eventually consistent)
     try {
-      mr = await getMergeRequest(auth, { iid });
+      mergeRequest = await getMergeRequest(auth, { iid });
     } catch {
       // ignore
     }
 
     const updated = await deps.prisma.artifact.update({
-      where: { id: mrArtifact.id },
+      where: { id: prArtifact.id },
       data: {
         content: {
           ...content,
-          state: mr.state,
-          merge_status: mr.merge_status,
-          detailed_merge_status: mr.detailed_merge_status
+          state: mergeRequest.state,
+          merge_status: mergeRequest.merge_status,
+          detailed_merge_status: mergeRequest.detailed_merge_status
         } as any
       }
     });
 
-    if (String(mr.state).toLowerCase() === "merged") {
+    if (String(mergeRequest.state).toLowerCase() === "merged") {
       await deps.prisma.issue.update({ where: { id: run.issueId }, data: { status: "done" } }).catch(() => {});
       await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed" } }).catch(() => {});
     }
 
-    return { success: true, data: { mr: updated } };
+    return { success: true, data: { pr: updated } };
   }
 
   if (scm === "github") {
@@ -287,7 +291,7 @@ export async function mergeReviewRequestForRun(
 
     const number = Number(content.number);
     if (!Number.isFinite(number) || number <= 0) {
-      return { success: false, error: { code: "BAD_MR", message: "PR 产物缺少 number" } };
+      return { success: false, error: { code: "BAD_PR", message: "PR 产物缺少 number" } };
     }
 
     const auth: github.GitHubAuth = {
@@ -320,7 +324,7 @@ export async function mergeReviewRequestForRun(
       merged || (pr?.merged_at ? true : false) ? "merged" : (typeof pr?.state === "string" ? pr.state : "unknown");
 
     const updated = await deps.prisma.artifact.update({
-      where: { id: mrArtifact.id },
+      where: { id: prArtifact.id },
       data: {
         content: {
           ...content,
@@ -336,7 +340,7 @@ export async function mergeReviewRequestForRun(
       await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed" } }).catch(() => {});
     }
 
-    return { success: true, data: { mr: updated } };
+    return { success: true, data: { pr: updated } };
   }
 
   return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub" } };

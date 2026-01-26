@@ -39,7 +39,7 @@
 6. **05_GITLAB_INTEGRATION.md**
    - GitLab API 使用
    - Webhook 配置
-   - PR/MR 操作流程
+   - PR 操作流程
    - CI 集成方案
 
 7. **06_QUICK_START_GUIDE.md**
@@ -69,7 +69,7 @@
    ↓
 Agent 执行任务（本地通过 ACP Proxy）
    ↓
-产出 Merge Request（GitLab）
+产出 PR（GitLab Merge Request）
    ↓
 CI 检查通过（GitLab CI）
    ↓
@@ -102,8 +102,8 @@ CI 检查通过（GitLab CI）
    - 心跳保活
 
 4. **GitLab 集成**
-   - 创建 MR（通过 GitLab API）
-   - 监听 Webhook（MR 状态变更、CI 结果）
+   - 创建 PR（通过 GitLab API）
+   - 监听 Webhook（PR 状态变更、CI 结果）
    - 读取 CI 状态
 
 5. **数据库**
@@ -248,23 +248,23 @@ CI 检查通过（GitLab CI）
 
 ### 阶段 4: GitLab 集成（2-3 天）
 
-**目标**: Agent 可以创建 MR，系统可以接收 MR 状态
+**目标**: Agent 可以创建 PR，系统可以接收 PR 状态
 
 **任务清单**:
 
 - [ ] 封装 GitLab API 客户端
-  - 创建 MR：`POST /projects/:id/merge_requests`
-  - 查询 MR：`GET /projects/:id/merge_requests/:mr_id`
+  - 创建 PR（GitLab Merge Request）：`POST /projects/:id/merge_requests`
+  - 查询 PR（GitLab Merge Request）：`GET /projects/:id/merge_requests/:mr_id`
   - 查询 CI 状态：`GET /projects/:id/pipelines/:pipeline_id`
 - [ ] 实现 Webhook 接收器
   - 路由：`POST /webhooks/gitlab`
   - 验证签名（GitLab Secret Token）
-  - 解析事件类型：MR created / updated / merged
+  - 解析事件类型：PR created / updated / merged
   - 解析 CI 事件：pipeline success / failed
-- [ ] 实现 MR 创建逻辑
+- [ ] 实现 PR 创建逻辑
   - 监听 Codex 输出（识别"已创建分支"的消息）
-  - 调用 GitLab API 创建 MR
-  - 记录 Artifact（type: 'mr'）
+  - 调用 GitLab API 创建 PR
+  - 记录 Artifact（type: 'pr'）
 - [ ] 实现 CI 状态回写
   - 收到 Webhook 后更新 Run 状态
   - 创建 Event（type: 'ci.check.passed' / 'ci.check.failed'）
@@ -277,9 +277,9 @@ CI 检查通过（GitLab CI）
 
 **验收标准**:
 
-- [ ] Codex 完成后，GitLab 上出现新的 MR
-- [ ] MR 触发 CI，结果回写到系统
-- [ ] 可以在任务详情页看到 MR 链接和 CI 状态
+- [ ] Codex 完成后，GitLab 上出现新的 PR
+- [ ] PR 触发 CI，结果回写到系统
+- [ ] 可以在任务详情页看到 PR 链接和 CI 状态
 
 ---
 
@@ -299,7 +299,7 @@ CI 检查通过（GitLab CI）
 - [ ] 实现任务详情页
   - 顶部：状态、标题、描述、验收标准
   - 中部：时间线（事件流，实时更新）
-  - 底部：产物（MR 链接、分支名称）
+  - 底部：产物（PR 链接、分支名称）
   - 右侧：Agent 信息、操作按钮（取消、重试）
 - [ ] 实现 Agent 监控页
   - 列表显示所有 Agent
@@ -321,7 +321,7 @@ CI 检查通过（GitLab CI）
 
 - [ ] 可以在界面上创建任务
 - [ ] 可以实时看到执行进度（时间线滚动）
-- [ ] 可以看到 MR 链接并点击跳转到 GitLab
+- [ ] 可以看到 PR 链接并点击跳转到 GitLab
 
 ---
 
@@ -335,9 +335,9 @@ CI 检查通过（GitLab CI）
 - [ ] 执行冒烟测试
   - 创建简单任务："修复 README.md 的拼写错误"
   - 验证 Codex 可以完成
-  - 验证 MR 创建成功
+  - 验证 PR 创建成功
   - 验证 CI 通过
-  - 手动合并 MR
+  - 手动合并 PR
   - 验证任务标记为 Done
 - [ ] 修复发现的 Bug
 - [ ] 性能测试
@@ -414,15 +414,15 @@ curl http://localhost:3000/api/runs/{run_id}
 # 应该返回: {"status": "running", ...}
 ```
 
-### Milestone 3: MR Created（Week 2-3）
+### Milestone 3: PR Created（Week 2-3）
 
-**定义**: Codex 完成后，GitLab 上出现 MR
+**定义**: Codex 完成后，GitLab 上出现 PR
 
 **验收**:
 
-- 在 GitLab 项目的 Merge Requests 页面可以看到新的 MR
-- MR 描述包含 Issue 信息
-- MR 关联了正确的分支
+- 在 GitLab 项目的 Merge Requests 页面可以看到新的 PR
+- PR 描述包含 Issue 信息
+- PR 关联了正确的分支
 
 ### Milestone 4: End-to-End（Week 3）
 
@@ -432,7 +432,7 @@ curl http://localhost:3000/api/runs/{run_id}
 
 - 从 Web UI 创建任务
 - Agent 自动执行
-- 创建 MR
+- 创建 PR
 - CI 运行并通过
 - 手动合并后任务标记 Done
 
@@ -524,7 +524,7 @@ curl http://localhost:3000/api/runs/{run_id}
 - 设置超时机制（15 分钟无输出则 kill）
 - 实现自动重试（最多 2 次）
 - 记录详细的错误日志
-- 准备降级方案（手动创建 MR）
+- 准备降级方案（手动创建 PR）
 
 ### 风险 2: 网络连接不稳定
 
@@ -538,7 +538,7 @@ curl http://localhost:3000/api/runs/{run_id}
 
 ### 风险 3: GitLab Webhook 不触发
 
-**表现**: MR 创建了，但系统没收到事件
+**表现**: PR 创建了，但系统没收到事件
 
 **应对**:
 
@@ -566,8 +566,8 @@ PoC 被认为成功，需满足以下条件：
 
 - [ ] 可以创建至少 3 种不同类型的任务（前端、后端、文档）
 - [ ] Agent 执行成功率 ≥ 70%（10 个任务中至少 7 个成功）
-- [ ] MR 创建成功率 = 100%（只要 Agent 说"完成"，必须有 MR）
-- [ ] CI 集成正常（所有 MR 都触发 CI）
+- [ ] PR 创建成功率 = 100%（只要 Agent 说"完成"，必须有 PR）
+- [ ] CI 集成正常（所有 PR 都触发 CI）
 
 ### 性能指标
 
