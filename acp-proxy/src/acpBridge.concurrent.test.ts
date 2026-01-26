@@ -127,4 +127,3 @@ describe("AcpBridge concurrency", () => {
     expect(cancelledSessionId).toBe("s1");
   });
 });
-

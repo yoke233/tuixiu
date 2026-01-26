@@ -14,6 +14,8 @@ export type Project = {
   repoUrl: string;
   scmType: string;
   defaultBranch: string;
+  workspaceMode?: "worktree" | "clone";
+  gitAuthMode?: "https_pat" | "ssh";
   defaultRoleKey?: string | null;
   createdAt: string;
 };
