@@ -10,20 +10,26 @@
 
 这是一套把「Issue 需求」交给 **ACP 兼容 Coding Agent** 执行，并把结果沉淀为「可审查的 PR」的本地协作系统。
 
-**典型闭环**：创建 Project（仓库 + Token）→ 导入/创建 Issue → 启动 Run（创建 `git worktree` 工作区）→ Console 实时输出 → 查看变更/diff → 一键创建/合并 PR。
+**典型闭环**：创建 Project（仓库 + Token）→ 导入/创建 Issue → 启动 Run（创建 `worktree/clone` 工作区）→ Console 实时输出 → 查看变更/diff → 一键创建/合并 PR。
 
 **仓库组成**：`backend/`（Orchestrator）+ `acp-proxy/`（WS ↔ ACP 桥接与 Agent 启动）+ `frontend/`（Web UI）+ `docs/`（文档）+ `docker-compose.yml`（Postgres）。
 
 ## 面向真实用户：接入真实 GitHub（单仓库）
 
-> 当前版本默认使用 **本地仓库（worktree 模式）**：后端不会自动从 GitHub clone 仓库。  
-> 你要让 Agent 修改哪个 repo，就在那个 repo 的根目录启动 `backend`，并确保本地能 `git push origin <branch>`。  
-> 如需“Run 自动全量 clone + 缓存 + BoxLite 沙箱”模式，见 `docs/plans/2026-01-26-run-clone-boxlite-prd.md`（规划/设计中）。
+> 当前版本是「单仓库 Project」：一个 Project 对应一个 `repoUrl`。
+>
+> Run 工作区支持两种模式（创建 Project 时可选）：
+> - `worktree`（默认）：在“本地已 clone 的仓库”下创建 `.worktrees/run-<worktreeName>`（需要在该 repo 目录里启动 `backend`，并确保本地能 `git push origin <branch>`）。
+> - `clone`：后端自动 clone 到 `WORKSPACES_ROOT/run-<runId>`，并使用 `REPO_CACHE_ROOT/<projectId>.git` mirror 加速（无需预先手动 clone）。
+>
+> 其中 `worktreeName` 可以由你传入，或由系统根据 Issue（例如 GitHub 编号/标题）自动生成。
 
 ### 准备
 
 - 工具：`git`、Node.js 20+、`pnpm`、Docker（用于 Postgres）
-- 仓库：先在运行 `backend` 的机器上 **clone 一份目标 repo**，并配置好 push 权限（SSH key 或 Git Credential Manager / 账号凭据）
+- 仓库：
+  - `workspaceMode=worktree`：在运行 `backend` 的机器上先 **clone 一份目标 repo**，并配置好 push 权限（SSH key 或 Git Credential Manager / 账号凭据）
+  - `workspaceMode=clone`：无需预先 clone（由后端自动 clone），但需要在 Project 中配置好 `repoUrl` 与 git 认证方式（HTTPS(PAT)/SSH）
 - Agent：默认 `npx --yes @zed-industries/codex-acp`（或替换为任意 ACP 兼容 Agent）
   - 在运行 `acp-proxy` 的环境里配置好 API Key（例如 `OPENAI_API_KEY`）
 - （可选）`bash`：仅当你使用 RoleTemplate 的 `initScript`（bash）时需要（WSL2 / Git Bash 均可）
@@ -53,8 +59,8 @@
 ### 注意事项（MVP）
 
 - Token 会写入数据库（当前无 KMS/加密/权限体系/审计），请仅在可信环境使用，并尽量使用最小权限 PAT
-- Run 会在仓库根目录生成 `.worktrees/`（git worktree）；建议不要手动改动其结构
-- 当前 `worktree` 模式天然绑定“后端启动时所在的仓库目录”：一个 `backend` 实例默认只服务一个 repo；多仓库请多实例或等待 `workspaceMode=clone`（见上方 PRD）
+- Run 工作区：`worktree` 模式会在仓库根目录生成 `.worktrees/`（天然绑定 `backend` 启动所在 repo）；`clone` 模式会在 `WORKSPACES_ROOT` 下创建 `run-*` 并维护 `REPO_CACHE_ROOT`（两者均支持 TTL 清理）
+- worktreeName 默认从 Issue 标题生成 **ASCII slug**（避免中文等字符进入分支/路径）；如需更短更贴近语义的名称，可在后端启用 `WORKTREE_NAME_LLM=1`（会把标题发给 LLM），并配置 `WORKTREE_NAME_LLM_API_KEY`/`OPENAI_API_KEY`
 - RoleTemplate 的 `initScript` 在 `acp-proxy` 所在机器执行，等同运行本地脚本；建议仅管理员可编辑
 
 ---
@@ -87,7 +93,7 @@
 ## ✅ 本仓库当前可运行的 MVP
 
 已实现并可本地跑通：
-- `backend/`：Fastify + WebSocket Gateway + Prisma ORM（迁移使用 `prisma migrate` 自动生成/执行）
+- `backend/`：Fastify + WebSocket Gateway + Prisma ORM（`pnpm dev` 启动时自动应用 `prisma migrate deploy`）
 - `acp-proxy/`：Node/TypeScript 实现 WS ↔ ACP(JSON-RPC/stdin/stdout)，基于 `@agentclientprotocol/sdk`；默认使用 `npx --yes @zed-industries/codex-acp`
 - `frontend/`：React + Vite Web UI（Project/Issue/Run/变更/PR）+ WS 实时刷新
 - GitHub：Issue 导入（按 number/URL）+ PR 创建/合并（MVP 先支持 GitHub）
@@ -102,7 +108,6 @@ docker compose up -d
 
 Copy-Item backend/.env.example backend/.env
 cd backend
-pnpm prisma:migrate
 pnpm dev
 ```
 
@@ -118,7 +123,7 @@ pnpm dev
 
 编辑 `acp-proxy/config.json` 时至少确认：
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
-- `cwd`: 当前仓库根目录（建议填写；Run 会覆盖为 worktree 目录）
+- `cwd`: 当前仓库根目录（建议填写；Run 会覆盖为 workspace 目录）
 - （可选）`pathMapping`: 仅当 `acp-proxy` 跑在 WSL2 且后端传入 Windows 路径时启用 `windows_to_wsl`
 
 > 如你要使用 RoleTemplate 的 `initScript`（bash），请确保运行 proxy 的环境里 `bash` 在 PATH 中（WSL2 / Git Bash）。
@@ -225,7 +230,7 @@ pnpm test:coverage
 1. 数据库 Schema（30 分钟）→ 参考 03 文档
 2. API 框架搭建（2 小时）→ 参考 03 文档
 3. WebSocket Gateway（4 小时）→ 参考 03 文档
-4. Issue 启动 Run + worktree（4 小时）→ 参考 01/03 文档
+4. Issue 启动 Run + workspace（worktree/clone）（4 小时）→ 参考 01/03 文档
 5. Run 对话/事件/变更 diff（4 小时）→ 参考 03/04/06 文档
 6. PR（GitLab/GitHub）创建/合并（4 小时）→ 参考 03/05 文档
 
@@ -291,7 +296,7 @@ projects (1) → issues (N) → runs (N) → events / artifacts
 
 关键字段（以 Prisma schema 为准）：
 - runs.acpSessionId：Run 绑定的 ACP session
-- runs.workspacePath：Run worktree 路径
+- runs.workspacePath：Run workspace 路径
 - runs.branchName：默认 `run/<worktreeName>`（可自定义；不填则按 Issue 自动生成）
 - runs.status：pending → running → waiting_ci → completed（CI/Webhook 仍在规划中）
 ```
@@ -354,7 +359,7 @@ GET    /api/agents          # Agent 列表
   "type": "execute_task",
   "run_id": "run-123",
   "prompt": "任务描述",
-  "cwd": "D:\\repo\\.worktrees\\run-<worktreeName>"
+  "cwd": "<workspacePath>"
 }
 
 // Proxy → Orchestrator
@@ -396,7 +401,7 @@ GET    /api/agents          # Agent 列表
 
 1. Project 的 provider token 是否有效（GitHub: `githubAccessToken`；GitLab: `gitlabAccessToken`）且具备创建/合并 PR 权限
 2. 本地是否能 `git push origin <branch>`（推荐使用 SSH remote 或配置好 HTTPS 凭据）
-3. Run 是否有 `branchName/workspacePath`（启动 Run 时会创建 worktree）
+3. Run 是否有 `branchName/workspacePath`（启动 Run 时会创建 workspace）
 4. 后端日志是否有 `git push` 或 provider API 调用错误
 
 ---
@@ -427,7 +432,7 @@ GET    /api/agents          # Agent 列表
 
 - [x] 创建 Project（配置 repo + token）
 - [x] 创建 Issue（进入 pending 需求池）
-- [x] 启动 Run（选择/自动分配 Agent + worktree）
+- [x] 启动 Run（选择/自动分配 Agent + workspace（worktree/clone））
 - [x] RunConsole 实时输出 + 可继续对话
 - [x] 查看变更与 diff
 - [x] 创建 PR（GitLab MR / GitHub PR）

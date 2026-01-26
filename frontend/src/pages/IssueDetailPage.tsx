@@ -4,7 +4,7 @@ import { Link, useOutletContext, useParams } from "react-router-dom";
 import { listAgents } from "../api/agents";
 import { getIssue, startIssue } from "../api/issues";
 import { listRoles } from "../api/roles";
-import { cancelRun, completeRun, getRun, listRunEvents, promptRun } from "../api/runs";
+import { cancelRun, completeRun, getRun, listRunEvents, pauseRun, promptRun } from "../api/runs";
 import { ArtifactList } from "../components/ArtifactList";
 import { IssueRunCard } from "../components/IssueRunCard";
 import { RunChangesPanel } from "../components/RunChangesPanel";
@@ -39,6 +39,7 @@ export function IssueDetailPage() {
   const [worktreeName, setWorktreeName] = useState<string>("");
   const [chatText, setChatText] = useState<string>("");
   const [sending, setSending] = useState(false);
+  const [pausing, setPausing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -235,6 +236,20 @@ export function IssueDetailPage() {
     }
   }
 
+  async function onPauseRun() {
+    if (!currentRunId) return;
+    setError(null);
+    setPausing(true);
+    try {
+      await pauseRun(currentRunId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPausing(false);
+    }
+  }
+
+
   async function onSendPrompt(e: React.FormEvent) {
     e.preventDefault();
     if (!currentRunId) return;
@@ -323,7 +338,18 @@ export function IssueDetailPage() {
           />
 
           <section className="card">
-            <h2>Console</h2>
+            <div className="row spaceBetween">
+              <h2>Console</h2>
+              {run?.status === "running" ? (
+                <button
+                  onClick={onPauseRun}
+                  disabled={!currentRunId || pausing || !sessionKnown || (currentAgent ? !agentOnline : false)}
+                  title={!sessionKnown ? "ACP sessionId 尚未建立/同步" : ""}
+                >
+                  {pausing ? "暂停中…" : "暂停 Agent"}
+                </button>
+              ) : null}
+            </div>
             <RunConsole events={events} />
             <form onSubmit={onSendPrompt} className="consoleInput">
               <input

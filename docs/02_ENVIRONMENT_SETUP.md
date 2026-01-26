@@ -74,13 +74,21 @@ Copy-Item backend/.env.example backend/.env
 ```
 
 > 目前后端必需的只有 `DATABASE_URL`。GitLab/GitHub 的 token 等配置通过“创建 Project”时写入数据库，不再依赖环境变量。
+>
+> Run 工作区/缓存相关（`WORKSPACES_ROOT`、`REPO_CACHE_ROOT`、TTL 清理参数）是可选项：留空则默认使用 `$HOME/.tuixiu/*`。
 
-### 4.3 执行迁移
+### 4.3 应用 Prisma 迁移（自动）
+
+`backend` 的 `pnpm dev` 启动时会自动执行 `pnpm prisma:deploy`（`prisma migrate deploy`）以应用已有迁移文件，因此通常无需手动执行。
+
+如需手动执行：
 
 ```powershell
 cd backend
-pnpm prisma:migrate
+pnpm prisma:deploy
 ```
+
+> 仅当你在本地修改了 `prisma/schema.prisma` 并需要**生成新迁移**时，才需要用 `pnpm prisma:migrate`（`prisma migrate dev`）。
 
 ---
 
@@ -173,6 +181,15 @@ pnpm dev
 ## 6. 配置 SCM（GitLab/GitHub）
 
 系统通过 “Project” 来承载代码仓库与凭据配置（写入数据库）。
+
+创建 Project 时还可选：
+
+- `workspaceMode`：`worktree`（默认）或 `clone`
+- `gitAuthMode`：`https_pat`（默认）或 `ssh`（仅影响 git clone/fetch/push；创建 PR/MR 等 API 仍需要 token）
+
+> `workspaceMode=clone` 会把 Run 工作区创建在 `WORKSPACES_ROOT` 下，并按需维护 `REPO_CACHE_ROOT` mirror 缓存（两者不配则默认 `$HOME/.tuixiu/*`）。
+>
+> `gitAuthMode=ssh` 依赖宿主机已配置的 SSH（例如 `~/.ssh`），并建议 `repoUrl` 使用 SSH 形式（如 `git@github.com:org/repo.git`）。
 
 ### 6.1 GitLab
 

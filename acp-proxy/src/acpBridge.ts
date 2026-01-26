@@ -152,5 +152,4 @@ export class AcpBridge {
   close(): void {
     this.kill();
   }
-
 }

@@ -58,6 +58,8 @@ model Project {
   repoUrl                String   @db.VarChar(500)
   scmType                String   @default("gitlab") @db.VarChar(20)
   defaultBranch          String   @default("main") @db.VarChar(100)
+  workspaceMode          String   @default("worktree") @db.VarChar(20)
+  gitAuthMode            String   @default("https_pat") @db.VarChar(20)
   defaultRoleKey         String?  @db.VarChar(100)
   gitlabProjectId        Int?     @unique
   gitlabAccessToken      String?  @db.Text
