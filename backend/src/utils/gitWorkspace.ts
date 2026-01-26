@@ -30,10 +30,10 @@ function normalizeRunKey(input: string): string {
   // Windows 文件名不允许：<>:"/\|?*
   // Git 分支名不允许：空格、~ ^ : ? * [ \ 以及控制字符
   const replaced = raw
-    .replaceAll(/[\/\\]/g, "-")
+    .replaceAll(/[/\\]/g, "-")
     .replaceAll(/\s+/g, "-")
-    .replaceAll(/[\u0000-\u001F\u007F]/g, "")
-    .replaceAll(/[<>:"|?*~^\[\]]/g, "-");
+    .replaceAll(/\p{Cc}/gu, "")
+    .replaceAll(/[[<>:"|?*~^\]]/g, "-");
 
   // 避免 git ref 禁止的片段：..、@{、.lock
   let s = replaced.replaceAll("..", "-").replaceAll("@{", "-").replaceAll(".lock", "-lock");
@@ -41,8 +41,8 @@ function normalizeRunKey(input: string): string {
   s = s
     .replaceAll(/-+/g, "-")
     .replaceAll(/\.+/g, ".")
-    .replaceAll(/^[\-.]+/g, "")
-    .replaceAll(/[\-.]+$/g, "")
+    .replaceAll(/^[.-]+/g, "")
+    .replaceAll(/[.-]+$/g, "")
     .trim();
 
   // 兼顾 Windows：末尾不能是空格/点

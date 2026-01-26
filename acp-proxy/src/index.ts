@@ -88,6 +88,7 @@ async function main() {
   const sessionToRun = new Map<string, string>();
   const chunkBySession = new Map<string, ChunkState>();
   const runToCwd = new Map<string, string>();
+  const loadingSessions = new Set<string>();
 
   const log = (msg: string, extra?: Record<string, unknown>) => {
     const head = `[proxy] ${msg}`;
@@ -274,6 +275,8 @@ async function main() {
     cwd: defaultCwd,
     log,
     onSessionUpdate: (sessionId, update) => {
+      if (loadingSessions.has(sessionId)) return;
+
       const runId = sessionToRun.get(sessionId);
       if (!runId) return;
 
@@ -580,6 +583,7 @@ async function main() {
     session_id?: string;
     context?: string;
     cwd?: string;
+    resume?: boolean;
   }) => {
     const release = await sem.acquire();
     try {
@@ -619,7 +623,13 @@ async function main() {
         // 仅当本进程没见过该 session 时，尝试 load 历史会话。
         // 若 load 失败（agent 不支持 / session 不存在），不自动新建 session，避免上下文丢失。
         if (!sessionPreviouslySeen) {
-          const ok = await bridge.loadSession(sessionId, cwd);
+          loadingSessions.add(sessionId);
+          let ok = false;
+          try {
+            ok = await bridge.loadSession(sessionId, cwd);
+          } finally {
+            loadingSessions.delete(sessionId);
+          }
           if (!ok) {
             sendUpdate(msg.run_id, {
               type: "text",
@@ -792,6 +802,7 @@ async function main() {
                   context:
                     typeof msg.context === "string" ? msg.context : undefined,
                   cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
+                  resume: (msg as any).resume === true,
                 });
               }
             } catch (err) {

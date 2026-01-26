@@ -14,7 +14,9 @@ class FakeSocket extends EventEmitter {
 describe("WebSocketGateway", () => {
   it("register_agent upserts agent and acks; sendToAgent routes to socket", async () => {
     const prisma = {
-      agent: { upsert: vi.fn().mockResolvedValue({}) }
+      agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
+      run: { findMany: vi.fn().mockResolvedValue([]) },
+      event: { findMany: vi.fn().mockResolvedValue([]) },
     } as any;
 
     const gateway = createWebSocketGateway({ prisma });
@@ -37,6 +39,58 @@ describe("WebSocketGateway", () => {
 
     await gateway.sendToAgent("proxy-1", { hello: "world" });
     expect(socket.sent.some((s) => JSON.parse(s).hello === "world")).toBe(true);
+  });
+
+  it("register_agent sends prompt_run to resume running runs", async () => {
+    const prisma = {
+      agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
+      run: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "r1",
+            status: "running",
+            acpSessionId: "s1",
+            workspacePath: "C:/repo/.worktrees/run-1",
+            branchName: "run/1",
+            issue: { title: "Issue 1", description: "desc" },
+            artifacts: [],
+          },
+          {
+            id: "r2",
+            status: "running",
+            acpSessionId: null,
+            workspacePath: "C:/repo/.worktrees/run-2",
+            branchName: "run/2",
+            issue: { title: "Issue 2" },
+            artifacts: [],
+          },
+        ]),
+      },
+      event: { findMany: vi.fn().mockResolvedValue([]) },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const socket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(socket as any, vi.fn());
+
+    socket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "register_agent",
+          agent: { id: "proxy-1", name: "codex-1", max_concurrent: 2 },
+        }),
+      ),
+    );
+    await flushMicrotasks();
+
+    const sent = socket.sent.map((s) => JSON.parse(s));
+    const resumes = sent.filter((m) => m.type === "prompt_run");
+    expect(resumes.map((m) => m.run_id).sort()).toEqual(["r1", "r2"]);
+    expect(resumes.every((m) => m.resume === true)).toBe(true);
+    expect(resumes.find((m) => m.run_id === "r1")?.session_id).toBe("s1");
+    expect(resumes.find((m) => m.run_id === "r2")?.session_id).toBeUndefined();
+    expect(resumes.find((m) => m.run_id === "r1")?.cwd).toBe("C:/repo/.worktrees/run-1");
   });
 
   it("logs error when receiving invalid JSON", async () => {
@@ -275,7 +329,9 @@ describe("WebSocketGateway", () => {
       agent: {
         upsert: vi.fn().mockResolvedValue({}),
         update: vi.fn().mockResolvedValue({})
-      }
+      },
+      run: { findMany: vi.fn().mockResolvedValue([]) },
+      event: { findMany: vi.fn().mockResolvedValue([]) },
     } as any;
 
     const gateway = createWebSocketGateway({ prisma });

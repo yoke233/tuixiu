@@ -159,13 +159,13 @@ agent 的 `agent_message_chunk` 可能非常细。proxy 会按 session 维度缓
 | Server → Agent | `register_ack`   | 注册确认            | `{success:true}` |
 | Agent → Server | `heartbeat`      | 心跳                | `{agent_id,timestamp?}` |
 | Server → Agent | `execute_task`   | 启动 Run（首轮执行） | `{run_id,prompt,cwd?}` |
-| Server → Agent | `prompt_run`     | 继续对话（同 Run）  | `{run_id,prompt,session_id?,context?,cwd?}` |
+| Server → Agent | `prompt_run`     | 继续对话（同 Run）/断线重连恢复 | `{run_id,prompt,session_id?,context?,cwd?,resume?}` |
 | Server → Agent | `cancel_task`   | 取消 Run（ACP session/cancel） | `{run_id,session_id?}` |
 | Agent → Server | `agent_update`   | 事件流转发           | `{run_id,content:any}` |
 
 服务器关键行为摘要：
 
-- `register_agent`：upsert `Agent`，置 `online`，回 `register_ack`
+- `register_agent`：upsert `Agent`，置 `online`，回 `register_ack`；并**自动下发**该 agent 仍处于 `running` 状态的 Run（`prompt_run{resume:true,...}`），用于断线重连/重启后的恢复
 - `heartbeat`：刷新 `Agent.lastHeartbeat`
 - `agent_update`：
   - 落库 `Event`（`source=acp`，`type=acp.update.received`）
