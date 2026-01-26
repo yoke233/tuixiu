@@ -67,5 +67,64 @@ describe("AcpBridge concurrency", () => {
     expect(launchCount).toBe(1);
     expect(initializeCount).toBe(1);
   });
+  it("sends session/cancel to agent", async () => {
+    let cancelCount = 0;
+    let cancelledSessionId = "";
+
+    const launcher: AgentLauncher = {
+      async launch(): Promise<AcpTransport> {
+        const clientToAgent = new TransformStream<Uint8Array, Uint8Array>();
+        const agentToClient = new TransformStream<Uint8Array, Uint8Array>();
+
+        const agentImpl: acp.Agent = {
+          async initialize(_params) {
+            return {
+              protocolVersion: 1,
+              agentCapabilities: { loadSession: false },
+              authMethods: [],
+            };
+          },
+          async newSession() {
+            return { sessionId: "s1" };
+          },
+          async loadSession() {
+            return {};
+          },
+          async authenticate() {},
+          async prompt() {
+            return { stopReason: "end_turn" };
+          },
+          async cancel(params) {
+            cancelCount += 1;
+            cancelledSessionId = params.sessionId;
+          },
+        };
+
+        new acp.AgentSideConnection(
+          () => agentImpl,
+          acp.ndJsonStream(agentToClient.writable, clientToAgent.readable),
+        );
+
+        return {
+          input: clientToAgent.writable,
+          output: agentToClient.readable,
+          close: async () => {},
+        };
+      },
+    };
+
+    const bridge = new AcpBridge({
+      launcher,
+      cwd: "/tmp",
+      log: () => {},
+      onSessionUpdate: () => {},
+    });
+
+    await bridge.ensureInitialized();
+    await (bridge as any).cancel("s1");
+
+    expect(cancelCount).toBe(1);
+    expect(cancelledSessionId).toBe("s1");
+  });
 });
 

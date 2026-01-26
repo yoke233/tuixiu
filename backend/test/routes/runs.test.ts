@@ -60,12 +60,23 @@ describe("Runs routes", () => {
   it("POST /api/runs/:id/cancel marks cancelled", async () => {
     const server = createHttpServer();
     const prisma = {
-      run: { update: vi.fn().mockResolvedValue({ id: "r2", status: "cancelled", issueId: "i2", agentId: "a2" }) },
+      run: {
+        update: vi.fn().mockResolvedValue({
+          id: "r2",
+          status: "cancelled",
+          issueId: "i2",
+          agentId: "a2",
+          acpSessionId: "s2",
+          agent: { proxyId: "proxy-2" }
+        })
+      },
       issue: { update: vi.fn().mockResolvedValue({}) },
       agent: { update: vi.fn().mockResolvedValue({}) }
     } as any;
 
-    await server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
+    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+
+    await server.register(makeRunRoutes({ prisma, sendToAgent }), { prefix: "/api/runs" });
 
     const res = await server.inject({
       method: "POST",
@@ -82,6 +93,11 @@ describe("Runs routes", () => {
     expect(call.data.completedAt).toBeInstanceOf(Date);
     expect(prisma.issue.update).toHaveBeenCalled();
     expect(prisma.agent.update).toHaveBeenCalled();
+    expect(sendToAgent).toHaveBeenCalledWith("proxy-2", {
+      type: "cancel_task",
+      run_id: "00000000-0000-0000-0000-000000000002",
+      session_id: "s2"
+    });
     await server.close();
   });
 

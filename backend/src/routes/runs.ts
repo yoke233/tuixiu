@@ -285,7 +285,16 @@ export function makeRunRoutes(deps: {
       const run = await deps.prisma.run.update({
         where: { id },
         data: { status: "cancelled", completedAt: new Date() },
+        include: { agent: { select: { proxyId: true } } },
       });
+
+      if (deps.sendToAgent) {
+        await deps.sendToAgent(run.agent.proxyId, {
+          type: "cancel_task",
+          run_id: id,
+          session_id: run.acpSessionId ?? undefined,
+        }).catch(() => {});
+      }
 
       await deps.prisma.issue
         .update({ where: { id: run.issueId }, data: { status: "cancelled" } })
