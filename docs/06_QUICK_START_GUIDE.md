@@ -120,6 +120,7 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
 - `cwd`: repo 根目录（运行中会覆盖为 worktree cwd）
+- `agent.max_concurrent`: 单个 Agent 的并发 Run 上限（ACP 支持多 `session`；>1 时可并行多个 Run，但更吃 CPU/内存）
 - `agent_command`: 默认 `["npx","--yes","@zed-industries/codex-acp"]`（可替换为任意 ACP 兼容 Agent）
 - `sandbox.provider`: 默认 `host_process`（`boxlite_oci` 仅 WSL2/Linux/macOS Apple Silicon 可用）
 - `pathMapping`: 可选（仅当你在 WSL 内运行 proxy 且后端传入 Windows 路径时使用，把 `D:\\...` 转成 `/mnt/d/...`）

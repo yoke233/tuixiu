@@ -73,7 +73,7 @@ export function makeRunRoutes(deps: {
 
       const events = await deps.prisma.event.findMany({
         where: { runId: id },
-        orderBy: { id: "desc" },
+        orderBy: { timestamp: "desc" },
         take: limit,
       });
       return { success: true, data: { events } };
