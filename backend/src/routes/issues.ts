@@ -214,7 +214,14 @@ export function makeIssueRoutes(deps: {
                 runNumber
               });
 
-        const ws = await (deps.createWorkspace ?? createRunWorktree)({ runId: run.id, baseBranch, name });
+        const createWorkspace =
+          deps.createWorkspace ??
+          (async (opts: { runId: string; baseBranch: string; name: string }): Promise<CreateWorkspaceResult> => {
+            const legacy = await createRunWorktree(opts);
+            return { ...legacy, workspaceMode: "worktree", baseBranch: opts.baseBranch, timingsMs: {} };
+          });
+
+        const ws = await createWorkspace({ runId: run.id, baseBranch, name });
 
         workspacePath = ws.workspacePath;
         branchName = ws.branchName;
