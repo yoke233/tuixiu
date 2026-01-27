@@ -1,8 +1,9 @@
-import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { toPublicProject } from "../utils/publicProject.js";
 import { createRunWorktree, suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
 import { postGitHubIssueCommentBestEffort } from "./githubIssueComments.js";
+import type { AcpTunnel } from "./acpTunnel.js";
 
 export type WorkspaceMode = "worktree" | "clone";
 
@@ -37,7 +38,7 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
 
 export async function startIssueRun(opts: {
   prisma: PrismaDeps;
-  sendToAgent: SendToAgent;
+  acp: AcpTunnel;
   createWorkspace?: (opts: { runId: string; baseBranch: string; name: string }) => Promise<CreateWorkspaceResult>;
   issueId: string;
   agentId?: string;
@@ -282,12 +283,12 @@ export async function startIssueRun(opts: {
           }
         : undefined;
 
-    await opts.sendToAgent((selectedAgent as any).proxyId, {
-      type: "execute_task",
-      run_id: (run as any).id,
-      session_id: (run as any).id,
-      prompt: promptParts.join("\n\n"),
+    await opts.acp.promptRun({
+      proxyId: String((selectedAgent as any).proxyId ?? ""),
+      runId: String((run as any).id),
       cwd: workspacePath,
+      sessionId: (run as any).acpSessionId ?? null,
+      prompt: promptParts.join("\n\n"),
       init,
     });
 

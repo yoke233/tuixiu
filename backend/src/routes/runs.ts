@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { buildContextFromRun } from "../services/runContext.js";
+import type { AcpTunnel } from "../services/acpTunnel.js";
 import {
   getRunChanges,
   getRunDiff,
@@ -28,6 +29,7 @@ const execFileAsync = promisify(execFile);
 export function makeRunRoutes(deps: {
   prisma: PrismaDeps;
   sendToAgent?: SendToAgent;
+  acp?: AcpTunnel;
   broadcastToClients?: (payload: unknown) => void;
   gitPush?: (opts: { cwd: string; branch: string; project: any }) => Promise<void>;
   gitlab?: {
@@ -289,10 +291,10 @@ export function makeRunRoutes(deps: {
         },
       });
 
-      if (!deps.sendToAgent) {
+      if (!deps.acp) {
         return {
           success: false,
-          error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" },
+          error: { code: "NO_AGENT_GATEWAY", message: "ACP 隧道未配置" },
         };
       }
       if (!run.agent) {
@@ -314,13 +316,21 @@ export function makeRunRoutes(deps: {
           events: recentEvents,
         });
 
-        await deps.sendToAgent(run.agent.proxyId, {
-          type: "prompt_run",
-          run_id: id,
-          prompt: text,
-          session_id: run.acpSessionId ?? undefined,
+        const cwd = run.workspacePath ?? "";
+        if (!cwd) {
+          return {
+            success: false,
+            error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法发送 prompt" },
+          };
+        }
+
+        await deps.acp.promptRun({
+          proxyId: run.agent.proxyId,
+          runId: id,
+          cwd,
+          sessionId: run.acpSessionId ?? null,
           context,
-          cwd: run.workspacePath ?? undefined,
+          prompt: text,
         });
       } catch (error) {
         return {
@@ -419,7 +429,7 @@ export function makeRunRoutes(deps: {
             run_id: run.id,
           });
           triggerTaskAutoAdvance(
-            { prisma: deps.prisma, sendToAgent: deps.sendToAgent, broadcastToClients: deps.broadcastToClients },
+            { prisma: deps.prisma, sendToAgent: deps.sendToAgent, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
             { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
           );
         }
@@ -462,7 +472,7 @@ export function makeRunRoutes(deps: {
           run_id: run.id,
         });
         triggerTaskAutoAdvance(
-          { prisma: deps.prisma, sendToAgent: deps.sendToAgent, broadcastToClients: deps.broadcastToClients },
+          { prisma: deps.prisma, sendToAgent: deps.sendToAgent, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
           { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
         );
       }
@@ -484,10 +494,10 @@ export function makeRunRoutes(deps: {
         };
       }
 
-      if (!deps.sendToAgent) {
+      if (!deps.acp) {
         return {
           success: false,
-          error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" },
+          error: { code: "NO_AGENT_GATEWAY", message: "ACP 隧道未配置" },
         };
       }
       if (!run.agent) {
@@ -504,11 +514,17 @@ export function makeRunRoutes(deps: {
         };
       }
 
+      const cwd = run.workspacePath ?? "";
+      if (!cwd) {
+        return { success: false, error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法暂停" } };
+      }
+
       try {
-        await deps.sendToAgent(run.agent.proxyId, {
-          type: "session_cancel",
-          run_id: id,
-          session_id: run.acpSessionId,
+        await deps.acp.cancelSession({
+          proxyId: run.agent.proxyId,
+          runId: id,
+          cwd,
+          sessionId: run.acpSessionId,
         });
       } catch (error) {
         return {
@@ -535,14 +551,12 @@ export function makeRunRoutes(deps: {
         include: { agent: { select: { proxyId: true } } },
       });
 
-      if (deps.sendToAgent) {
+      if (deps.acp) {
         const proxyId = run.agent?.proxyId ?? null;
-        if (proxyId) {
-          await deps.sendToAgent(proxyId, {
-            type: "cancel_task",
-            run_id: id,
-            session_id: run.acpSessionId ?? undefined,
-          }).catch(() => {});
+        const sessionId = run.acpSessionId ?? null;
+        const cwd = run.workspacePath ?? "";
+        if (proxyId && sessionId && cwd) {
+          await deps.acp.cancelSession({ proxyId, runId: id, cwd, sessionId }).catch(() => {});
         }
       }
 

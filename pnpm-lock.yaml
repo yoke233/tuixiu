@@ -41,6 +41,9 @@ importers:
 
   backend:
     dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: ^0.5.1
+        version: 0.5.1
       '@fastify/cors':
         specifier: ^10.1.0
         version: 10.1.0

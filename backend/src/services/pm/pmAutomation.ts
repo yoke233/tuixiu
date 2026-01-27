@@ -1,6 +1,7 @@
-import type { PrismaDeps, SendToAgent } from "../../deps.js";
+import type { PrismaDeps } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { startIssueRun, type CreateWorkspaceResult } from "../startIssueRun.js";
+import type { AcpTunnel } from "../acpTunnel.js";
 import { analyzeIssueForPm } from "./pmAnalyzeIssue.js";
 import { isPmAutomationEnabled } from "./pmLlm.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
@@ -27,7 +28,7 @@ function enqueueByKey(queue: Map<string, Promise<void>>, key: string, task: Issu
 
 export function createPmAutomation(deps: {
   prisma: PrismaDeps;
-  sendToAgent: SendToAgent;
+  acp: AcpTunnel;
   createWorkspace?: (opts: { runId: string; baseBranch: string; name: string }) => Promise<CreateWorkspaceResult>;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 }): PmAutomation {
@@ -74,7 +75,7 @@ export function createPmAutomation(deps: {
 
     const startRes = await startIssueRun({
       prisma: deps.prisma,
-      sendToAgent: deps.sendToAgent,
+      acp: deps.acp,
       createWorkspace: deps.createWorkspace,
       issueId,
       agentId: analysis.recommendedAgentId ?? undefined,

@@ -94,16 +94,14 @@ describe("PM automation", () => {
       },
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    const pm = createPmAutomation({ prisma, sendToAgent, createWorkspace });
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    const pm = createPmAutomation({ prisma, acp, createWorkspace });
 
     const res = await pm.dispatch("i1", "test");
     expect((res as any).success).toBe(true);
 
-    expect(sendToAgent).toHaveBeenCalledTimes(1);
-    const [, payload] = sendToAgent.mock.calls[0];
-    expect(payload.type).toBe("execute_task");
-    expect(String(payload.prompt)).toContain("（系统/PM）以下为 PM 自动分析结果");
+    expect(acp.promptRun).toHaveBeenCalledTimes(1);
+    expect(String(acp.promptRun.mock.calls[0][0].prompt)).toContain("（系统/PM）以下为 PM 自动分析结果");
 
     expect(prisma.artifact.create).toHaveBeenCalledTimes(2);
     expect(prisma.artifact.create).toHaveBeenCalledWith(
@@ -134,11 +132,11 @@ describe("PM automation", () => {
       },
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    const pm = createPmAutomation({ prisma, sendToAgent });
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    const pm = createPmAutomation({ prisma, acp });
 
     const res = await pm.dispatch("i1", "ui_create");
     expect(res).toEqual({ success: true, data: { skipped: true, reason: "POLICY_AUTO_START_DISABLED" } });
-    expect(sendToAgent).not.toHaveBeenCalled();
+    expect(acp.promptRun).not.toHaveBeenCalled();
   });
 });

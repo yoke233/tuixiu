@@ -25,6 +25,7 @@ import { makeRunRoutes } from "./routes/runs.js";
 import { makeStepRoutes } from "./routes/steps.js";
 import { makeTaskRoutes } from "./routes/tasks.js";
 import { createPmAutomation } from "./services/pm/pmAutomation.js";
+import { createAcpTunnel } from "./services/acpTunnel.js";
 import { createRunWorkspace } from "./utils/runWorkspace.js";
 import { startWorkspaceCleanupLoop } from "./services/workspaceCleanup.js";
 import { createWebSocketGateway } from "./websocket/gateway.js";
@@ -77,6 +78,15 @@ server.addHook("preHandler", async (request, reply) => {
 const wsGateway = createWebSocketGateway({ prisma });
 wsGateway.init(server);
 
+const acpTunnel = createAcpTunnel({
+  prisma,
+  sendToAgent: wsGateway.sendToAgent,
+  broadcastToClients: wsGateway.broadcastToClients,
+  log: (msg, extra) => server.log.info(extra ? { ...extra, msg } : { msg }),
+});
+wsGateway.setAcpTunnelHandlers(acpTunnel.gatewayHandlers);
+wsGateway.setAcpTunnel(acpTunnel);
+
 const createWorkspace = async ({ runId, baseBranch, name }: { runId: string; baseBranch: string; name: string }) => {
   const run = await prisma.run.findUnique({
     where: { id: runId },
@@ -99,14 +109,14 @@ const createWorkspace = async ({ runId, baseBranch, name }: { runId: string; bas
 
 const pm = createPmAutomation({
   prisma,
-  sendToAgent: wsGateway.sendToAgent,
+  acp: acpTunnel,
   createWorkspace,
   log: (msg, extra) => server.log.info(extra ? { ...extra, msg } : { msg }),
 });
 server.register(
   makeIssueRoutes({
     prisma,
-    sendToAgent: wsGateway.sendToAgent,
+    acp: acpTunnel,
     createWorkspace,
     onIssueCreated: pm.triggerAutoStart,
   }),
@@ -114,7 +124,10 @@ server.register(
     prefix: "/api/issues"
   },
 );
-server.register(makeRunRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, broadcastToClients: wsGateway.broadcastToClients }), { prefix: "/api/runs" });
+server.register(
+  makeRunRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, acp: acpTunnel, broadcastToClients: wsGateway.broadcastToClients }),
+  { prefix: "/api/runs" },
+);
 server.register(makeApprovalRoutes({ prisma }), { prefix: "/api/approvals" });
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
@@ -157,7 +170,7 @@ server.register(
   { prefix: "/api" },
 );
 server.register(makeArtifactRoutes({ prisma }), { prefix: "/api" });
-server.register(makeAcpSessionRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, auth }), { prefix: "/api/admin" });
+server.register(makeAcpSessionRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, acp: acpTunnel, auth }), { prefix: "/api/admin" });
 
 startWorkspaceCleanupLoop({
   prisma,

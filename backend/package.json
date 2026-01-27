@@ -17,6 +17,7 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.5.1",
     "@fastify/cors": "^10.1.0",
     "@fastify/jwt": "^10.0.0",
     "@fastify/websocket": "^11.0.1",

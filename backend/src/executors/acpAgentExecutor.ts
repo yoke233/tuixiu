@@ -1,6 +1,7 @@
-import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
+import type { AcpTunnel } from "../services/acpTunnel.js";
 
 import type { CreateWorkspace, CreateWorkspaceResult } from "./types.js";
 
@@ -180,10 +181,10 @@ async function ensureWorkspace(opts: {
 
 export async function startAcpAgentExecution(deps: {
   prisma: PrismaDeps;
-  sendToAgent?: SendToAgent;
+  acp: AcpTunnel;
   createWorkspace?: CreateWorkspace;
 }, runId: string): Promise<void> {
-  if (!deps.sendToAgent) throw new Error("sendToAgent 未配置");
+  if (!deps.acp) throw new Error("acpTunnel 未配置");
 
   const run = await deps.prisma.run.findUnique({
     where: { id: runId },
@@ -302,12 +303,12 @@ export async function startAcpAgentExecution(deps: {
         }
       : undefined;
 
-  await deps.sendToAgent(agent.proxyId, {
-    type: "execute_task",
-    run_id: run.id,
-    session_id: run.id,
-    prompt: promptParts.join("\n\n"),
+  await deps.acp.promptRun({
+    proxyId: String(agent.proxyId ?? ""),
+    runId: run.id,
     cwd: workspace.workspacePath,
+    sessionId: (run as any).acpSessionId ?? null,
+    prompt: promptParts.join("\n\n"),
     init,
   });
 }

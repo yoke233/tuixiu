@@ -2,12 +2,12 @@ import { access } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+
+import * as acp from "@agentclientprotocol/sdk";
 import WebSocket from "ws";
 
 import { loadConfig } from "./config.js";
-import { Semaphore } from "./semaphore.js";
 import type { AgentUpdateMessage, IncomingMessage } from "./types.js";
-import { AcpBridge } from "./acpBridge.js";
 import { DefaultAgentLauncher } from "./launchers/defaultLauncher.js";
 import { HostProcessSandbox } from "./sandbox/hostProcessSandbox.js";
 import { BoxliteSandbox } from "./sandbox/boxliteSandbox.js";
@@ -23,31 +23,6 @@ function pickArg(args: string[], name: string): string | null {
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
-}
-
-type ChunkState = { buf: string; lastFlush: number };
-
-function shouldRecreateSession(err: unknown): boolean {
-  const msg = String(err ?? "").toLowerCase();
-  return msg.includes("session") || msg.includes("sessionid");
-}
-
-function composePromptWithContext(
-  context: string | undefined,
-  prompt: string,
-): string {
-  const ctx = context?.trim();
-  if (!ctx) return prompt;
-  return [
-    "你正在接手一个可能因为进程重启导致 ACP session 丢失的任务。",
-    "下面是系统保存的上下文（Issue 信息 + 最近对话节选）。请先阅读、恢复当前进度，然后继续响应用户的新消息。",
-    "",
-    "=== 上下文开始 ===",
-    ctx,
-    "=== 上下文结束 ===",
-    "",
-    `用户: ${prompt}`,
-  ].join("\n");
 }
 
 function redactSecrets(text: string, secrets: string[]): string {
@@ -78,30 +53,8 @@ function pickSecretValues(env: Record<string, string> | undefined): string[] {
 }
 
 async function main() {
-  const configPath =
-    pickArg(process.argv.slice(2), "--config") ?? "config.json";
+  const configPath = pickArg(process.argv.slice(2), "--config") ?? "config.json";
   const cfg = await loadConfig(configPath);
-
-  const sem = new Semaphore(cfg.agent.max_concurrent);
-
-  type SessionActivity = "unknown" | "idle" | "busy" | "loading" | "cancel_requested" | "closed";
-
-  type RunState = {
-    cwd: string;
-    bridge: AcpBridge;
-    sessionId: string;
-    seenSessionIds: Set<string>;
-    loadingSessionId: string | null;
-    lastUsedAt: number;
-    inFlight: number;
-    currentModeId: string | null;
-    currentModelId: string | null;
-    lastStopReason: string | null;
-  };
-
-  const runStates = new Map<string, RunState>();
-  const chunkByStream = new Map<string, ChunkState>();
-  const runToCwd = new Map<string, string>();
 
   const log = (msg: string, extra?: Record<string, unknown>) => {
     const head = `[proxy] ${msg}`;
@@ -111,9 +64,7 @@ async function main() {
 
   if (cfg.sandbox.provider === "boxlite_oci") {
     if (!cfg.sandbox.boxlite?.image?.trim()) {
-      throw new Error(
-        "sandbox.provider=boxlite_oci 时必须配置 sandbox.boxlite.image",
-      );
+      throw new Error("sandbox.provider=boxlite_oci 时必须配置 sandbox.boxlite.image");
     }
 
     if (process.platform === "win32") {
@@ -129,36 +80,21 @@ async function main() {
     }
 
     if (process.platform === "linux") {
-      await access("/dev/kvm", fsConstants.R_OK | fsConstants.W_OK).catch(
-        () => {
-          throw new Error(
-            "BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm",
-          );
-        },
-      );
-    }
-
-    // @ts-expect-error - optional dependency (only needed when sandbox.provider=boxlite_oci)
-    await import("@boxlite-ai/boxlite").catch(async () => {
-      // @ts-expect-error - optional dependency (package name differs by release channel)
-      await import("boxlite").catch(() => {
+      await access("/dev/kvm", fsConstants.R_OK | fsConstants.W_OK).catch(() => {
         throw new Error(
-          "未安装 BoxLite Node SDK。请在 WSL2/Linux/macOS(Apple Silicon) 环境执行: pnpm -C acp-proxy add @boxlite-ai/boxlite（或 pnpm -C acp-proxy add boxlite）",
+          "BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm",
         );
       });
-    });
+    }
   }
 
-  const isWsl =
-    process.platform === "linux" &&
-    !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
+  const isWsl = process.platform === "linux" && !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
 
   const mapWindowsPathToWsl = (cwd: string): string => {
     const raw = cwd.trim();
     if (!raw) return raw;
     if (!isWsl) return raw;
-    if (!cfg.pathMapping || cfg.pathMapping.type !== "windows_to_wsl")
-      return raw;
+    if (!cfg.pathMapping || cfg.pathMapping.type !== "windows_to_wsl") return raw;
 
     const m = /^([a-zA-Z]):[\\/](.*)$/.exec(raw);
     if (!m) return raw;
@@ -181,9 +117,7 @@ async function main() {
 
     const candidates = volumes
       .map((v) => ({
-        hostPath: mapWindowsPathToWsl(v.hostPath)
-          .replace(/\\/g, "/")
-          .replace(/\/+$/, ""),
+        hostPath: mapWindowsPathToWsl(v.hostPath).replace(/\\/g, "/").replace(/\/+$/, ""),
         guestPath: v.guestPath.replace(/\\/g, "/").replace(/\/+$/, ""),
       }))
       .filter((v) => v.hostPath && v.guestPath);
@@ -199,93 +133,8 @@ async function main() {
     return `${best.guestPath}${norm.slice(best.hostPath.length)}`;
   };
 
-  const mapCwd = (cwd: string): string =>
-    mapHostPathToBox(mapWindowsPathToWsl(cwd));
-
+  const mapCwd = (cwd: string): string => mapHostPathToBox(mapWindowsPathToWsl(cwd));
   const defaultCwd = mapCwd(cfg.cwd);
-
-  let ws: WebSocket | null = null;
-
-  const send = (payload: unknown) => {
-    if (!ws || ws.readyState !== WebSocket.OPEN)
-      throw new Error("ws not connected");
-    ws.send(JSON.stringify(payload));
-  };
-
-  const sendUpdate = (runId: string, content: unknown) => {
-    const msg: AgentUpdateMessage = {
-      type: "agent_update",
-      run_id: runId,
-      content,
-    };
-    try {
-      send(msg);
-    } catch (err) {
-      log("send agent_update failed", { err: String(err) });
-    }
-  };
-
-  const sendSessionState = (
-    runId: string,
-    state: RunState,
-    patch: { activity: SessionActivity; sessionId?: string; note?: string },
-  ) => {
-    const sessionId = patch.sessionId ?? state.sessionId;
-    if (!sessionId) return;
-
-    sendUpdate(runId, {
-      type: "session_state",
-      session_id: sessionId,
-      activity: patch.activity,
-      in_flight: state.inFlight,
-      updated_at: new Date().toISOString(),
-      current_mode_id: state.currentModeId,
-      current_model_id: state.currentModelId,
-      last_stop_reason: state.lastStopReason,
-      note: patch.note ?? null,
-    });
-  };
-
-  const streamKey = (runId: string, sessionId: string) => `${runId}:${sessionId}`;
-
-  const flushChunks = (runId: string, sessionId: string): string => {
-    const state = chunkByStream.get(streamKey(runId, sessionId));
-    if (!state || !state.buf) return "";
-    const out = state.buf;
-    state.buf = "";
-    state.lastFlush = Date.now();
-    return out;
-  };
-
-  const appendChunk = (runId: string, sessionId: string, text: string): string => {
-    const now = Date.now();
-    const key = streamKey(runId, sessionId);
-    const state = chunkByStream.get(key) ?? { buf: "", lastFlush: now };
-    state.buf += text;
-    chunkByStream.set(key, state);
-    if (
-      text.includes("\n") ||
-      state.buf.length >= 256 ||
-      now - state.lastFlush >= 200
-    ) {
-      const out = state.buf;
-      state.buf = "";
-      state.lastFlush = now;
-      return out;
-    }
-    return "";
-  };
-
-  const sendChunkUpdate = (runId: string, sessionId: string, text: string) => {
-    sendUpdate(runId, {
-      type: "session_update",
-      session: sessionId,
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "text", text },
-      },
-    });
-  };
 
   const sandbox =
     cfg.sandbox.provider === "boxlite_oci"
@@ -307,91 +156,33 @@ async function main() {
     command: cfg.agent_command,
   });
 
-  const createRunState = (
-    runId: string,
-    cwd: string,
-    seed?: { sessionId?: string },
-  ): RunState => {
-    const state: RunState = {
-      cwd,
-      bridge: null as any,
-      sessionId: typeof seed?.sessionId === "string" ? seed.sessionId : "",
-      seenSessionIds: new Set<string>(),
-      loadingSessionId: null,
-      lastUsedAt: Date.now(),
-      inFlight: 0,
-      currentModeId: null,
-      currentModelId: null,
-      lastStopReason: null,
+  type RunState = {
+    cwd: string;
+    transport: Awaited<ReturnType<(typeof launcher)["launch"]>>;
+    stream: acp.Stream;
+    lastUsedAt: number;
+    writeQueue: Promise<void>;
+    reader: ReadableStreamDefaultReader<acp.AnyMessage> | null;
+  };
+
+  const runStates = new Map<string, RunState>();
+  const runToCwd = new Map<string, string>();
+
+  let ws: WebSocket | null = null;
+
+  const send = (payload: unknown) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error("ws not connected");
+    ws.send(JSON.stringify(payload));
+  };
+
+  const sendUpdate = (runId: string, content: unknown) => {
+    const msg: AgentUpdateMessage = {
+      type: "agent_update",
+      run_id: runId,
+      content,
     };
-
-    state.bridge = new AcpBridge({
-      launcher,
-      sandbox,
-      cwd,
-      log,
-      onSessionUpdate: (sessionId, update) => {
-        if (state.loadingSessionId === sessionId) return;
-        state.lastUsedAt = Date.now();
-
-        if (update.sessionUpdate === "current_mode_update") {
-          state.currentModeId = update.currentModeId;
-          sendSessionState(runId, state, { activity: state.inFlight > 0 ? "busy" : "idle", sessionId });
-        }
-
-        if (
-          update.sessionUpdate === "agent_message_chunk" &&
-          update.content?.type === "text"
-        ) {
-          const flushed = appendChunk(runId, sessionId, update.content.text);
-          if (flushed) sendChunkUpdate(runId, sessionId, flushed);
-          return;
-        }
-
-        const flushed = flushChunks(runId, sessionId);
-        if (flushed) sendChunkUpdate(runId, sessionId, flushed);
-
-        sendUpdate(runId, { type: "session_update", session: sessionId, update });
-      },
-    });
-
-    return state;
+    send(msg);
   };
-
-  const getOrCreateRunState = (runId: string, cwd: string): RunState => {
-    const existing = runStates.get(runId);
-    if (!existing) {
-      const created = createRunState(runId, cwd);
-      runStates.set(runId, created);
-      return created;
-    }
-
-    existing.lastUsedAt = Date.now();
-    if (existing.cwd === cwd) return existing;
-
-    log("run cwd changed; respawn agent", { runId, from: existing.cwd, to: cwd });
-    existing.bridge.close();
-
-    const recreated = createRunState(runId, cwd, { sessionId: existing.sessionId });
-    runStates.set(runId, recreated);
-    return recreated;
-  };
-
-  const idleTimer = setInterval(() => {
-    const now = Date.now();
-    for (const [runId, state] of runStates) {
-      if (state.inFlight > 0) continue;
-      const idleMs = now - state.lastUsedAt;
-      if (idleMs < 30 * 60 * 1000) continue;
-      log("run idle; close agent", { runId, idleSeconds: Math.round(idleMs / 1000) });
-      state.bridge.close();
-      runStates.delete(runId);
-      for (const key of chunkByStream.keys()) {
-        if (key.startsWith(`${runId}:`)) chunkByStream.delete(key);
-      }
-    }
-  }, 60_000);
-  idleTimer.unref?.();
 
   const setRunCwd = (runId: string, cwd: string) => {
     const value = mapCwd(cwd);
@@ -408,18 +199,10 @@ async function main() {
   };
 
   const registerAgent = () => {
-    const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities)
-      ? cfg.agent.capabilities
-      : {};
-    const baseSandbox: Record<string, unknown> = isRecord(baseCaps.sandbox)
-      ? baseCaps.sandbox
-      : {};
-    const baseRuntime: Record<string, unknown> = isRecord(baseCaps.runtime)
-      ? baseCaps.runtime
-      : {};
-    const baseBoxlite: Record<string, unknown> = isRecord(baseSandbox.boxlite)
-      ? (baseSandbox.boxlite as Record<string, unknown>)
-      : {};
+    const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities) ? cfg.agent.capabilities : {};
+    const baseSandbox: Record<string, unknown> = isRecord(baseCaps.sandbox) ? baseCaps.sandbox : {};
+    const baseRuntime: Record<string, unknown> = isRecord(baseCaps.runtime) ? baseCaps.runtime : {};
+    const baseBoxlite: Record<string, unknown> = isRecord(baseSandbox.boxlite) ? (baseSandbox.boxlite as Record<string, unknown>) : {};
 
     const runtime: Record<string, unknown> = {
       ...baseRuntime,
@@ -429,12 +212,12 @@ async function main() {
       wslDistro: process.env.WSL_DISTRO_NAME ?? null,
     };
 
-    const sandbox: Record<string, unknown> = {
+    const sandboxCaps: Record<string, unknown> = {
       ...baseSandbox,
       provider: cfg.sandbox.provider,
     };
     if (cfg.sandbox.provider === "boxlite_oci") {
-      sandbox.boxlite = {
+      sandboxCaps.boxlite = {
         ...baseBoxlite,
         image: cfg.sandbox.boxlite?.image ?? null,
         workingDir: cfg.sandbox.boxlite?.workingDir ?? null,
@@ -447,7 +230,12 @@ async function main() {
         id: cfg.agent.id,
         name: cfg.agent.name ?? cfg.agent.id,
         max_concurrent: cfg.agent.max_concurrent,
-        capabilities: { ...baseCaps, runtime, sandbox },
+        capabilities: {
+          ...baseCaps,
+          runtime,
+          sandbox: sandboxCaps,
+          acpTunnel: true,
+        },
       },
     });
   };
@@ -468,6 +256,19 @@ async function main() {
     }
   };
 
+  const closeRun = async (runId: string, reason: string) => {
+    const state = runStates.get(runId);
+    if (!state) return;
+    runStates.delete(runId);
+    try {
+      state.reader?.releaseLock();
+    } catch {
+      // ignore
+    }
+    await state.transport.close().catch(() => {});
+    log("run closed", { runId, reason });
+  };
+
   const runInitScript = async (opts: {
     runId: string;
     cwd: string;
@@ -485,9 +286,7 @@ async function main() {
       ? Math.max(1, Math.min(3600, timeoutSecondsRaw))
       : 300;
 
-    const env = opts.init?.env
-      ? { ...process.env, ...opts.init.env }
-      : process.env;
+    const env = opts.init?.env ? { ...process.env, ...opts.init.env } : process.env;
     const secrets = pickSecretValues(opts.init?.env);
 
     sendUpdate(opts.runId, {
@@ -501,403 +300,192 @@ async function main() {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    const makeLineSink = (label: "stdout" | "stderr") => {
-      let buf = "";
-      return {
-        onChunk(chunk: Buffer) {
-          buf += chunk.toString("utf8");
-          const parts = buf.split(/\r?\n/g);
-          buf = parts.pop() ?? "";
-          for (const line of parts) {
-            const text = redactSecrets(line, secrets);
-            if (!text.trim()) continue;
-            sendUpdate(opts.runId, {
-              type: "text",
-              text: `[init:${label}] ${text}`,
-            });
-          }
-        },
-        flush() {
-          const text = redactSecrets(buf, secrets);
-          if (text.trim())
-            sendUpdate(opts.runId, {
-              type: "text",
-              text: `[init:${label}] ${text}`,
-            });
-          buf = "";
-        },
-      };
+    const pump = (stream: NodeJS.ReadableStream, label: string) => {
+      stream.setEncoding("utf8");
+      stream.on("data", (chunk) => {
+        const text = redactSecrets(String(chunk ?? ""), secrets).trimEnd();
+        if (!text) return;
+        sendUpdate(opts.runId, {
+          type: "text",
+          text: `[init:${label}] ${text}`,
+        });
+      });
     };
-
-    const out = makeLineSink("stdout");
-    const err = makeLineSink("stderr");
-    proc.stdout?.on("data", (c: Buffer) => out.onChunk(c));
-    proc.stderr?.on("data", (c: Buffer) => err.onChunk(c));
-
-    const exitP = new Promise<{ code: number | null; signal: string | null }>(
-      (resolve) => {
-        proc.once("exit", (code, signal) => resolve({ code, signal }));
-      },
-    );
-    const errorP = new Promise<Error>((resolve) => {
-      proc.once("error", (e) => resolve(e));
-    });
+    pump(proc.stdout, "stdout");
+    pump(proc.stderr, "stderr");
 
     const raced = await Promise.race([
-      exitP.then((r) => ({ kind: "exit" as const, ...r })),
-      errorP.then((e) => ({ kind: "error" as const, error: e })),
-      delay(timeoutSeconds * 1000).then(() => ({ kind: "timeout" as const })),
+      new Promise<{ code: number | null }>((resolve) => {
+        proc.once("exit", (code) => resolve({ code }));
+        proc.once("error", () => resolve({ code: 1 }));
+      }),
+      delay(timeoutSeconds * 1000).then(() => ({ code: -1 })),
     ]);
 
-    if (raced.kind === "timeout") {
-      sendUpdate(opts.runId, {
-        type: "text",
-        text: `[init] timeout after ${timeoutSeconds}s`,
-      });
+    if (raced.code === -1) {
       try {
-        proc.kill("SIGKILL");
+        proc.kill();
       } catch {
         // ignore
       }
-      const { code, signal } = await exitP.catch(() => ({
-        code: null,
-        signal: null,
-      }));
-      out.flush();
-      err.flush();
       sendUpdate(opts.runId, {
         type: "init_result",
         ok: false,
-        exitCode: code,
-        error: `timeout (signal=${String(signal ?? "")})`,
+        error: `timeout after ${timeoutSeconds}s`,
       });
       return false;
     }
 
-    if (raced.kind === "error") {
-      out.flush();
-      err.flush();
+    if (raced.code !== 0) {
       sendUpdate(opts.runId, {
         type: "init_result",
         ok: false,
-        exitCode: null,
-        error: String(raced.error),
+        exitCode: raced.code,
+        error: `exitCode=${raced.code}`,
       });
       return false;
     }
 
-    out.flush();
-    err.flush();
-
-    if (raced.code === 0) {
-      sendUpdate(opts.runId, { type: "text", text: "[init] done" });
-      sendUpdate(opts.runId, { type: "init_result", ok: true, exitCode: 0 });
-      return true;
-    }
-
-    sendUpdate(opts.runId, {
-      type: "init_result",
-      ok: false,
-      exitCode: raced.code,
-      error: `exitCode=${raced.code}`,
-    });
-    return false;
+    sendUpdate(opts.runId, { type: "init_result", ok: true });
+    sendUpdate(opts.runId, { type: "text", text: "[init] done" });
+    return true;
   };
 
-  const handleExecuteTask = async (msg: {
-    run_id: string;
-    prompt: string;
-    cwd?: string;
-    init?: {
-      script: string;
-      timeout_seconds?: number;
-      env?: Record<string, string>;
+  const ensureRun = async (runId: string, cwd: string): Promise<RunState> => {
+    const existing = runStates.get(runId);
+    if (existing && existing.cwd === cwd) {
+      existing.lastUsedAt = Date.now();
+      return existing;
+    }
+
+    if (existing) {
+      await closeRun(runId, "cwd_changed");
+    }
+
+    const transport = await launcher.launch({ cwd });
+    const stream = acp.ndJsonStream(transport.input, transport.output);
+
+    const state: RunState = {
+      cwd,
+      transport,
+      stream,
+      lastUsedAt: Date.now(),
+      writeQueue: Promise.resolve(),
+      reader: null,
     };
-  }) => {
-    const release = await sem.acquire();
-    try {
-      if (cfg.mock_mode) {
-        sendUpdate(msg.run_id, {
-          type: "text",
-          text: `[mock] received prompt: ${msg.prompt}`,
-        });
-        sendUpdate(msg.run_id, {
-          type: "prompt_result",
-          stopReason: "end_turn",
-        });
-        return;
-      }
+    runStates.set(runId, state);
 
-      const cwd = getRunCwd(msg.run_id, msg.cwd);
-
-      const initOk = await runInitScript({
-        runId: msg.run_id,
-        cwd,
-        init: msg.init,
-      });
-      if (!initOk) return;
-
-      const state = getOrCreateRunState(msg.run_id, cwd);
-      state.inFlight += 1;
-      try {
-        await state.bridge.ensureInitialized();
-
-        let sessionId = state.sessionId;
-        if (!sessionId) {
-          const s = await state.bridge.newSession(cwd);
-          sessionId = s.sessionId;
-          state.sessionId = sessionId;
-          state.seenSessionIds.add(sessionId);
-          state.currentModeId = s.modes?.currentModeId ?? state.currentModeId;
-          state.currentModelId = s.models?.currentModelId ?? state.currentModelId;
-
-          sendUpdate(msg.run_id, {
-            type: "session_created",
-            session_id: sessionId,
-          });
-          sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "session_created" });
-        }
-
-        sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "prompt_start" });
-        const res = await state.bridge.prompt(sessionId, msg.prompt);
-        state.lastStopReason = res.stopReason;
-        const flushed = flushChunks(msg.run_id, sessionId);
-        if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
-
-        sendUpdate(msg.run_id, {
-          type: "prompt_result",
-          stopReason: res.stopReason,
-        });
-      } finally {
-        state.inFlight = Math.max(0, state.inFlight - 1);
-        if (state.sessionId) {
-          sendSessionState(msg.run_id, state, {
-            activity: state.inFlight > 0 ? "busy" : "idle",
-            sessionId: state.sessionId,
-            note: "prompt_end",
-          });
-        }
-      }
-    } catch (err) {
-      sendUpdate(msg.run_id, {
-        type: "text",
-        text: `执行失败: ${String(err)}`,
-      });
-    } finally {
-      release();
-    }
-  };
-
-  const handlePromptRun = async (msg: {
-    run_id: string;
-    prompt: string;
-    session_id?: string;
-    context?: string;
-    cwd?: string;
-    resume?: boolean;
-  }) => {
-    const release = await sem.acquire();
-    try {
-      if (cfg.mock_mode) {
-        sendUpdate(msg.run_id, {
-          type: "text",
-          text: `[mock] prompt: ${msg.prompt}`,
-        });
-        sendUpdate(msg.run_id, {
-          type: "prompt_result",
-          stopReason: "end_turn",
-        });
-        return;
-      }
-
-      const cwd = getRunCwd(msg.run_id, msg.cwd);
-      const state = getOrCreateRunState(msg.run_id, cwd);
-      state.inFlight += 1;
-      try {
-        await state.bridge.ensureInitialized();
-
-        let sessionId = msg.session_id || state.sessionId || "";
-        if (!sessionId) {
-          const s = await state.bridge.newSession(cwd);
-          sessionId = s.sessionId;
-          state.sessionId = sessionId;
-          state.seenSessionIds.add(sessionId);
-          state.currentModeId = s.modes?.currentModeId ?? state.currentModeId;
-          state.currentModelId = s.models?.currentModelId ?? state.currentModelId;
-          sendUpdate(msg.run_id, {
-            type: "session_created",
-            session_id: sessionId,
-          });
-          sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "session_created" });
-          msg = {
-            ...msg,
-            prompt: composePromptWithContext(msg.context, msg.prompt),
-          };
-        } else {
-          state.sessionId = sessionId;
-          const sessionPreviouslySeen = state.seenSessionIds.has(sessionId);
-
-          // 仅当本进程没见过该 session 时，尝试 load 历史会话。
-          // 若 load 失败（agent 不支持 / session 不存在），不自动新建 session，避免上下文丢失。
-          if (!sessionPreviouslySeen) {
-            let loaded: Awaited<ReturnType<typeof state.bridge.loadSession>> = null;
-            try {
-              state.loadingSessionId = sessionId;
-              sendSessionState(msg.run_id, state, { activity: "loading", sessionId, note: "load_start" });
-              loaded = await state.bridge.loadSession(sessionId, cwd);
-            } finally {
-              state.loadingSessionId = null;
-            }
-            state.seenSessionIds.add(sessionId);
-            if (!loaded) {
-              sendUpdate(msg.run_id, {
-                type: "text",
-                text: "ACP session 无法 load（可能不支持或已丢失），将尝试直接对话…",
-              });
-              sendSessionState(msg.run_id, state, { activity: "unknown", sessionId, note: "load_failed" });
-            } else {
-              state.currentModeId = loaded.modes?.currentModeId ?? state.currentModeId;
-              state.currentModelId = loaded.models?.currentModelId ?? state.currentModelId;
-              sendSessionState(msg.run_id, state, { activity: "idle", sessionId, note: "load_ok" });
-            }
-          }
-        }
-
-        let res: { stopReason: string };
+    transport.onExit?.((info) => {
+      void closeRun(runId, "agent_exit").finally(() => {
         try {
-          sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "prompt_start" });
-          res = await state.bridge.prompt(sessionId, msg.prompt);
-        } catch (err) {
-          if (shouldRecreateSession(err)) {
-            sendUpdate(msg.run_id, {
-              type: "text",
-              text: "⚠️ ACP session 疑似已丢失：将创建新 session 并注入上下文继续…",
-            });
-            const s = await state.bridge.newSession(cwd);
-            sessionId = s.sessionId;
-            state.sessionId = sessionId;
-            state.seenSessionIds.add(sessionId);
-            state.currentModeId = s.modes?.currentModeId ?? state.currentModeId;
-            state.currentModelId = s.models?.currentModelId ?? state.currentModelId;
-            sendUpdate(msg.run_id, {
-              type: "session_created",
-              session_id: sessionId,
-            });
-            sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "session_recreated" });
+          send({ type: "acp_exit", run_id: runId, code: info.code, signal: info.signal });
+        } catch {
+          // ignore
+        }
+      });
+    });
 
-            const replay = composePromptWithContext(msg.context, msg.prompt);
-            res = await state.bridge.prompt(sessionId, replay);
-          } else {
-            sendUpdate(msg.run_id, {
-              type: "text",
-              text: `ACP prompt 失败：${String(err)}`,
-            });
-            return;
+    const reader = stream.readable.getReader();
+    state.reader = reader;
+    void (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          state.lastUsedAt = Date.now();
+          try {
+            send({ type: "acp_message", run_id: runId, message: value });
+          } catch (err) {
+            log("failed to forward acp message", { runId, err: String(err) });
           }
         }
-
-        state.lastStopReason = res.stopReason;
-        const flushed = flushChunks(msg.run_id, sessionId);
-        if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
-        sendUpdate(msg.run_id, {
-          type: "prompt_result",
-          stopReason: res.stopReason,
-        });
+      } catch (err) {
+        log("acp stream read failed", { runId, err: String(err) });
       } finally {
-        state.inFlight = Math.max(0, state.inFlight - 1);
-        if (state.sessionId) {
-          sendSessionState(msg.run_id, state, {
-            activity: state.inFlight > 0 ? "busy" : "idle",
-            sessionId: state.sessionId,
-            note: "prompt_end",
-          });
+        try {
+          reader.releaseLock();
+        } catch {
+          // ignore
         }
       }
-    } catch (err) {
-      sendUpdate(msg.run_id, {
-        type: "text",
-        text: `对话失败: ${String(err)}`,
-      });
-    } finally {
-      release();
-    }
+    })();
+
+    return state;
   };
 
-  const handleCancelTask = async (msg: { run_id: string; session_id?: string }) => {
+  const handleAcpOpen = async (msg: any) => {
+    const runId = String(msg.run_id ?? "").trim();
+    if (!runId) return;
+
+    const cwd = getRunCwd(runId, typeof msg.cwd === "string" ? msg.cwd : undefined);
+    const init = isRecord(msg.init) ? (msg.init as any) : undefined;
+
     try {
-      if (cfg.mock_mode) {
-        sendUpdate(msg.run_id, {
-          type: "text",
-          text: "[mock] cancel_task",
-        });
+      const initOk = await runInitScript({ runId, cwd, init });
+      if (!initOk) {
+        send({ type: "acp_opened", run_id: runId, ok: false, error: "init_failed" });
         return;
       }
-
-      const cwd = getRunCwd(msg.run_id);
-      const state = getOrCreateRunState(msg.run_id, cwd);
-      const sessionId = msg.session_id || state.sessionId || "";
-      if (!sessionId) return;
-
-      state.inFlight += 1;
-      try {
-        sendSessionState(msg.run_id, state, { activity: "cancel_requested", sessionId, note: "cancel_task" });
-        await state.bridge.cancel(sessionId);
-      } finally {
-        state.inFlight = Math.max(0, state.inFlight - 1);
-      }
+      await ensureRun(runId, cwd);
+      send({ type: "acp_opened", run_id: runId, ok: true });
     } catch (err) {
-      sendUpdate(msg.run_id, {
-        type: "text",
-        text: "取消失败: " + String(err),
-      });
+      send({ type: "acp_opened", run_id: runId, ok: false, error: String(err) });
     }
   };
 
+  const handleAcpMessage = async (msg: any) => {
+    const runId = String(msg.run_id ?? "").trim();
+    if (!runId) return;
+    const state = runStates.get(runId);
+    if (!state) {
+      send({ type: "acp_error", run_id: runId, error: "run_not_open" });
+      return;
+    }
 
-  const handleSessionCancel = async (msg: { run_id: string; session_id?: string }) => {
+    const message = msg.message;
+    if (!isRecord(message) || message.jsonrpc !== "2.0") {
+      send({ type: "acp_error", run_id: runId, error: "invalid_jsonrpc_message" });
+      return;
+    }
+
+    state.lastUsedAt = Date.now();
+    state.writeQueue = state.writeQueue
+      .then(async () => {
+        const writer = state.stream.writable.getWriter();
+        try {
+          await writer.write(message as any);
+        } finally {
+          writer.releaseLock();
+        }
+      })
+      .catch((err) => {
+        log("acp write failed", { runId, err: String(err) });
+      });
+    await state.writeQueue;
+  };
+
+  const handleAcpClose = async (msg: any) => {
+    const runId = String(msg.run_id ?? "").trim();
+    if (!runId) return;
+
+    await closeRun(runId, "requested");
     try {
-      if (cfg.mock_mode) {
-        sendUpdate(msg.run_id, {
-          type: "text",
-          text: "[mock] session/cancel",
-        });
-        return;
-      }
-
-      const cwd = getRunCwd(msg.run_id);
-      const state = getOrCreateRunState(msg.run_id, cwd);
-
-      const sessionId = msg.session_id || state.sessionId || "";
-      if (!sessionId) {
-        sendUpdate(msg.run_id, {
-          type: "text",
-          text: "无法暂停：ACP sessionId 未知（尚未建立或尚未同步）",
-        });
-        return;
-      }
-
-      state.sessionId = sessionId;
-      state.seenSessionIds.add(sessionId);
-
-      state.inFlight += 1;
-      try {
-        sendSessionState(msg.run_id, state, { activity: "cancel_requested", sessionId, note: "session_cancel" });
-        await state.bridge.cancel(sessionId);
-      } finally {
-        state.inFlight = Math.max(0, state.inFlight - 1);
-      }
-
-      sendUpdate(msg.run_id, {
-        type: "text",
-        text: "已向 Agent 发送暂停请求（ACP session/cancel）",
-      });
-    } catch (err) {
-      sendUpdate(msg.run_id, {
-        type: "text",
-        text: "暂停失败: " + String(err),
-      });
+      send({ type: "acp_closed", run_id: runId, ok: true });
+    } catch {
+      // ignore
     }
   };
+
+  const idleTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [runId, state] of runStates) {
+      const idleMs = now - state.lastUsedAt;
+      if (idleMs < 30 * 60 * 1000) continue;
+      void closeRun(runId, "idle_timeout");
+    }
+  }, 60_000);
+  idleTimer.unref?.();
 
   const connectLoop = async () => {
     for (;;) {
@@ -914,7 +502,6 @@ async function main() {
 
         registerAgent();
         log("connected & registered");
-
         void heartbeatLoop(ac.signal);
 
         await new Promise<void>((resolve, reject) => {
@@ -923,103 +510,31 @@ async function main() {
             try {
               const text = data.toString();
               const msg = JSON.parse(text) as IncomingMessage;
-              if (!msg || !isRecord(msg) || typeof msg.type !== "string")
-                return;
+              if (!msg || !isRecord(msg) || typeof msg.type !== "string") return;
 
-              if (msg.type === "cancel_task" && typeof msg.run_id === "string") {
-                void handleCancelTask({
-                  run_id: msg.run_id,
-                  session_id:
-                    typeof msg.session_id === "string" ? msg.session_id : undefined,
-                });
+              if (msg.type === "acp_open") {
+                void handleAcpOpen(msg);
                 return;
               }
-
-              if (
-                msg.type === "execute_task" &&
-                typeof msg.run_id === "string" &&
-                typeof msg.prompt === "string"
-              ) {
-                const initRaw = (msg as any).init;
-                let init:
-                  | {
-                      script: string;
-                      timeout_seconds?: number;
-                      env?: Record<string, string>;
-                    }
-                  | undefined;
-                if (isRecord(initRaw) && typeof initRaw.script === "string") {
-                  const envRaw = initRaw.env;
-                  const env = isRecord(envRaw)
-                    ? Object.fromEntries(
-                        Object.entries(envRaw).filter(
-                          (entry): entry is [string, string] =>
-                            typeof entry[1] === "string",
-                        ),
-                      )
-                    : undefined;
-                  const timeoutSeconds =
-                    typeof initRaw.timeout_seconds === "number"
-                      ? initRaw.timeout_seconds
-                      : typeof initRaw.timeout_seconds === "string"
-                        ? Number(initRaw.timeout_seconds)
-                        : undefined;
-                  init = {
-                    script: initRaw.script,
-                    timeout_seconds: Number.isFinite(timeoutSeconds as number)
-                      ? (timeoutSeconds as number)
-                      : undefined,
-                    env,
-                  };
-                }
-                void handleExecuteTask({
-                  run_id: msg.run_id,
-                  prompt: msg.prompt,
-                  cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
-                  init,
-                });
+              if (msg.type === "acp_message") {
+                void handleAcpMessage(msg);
                 return;
               }
-
-              if (
-                msg.type === "prompt_run" &&
-                typeof msg.run_id === "string" &&
-                typeof msg.prompt === "string"
-              ) {
-                void handlePromptRun({
-                  run_id: msg.run_id,
-                  prompt: msg.prompt,
-                  session_id:
-                    typeof msg.session_id === "string"
-                      ? msg.session_id
-                      : undefined,
-                  context:
-                    typeof msg.context === "string" ? msg.context : undefined,
-                  cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
-                  resume: (msg as any).resume === true,
-                });
-              }
-
-
-              if (msg.type === "session_cancel" && typeof msg.run_id === "string") {
-                void handleSessionCancel({
-                  run_id: msg.run_id,
-                  session_id:
-                    typeof msg.session_id === "string" ? msg.session_id : undefined,
-                });
+              if (msg.type === "acp_close") {
+                void handleAcpClose(msg);
                 return;
               }
             } catch (err) {
-              log("bad ws message", { err: String(err) });
+              log("failed to handle ws message", { err: String(err) });
             }
           });
           ws.on("close", () => resolve());
           ws.on("error", (err) => reject(err));
-        }).finally(() => {
-          ac.abort();
         });
+
+        ac.abort();
       } catch (err) {
-        log("ws error", { err: String(err) });
+        log("connection failed; retrying", { err: String(err) });
       } finally {
         try {
           ws?.close();
@@ -1029,7 +544,7 @@ async function main() {
         ws = null;
       }
 
-      await delay(2000);
+      await delay(1000);
     }
   };
 
@@ -1037,6 +552,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("[proxy] fatal", err);
-  process.exitCode = 1;
+  console.error(err);
+  process.exit(1);
 });
+
