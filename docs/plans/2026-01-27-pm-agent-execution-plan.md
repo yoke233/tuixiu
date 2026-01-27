@@ -37,12 +37,13 @@
 - PR `#41`：Run 自动推进（auto-review 自动触发 + 自动 create-pr + CI 通过自动发起 merge 审批）
 - PR `#45`：Task 自动推进（Task/Step ready 自动启动非 human executor）
 - PR `#46`：GitHub Issue 回写增强（创建 PR 与 auto-review 摘要 best-effort 评论）
+- PR `#50`：动作级 gate（`create_pr`/`publish_artifact`）+ `sensitivePaths` 命中升级审批（Task system step 等待 `waiting_human`）
 
 ### 已知缺口 ⚠️（当前主线未完成）
 
 - [ ] **Policy/策略系统（扩展）**：已支持 Project policy 存取与 PM autoStart gate；已完成 `create_pr`/`publish_artifact` 动作级 gate 与敏感目录升级；仍缺更多动作（`ci/test/merge auto-exec` 等）的门禁聚合与策略化
 - [ ] **auto-review（回写增强）**：已支持手动触发与自动触发（含 GitHub Issue best-effort 摘要回写）；仍缺测试结果聚合增强（例如更完整的测试摘要、diff 摘要压缩与证据链接）
-- [ ] **自动推进到 PR（Task 流）门禁完善**：已支持 Task 的 `ready` Step 自动推进；仍缺对更多 Step(kind) 的动作级 gate（例如 publish/test/ci 等）与敏感目录命中后的自动降级/审批
+- [ ] **自动推进到 PR（Task 流）门禁完善**：已支持 Task 的 `ready` Step 自动推进；已为 `pr.create`/`report.publish` 接入 gate + `sensitivePaths` 升级；仍缺对更多 Step(kind)（test/ci 等）的动作级门禁与策略聚合
 - [ ] **CI/Webhook 闭环（增强）**：GitHub 已基础接入；仍缺 GitLab pipeline 回写、CI Run 关联增强（`head_sha/PR`）、CI 不可用时的 workspace test 降级策略
 - [ ] **Review Gate 聚合**：Task 级打回/回滚已具备，但缺少 “AI review / 人 review / 合并审批” 的统一门禁聚合与可视化
 - [ ] **安全/可靠性增强**：webhook secret 强制、幂等 eventId、限流；token 加密存储与脱敏审计；覆盖率门槛与 CI 对齐（若启用 `test:coverage`）
@@ -62,11 +63,11 @@
 
 **Done**
 - 提供 `GET/PUT /api/policies`（按 Project）用于读写策略
-- PM 自动化链路在执行工具前调用 `policy.canAuto(action, context)`，不满足则创建审批
+- 在 `create_pr`/`publish_artifact` 执行前做 gate 判定：命中 `approvals.requireForActions` 或 `sensitivePaths` 升级则创建审批并等待/返回 `APPROVAL_REQUIRED`
 - 前端提供一个最小配置入口（Admin 页或 Project 设置页）
 
 **验证**
-- 用一个含敏感目录变更的 Run：自动 create-pr 允许，但 auto merge 必须走审批（且审批审计/评论齐全）
+- 用一个命中 `sensitivePaths` 的 Run：create-pr/publish 会进入审批；merge 仍必须走审批（审计/评论齐全）
 
 ---
 
