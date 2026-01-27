@@ -770,7 +770,16 @@ export function AdminPage() {
                               ) : (
                                 "mode: -"
                               )}
+                              {s.sessionState.currentModelId ? (
+                                <>
+                                  {" "}
+                                  · model: <code>{s.sessionState.currentModelId}</code>
+                                </>
+                              ) : (
+                                " · model: -"
+                              )}
                               {s.sessionState.lastStopReason ? ` · stop: ${s.sessionState.lastStopReason}` : ""}
+                              {s.sessionState.note ? ` · note: ${s.sessionState.note}` : ""}
                               {s.sessionState.updatedAt ? ` · ${new Date(s.sessionState.updatedAt).toLocaleString()}` : ""}
                             </div>
                           </div>

@@ -176,7 +176,7 @@ describe("Issues routes", () => {
     await server.close();
   });
 
-  it("POST /api/issues/:id/start schedules run and sends execute_task", async () => {
+  it("POST /api/issues/:id/start schedules run and calls acp.promptRun", async () => {
     const server = createHttpServer();
     const createWorkspace = vi.fn().mockResolvedValue({
       repoRoot: "D:\\xyad\\tuixiu",
@@ -216,8 +216,8 @@ describe("Issues routes", () => {
       artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    await server.register(makeIssueRoutes({ prisma, acp, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
@@ -229,19 +229,18 @@ describe("Issues routes", () => {
     expect(body.success).toBe(true);
     expect(body.data.run.id).toBe("r1");
 
-    expect(sendToAgent).toHaveBeenCalledTimes(1);
-    const [proxyId, payload] = sendToAgent.mock.calls[0];
-    expect(proxyId).toBe("proxy-1");
-    expect(payload.type).toBe("execute_task");
-    expect(payload.run_id).toBe("r1");
-    expect(payload.session_id).toBe("r1");
-    expect(payload.prompt).toContain("任务标题: t1");
-    expect(payload.prompt).toContain("- workspace:");
-    expect(payload.prompt).toContain("run/t1-r1");
-    expect(payload.prompt).toContain("任务描述:");
-    expect(payload.prompt).toContain("验收标准:");
-    expect(payload.prompt).toContain("约束条件:");
-    expect(payload.cwd).toBe("D:\\xyad\\tuixiu\\.worktrees\\run-t1-r1");
+    expect(acp.promptRun).toHaveBeenCalledTimes(1);
+    const promptCall = acp.promptRun.mock.calls[0][0];
+    expect(promptCall.proxyId).toBe("proxy-1");
+    expect(promptCall.runId).toBe("r1");
+    expect(promptCall.sessionId).toBeNull();
+    expect(promptCall.cwd).toBe("D:\\xyad\\tuixiu\\.worktrees\\run-t1-r1");
+    expect(String(promptCall.prompt)).toContain("任务标题: t1");
+    expect(String(promptCall.prompt)).toContain("- workspace:");
+    expect(String(promptCall.prompt)).toContain("run/t1-r1");
+    expect(String(promptCall.prompt)).toContain("任务描述:");
+    expect(String(promptCall.prompt)).toContain("验收标准:");
+    expect(String(promptCall.prompt)).toContain("约束条件:");
 
     expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "t1-r1" });
     await server.close();
@@ -289,8 +288,8 @@ describe("Issues routes", () => {
       artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    await server.register(makeIssueRoutes({ prisma, acp, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
@@ -344,8 +343,8 @@ describe("Issues routes", () => {
       artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    await server.register(makeIssueRoutes({ prisma, acp, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
@@ -413,8 +412,8 @@ describe("Issues routes", () => {
         artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
       } as any;
 
-      const sendToAgent = vi.fn().mockResolvedValue(undefined);
-      await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+      const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+      await server.register(makeIssueRoutes({ prisma, acp, createWorkspace }), { prefix: "/api/issues" });
 
       const res = await server.inject({
         method: "POST",
@@ -474,8 +473,8 @@ describe("Issues routes", () => {
       artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    await server.register(makeIssueRoutes({ prisma, acp, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
@@ -526,8 +525,8 @@ describe("Issues routes", () => {
       artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    await server.register(makeIssueRoutes({ prisma, acp, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
@@ -536,9 +535,9 @@ describe("Issues routes", () => {
     });
     expect(res.statusCode).toBe(200);
 
-    const [, payload] = sendToAgent.mock.calls[0];
-    expect(payload.prompt).toContain("测试要求:");
-    expect(payload.prompt).toContain("需要加单测");
+    const call = acp.promptRun.mock.calls[0][0];
+    expect(String(call.prompt)).toContain("测试要求:");
+    expect(String(call.prompt)).toContain("需要加单测");
     expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "t1-r1" });
 
     await server.close();
@@ -593,8 +592,8 @@ describe("Issues routes", () => {
       artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    await server.register(makeIssueRoutes({ prisma, acp, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
@@ -604,10 +603,10 @@ describe("Issues routes", () => {
     expect(res.statusCode).toBe(200);
     expect(prisma.roleTemplate.findFirst).toHaveBeenCalled();
 
-    const [, payload] = sendToAgent.mock.calls[0];
-    expect(payload.prompt).toContain("角色指令:");
-    expect(payload.prompt).toContain("后端开发");
-    expect(payload.init).toEqual(
+    const call = acp.promptRun.mock.calls[0][0];
+    expect(String(call.prompt)).toContain("角色指令:");
+    expect(String(call.prompt)).toContain("后端开发");
+    expect(call.init).toEqual(
       expect.objectContaining({
         script: "echo init",
         timeout_seconds: 120,
@@ -623,7 +622,7 @@ describe("Issues routes", () => {
     await server.close();
   });
 
-  it("POST /api/issues/:id/start marks run failed when sendToAgent throws", async () => {
+  it("POST /api/issues/:id/start marks run failed when acp.promptRun throws", async () => {
     const server = createHttpServer();
     const createWorkspace = vi.fn().mockResolvedValue({
       repoRoot: "D:\\xyad\\tuixiu",
@@ -662,8 +661,8 @@ describe("Issues routes", () => {
       artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
     } as any;
 
-    const sendToAgent = vi.fn().mockRejectedValue(new Error("boom"));
-    await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+    const acp = { promptRun: vi.fn().mockRejectedValue(new Error("boom")) } as any;
+    await server.register(makeIssueRoutes({ prisma, acp, createWorkspace }), { prefix: "/api/issues" });
 
     const res = await server.inject({
       method: "POST",
@@ -762,8 +761,8 @@ describe("Issues routes", () => {
         artifact: { create: vi.fn().mockResolvedValue({ id: "art-1" }) }
       } as any;
 
-      const sendToAgent = vi.fn().mockResolvedValue(undefined);
-      await server.register(makeIssueRoutes({ prisma, sendToAgent, createWorkspace }), { prefix: "/api/issues" });
+      const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+      await server.register(makeIssueRoutes({ prisma, acp, createWorkspace }), { prefix: "/api/issues" });
 
       const res = await server.inject({
         method: "POST",

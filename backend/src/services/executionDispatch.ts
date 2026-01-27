@@ -1,6 +1,7 @@
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import type { CreateWorkspace } from "../executors/types.js";
 import { startAcpAgentExecution } from "../executors/acpAgentExecutor.js";
+import type { AcpTunnel } from "./acpTunnel.js";
 import { startCiExecution } from "../executors/ciExecutor.js";
 import { startHumanExecution } from "../executors/humanExecutor.js";
 import { startSystemExecution } from "../executors/systemExecutor.js";
@@ -11,6 +12,7 @@ export async function dispatchExecutionForRun(
   deps: {
     prisma: PrismaDeps;
     sendToAgent?: SendToAgent;
+    acp?: AcpTunnel;
     createWorkspace?: CreateWorkspace;
     broadcastToClients?: (payload: unknown) => void;
   },
@@ -25,7 +27,8 @@ export async function dispatchExecutionForRun(
   const executorType = String((run as any).executorType ?? "agent").toLowerCase();
   try {
     if (executorType === "agent") {
-      await startAcpAgentExecution({ prisma: deps.prisma, sendToAgent: deps.sendToAgent, createWorkspace: deps.createWorkspace }, runId);
+      if (!deps.acp) throw new Error("acpTunnel 未配置");
+      await startAcpAgentExecution({ prisma: deps.prisma, acp: deps.acp, createWorkspace: deps.createWorkspace }, runId);
       return { success: true };
     }
     if (executorType === "human") {
@@ -51,6 +54,7 @@ export async function dispatchExecutionForRun(
             {
               prisma: deps.prisma,
               sendToAgent: deps.sendToAgent,
+              acp: deps.acp,
               createWorkspace: deps.createWorkspace,
               broadcastToClients: deps.broadcastToClients,
             },

@@ -67,6 +67,7 @@ describe("Runs routes", () => {
           issueId: "i2",
           agentId: "a2",
           acpSessionId: "s2",
+          workspacePath: "C:/repo/.worktrees/run-2",
           agent: { proxyId: "proxy-2" }
         })
       },
@@ -74,9 +75,9 @@ describe("Runs routes", () => {
       agent: { update: vi.fn().mockResolvedValue({}) }
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+    const acp = { cancelSession: vi.fn().mockResolvedValue(undefined) } as any;
 
-    await server.register(makeRunRoutes({ prisma, sendToAgent }), { prefix: "/api/runs" });
+    await server.register(makeRunRoutes({ prisma, acp }), { prefix: "/api/runs" });
 
     const res = await server.inject({
       method: "POST",
@@ -93,10 +94,11 @@ describe("Runs routes", () => {
     expect(call.data.completedAt).toBeInstanceOf(Date);
     expect(prisma.issue.update).toHaveBeenCalled();
     expect(prisma.agent.update).toHaveBeenCalled();
-    expect(sendToAgent).toHaveBeenCalledWith("proxy-2", {
-      type: "cancel_task",
-      run_id: "00000000-0000-0000-0000-000000000002",
-      session_id: "s2"
+    expect(acp.cancelSession).toHaveBeenCalledWith({
+      proxyId: "proxy-2",
+      runId: "00000000-0000-0000-0000-000000000002",
+      cwd: "C:/repo/.worktrees/run-2",
+      sessionId: "s2",
     });
     await server.close();
   });
@@ -135,6 +137,8 @@ describe("Runs routes", () => {
       run: {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
+          workspacePath: "C:/repo/.worktrees/run-1",
+          acpSessionId: null,
           agent: { proxyId: "proxy-1" },
           issue: { title: "t1" },
           artifacts: []
@@ -143,8 +147,8 @@ describe("Runs routes", () => {
       event: { create: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([]) }
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeRunRoutes({ prisma, sendToAgent }), { prefix: "/api/runs" });
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    await server.register(makeRunRoutes({ prisma, acp }), { prefix: "/api/runs" });
 
     const res = await server.inject({
       method: "POST",
@@ -155,13 +159,15 @@ describe("Runs routes", () => {
     expect(res.json()).toEqual({ success: true, data: { ok: true } });
 
     expect(prisma.event.create).toHaveBeenCalled();
-    expect(sendToAgent).toHaveBeenCalledWith(
-      "proxy-1",
+    expect(acp.promptRun).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "prompt_run",
-        run_id: "00000000-0000-0000-0000-000000000001",
-        prompt: "hello"
-      })
+        proxyId: "proxy-1",
+        runId: "00000000-0000-0000-0000-000000000001",
+        cwd: "C:/repo/.worktrees/run-1",
+        sessionId: null,
+        prompt: "hello",
+        context: expect.any(String),
+      }),
     );
     await server.close();
   });
@@ -173,13 +179,14 @@ describe("Runs routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
           acpSessionId: "s1",
+          workspacePath: "C:/repo/.worktrees/run-1",
           agent: { proxyId: "proxy-1" },
         })
       }
     } as any;
 
-    const sendToAgent = vi.fn().mockResolvedValue(undefined);
-    await server.register(makeRunRoutes({ prisma, sendToAgent }), { prefix: "/api/runs" });
+    const acp = { cancelSession: vi.fn().mockResolvedValue(undefined) } as any;
+    await server.register(makeRunRoutes({ prisma, acp }), { prefix: "/api/runs" });
 
     const runId = "00000000-0000-0000-0000-000000000001";
     const res = await server.inject({
@@ -188,10 +195,11 @@ describe("Runs routes", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { ok: true } });
-    expect(sendToAgent).toHaveBeenCalledWith("proxy-1", {
-      type: "session_cancel",
-      run_id: runId,
-      session_id: "s1"
+    expect(acp.cancelSession).toHaveBeenCalledWith({
+      proxyId: "proxy-1",
+      runId,
+      cwd: "C:/repo/.worktrees/run-1",
+      sessionId: "s1",
     });
     await server.close();
   });

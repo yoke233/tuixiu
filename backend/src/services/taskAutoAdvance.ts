@@ -5,6 +5,7 @@ import { dispatchExecutionForRun } from "./executionDispatch.js";
 import { TaskEngineError, startStep } from "./taskEngine.js";
 import { isPmAutomationEnabled } from "./pm/pmLlm.js";
 import { getPmPolicyFromBranchProtection } from "./pm/pmPolicy.js";
+import type { AcpTunnel } from "./acpTunnel.js";
 
 type AutoAdvanceTrigger = "task_created" | "step_completed" | "task_rolled_back" | "ci_completed" | "manual";
 type QueueTask = () => Promise<void>;
@@ -56,6 +57,7 @@ export async function autoAdvanceTaskOnce(
   deps: {
     prisma: PrismaDeps;
     sendToAgent?: SendToAgent;
+    acp?: AcpTunnel;
     createWorkspace?: CreateWorkspace;
     broadcastToClients?: (payload: unknown) => void;
     startStep?: typeof startStep;
@@ -102,7 +104,7 @@ export async function autoAdvanceTaskOnce(
   if (stepKind === "pr.create" && policy.automation.autoCreatePr === false) return;
 
   if (executorType === "agent") {
-    if (!deps.sendToAgent) return;
+    if (!deps.acp) return;
     const workspacePath = typeof (task as any).workspacePath === "string" ? (task as any).workspacePath.trim() : "";
     const branchName = typeof (task as any).branchName === "string" ? (task as any).branchName.trim() : "";
     if (!workspacePath || !branchName) {
@@ -135,6 +137,7 @@ export async function autoAdvanceTaskOnce(
     {
       prisma: deps.prisma,
       sendToAgent: deps.sendToAgent,
+      acp: deps.acp,
       createWorkspace: deps.createWorkspace,
       broadcastToClients: deps.broadcastToClients,
     },
@@ -156,6 +159,7 @@ export function triggerTaskAutoAdvance(
   deps: {
     prisma: PrismaDeps;
     sendToAgent?: SendToAgent;
+    acp?: AcpTunnel;
     createWorkspace?: CreateWorkspace;
     broadcastToClients?: (payload: unknown) => void;
     log?: (msg: string, extra?: Record<string, unknown>) => void;

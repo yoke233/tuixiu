@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
-import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { PrismaDeps } from "../deps.js";
+import type { AcpTunnel } from "../services/acpTunnel.js";
 import { startIssueRun, type CreateWorkspaceResult } from "../services/startIssueRun.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { toPublicProject } from "../utils/publicProject.js";
@@ -45,7 +46,7 @@ const createIssueBodySchema = z.object({
 
 export function makeIssueRoutes(deps: {
   prisma: PrismaDeps;
-  sendToAgent: SendToAgent;
+  acp: AcpTunnel;
   createWorkspace?: (opts: {
     runId: string;
     baseBranch: string;
@@ -153,7 +154,7 @@ export function makeIssueRoutes(deps: {
 
       return await startIssueRun({
         prisma: deps.prisma,
-        sendToAgent: deps.sendToAgent,
+        acp: deps.acp,
         createWorkspace: deps.createWorkspace,
         issueId: id,
         agentId,

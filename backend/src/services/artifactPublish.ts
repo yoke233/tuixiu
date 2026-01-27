@@ -158,13 +158,27 @@ async function buildPublishPlan(
   };
 }
 
-export async function planArtifactPublish(deps: { prisma: PrismaDeps }, artifactId: string, body?: { path?: string }) {
+export async function planArtifactPublish(
+  deps: { prisma: PrismaDeps },
+  artifactId: string,
+  body?: { path?: string },
+): Promise<
+  | { success: true; data: { kind: string; path: string } }
+  | { success: false; error: { code: string; message: string; details?: string } }
+> {
   const plan = await buildPublishPlan(deps, artifactId, body);
   if (!plan.success) return plan;
   return { success: true, data: { kind: plan.data.kind, path: plan.data.relPath } };
 }
 
-export async function publishArtifact(deps: { prisma: PrismaDeps }, artifactId: string, body?: { path?: string }) {
+export async function publishArtifact(
+  deps: { prisma: PrismaDeps },
+  artifactId: string,
+  body?: { path?: string },
+): Promise<
+  | { success: true; data: { path: string; commitSha: string } }
+  | { success: false; error: { code: string; message: string; details?: string } }
+> {
   const plan = await buildPublishPlan(deps, artifactId, body);
   if (!plan.success) return plan;
 

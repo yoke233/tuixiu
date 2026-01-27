@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 
 import type { PrismaDeps } from "../deps.js";
+import type { AcpTunnel } from "../services/acpTunnel.js";
 import { buildContextFromRun } from "../services/runContext.js";
 import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
 import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
@@ -30,6 +31,19 @@ type AgentUpdateMessage = {
   content: unknown;
 };
 
+type AcpOpenedMessage = {
+  type: "acp_opened";
+  run_id: string;
+  ok: boolean;
+  error?: string;
+};
+
+type AcpMessageMessage = {
+  type: "acp_message";
+  run_id: string;
+  message: unknown;
+};
+
 type BranchCreatedMessage = {
   type: "branch_created";
   run_id: string;
@@ -40,6 +54,8 @@ type AnyAgentMessage =
   | AgentRegisterMessage
   | AgentHeartbeatMessage
   | AgentUpdateMessage
+  | AcpOpenedMessage
+  | AcpMessageMessage
   | BranchCreatedMessage;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -49,8 +65,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
   const agentConnections = new Map<string, WebSocket>();
   const clientConnections = new Set<WebSocket>();
+  let acpTunnel: AcpTunnel | null = null;
+  let acpTunnelHandlers:
+    | null
+    | {
+        handleAcpOpened: (proxyId: string, payload: unknown) => void;
+        handleAcpMessage: (proxyId: string, payload: unknown) => void;
+        handleProxyDisconnected?: (proxyId: string) => void;
+      } = null;
 
-  async function resumeRunningRuns(opts: { proxyId: string; agentId: string; socket: WebSocket }) {
+  async function resumeRunningRuns(opts: { proxyId: string; agentId: string; logError: (err: unknown) => void }) {
+    if (!acpTunnel) return;
+
     const runs = await deps.prisma.run.findMany({
       where: { agentId: opts.agentId, status: "running" },
       include: { issue: true, artifacts: true },
@@ -58,29 +84,33 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
     });
 
     for (const run of runs as any[]) {
-      const events = await deps.prisma.event.findMany({
-        where: { runId: run.id },
-        orderBy: { timestamp: "desc" },
-        take: 200
-      });
-      const context = buildContextFromRun({
-        run,
-        issue: run.issue,
-        events
-      });
+      try {
+        const events = await deps.prisma.event.findMany({
+          where: { runId: run.id },
+          orderBy: { timestamp: "desc" },
+          take: 200
+        });
+        const context = buildContextFromRun({
+          run,
+          issue: run.issue,
+          events
+        });
 
-      opts.socket.send(
-        JSON.stringify({
-          type: "prompt_run",
-          run_id: run.id,
-          session_id: run.acpSessionId ?? undefined,
+        const cwd = String(run.workspacePath ?? "").trim();
+        if (!cwd) continue;
+
+        await acpTunnel.promptRun({
+          proxyId: opts.proxyId,
+          runId: run.id,
+          cwd,
+          sessionId: run.acpSessionId ?? null,
+          context,
           prompt:
             "（系统）检测到 acp-proxy 断线重连/重启。请在当前工作目录(该 Run 的 workspace)检查进度（git status/最近改动/已有 commit）后继续完成任务；若你判断任务已完成，请输出总结并结束。",
-          context,
-          cwd: run.workspacePath ?? undefined,
-          resume: true
-        })
-      );
+        });
+      } catch (err) {
+        opts.logError(err);
+      }
     }
   }
 
@@ -237,7 +267,7 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
 
           socket.send(JSON.stringify({ type: "register_ack", success: true }));
 
-          void resumeRunningRuns({ proxyId, agentId: (agentRecord as any).id, socket }).catch(logError);
+          void resumeRunningRuns({ proxyId, agentId: (agentRecord as any).id, logError }).catch(logError);
           return;
         }
 
@@ -246,6 +276,28 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             where: { proxyId: message.agent_id },
             data: { lastHeartbeat: new Date(), status: "online" }
           });
+          return;
+        }
+
+        if (message.type === "acp_opened") {
+          if (proxyId && acpTunnelHandlers) {
+            try {
+              acpTunnelHandlers.handleAcpOpened(proxyId, message);
+            } catch (err) {
+              logError(err);
+            }
+          }
+          return;
+        }
+
+        if (message.type === "acp_message") {
+          if (proxyId && acpTunnelHandlers) {
+            try {
+              acpTunnelHandlers.handleAcpMessage(proxyId, message);
+            } catch (err) {
+              logError(err);
+            }
+          }
           return;
         }
 
@@ -475,6 +527,7 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
       await deps.prisma.agent
         .update({ where: { proxyId }, data: { status: "offline" } })
         .catch(() => {});
+      acpTunnelHandlers?.handleProxyDisconnected?.(proxyId);
     });
   }
 
@@ -499,6 +552,16 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
     init,
     sendToAgent,
     broadcastToClients,
+    setAcpTunnel: (tunnel: AcpTunnel) => {
+      acpTunnel = tunnel;
+    },
+    setAcpTunnelHandlers: (handlers: {
+      handleAcpOpened: (proxyId: string, payload: unknown) => void;
+      handleAcpMessage: (proxyId: string, payload: unknown) => void;
+      handleProxyDisconnected?: (proxyId: string) => void;
+    }) => {
+      acpTunnelHandlers = handlers;
+    },
     __testing: {
       agentConnections,
       clientConnections,

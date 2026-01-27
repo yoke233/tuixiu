@@ -41,7 +41,7 @@ describe("WebSocketGateway", () => {
     expect(socket.sent.some((s) => JSON.parse(s).hello === "world")).toBe(true);
   });
 
-  it("register_agent sends prompt_run to resume running runs", async () => {
+  it("register_agent resumes running runs via acpTunnel", async () => {
     const prisma = {
       agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
       run: {
@@ -70,6 +70,8 @@ describe("WebSocketGateway", () => {
     } as any;
 
     const gateway = createWebSocketGateway({ prisma });
+    const promptRun = vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" });
+    gateway.setAcpTunnel({ promptRun } as any);
     const socket = new FakeSocket();
     gateway.__testing.handleAgentConnection(socket as any, vi.fn());
 
@@ -83,14 +85,18 @@ describe("WebSocketGateway", () => {
       ),
     );
     await flushMicrotasks();
+    await flushMicrotasks();
 
-    const sent = socket.sent.map((s) => JSON.parse(s));
-    const resumes = sent.filter((m) => m.type === "prompt_run");
-    expect(resumes.map((m) => m.run_id).sort()).toEqual(["r1", "r2"]);
-    expect(resumes.every((m) => m.resume === true)).toBe(true);
-    expect(resumes.find((m) => m.run_id === "r1")?.session_id).toBe("s1");
-    expect(resumes.find((m) => m.run_id === "r2")?.session_id).toBeUndefined();
-    expect(resumes.find((m) => m.run_id === "r1")?.cwd).toBe("C:/repo/.worktrees/run-1");
+    expect(promptRun).toHaveBeenCalledTimes(2);
+    expect(promptRun.mock.calls.map((c) => c[0].runId).sort()).toEqual(["r1", "r2"]);
+
+    const callR1 = promptRun.mock.calls.find((c) => c[0].runId === "r1")?.[0];
+    expect(callR1?.proxyId).toBe("proxy-1");
+    expect(callR1?.sessionId).toBe("s1");
+    expect(callR1?.cwd).toBe("C:/repo/.worktrees/run-1");
+
+    const callR2 = promptRun.mock.calls.find((c) => c[0].runId === "r2")?.[0];
+    expect(callR2?.sessionId).toBeNull();
   });
 
   it("logs error when receiving invalid JSON", async () => {
