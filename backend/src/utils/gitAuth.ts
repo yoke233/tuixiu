@@ -24,14 +24,14 @@ function inferGitAuthMode(project: GitAuthProject): GitAuthMode {
 
 function inferHttpsUsername(project: GitAuthProject): string {
   const scm = String(project.scmType ?? "").trim().toLowerCase();
-  if (scm === "gitlab") return "oauth2";
+  if (scm === "gitlab" || scm === "codeup") return "oauth2";
   return "x-access-token";
 }
 
 function pickPatToken(project: GitAuthProject): string | null {
   const scm = String(project.scmType ?? "").trim().toLowerCase();
   if (scm === "github") return project.githubAccessToken?.trim() || null;
-  if (scm === "gitlab") return project.gitlabAccessToken?.trim() || null;
+  if (scm === "gitlab" || scm === "codeup") return project.gitlabAccessToken?.trim() || null;
   return project.githubAccessToken?.trim() || project.gitlabAccessToken?.trim() || null;
 }
 

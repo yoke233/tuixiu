@@ -69,6 +69,16 @@
 3. 运行在本机时，GitHub 访问不到 `localhost`，需要用 ngrok / Cloudflare Tunnel 等把 `3000` 端口暴露出去
 4. Webhook Delivery 返回 `success=true` 后，去 GitHub 新建 Issue，即可在页面刷新后看到自动导入的 Issue
 
+### Codeup 合并请求回写（Webhook）
+
+后端已提供 Codeup Webhook 接口：`POST /api/webhooks/codeup`。目前用于接收 **Merge Request Hook**，当合并请求进入 `merged`（或 `action=merge`）时，会尝试把对应 Task 的 **pr.merge（human）** 步骤 Run 标记为 `completed` 并推进 Task。
+
+1. 在本地 `backend/.env` 配置（可选，推荐）：`CODEUP_WEBHOOK_SECRET="xxx"`
+2. 在 Codeup 仓库 → **设置 → WebHooks**
+   - **URL**：`https://<你的可访问域名>/api/webhooks/codeup`
+   - **Secret Token**：填写与 `CODEUP_WEBHOOK_SECRET` 一致的值（Codeup 会通过 `X-Codeup-Token` 发送）
+   - **触发器**：勾选 **合并请求事件**
+
 ### 注意事项（MVP）
 
 - Token 会写入数据库（当前无 KMS/加密/权限体系/审计），请仅在可信环境使用，并尽量使用最小权限 PAT
