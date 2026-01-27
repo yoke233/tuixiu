@@ -17,6 +17,8 @@
 - **交付物发布（落盘并 commit）**：支持把 `report/ci_result` 发布到 workspace 并提交 commit（带脱敏与敏感信息拦截）
 - **轻量登录与角色（JWT）**：新增 `/api/auth/bootstrap|login|me`；默认对非 GET API 做登录校验，关键配置（Project/Role）限制 admin
 - **GitHub CI 结果回写（基础）**：GitHub webhook 兼容 `workflow_run/check_suite/check_run`，可驱动 `waiting_ci` Run 结束并写入 `ci_result`
+- **PM Agent v1（任务管理员雏形）**：多来源接入（GitHub/GitLab/webhook/消息入口）→ 自动分析/分配/启动（可开关）；GitHub Issue 状态回写评论
+- **高危动作审批（MVP）**：`merge-pr` 默认进入审批队列，通过后才执行；审批审计写入 Run events 并回写 GitHub 评论
 - **前端体验**：浅色/深色主题切换；详情页可调宽；控制台输出更接近 CLI（减少逐字/闪动）
 - **前端 Tasks 面板**：Issue 详情页支持创建 Task、启动 Step、回滚、Human Submit；新增登录页与 Auth Provider
 - **测试**：`backend/`、`frontend/`、`acp-proxy/` 均有单元测试并可 `pnpm -r test` 验证
@@ -31,6 +33,9 @@
 - **Review 工作流（增强）**：把 “AI review / 人 review / 合并审批” 做更清晰的门禁与状态机（目前已能打回/回滚/继续，但缺少统一的 gate 聚合与可视化）
 - **会话/在线状态面板**：Agent 是否在线、Run 是否绑定到有效 ACP session、断线重连策略与提示
 - **Project/Agent 维度分配**：Project 负责人/可用 Agent 列表/策略（例如固定/轮询/按负载）
+- **Policy/审批扩展**：按 Project 配置“可自动执行/必须审批”的动作与敏感目录门禁（不仅限 `merge_pr`）
+- **Run 自动验收报告（auto-review）**：汇总 diff/测试/风险/建议，并作为自动 create-pr/merge gate
+- **自动推进到 PR**：满足门禁后自动 `create-pr`；失败降级为可执行的手动步骤（不阻塞）
 
 ## 未完成（P1：增强体验）
 
