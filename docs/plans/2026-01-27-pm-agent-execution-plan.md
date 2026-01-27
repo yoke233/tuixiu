@@ -43,6 +43,13 @@
 - PR `#46`：GitHub Issue 回写增强（创建 PR 与 auto-review 摘要 best-effort 评论）
 - PR `#50`：动作级 gate（`create_pr`/`publish_artifact`）+ `sensitivePaths` 命中升级审批（Task system step 等待 `waiting_human`）
 - PR `#58`：BMAD-Lite P0（Context Pack + next-action + 对抗式 review + gate_decision schema）
+- PR `#59`：docs：BMAD-Lite P0 后执行计划更新
+- PR `#60`：feat(pm)：可配置 Context Pack manifest（`docs/context-manifest.json`）
+- PR `#61`：feat(task)：Task.track（quick/planning/enterprise）
+- PR `#62`：feat(pm)：PM 分析推荐 track（recommendedTrack）
+- PR `#63`：feat：管理页完善 + ACP Session 归档关闭 + 看板抽屉详情
+- PR `#64`：feat：GitHub PR webhook auto-review
+- PR `#65`：feat(pm)：track-aware templates + UI guidance（模板体系升级与 Track 引导）
 
 ### 已知缺口 ⚠️（当前主线未完成）
 
