@@ -16,19 +16,25 @@
 - [x] **前端接入**：Issue 详情页 PM 面板（分析/分配并启动）；Admin 审批队列（批准/拒绝）；RunChangesPanel 发起合并审批与展示状态
 - [x] **GitHub 合并阻塞修复**：移除 `main` 上导致 PR “无法合并/被 BLOCKED” 的规则集/保护配置
 - [x] **多执行器任务系统**：`Task/Step` 引擎 + `agent/ci/human/system` executor（为后续 Policy gate、自动验收、自动 PR 提供结构化状态机）
+- [x] **Task 级 Review/打回/推进**：Human Step 支持 `approve/changes_requested`；changes_requested 会把 Task 置为 `blocked`，可回滚并继续（保留历史 attempt）
+- [x] **交付物发布**：支持把 `report/ci_result` 发布到 workspace 并提交 commit（带脱敏与敏感信息拦截）
+- [x] **轻量登录与角色（JWT）**：新增 `/api/auth/bootstrap|login|me`；默认对非 GET API 做登录校验，关键配置（Project/Role）限制 admin
+- [x] **GitHub CI 结果回写（基础）**：GitHub webhook 兼容 `workflow_run/check_suite/check_run`，可驱动 `waiting_ci` Run 结束并写入 `ci_result`
 
 **来源（已合入 `main`）**
 - PR `#26`：PM automation v1（多来源 + 自动分析/分配/启动 + GitHub 评论 + 审批队列初版）
 - PR `#27`：审批硬化（强制 merge-pr 走审批 + 审批审计/评论）
-- PR `#28`：多执行器 `Task/Step` 引擎（executor/task system）
+- PR `#28`：多执行器 `Task/Step` 引擎（含 JWT 登录、交付物发布、GitHub CI 基础回写）
+- PR `#29`：Roadmap/Task 状态更新（docs）
+- PR `#30`：PM Agent 执行计划与 Roadmap 补齐（docs）
 
 ### 已知缺口 ⚠️（当前主线未完成）
 
 - [ ] **Policy/策略系统**：目前除 `merge_pr` 外缺少统一的“可自动执行/必须审批”规则（无法按 Project/标签/风险等级做门禁）
 - [ ] **auto-review 验收报告**：`POST /api/pm/runs/:id/auto-review` 未实现；Run 完成后缺少自动汇总（diff/测试/风险/建议）
 - [ ] **自动推进到 PR**：Run 完成后自动 `create-pr` 未实现（目前需要人工点击）
-- [ ] **CI/Webhook 闭环**：未接入 GitHub CheckRun / GitLab Pipeline 结果来驱动 `waiting_ci → completed/failed`，也无法作为自动合并 gate
-- [ ] **Review 工作流**：PR 创建后进入 `reviewing` 的“通过/打回/重跑”闭环未实现
+- [ ] **CI/Webhook 闭环（增强）**：GitHub 已基础接入；仍缺 GitLab pipeline 回写、CI Run 关联增强（`head_sha/PR`）、CI 不可用时的 workspace test 降级策略
+- [ ] **Review Gate 聚合**：Task 级打回/回滚已具备，但缺少 “AI review / 人 review / 合并审批” 的统一门禁聚合与可视化
 - [ ] **安全/可靠性增强**：webhook secret 强制、幂等 eventId、限流；token 加密存储与脱敏审计；覆盖率门槛与 CI 对齐（若启用 `test:coverage`）
 - [ ] **worktree 生命周期**：完成/合并后自动清理/归档策略未实现
 - [ ] **PM × Task/Step 对齐**：把“分析/分配/启动/验收/交付”映射到 `TaskTemplate + Step`（避免仅靠散落的 Run/Artifact 做状态推断）
@@ -86,9 +92,9 @@
 
 ### P1：CI/Webhook 闭环 + Review 流转
 
-- [ ] 接入 GitHub `check_run` / GitLab `pipeline` webhook：写 `Artifact(type=ci_result)` 并驱动 `Run.status=waiting_ci → completed/failed`
+- [ ] 接入 GitLab `pipeline` webhook：写 `Artifact(type=ci_result)` 并驱动 `Run.status=waiting_ci → completed/failed`（同时增强 CI 关联：`head_sha/PR` 等）
 - [ ] 自动/半自动合并 gate：CI 全绿 + Policy 允许 → auto merge，否则进入审批
-- [ ] Review 工作流：PR 创建后支持“通过/打回/重跑”，驱动 Issue 状态与 GitHub 评论回写
+- [ ] Review Gate 聚合：把 “AI review / 人 review / 合并审批” 做统一门禁与状态机（对 Task/Run/PR 一致）
 
 ### P2：安全、可观测、生命周期
 
