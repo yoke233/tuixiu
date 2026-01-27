@@ -26,6 +26,7 @@ import { makeStepRoutes } from "./routes/steps.js";
 import { makeTaskRoutes } from "./routes/tasks.js";
 import { createPmAutomation } from "./services/pm/pmAutomation.js";
 import { createAcpTunnel } from "./services/acpTunnel.js";
+import { startGitHubPollingLoop } from "./services/githubPolling.js";
 import { createRunWorkspace } from "./utils/runWorkspace.js";
 import { startWorkspaceCleanupLoop } from "./services/workspaceCleanup.js";
 import { createWebSocketGateway } from "./websocket/gateway.js";
@@ -77,6 +78,11 @@ server.addHook("preHandler", async (request, reply) => {
 
 const wsGateway = createWebSocketGateway({ prisma });
 wsGateway.init(server);
+
+startGitHubPollingLoop({
+  prisma,
+  log: (msg, extra) => server.log.info(extra ? { ...extra, msg } : { msg }),
+});
 
 const acpTunnel = createAcpTunnel({
   prisma,

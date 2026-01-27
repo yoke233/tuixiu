@@ -6,7 +6,7 @@ import { cancelAcpSession, listAcpSessions, startAcpSession } from "../api/acpSe
 import { createIssue, listIssues, updateIssue } from "../api/issues";
 import { importGitHubIssue } from "../api/githubIssues";
 import { getPmPolicy, updatePmPolicy } from "../api/policies";
-import { createProject, listProjects } from "../api/projects";
+import { createProject, listProjects, updateProject } from "../api/projects";
 import { createRole, deleteRole, listRoles, updateRole } from "../api/roles";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
@@ -70,6 +70,8 @@ export function AdminPage() {
   const [projectGitlabAccessToken, setProjectGitlabAccessToken] = useState("");
   const [projectGitlabWebhookSecret, setProjectGitlabWebhookSecret] = useState("");
   const [projectGithubAccessToken, setProjectGithubAccessToken] = useState("");
+  const [projectGithubPollingEnabled, setProjectGithubPollingEnabled] = useState(false);
+  const [savingGithubPollingEnabled, setSavingGithubPollingEnabled] = useState(false);
 
   const [issueTitle, setIssueTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
@@ -307,7 +309,8 @@ export function AdminPage() {
         gitlabProjectId: Number.isFinite(gitlabProjectId ?? NaN) ? gitlabProjectId : undefined,
         gitlabAccessToken: projectGitlabAccessToken.trim() || undefined,
         gitlabWebhookSecret: projectGitlabWebhookSecret.trim() || undefined,
-        githubAccessToken: projectGithubAccessToken.trim() || undefined
+        githubAccessToken: projectGithubAccessToken.trim() || undefined,
+        githubPollingEnabled: projectGithubPollingEnabled,
       });
       setProjectName("");
       setProjectRepoUrl("");
@@ -319,10 +322,30 @@ export function AdminPage() {
       setProjectGitlabAccessToken("");
       setProjectGitlabWebhookSecret("");
       setProjectGithubAccessToken("");
+      setProjectGithubPollingEnabled(false);
       await refresh();
       setSelectedProjectId(p.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function onToggleGithubPollingEnabled(next: boolean) {
+    setError(null);
+    if (!requireAdmin()) return;
+    if (!effectiveProjectId) {
+      setError("请先创建 Project");
+      return;
+    }
+
+    setSavingGithubPollingEnabled(true);
+    try {
+      await updateProject(effectiveProjectId, { githubPollingEnabled: next });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingGithubPollingEnabled(false);
     }
   }
 
@@ -1145,20 +1168,42 @@ export function AdminPage() {
           {loading ? (
             <div className="muted">加载中…</div>
           ) : effectiveProject ? (
-            <div className="kvGrid" style={{ marginTop: 12 }}>
-              <div className="kvItem">
-                <div className="muted">Repo</div>
-                <code>{effectiveProject.repoUrl}</code>
+            <>
+              <div className="kvGrid" style={{ marginTop: 12 }}>
+                <div className="kvItem">
+                  <div className="muted">Repo</div>
+                  <code>{effectiveProject.repoUrl}</code>
+                </div>
+                <div className="kvItem">
+                  <div className="muted">SCM</div>
+                  <code>{effectiveProject.scmType}</code>
+                </div>
+                <div className="kvItem">
+                  <div className="muted">默认分支</div>
+                  <code>{effectiveProject.defaultBranch}</code>
+                </div>
               </div>
-              <div className="kvItem">
-                <div className="muted">SCM</div>
-                <code>{effectiveProject.scmType}</code>
-              </div>
-              <div className="kvItem">
-                <div className="muted">默认分支</div>
-                <code>{effectiveProject.defaultBranch}</code>
-              </div>
-            </div>
+
+              {String(effectiveProject.scmType ?? "").toLowerCase() === "github" ? (
+                <div style={{ marginTop: 12 }}>
+                  <label className="label" style={{ marginBottom: 6 }}>
+                    GitHub 轮询监听（每分钟导入 Issues/PR）
+                    <input
+                      type="checkbox"
+                      checked={Boolean(effectiveProject.githubPollingEnabled)}
+                      disabled={savingGithubPollingEnabled || !auth.hasRole(["admin"])}
+                      onChange={(e) => onToggleGithubPollingEnabled(e.target.checked)}
+                    />
+                  </label>
+                  <div className="muted">
+                    上次同步：
+                    {effectiveProject.githubPollingCursor
+                      ? new Date(effectiveProject.githubPollingCursor).toLocaleString()
+                      : "未同步"}
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : (
             <div className="muted">暂无 Project，请先创建</div>
           )}
@@ -1254,6 +1299,14 @@ export function AdminPage() {
                     value={projectGithubAccessToken}
                     onChange={(e) => setProjectGithubAccessToken(e.target.value)}
                     placeholder="ghp_... / github_pat_..."
+                  />
+                </label>
+                <label className="label">
+                  启用 GitHub 轮询监听（每分钟导入 Issues/PR）
+                  <input
+                    type="checkbox"
+                    checked={projectGithubPollingEnabled}
+                    onChange={(e) => setProjectGithubPollingEnabled(e.target.checked)}
                   />
                 </label>
               </details>

@@ -154,7 +154,7 @@ async function githubRequest<T>(
 
 export async function listIssues(
   auth: GitHubAuth,
-  params: { state?: "open" | "closed" | "all"; page?: number; perPage?: number }
+  params: { state?: "open" | "closed" | "all"; page?: number; perPage?: number; since?: string; includePullRequests?: boolean }
 ): Promise<GitHubIssue[]> {
   const state = params.state ?? "open";
   const page = params.page ?? 1;
@@ -164,6 +164,7 @@ export async function listIssues(
     page: String(page),
     per_page: String(perPage)
   });
+  if (params.since) qs.set("since", params.since);
 
   const items = await githubRequest<GitHubIssue[]>(auth, {
     method: "GET",
@@ -171,6 +172,7 @@ export async function listIssues(
   });
 
   // GitHub 会把 PR 也算在 issues API 里，带 pull_request 字段。
+  if (params.includePullRequests) return items;
   return items.filter((i) => !(i as any)?.pull_request);
 }
 
@@ -187,6 +189,37 @@ export async function getIssue(auth: GitHubAuth, params: { issueNumber: number }
   }
 
   return issue;
+}
+
+export async function listPullRequests(
+  auth: GitHubAuth,
+  params: {
+    state?: "open" | "closed" | "all";
+    page?: number;
+    perPage?: number;
+    sort?: "created" | "updated" | "popularity" | "long-running";
+    direction?: "asc" | "desc";
+  },
+): Promise<GitHubPullRequest[]> {
+  const state = params.state ?? "open";
+  const page = Number.isFinite(params.page as any) && Number(params.page) > 0 ? Number(params.page) : 1;
+  const perPageRaw = Number.isFinite(params.perPage as any) ? Number(params.perPage) : 50;
+  const perPage = perPageRaw > 0 ? Math.min(perPageRaw, 100) : 50;
+  const sort = params.sort ?? "updated";
+  const direction = params.direction ?? "desc";
+
+  const qs = new URLSearchParams({
+    state,
+    page: String(page),
+    per_page: String(perPage),
+    sort,
+    direction,
+  });
+
+  return await githubRequest<GitHubPullRequest[]>(auth, {
+    method: "GET",
+    path: `/repos/${encodeURIComponent(auth.owner)}/${encodeURIComponent(auth.repo)}/pulls?${qs.toString()}`,
+  });
 }
 
 export async function createIssueComment(

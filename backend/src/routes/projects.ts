@@ -19,7 +19,8 @@ const createProjectBodySchema = z.object({
   gitlabProjectId: z.coerce.number().int().positive().optional(),
   gitlabAccessToken: z.string().min(1).optional(),
   gitlabWebhookSecret: z.string().min(1).optional(),
-  githubAccessToken: z.string().min(1).optional()
+  githubAccessToken: z.string().min(1).optional(),
+  githubPollingEnabled: z.boolean().optional(),
 });
 
 export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
@@ -44,7 +45,8 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
           gitlabProjectId: body.gitlabProjectId,
           gitlabAccessToken: body.gitlabAccessToken,
           gitlabWebhookSecret: body.gitlabWebhookSecret,
-          githubAccessToken: body.githubAccessToken
+          githubAccessToken: body.githubAccessToken,
+          githubPollingEnabled: body.githubPollingEnabled ?? false,
         }
       });
       return { success: true, data: { project: toPublicProject(project as any) } };
@@ -63,7 +65,8 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
         gitlabProjectId: z.coerce.number().int().positive().nullable().optional(),
         gitlabAccessToken: z.string().min(1).nullable().optional(),
         gitlabWebhookSecret: z.string().min(1).nullable().optional(),
-        githubAccessToken: z.string().min(1).nullable().optional()
+        githubAccessToken: z.string().min(1).nullable().optional(),
+        githubPollingEnabled: z.boolean().optional(),
       });
 
       const { id } = paramsSchema.parse(request.params);
@@ -86,6 +89,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
       if (body.gitlabAccessToken !== undefined) data.gitlabAccessToken = body.gitlabAccessToken;
       if (body.gitlabWebhookSecret !== undefined) data.gitlabWebhookSecret = body.gitlabWebhookSecret;
       if (body.githubAccessToken !== undefined) data.githubAccessToken = body.githubAccessToken;
+      if (body.githubPollingEnabled !== undefined) data.githubPollingEnabled = body.githubPollingEnabled;
 
       const project = await deps.prisma.project.update({
         where: { id },
