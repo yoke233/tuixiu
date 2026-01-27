@@ -80,6 +80,7 @@ describe("IssueListPage", () => {
     expect(screen.getByText("看板")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建 Issue" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "GitHub 导入" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sessions" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "管理" })).toBeInTheDocument();
   });
 
@@ -320,5 +321,73 @@ describe("IssueListPage", () => {
     );
 
     expect(await screen.findByText("Archived")).toBeInTheDocument();
+  });
+
+  it("hides session container issues even when showing archived", async () => {
+    localStorage.setItem("showArchivedIssues", "1");
+
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        projects: [
+          {
+            id: "p1",
+            name: "Demo",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "gitlab",
+            defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
+            createdAt: "2026-01-25T00:00:00.000Z"
+          }
+        ]
+      }
+    });
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issues: [
+          {
+            id: "s1",
+            projectId: "p1",
+            title: "Session Hidden",
+            status: "running",
+            archivedAt: "2026-01-25T00:00:00.000Z",
+            labels: ["_session"],
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          },
+          {
+            id: "i2",
+            projectId: "p1",
+            title: "Archived",
+            status: "done",
+            archivedAt: "2026-01-25T00:00:00.000Z",
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          }
+        ],
+        total: 2,
+        limit: 50,
+        offset: 0
+      }
+    });
+
+    render(
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues"]}>
+            <Routes>
+              <Route path="/issues" element={<IssueListPage />}>
+                <Route index element={<div>empty</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
+    );
+
+    expect(await screen.findByText("Archived")).toBeInTheDocument();
+    expect(screen.queryByText("Session Hidden")).not.toBeInTheDocument();
   });
 });

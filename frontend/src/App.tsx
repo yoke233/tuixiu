@@ -9,6 +9,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { IssueDetailPage } from "./pages/IssueDetailPage";
 import { IssueListPage } from "./pages/IssueListPage";
 import { LoginPage } from "./pages/LoginPage";
+import { SessionPage } from "./pages/SessionPage";
 
 function RequireAdmin(props: { children: ReactElement }) {
   const auth = useAuth();
@@ -41,6 +42,14 @@ export default function App() {
             element={
               <RequireAdmin>
                 <AdminPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/sessions/:runId"
+            element={
+              <RequireAdmin>
+                <SessionPage />
               </RequireAdmin>
             }
           />

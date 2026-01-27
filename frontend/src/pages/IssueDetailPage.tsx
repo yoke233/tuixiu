@@ -710,6 +710,90 @@ export function IssueDetailPage() {
 
           <section className="card">
             <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+              <h2 style={{ margin: 0 }}>Console</h2>
+              <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+                {currentRunId ? (
+                  <Link className="buttonSecondary" to={`/sessions/${currentRunId}`}>
+                    全屏控制台
+                  </Link>
+                ) : null}
+                {run?.executorType === "agent" && run?.status === "running" ? (
+                  <button
+                    onClick={onPauseRun}
+                    disabled={
+                      !allowPause ||
+                      !currentRunId ||
+                      pausing ||
+                      !sessionKnown ||
+                      (currentAgent ? !agentOnline : false)
+                    }
+                    title={!allowPause ? "需要开发或管理员权限" : !sessionKnown ? "ACP sessionId 尚未建立/同步" : ""}
+                  >
+                    {pausing ? "暂停中…" : "暂停 Agent"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <RunConsole events={events} />
+            <form onSubmit={onSendPrompt} className="consoleInput">
+              <input
+                aria-label="对话输入"
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+                placeholder={
+                  !auth.user
+                    ? "登录后可继续对话…"
+                    : !allowRunActions
+                      ? "当前账号无权限与 Agent 对话"
+                      : !currentRunId
+                        ? "请先启动 Run"
+                        : run?.executorType !== "agent"
+                          ? "当前 Run 不是 Agent 执行器"
+                          : "像 CLI 一样继续对话…"
+                }
+                disabled={
+                  !auth.user ||
+                  !allowRunActions ||
+                  !currentRunId ||
+                  sending ||
+                  run?.executorType !== "agent" ||
+                  (currentAgent ? !agentOnline : false)
+                }
+              />
+              <button
+                type="submit"
+                disabled={
+                  !auth.user ||
+                  !allowRunActions ||
+                  !currentRunId ||
+                  sending ||
+                  !chatText.trim() ||
+                  run?.executorType !== "agent" ||
+                  (currentAgent ? !agentOnline : false)
+                }
+              >
+                发送
+              </button>
+            </form>
+            {currentRunId && run?.executorType === "agent" && currentAgent && !agentOnline ? (
+              <div className="muted" style={{ marginTop: 8 }}>
+                当前 Agent 离线：需要等待其重新上线，或重新启动新的 Run。
+              </div>
+            ) : currentRunId && run?.executorType === "agent" && !sessionKnown ? (
+              <div className="muted" style={{ marginTop: 8 }}>
+                ACP sessionId 还未同步到页面：proxy 会优先尝试复用/`session/load` 历史会话；仅在确实无法恢复时才会新建并注入上下文继续。
+              </div>
+            ) : null}
+          </section>
+
+          <details className="card">
+            <summary className="detailsSummary">
+              <div className="row spaceBetween" style={{ alignItems: "center" }}>
+                <span className="toolSummaryTitle">任务</span>
+                <span className="muted">{tasksLoaded ? `共 ${tasks.length} 个` : "加载中…"}</span>
+              </div>
+            </summary>
+            <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
               <div>
                 <h2 style={{ margin: 0 }}>任务</h2>
                 <div className="muted">Task/Step（支持回滚重跑与多执行器）</div>
@@ -955,9 +1039,15 @@ export function IssueDetailPage() {
                 暂无 Task（可从模板创建）
               </div>
             )}
-          </section>
+          </details>
 
-          <section className="card">
+          <details className="card">
+            <summary className="detailsSummary">
+              <div className="row spaceBetween" style={{ alignItems: "center" }}>
+                <span className="toolSummaryTitle">PM</span>
+                <span className="muted">{effectivePmAnalysis ? `风险：${effectivePmAnalysis.risk}` : "未分析"}</span>
+              </div>
+            </summary>
             <div className="row spaceBetween">
               <h2>PM</h2>
               <div className="row gap">
@@ -1039,7 +1129,11 @@ export function IssueDetailPage() {
                 {!currentRunId &&
                 (effectivePmAnalysis.recommendedRoleKey || effectivePmAnalysis.recommendedAgentId) ? (
                   <div className="row gap" style={{ marginTop: 10 }}>
-                    <button type="button" onClick={onPmApplyRecommendation} disabled={!allowPmTools || pmLoading || pmDispatching}>
+                    <button
+                      type="button"
+                      onClick={onPmApplyRecommendation}
+                      disabled={!allowPmTools || pmLoading || pmDispatching}
+                    >
                       应用推荐到下方手动选择
                     </button>
                     {pmFromArtifact?.createdAt ? (
@@ -1058,7 +1152,7 @@ export function IssueDetailPage() {
                 还没有 PM 分析结果：可点击“分析”，或等待自动化在后台生成。
               </div>
             )}
-          </section>
+          </details>
 
             <IssueRunCard
               run={run}
@@ -1093,72 +1187,6 @@ export function IssueDetailPage() {
             worktreeName={worktreeName}
             onWorktreeNameChange={setWorktreeName}
           />
-
-          <section className="card">
-            <div className="row spaceBetween">
-              <h2>Console</h2>
-              {run?.executorType === "agent" && run?.status === "running" ? (
-                <button
-                  onClick={onPauseRun}
-                  disabled={!allowPause || !currentRunId || pausing || !sessionKnown || (currentAgent ? !agentOnline : false)}
-                  title={!allowPause ? "需要开发或管理员权限" : !sessionKnown ? "ACP sessionId 尚未建立/同步" : ""}
-                >
-                  {pausing ? "暂停中…" : "暂停 Agent"}
-                </button>
-              ) : null}
-            </div>
-            <RunConsole events={events} />
-            <form onSubmit={onSendPrompt} className="consoleInput">
-              <input
-                aria-label="对话输入"
-                value={chatText}
-                onChange={(e) => setChatText(e.target.value)}
-                placeholder={
-                  !auth.user
-                    ? "登录后可继续对话…"
-                    : !allowRunActions
-                      ? "当前账号无权限与 Agent 对话"
-                      : !currentRunId
-                        ? "请先启动 Run"
-                        : run?.executorType !== "agent"
-                          ? "当前 Run 不是 Agent 执行器"
-                          : "像 CLI 一样继续对话…"
-                }
-                disabled={
-                  !auth.user ||
-                  !allowRunActions ||
-                  !currentRunId ||
-                  sending ||
-                  run?.executorType !== "agent" ||
-                  (currentAgent ? !agentOnline : false)
-                }
-              />
-              <button
-                type="submit"
-                disabled={
-                  !auth.user ||
-                  !allowRunActions ||
-                  !currentRunId ||
-                  sending ||
-                  !chatText.trim() ||
-                  run?.executorType !== "agent" ||
-                  (currentAgent ? !agentOnline : false)
-                }
-              >
-                发送
-              </button>
-            </form>
-            {currentRunId && run?.executorType === "agent" && currentAgent && !agentOnline ? (
-              <div className="muted" style={{ marginTop: 8 }}>
-                当前 Agent 离线：需要等待其重新上线，或重新启动新的 Run。
-              </div>
-            ) : currentRunId && run?.executorType === "agent" && !sessionKnown ? (
-              <div className="muted" style={{ marginTop: 8 }}>
-                ACP sessionId 还未同步到页面：proxy 会优先尝试复用/`session/load` 历史会话；仅在确实无法恢复时才会新建并注入上下文继续。
-              </div>
-            ) : null}
-          </section>
-
 
           <section className="card">
             <details

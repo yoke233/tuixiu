@@ -20,6 +20,12 @@ const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
   cancelled: "Cancelled"
 };
 
+function hasStringLabel(labels: unknown, needle: string): boolean {
+  if (!Array.isArray(labels)) return false;
+  const expected = needle.trim().toLowerCase();
+  return labels.some((x) => typeof x === "string" && x.trim().toLowerCase() === expected);
+}
+
 export function IssueListPage() {
   const params = useParams();
   const selectedIssueId = params.id ?? "";
@@ -82,7 +88,10 @@ export function IssueListPage() {
   const visibleIssues = useMemo(() => {
     const needle = searchText.trim().toLowerCase();
     const filtered = issues.filter(
-      (i) => i.projectId === effectiveProjectId && (showArchivedOnBoard || !i.archivedAt)
+      (i) =>
+        i.projectId === effectiveProjectId &&
+        (showArchivedOnBoard || !i.archivedAt) &&
+        !hasStringLabel(i.labels, "_session")
     );
     if (!needle) return filtered;
     return filtered.filter((i) => {
@@ -410,6 +419,13 @@ export function IssueListPage() {
                   >
                     GitHub 导入
                   </button>
+                  <button
+                    type="button"
+                    className="buttonSecondary"
+                    onClick={() => navigate("/admin?section=acpSessions")}
+                  >
+                    Sessions
+                  </button>
                   <button type="button" className="buttonSecondary" onClick={() => navigate("/admin")}>
                     管理
                   </button>
@@ -434,11 +450,13 @@ export function IssueListPage() {
         </div>
       </div>
 
-      {error ? (
-        <div role="alert" className="alert">
-          {error}
-        </div>
-      ) : null}
+      <div>
+        {error ? (
+          <div role="alert" className="alert">
+            {error}
+          </div>
+        ) : null}
+      </div>
 
       <div ref={splitRef} className={`issuesSplit ${hasDetail ? "hasDetail" : ""}`} style={splitStyle}>
         <main className="issuesBoard">

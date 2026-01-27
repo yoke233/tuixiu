@@ -165,7 +165,16 @@ server.register(
   { prefix: "/api" },
 );
 server.register(makeArtifactRoutes({ prisma }), { prefix: "/api" });
-server.register(makeAcpSessionRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, auth }), { prefix: "/api/admin" });
+server.register(
+  makeAcpSessionRoutes({
+    prisma,
+    sendToAgent: wsGateway.sendToAgent,
+    createWorkspace,
+    broadcastToClients: wsGateway.broadcastToClients,
+    auth,
+  }),
+  { prefix: "/api/admin" },
+);
 
 startWorkspaceCleanupLoop({
   prisma,
