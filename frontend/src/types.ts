@@ -218,6 +218,7 @@ export type RoleTemplate = {
   initScript?: string | null;
   initTimeoutSeconds: number;
   envKeys?: string[];
+  envText?: string | null;
   createdAt: string;
   updatedAt: string;
 };

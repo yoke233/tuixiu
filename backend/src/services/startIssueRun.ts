@@ -260,6 +260,14 @@ export async function startIssueRun(opts: {
   }
 
   try {
+    const roleEnv = role ? parseEnvText((role as any).envText) : {};
+    if (roleEnv.GH_TOKEN && roleEnv.GITHUB_TOKEN === undefined) {
+      roleEnv.GITHUB_TOKEN = roleEnv.GH_TOKEN;
+    }
+    if (roleEnv.GITHUB_TOKEN && roleEnv.GH_TOKEN === undefined) {
+      roleEnv.GH_TOKEN = roleEnv.GITHUB_TOKEN;
+    }
+
     const init =
       role?.initScript?.trim()
         ? {
@@ -272,7 +280,7 @@ export async function startIssueRun(opts: {
                     GITHUB_TOKEN: ((issue as any).project as any).githubAccessToken,
                   }
                 : {}),
-              ...parseEnvText((role as any).envText),
+              ...roleEnv,
               TUIXIU_PROJECT_ID: (issue as any).projectId,
               TUIXIU_PROJECT_NAME: String(((issue as any).project as any)?.name ?? ""),
               TUIXIU_REPO_URL: String(((issue as any).project as any).repoUrl ?? ""),

@@ -335,6 +335,12 @@ export async function startAcpAgentExecution(deps: {
   }
 
   const roleEnv = role?.envText ? parseEnvText(String(role.envText)) : {};
+  if (roleEnv.GH_TOKEN && roleEnv.GITHUB_TOKEN === undefined) {
+    roleEnv.GITHUB_TOKEN = roleEnv.GH_TOKEN;
+  }
+  if (roleEnv.GITHUB_TOKEN && roleEnv.GH_TOKEN === undefined) {
+    roleEnv.GH_TOKEN = roleEnv.GITHUB_TOKEN;
+  }
   const init =
     role?.initScript?.trim()
       ? {
