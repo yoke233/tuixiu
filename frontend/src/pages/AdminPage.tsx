@@ -140,6 +140,7 @@ export function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, effectiveProjectId]);
 
+  useEffect(() => {
     if (activeSection !== "policy") return;
     if (!effectiveProjectId) return;
 
