@@ -94,9 +94,9 @@
 
 **Steps:**
 1. 内置模板常量（4A）：
-   - `template.dev.full`（实现→测试→AI review→人 review→创建 PR→CI gate→merge）
-   - `template.prd.only`（PRD 生成→PRD review→（可选）发布）
-   - `template.test.only`（测试→（可选）发布）
+   - `quick.dev.full`（实现→测试→AI review→人 review→创建 PR→CI gate→merge）
+   - `planning.prd.only`（PRD 生成→PRD review→（可选）发布）
+   - `quick.test.only`（测试→（可选）发布）
 2. `taskEngine.createTaskFromTemplate(issueId, templateKey, overrides?)`：
    - 原子创建 `Task + Steps`；把第一个 Step 置为 `ready`，其余 `pending`。
 3. `taskEngine.startStep(stepId, overrides?)`：
@@ -275,7 +275,7 @@
 1. 保持旧入口可用：
    - `POST /api/issues/:id/start` 继续可用；实现上可选择：
      - A) 直接走旧 Run 流程（兼容模式）
-     - B) 内部创建一个 `Task(template.dev.full)` 并启动 `dev.implement` Step（推荐，减少双逻辑）
+     - B) 内部创建一个 `Task(quick.dev.full)` 并启动 `dev.implement` Step（推荐，减少双逻辑）
 2. UI 渐进迁移：
    - Issue 详情优先展示 Tasks；旧 Runs 区块保留但标记为 “Legacy”
 3. 文档补充：

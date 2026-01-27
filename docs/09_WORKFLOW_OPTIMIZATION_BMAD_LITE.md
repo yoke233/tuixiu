@@ -70,7 +70,7 @@ BMAD 的价值不在某个具体工具，而在一套面向多 agent/多人协�
 - PM 自动推荐 track（结合 issue 标签/目录变更/风险词），用户可覆盖
   - 已支持：PM 分析输出 `recommendedTrack`，并可在 UI 中一键应用（后续可继续增强信号与模板升级）
 
-当前内置模板（建议优先使用带 track 前缀的新 key；legacy `template.*` 仍兼容，但会在创建 Task 时自动规范化为对应的 canonical key）：
+当前内置模板（使用带 track 前缀的 canonical key；不再保留 `template.*` legacy key）：
 
 - `quick.dev.full`：实现→测试→评审→PR→CI→合并
 - `planning.prd.dev.full`：PRD→实现→测试→评审→PR→CI→合并

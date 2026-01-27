@@ -49,11 +49,6 @@ function inferTaskTrackFromTemplateKey(templateKey: string): "quick" | "planning
   if (k.startsWith("planning.")) return "planning";
   if (k.startsWith("enterprise.")) return "enterprise";
 
-  if (k === "template.prd.only") return "planning";
-  if (k === "template.dev.full") return "quick";
-  if (k === "template.test.only") return "quick";
-  if (k === "template.admin.session") return "quick";
-
   return null;
 }
 
@@ -72,7 +67,6 @@ export function listTaskTemplates() {
     description: t.description ?? "",
     track: t.track ?? null,
     deprecated: Boolean(t.deprecated),
-    aliasOf: t.aliasOf ?? null,
     steps: t.steps.map((s) => ({ key: s.key, kind: s.kind, executorType: s.executorType })),
   }));
 }
@@ -118,21 +112,35 @@ export async function createTaskFromTemplate(
     throw new TaskEngineError("BAD_TEMPLATE", "模板缺少步骤", templateKey);
   }
 
-  const created = await deps.prisma.task.create({
-    data: {
-      id: taskId,
-      issueId,
-      templateKey: template.key,
-      track: track ?? undefined,
-      status: "pending",
-      baseBranch,
-      currentStepId: firstStepId,
-      steps: { create: steps as any },
-    } as any,
-    include: { steps: { orderBy: { order: "asc" } } },
-  });
+  const createTaskTx = async (prisma: any) => {
+    await prisma.task.create({
+      data: {
+        id: taskId,
+        issueId,
+        templateKey: template.key,
+        track: track ?? undefined,
+        status: "pending",
+        baseBranch,
+        // 注意：currentStepId 不能在同一个 create 中指向 nested create 的 Step（会触发 FK 约束错误）
+        steps: { create: steps as any },
+      } as any,
+    });
 
-  return created;
+    return await prisma.task.update({
+      where: { id: taskId },
+      data: { currentStepId: firstStepId } as any,
+      include: { steps: { orderBy: { order: "asc" } } },
+    });
+  };
+
+  const prismaAny: any = deps.prisma as any;
+  const tx = typeof prismaAny.$transaction === "function" ? prismaAny.$transaction.bind(prismaAny) : null;
+  if (tx) {
+    return await tx(async (prisma: any) => await createTaskTx(prisma));
+  }
+
+  // 兼容测试 stub：无 $transaction 时退化为两步写入
+  return await createTaskTx(deps.prisma as any);
 }
 
 export async function listTasksForIssue(deps: { prisma: PrismaDeps }, issueId: string): Promise<any[]> {

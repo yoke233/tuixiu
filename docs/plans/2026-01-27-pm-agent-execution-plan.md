@@ -28,7 +28,7 @@
 - [x] **BMAD-Lite P0**：Context Pack（docs + 注入）、next-action 读接口+前端提示、对抗式 `code.review`、`gate_decision` schema
 - [x] **Context manifest（P1 基础）**：支持通过 `docs/context-manifest.json` 按 `step.kind` 配置 Context Pack 注入（无需改代码即可调整）
 - [x] **Track（P1）**：Task 支持 `track`（quick/planning/enterprise）字段持久化；创建 Task 时可选指定；PM 分析输出 `recommendedTrack`；UI 展示并可一键应用
-- [x] **模板体系升级（P1）**：TaskTemplate 增加 `track/deprecated/aliasOf` 元数据；新增 `quick.*` / `planning.*`（含 `enterprise.*` 预留）模板；前端按 Track 分组/过滤并默认隐藏 legacy 模板；legacy `template.*` key 创建 Task 时会自动规范化为 canonical key
+- [x] **模板体系升级（P1）**：TaskTemplate 增加 `track/deprecated` 元数据；新增 `quick.*` / `planning.*`（含 `enterprise.*` 预留）模板；前端按 Track 分组/过滤（deprecated 模板默认隐藏）；不再保留 `template.*` legacy key（历史数据通过迁移规范化）
 
 **来源（已合入 `main`）**
 - PR `#26`：PM automation v1（多来源 + 自动分析/分配/启动 + GitHub 评论 + 审批队列初版）
