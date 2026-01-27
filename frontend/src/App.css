@@ -863,6 +863,7 @@ a:hover {
   min-width: 38px;
   display: grid;
   place-items: center;
+  background: color-mix(in oklab, var(--card-bg), transparent 35%);
 }
 
 .modalOverlay {
@@ -962,6 +963,22 @@ a:hover {
 
 .issueMeta {
   gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.issueCardRun {
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.issueCardRun .badge {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detailStack {
