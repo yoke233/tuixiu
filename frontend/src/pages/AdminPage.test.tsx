@@ -90,6 +90,27 @@ describe("AdminPage", () => {
     });
     mockFetchJsonOnce({ success: true, data: { approvals: [] } });
 
+    // archive list fetch (paged)
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issues: [
+          {
+            id: "i1",
+            projectId: "p1",
+            title: "Done issue",
+            status: "done",
+            archivedAt: null,
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          }
+        ],
+        total: 1,
+        limit: 20,
+        offset: 0
+      }
+    });
+
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -143,6 +164,27 @@ describe("AdminPage", () => {
     });
     mockFetchJsonOnce({ success: true, data: { approvals: [] } });
 
+    // archive list refetch after toggle
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issues: [
+          {
+            id: "i1",
+            projectId: "p1",
+            title: "Done issue",
+            status: "done",
+            archivedAt: "2026-01-25T00:00:00.000Z",
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          }
+        ],
+        total: 1,
+        limit: 20,
+        offset: 0
+      }
+    });
+
     render(
       <AuthProvider>
         <ThemeProvider>
@@ -181,7 +223,7 @@ describe("AdminPage", () => {
       </AuthProvider>
     );
 
-    expect(await screen.findByRole("heading", { name: "Issue 归档" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Issue 归档", level: 1 })).toBeInTheDocument();
   });
 });
 

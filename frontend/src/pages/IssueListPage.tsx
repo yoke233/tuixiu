@@ -394,10 +394,26 @@ export function IssueListPage() {
               <span className="muted" title={auth.user.id}>
                 {auth.user.username} ({auth.user.role})
               </span>
-              {auth.hasRole(["admin"]) ? (
-                <button type="button" className="buttonSecondary" onClick={() => navigate("/admin")}>
-                  管理
-                </button>
+               {auth.hasRole(["admin"]) ? (
+                <>
+                  <button
+                    type="button"
+                    className="buttonSecondary"
+                    onClick={() => navigate("/admin?section=issues#issue-create")}
+                  >
+                    新建 Issue
+                  </button>
+                  <button
+                    type="button"
+                    className="buttonSecondary"
+                    onClick={() => navigate("/admin?section=issues#issue-github-import")}
+                  >
+                    GitHub 导入
+                  </button>
+                  <button type="button" className="buttonSecondary" onClick={() => navigate("/admin")}>
+                    管理
+                  </button>
+                </>
               ) : null}
               <button type="button" className="buttonSecondary" onClick={() => auth.logout()}>
                 退出
