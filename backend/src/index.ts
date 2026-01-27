@@ -16,6 +16,7 @@ import { makeGitLabWebhookRoutes } from "./routes/gitlabWebhooks.js";
 import { makeIssueRoutes } from "./routes/issues.js";
 import { makeMessageInboundRoutes } from "./routes/messageInbound.js";
 import { makePmRoutes } from "./routes/pm.js";
+import { makePolicyRoutes } from "./routes/policies.js";
 import { makeProjectRoutes } from "./routes/projects.js";
 import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
 import { makeRunRoutes } from "./routes/runs.js";
@@ -64,9 +65,10 @@ server.addHook("preHandler", async (request, reply) => {
   const isProjectCreate = request.method === "POST" && pathOnly === "/api/projects";
   const isProjectUpdate = request.method === "PATCH" && /^\/api\/projects\/[0-9a-f-]{36}$/i.test(pathOnly);
   const isRoleTemplateMutation = /^\/api\/projects\/[0-9a-f-]{36}\/roles(\/|$)/i.test(pathOnly) && request.method !== "GET";
+  const isPolicyMutation = pathOnly === "/api/policies";
 
-  if ((isProjectCreate || isProjectUpdate || isRoleTemplateMutation) && role !== "admin") {
-    reply.code(403).send({ success: false, error: { code: "FORBIDDEN", message: "仅 admin 可修改 Project/Role 配置" } });
+  if ((isProjectCreate || isProjectUpdate || isRoleTemplateMutation || isPolicyMutation) && role !== "admin") {
+    reply.code(403).send({ success: false, error: { code: "FORBIDDEN", message: "仅 admin 可修改 Project/Role/Policy 配置" } });
   }
 });
 
@@ -115,6 +117,7 @@ server.register(makeApprovalRoutes({ prisma }), { prefix: "/api/approvals" });
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
+server.register(makePolicyRoutes({ prisma }), { prefix: "/api" });
 server.register(makeGitHubIssueRoutes({ prisma, onIssueUpserted: pm.triggerAutoStart }), { prefix: "/api/projects" });
 server.register(
   makeGitHubWebhookRoutes({

@@ -4,11 +4,12 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { approveApproval, listApprovals, rejectApproval } from "../api/approvals";
 import { createIssue, listIssues, updateIssue } from "../api/issues";
 import { importGitHubIssue } from "../api/githubIssues";
+import { getPmPolicy, updatePmPolicy } from "../api/policies";
 import { createProject, listProjects } from "../api/projects";
 import { createRole } from "../api/roles";
 import { useAuth } from "../auth/AuthContext";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { Approval, Issue, IssueStatus, Project } from "../types";
+import type { Approval, Issue, IssueStatus, PmPolicy, Project } from "../types";
 import { getShowArchivedIssues, setShowArchivedIssues } from "../utils/settings";
 
 function splitLines(s: string): string[] {
@@ -23,7 +24,7 @@ function isArchivableStatus(status: IssueStatus): boolean {
 }
 
 export function AdminPage() {
-  type AdminSectionKey = "projects" | "issues" | "roles" | "approvals" | "settings" | "archive";
+  type AdminSectionKey = "projects" | "issues" | "roles" | "approvals" | "settings" | "policy" | "archive";
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -38,6 +39,10 @@ export function AdminPage() {
 
   const [showArchivedOnBoard, setShowArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [policyText, setPolicyText] = useState<string>("");
+  const [policySource, setPolicySource] = useState<"project" | "default" | "">("");
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policySaving, setPolicySaving] = useState(false);
 
   const [projectName, setProjectName] = useState("");
   const [projectRepoUrl, setProjectRepoUrl] = useState("");
@@ -99,6 +104,25 @@ export function AdminPage() {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (activeSection !== "policy") return;
+    if (!effectiveProjectId) return;
+
+    setPolicyLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const { policy, source } = await getPmPolicy(effectiveProjectId);
+        setPolicySource(source);
+        setPolicyText(JSON.stringify(policy, null, 2));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setPolicyLoading(false);
+      }
+    })();
+  }, [activeSection, effectiveProjectId]);
 
   function requireAdmin(): boolean {
     if (!auth.user) {
@@ -283,6 +307,7 @@ export function AdminPage() {
     const meta: Record<AdminSectionKey, { title: string; desc: string }> = {
       approvals: { title: "审批队列", desc: "Pending approvals / 需要人工确认的动作" },
       settings: { title: "平台设置", desc: "影响看板展示与全局行为" },
+      policy: { title: "策略（Policy）", desc: "Project 级：自动化开关 / 审批门禁 / 敏感目录（JSON）" },
       projects: { title: "项目管理", desc: "创建/配置 Project（仓库、SCM、认证方式等）" },
       issues: { title: "Issue 管理", desc: "创建需求或导入外部 Issue" },
       roles: { title: "角色模板", desc: "创建 RoleTemplate（Prompt / initScript 等）" },
@@ -353,6 +378,13 @@ export function AdminPage() {
             onClick={() => setActiveSection("settings")}
           >
             <span>平台设置</span>
+          </button>
+          <button
+            type="button"
+            className={`adminNavItem ${activeSection === "policy" ? "active" : ""}`}
+            onClick={() => setActiveSection("policy")}
+          >
+            <span>策略</span>
           </button>
           <button
             type="button"
@@ -476,7 +508,76 @@ export function AdminPage() {
         </div>
       </section>
 
-      <div className="grid2" hidden={activeSection === "approvals" || activeSection === "settings"}>
+      <section className="card" style={{ marginBottom: 16 }} hidden={activeSection !== "policy"}>
+        <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+          <div>
+            <h2 style={{ marginTop: 0, marginBottom: 4 }}>策略（Policy）</h2>
+            <div className="muted">
+              {effectiveProject ? (
+                <>
+                  Project: <code>{effectiveProject.name}</code>
+                  {policySource ? ` · source: ${policySource}` : ""}
+                </>
+              ) : (
+                "请先创建/选择 Project"
+              )}
+            </div>
+          </div>
+          <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="buttonSecondary"
+              onClick={() => setPolicyText(JSON.stringify({ version: 1, automation: { autoStartIssue: true }, approvals: { requireForActions: ["merge_pr"] }, sensitivePaths: [] } satisfies PmPolicy, null, 2))}
+              disabled={!effectiveProjectId || policyLoading || policySaving}
+            >
+              载入默认
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!effectiveProjectId) return;
+                if (!requireAdmin()) return;
+                setPolicySaving(true);
+                setError(null);
+                try {
+                  const parsed = JSON.parse(policyText || "{}") as PmPolicy;
+                  const res = await updatePmPolicy(effectiveProjectId, parsed);
+                  setPolicySource("project");
+                  setPolicyText(JSON.stringify(res.policy, null, 2));
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : String(e));
+                } finally {
+                  setPolicySaving(false);
+                }
+              }}
+              disabled={!effectiveProjectId || policyLoading || policySaving}
+            >
+              {policySaving ? "保存中…" : "保存"}
+            </button>
+          </div>
+        </div>
+
+        {policyLoading ? (
+          <div className="muted" style={{ marginTop: 10 }}>
+            加载中…
+          </div>
+        ) : (
+          <textarea
+            value={policyText}
+            onChange={(e) => setPolicyText(e.target.value)}
+            rows={14}
+            className="inputMono"
+            style={{ width: "100%", marginTop: 10 }}
+            placeholder='{"version":1,"automation":{"autoStartIssue":true},"approvals":{"requireForActions":["merge_pr"]},"sensitivePaths":[] }'
+          />
+        )}
+
+        <div className="muted" style={{ marginTop: 8 }}>
+          后端接口：<code>GET/PUT /api/policies?projectId=...</code>（存储在 <code>Project.branchProtection.pmPolicy</code>）。
+        </div>
+      </section>
+
+      <div className="grid2" hidden={activeSection === "approvals" || activeSection === "settings" || activeSection === "policy"}>
         <section className="card" hidden={activeSection !== "projects"}>
           <h2 style={{ marginTop: 0 }}>当前 Project</h2>
 
