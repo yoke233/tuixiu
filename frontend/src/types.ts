@@ -201,3 +201,14 @@ export type PmAnalysisMeta = {
   source: "llm" | "fallback";
   model?: string;
 };
+
+export type PmPolicy = {
+  version: 1;
+  automation: {
+    autoStartIssue: boolean;
+  };
+  approvals: {
+    requireForActions: ApprovalAction[];
+  };
+  sensitivePaths: string[];
+};

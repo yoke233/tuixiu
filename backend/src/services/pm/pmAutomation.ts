@@ -3,6 +3,7 @@ import { uuidv7 } from "../../utils/uuid.js";
 import { startIssueRun, type CreateWorkspaceResult } from "../startIssueRun.js";
 import { analyzeIssueForPm } from "./pmAnalyzeIssue.js";
 import { isPmAutomationEnabled } from "./pmLlm.js";
+import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
 
 export type PmAutomation = {
   triggerAutoStart: (issueId: string, reason: string) => void;
@@ -36,13 +37,22 @@ export function createPmAutomation(deps: {
   async function dispatchIssue(issueId: string, reason: string) {
     const issue = await deps.prisma.issue.findUnique({
       where: { id: issueId },
-      select: { id: true, status: true, archivedAt: true },
+      select: { id: true, status: true, archivedAt: true, project: { select: { branchProtection: true } } },
     });
     if (!issue) {
       return { success: false, error: { code: "NOT_FOUND", message: "Issue 不存在" } };
     }
     if ((issue as any).archivedAt) {
       return { success: true, data: { skipped: true, reason: "ARCHIVED" } };
+    }
+
+    const isManual = String(reason ?? "").trim().toLowerCase() === "manual";
+    if (!isManual) {
+      const branchProtection = (issue as any).project?.branchProtection;
+      const { policy } = getPmPolicyFromBranchProtection(branchProtection);
+      if (!policy.automation.autoStartIssue) {
+        return { success: true, data: { skipped: true, reason: "POLICY_AUTO_START_DISABLED" } };
+      }
     }
     if ((issue as any).status !== "pending") {
       return { success: true, data: { skipped: true, reason: "NOT_PENDING" } };
@@ -125,4 +135,3 @@ export function createPmAutomation(deps: {
     dispatch: dispatchIssue,
   };
 }
-

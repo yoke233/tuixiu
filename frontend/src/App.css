@@ -229,6 +229,12 @@ select {
   padding: 10px 12px;
 }
 
+.inputMono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 @media (max-width: 640px) {
   input,
   textarea,
