@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { Event } from "../types";
 
@@ -419,6 +419,9 @@ function eventToConsoleItem(e: Event): ConsoleItem {
 }
 
 export function RunConsole(props: { events: Event[] }) {
+  const defaultVisibleCount = 160;
+  const loadMoreStep = 200;
+
   const items = useMemo(() => {
     const ordered = [...props.events];
     // 后端按 timestamp desc 返回 events，这里只做 reverse，避免排序打散 chunk。
@@ -477,6 +480,17 @@ export function RunConsole(props: { events: Event[] }) {
     return finalOut;
   }, [props.events]);
 
+  const [visibleCount, setVisibleCount] = useState(defaultVisibleCount);
+  const [showAll, setShowAll] = useState(false);
+  const pendingScrollRestoreRef = useRef<{ height: number; top: number } | null>(null);
+
+  const visibleItems = useMemo(() => {
+    if (showAll) return items;
+    if (items.length <= visibleCount) return items;
+    return items.slice(items.length - visibleCount);
+  }, [items, showAll, visibleCount]);
+  const hiddenCount = items.length - visibleItems.length;
+
   const ref = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
   const lastScrollTopRef = useRef(0);
@@ -505,6 +519,17 @@ export function RunConsole(props: { events: Event[] }) {
     return () => el.removeEventListener("scroll", updateStickiness);
   }, []);
 
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const pending = pendingScrollRestoreRef.current;
+    if (!pending) return;
+    pendingScrollRestoreRef.current = null;
+
+    const delta = el.scrollHeight - pending.height;
+    el.scrollTop = pending.top + delta;
+  }, [showAll, visibleItems.length]);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -515,13 +540,56 @@ export function RunConsole(props: { events: Event[] }) {
     } else {
       el.scrollTop = el.scrollHeight;
     }
-  }, [items]);
+  }, [visibleItems]);
 
   if (!items.length) return <div className="muted">暂无输出（无日志）</div>;
 
   return (
     <div ref={ref} className="console" role="log" aria-label="运行输出">
-      {items.map((item) => {
+      {hiddenCount > 0 ? (
+        <div className="consoleTrimBar">
+          <span className="consoleTrimText">已隐藏 {hiddenCount} 条旧日志</span>
+          <button
+            type="button"
+            className="buttonSecondary"
+            onClick={() => {
+              const el = ref.current;
+              if (el) pendingScrollRestoreRef.current = { height: el.scrollHeight, top: el.scrollTop };
+              setVisibleCount((prev) => Math.min(items.length, prev + loadMoreStep));
+            }}
+          >
+            显示更多
+          </button>
+          <button
+            type="button"
+            className="buttonSecondary"
+            onClick={() => {
+              const el = ref.current;
+              if (el) pendingScrollRestoreRef.current = { height: el.scrollHeight, top: el.scrollTop };
+              setShowAll(true);
+            }}
+          >
+            显示全部
+          </button>
+        </div>
+      ) : showAll && items.length > defaultVisibleCount ? (
+        <div className="consoleTrimBar">
+          <span className="consoleTrimText">已显示全部 {items.length} 条日志</span>
+          <button
+            type="button"
+            className="buttonSecondary"
+            onClick={() => {
+              stickToBottomRef.current = true;
+              setShowAll(false);
+              setVisibleCount(defaultVisibleCount);
+            }}
+          >
+            仅显示最新 {defaultVisibleCount} 条
+          </button>
+        </div>
+      ) : null}
+
+      {visibleItems.map((item) => {
         if (item.role === "system" && item.plan) {
           const entries = item.plan.entries;
           const counts = entries.reduce(

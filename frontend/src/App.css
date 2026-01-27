@@ -390,6 +390,25 @@ a:hover {
   white-space: pre-wrap;
 }
 
+.consoleTrimBar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  background: var(--console-bg);
+  border-bottom: 1px solid var(--card-border);
+}
+
+.consoleTrimText {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .consoleItem {
   padding: 6px 8px;
   border-radius: 10px;
