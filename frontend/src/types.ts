@@ -142,7 +142,14 @@ export type Task = {
 };
 
 export type TaskTemplateStep = { key: string; kind: string; executorType: ExecutorType };
-export type TaskTemplate = { key: string; displayName: string; description: string; steps: TaskTemplateStep[] };
+export type TaskTemplate = {
+  key: string;
+  displayName: string;
+  description: string;
+  track?: TaskTrack | null;
+  deprecated?: boolean;
+  steps: TaskTemplateStep[];
+};
 
 export type EventSource = "acp" | "gitlab" | "system" | "user";
 

@@ -70,6 +70,8 @@ export function listTaskTemplates() {
     key: t.key,
     displayName: t.displayName,
     description: t.description ?? "",
+    track: t.track ?? null,
+    deprecated: Boolean(t.deprecated),
     steps: t.steps.map((s) => ({ key: s.key, kind: s.kind, executorType: s.executorType })),
   }));
 }
@@ -85,7 +87,7 @@ export async function createTaskFromTemplate(
     throw new TaskEngineError("BAD_TEMPLATE", "未知的模板", templateKey);
   }
 
-  const track = normalizeTaskTrack((body as any).track) ?? inferTaskTrackFromTemplateKey(template.key);
+  const track = normalizeTaskTrack((body as any).track) ?? template.track ?? inferTaskTrackFromTemplateKey(template.key);
 
   const issue = await deps.prisma.issue.findUnique({
     where: { id: issueId },

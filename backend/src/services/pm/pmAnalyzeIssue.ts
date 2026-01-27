@@ -52,13 +52,43 @@ function sanitizeTrack(track: unknown): z.infer<typeof pmTrackSchema> | null {
 function inferTrackFromIssue(issue: any): z.infer<typeof pmTrackSchema> {
   const title = String(issue?.title ?? "").toLowerCase();
   const desc = String(issue?.description ?? "").toLowerCase();
-  const text = `${title}\n${desc}`;
+  const acceptanceCriteria = normalizeList(issue?.acceptanceCriteria, 30).join(" | ").toLowerCase();
+  const constraints = normalizeList(issue?.constraints, 30).join(" | ").toLowerCase();
+  const labels = [...normalizeList(issue?.labels, 30), ...normalizeList(issue?.externalLabels, 30)].join(" | ").toLowerCase();
+  const text = `${title}\n${desc}\n${acceptanceCriteria}\n${constraints}\n${labels}`;
+
+  const enterpriseHints = [
+    "enterprise",
+    "compliance",
+    "audit",
+    "soc2",
+    "sox",
+    "gdpr",
+    "pci",
+    "hipaa",
+    "iso",
+    "合规",
+    "审计",
+    "法务",
+    "监管",
+    "隐私",
+    "等保",
+  ];
+
+  for (const hint of enterpriseHints) {
+    if (text.includes(hint)) return "enterprise";
+  }
 
   const planningHints = [
     "prd",
     "design",
     "architecture",
     "workflow",
+    "adr",
+    "epic",
+    "roadmap",
+    "milestone",
+    "release",
     "migration",
     "migrate",
     "prisma",
@@ -78,11 +108,49 @@ function inferTrackFromIssue(issue: any): z.infer<typeof pmTrackSchema> {
     "dod",
     "refactor",
     "breaking",
+    "方案",
+    "设计",
+    "架构",
+    "重构",
+    "迁移",
+    "数据库",
+    "权限",
+    "鉴权",
+    "安全",
+    "门禁",
+    "策略",
+    "流水线",
+    "发布",
+    "里程碑",
   ];
 
   for (const hint of planningHints) {
     if (text.includes(hint)) return "planning";
   }
+
+  const quickHints = [
+    "typo",
+    "docs",
+    "readme",
+    "chore",
+    "minor",
+    "small",
+    "copy",
+    "text",
+    "文档",
+    "错别字",
+    "小改",
+    "微调",
+  ];
+
+  for (const hint of quickHints) {
+    if (text.includes(hint)) return "quick";
+  }
+
+  const descLen = typeof issue?.description === "string" ? issue.description.length : 0;
+  if (descLen >= 1800) return "planning";
+  if (normalizeList(issue?.acceptanceCriteria, 50).length >= 8) return "planning";
+  if (normalizeList(issue?.constraints, 50).length >= 8) return "planning";
 
   return "quick";
 }
@@ -177,6 +245,8 @@ export async function analyzeIssueForPm(opts: {
         "【任务】",
         `title: ${String((issue as any).title ?? "")}`,
         `description: ${String((issue as any).description ?? "")}`,
+        `labels: ${normalizeList((issue as any).labels, 20).join(" | ")}`,
+        `externalLabels: ${normalizeList((issue as any).externalLabels, 20).join(" | ")}`,
         `acceptanceCriteria: ${normalizeList((issue as any).acceptanceCriteria, 10).join(" | ")}`,
         `constraints: ${normalizeList((issue as any).constraints, 10).join(" | ")}`,
         `testRequirements: ${String((issue as any).testRequirements ?? "")}`,

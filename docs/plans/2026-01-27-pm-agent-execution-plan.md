@@ -27,7 +27,8 @@
 - [x] **Task 自动推进（Task 流）**：Task 创建/回滚后自动启动首个 `ready` 且非 `human` 的 Step；Run/CI 完成后自动启动下一个 `ready` 且非 `human` 的 Step；遇到 `human` Step 自动停（`pr.create` 受 `pmPolicy.automation.autoCreatePr` 门禁）
 - [x] **BMAD-Lite P0**：Context Pack（docs + 注入）、next-action 读接口+前端提示、对抗式 `code.review`、`gate_decision` schema
 - [x] **Context manifest（P1 基础）**：支持通过 `docs/context-manifest.json` 按 `step.kind` 配置 Context Pack 注入（无需改代码即可调整）
-- [x] **Track（P1 基础）**：Task 支持 `track`（quick/planning/enterprise）字段持久化；创建 Task 时可选指定；UI 展示（推荐逻辑后续补齐）
+- [x] **Track（P1）**：Task 支持 `track`（quick/planning/enterprise）字段持久化；创建 Task 时可选指定；PM 分析输出 `recommendedTrack`；UI 展示并可一键应用
+- [x] **模板体系升级（P1）**：TaskTemplate 增加 `track/deprecated` 元数据；新增 `quick.*` / `planning.*` 模板；前端按 Track 分组/过滤并默认隐藏 legacy 模板
 
 **来源（已合入 `main`）**
 - PR `#26`：PM automation v1（多来源 + 自动分析/分配/启动 + GitHub 评论 + 审批队列初版）
@@ -46,7 +47,7 @@
 ### 已知缺口 ⚠️（当前主线未完成）
 
 - [ ] **Gate/DoD 聚合（预备）**：已具备 `gate_decision` schema，但仍缺 gate step（`implementation_readiness/review/release`）聚合能力与可视化
-- [ ] **Track（轨道选择）**：缺少显式 `track` 字段/模板体系（quick/planning/enterprise）；目前只能通过 `templateKey`/人工约定实现
+- [ ] **Track（轨道选择）**：enterprise 轨道仍为预留（模板/策略/门禁尚未实装）；track 推荐仍缺少基于 diff/敏感目录命中等更强信号（需结合 Run changes）
 - [ ] **Policy/策略系统（扩展）**：已支持 Project policy 存取与 PM autoStart gate；已完成 `create_pr`/`publish_artifact` 动作级 gate 与敏感目录升级；仍缺更多动作（`ci/test/merge auto-exec` 等）的门禁聚合与策略化
 - [ ] **auto-review（回写增强）**：已支持手动触发与自动触发（含 GitHub Issue best-effort 摘要回写）；仍缺测试结果聚合增强（例如更完整的测试摘要、diff 摘要压缩与证据链接）
 - [ ] **自动推进到 PR（Task 流）门禁完善**：已支持 Task 的 `ready` Step 自动推进；已为 `pr.create`/`report.publish` 接入 gate + `sensitivePaths` 升级；仍缺对更多 Step(kind)（test/ci 等）的动作级门禁与策略聚合
@@ -72,7 +73,9 @@
 
 - [x] 引入 `track`（quick/planning/enterprise）字段（Task 支持持久化 + 创建时可选指定 + UI 展示）
 - [x] PM 自动推荐 track（基础）：PM 分析输出 `recommendedTrack`（LLM + fallback），并可在 UI 一键应用到 Task track 选择
-- [ ] PM 自动推荐 track（增强）：结合 issue 标签/敏感目录命中/变更规模等信号；并推动模板升级（quick/planning 模板体系）
+- [x] 模板体系升级（quick/planning）：新增 `quick.*` / `planning.*` 模板 + UI 引导（默认隐藏 legacy）
+- [x] PM 自动推荐 track（增强-基础）：纳入 labels/externalLabels、中文关键字、AC/约束规模等信号
+- [ ] PM 自动推荐 track（增强-进阶）：结合敏感目录命中/变更规模（diff）等信号（需结合 Run changes）
 - [x] 引入 `docs/context-manifest.json`（按 `step.kind` 自动注入上下文；支持片段/截断策略）
 - [ ] 增加 `gate.implementation_readiness` 与 `correct-course`（重规划）并与 Policy/Approval 对齐
 - [ ] 接入 GitLab `pipeline` webhook：写 `Artifact(type=ci_result)` 并驱动 `Run.status=waiting_ci → completed/failed`（同时增强 CI 关联：`head_sha/PR` 等）
