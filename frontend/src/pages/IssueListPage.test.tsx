@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -84,7 +83,7 @@ describe("IssueListPage", () => {
     expect(screen.getByRole("button", { name: "管理" })).toBeInTheDocument();
   });
 
-  it("opens issue actions and starts run", async () => {
+  it("does not render issue actions menu button", async () => {
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -121,53 +120,6 @@ describe("IssueListPage", () => {
       }
     });
 
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        run: {
-          id: "r1",
-          issueId: "i1",
-          status: "running"
-        }
-      }
-    });
-
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        projects: [
-          {
-            id: "p1",
-            name: "Demo",
-            repoUrl: "https://example.com/repo.git",
-            scmType: "gitlab",
-            defaultBranch: "main",
-            workspaceMode: "worktree",
-            gitAuthMode: "https_pat",
-            createdAt: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
-    });
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        issues: [
-          {
-            id: "i1",
-            projectId: "p1",
-            title: "Fix README",
-            status: "running",
-            createdAt: "2026-01-25T00:00:00.000Z",
-            runs: [{ id: "r1", status: "running" }]
-          }
-        ],
-        total: 1,
-        limit: 50,
-        offset: 0
-      }
-    });
-
     render(
       <AuthProvider>
         <ThemeProvider>
@@ -183,13 +135,7 @@ describe("IssueListPage", () => {
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "操作：Fix README" }));
-    expect(await screen.findByText("Issue 操作")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "启动 Run" }));
-
-    expect((await screen.findAllByText("running")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /操作：/ })).not.toBeInTheDocument();
   });
 
   it("hides archived issues by default", async () => {

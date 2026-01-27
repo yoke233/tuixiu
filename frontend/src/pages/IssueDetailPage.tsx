@@ -825,7 +825,11 @@ export function IssueDetailPage() {
             <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
               Issue 状态表示需求在看板中的阶段；Run 状态表示该需求最近一次执行流程（Agent/CI/人工）的运行状态。
             </div>
-            {issue.description ? <p className="pre">{issue.description}</p> : null}
+            {issue.description ? (
+              <pre className="pre" style={{ whiteSpace: "pre-wrap" }}>
+                {issue.description}
+              </pre>
+            ) : null}
           </section>
 
           <section className="card">
@@ -1270,7 +1274,7 @@ export function IssueDetailPage() {
 
             {nextAction ? (
               <div style={{ marginTop: 8 }}>
-                <div className="pre">{`动作：${nextAction.action}\n原因：${nextAction.reason}`}</div>
+                <pre className="pre" style={{ whiteSpace: "pre-wrap" }}>{`动作：${nextAction.action}\n原因：${nextAction.reason}`}</pre>
                 {nextAction.approval ? (
                   <div className="muted" style={{ marginTop: 6 }}>
                     待审批：<code>{nextAction.approval.action}</code> · <code>{nextAction.approval.id}</code>{" "}
@@ -1342,15 +1346,17 @@ export function IssueDetailPage() {
 
                 <div style={{ marginTop: 10 }}>
                   <div className="muted">摘要</div>
-                  <div className="pre">{effectivePmAnalysis.summary}</div>
+                  <pre className="pre" style={{ whiteSpace: "pre-wrap" }}>
+                    {effectivePmAnalysis.summary}
+                  </pre>
                 </div>
 
                 {effectivePmAnalysis.questions?.length ? (
                   <div style={{ marginTop: 10 }}>
                     <div className="muted">需要你确认</div>
-                    <div className="pre">
+                    <pre className="pre" style={{ whiteSpace: "pre-wrap" }}>
                       {effectivePmAnalysis.questions.map((q, idx) => `${idx + 1}. ${q}`).join("\n")}
-                    </div>
+                    </pre>
                   </div>
                 ) : (
                   <div className="muted" style={{ marginTop: 10 }}>
