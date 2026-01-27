@@ -724,168 +724,172 @@ export function IssueDetailPage() {
                         taskId: <code title={t.id}>{t.id}</code>
                       </div>
 
-                      <table className="table" style={{ marginTop: 10 }}>
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Step</th>
-                            <th>执行器</th>
-                            <th>状态</th>
-                            <th>Run</th>
-                            <th>操作</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {t.steps.map((s) => {
-                            const latest = latestRunForStep(s.id);
-                            const viewing = latest?.id ? currentRunId === latest.id : false;
-                            const role = auth.user?.role ?? null;
-                            const canSubmit = roleAllowsHumanSubmit(s.kind, role);
-                            const form = latest?.id ? getHumanForm(latest.id) : null;
+                      <div className="tableScroll">
+                        <table className="table" style={{ marginTop: 10 }}>
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Step</th>
+                              <th>执行器</th>
+                              <th>状态</th>
+                              <th>Run</th>
+                              <th>操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {t.steps.map((s) => {
+                              const latest = latestRunForStep(s.id);
+                              const viewing = latest?.id ? currentRunId === latest.id : false;
+                              const role = auth.user?.role ?? null;
+                              const canSubmit = roleAllowsHumanSubmit(s.kind, role);
+                              const form = latest?.id ? getHumanForm(latest.id) : null;
 
-                            return (
-                              <Fragment key={s.id}>
-                                <tr>
-                                  <td>{s.order}</td>
-                                  <td>
-                                    <div>
-                                      <code title={s.key}>{s.key}</code>
-                                    </div>
-                                    <div className="muted" style={{ fontSize: 12 }}>
-                                      {s.kind}
-                                    </div>
-                                  </td>
-                                  <td>
-                                    <code>{s.executorType}</code>
-                                  </td>
-                                  <td>
-                                    <StatusBadge status={s.status} />
-                                  </td>
-                                  <td>
-                                    {latest ? (
-                                      <div style={{ display: "grid", gap: 4 }}>
-                                        <code title={latest.id}>{latest.id}</code>
-                                        <span className="muted" style={{ fontSize: 12 }}>
-                                          {latest.status}
-                                          {typeof latest.attempt === "number" ? ` · attempt ${latest.attempt}` : ""}
-                                        </span>
+                              return (
+                                <Fragment key={s.id}>
+                                  <tr>
+                                    <td>{s.order}</td>
+                                    <td>
+                                      <div>
+                                        <code title={s.key}>{s.key}</code>
                                       </div>
-                                    ) : (
-                                      <span className="muted">—</span>
-                                    )}
-                                  </td>
-                                  <td>
-                                    <div className="row gap" style={{ flexWrap: "wrap" }}>
-                                      {latest?.id ? (
+                                      <div className="muted" style={{ fontSize: 12 }}>
+                                        {s.kind}
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <code>{s.executorType}</code>
+                                    </td>
+                                    <td>
+                                      <StatusBadge status={s.status} />
+                                    </td>
+                                    <td>
+                                      {latest ? (
+                                        <div style={{ display: "grid", gap: 4 }}>
+                                          <code title={latest.id}>{latest.id}</code>
+                                          <span className="muted" style={{ fontSize: 12 }}>
+                                            {latest.status}
+                                            {typeof latest.attempt === "number" ? ` · attempt ${latest.attempt}` : ""}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="muted">—</span>
+                                      )}
+                                    </td>
+                                    <td>
+                                      <div className="row gap" style={{ flexWrap: "wrap" }}>
+                                        {latest?.id ? (
+                                          <button
+                                            type="button"
+                                            className="buttonSecondary"
+                                            onClick={() => void onSelectRun(latest.id)}
+                                            disabled={viewing}
+                                          >
+                                            {viewing ? "查看中" : "查看"}
+                                          </button>
+                                        ) : null}
+
+                                        <button
+                                          type="button"
+                                          onClick={() => void onStartStep(s)}
+                                          disabled={s.status !== "ready" || startingStepId === s.id}
+                                        >
+                                          {startingStepId === s.id ? "启动中…" : "启动"}
+                                        </button>
+
                                         <button
                                           type="button"
                                           className="buttonSecondary"
-                                          onClick={() => void onSelectRun(latest.id)}
-                                          disabled={viewing}
+                                          onClick={() => void onRollback(t, s)}
+                                          disabled={rollingBackStepId === s.id}
                                         >
-                                          {viewing ? "查看中" : "查看"}
+                                          {rollingBackStepId === s.id ? "回滚中…" : "回滚到此步"}
                                         </button>
-                                      ) : null}
-
-                                      <button
-                                        type="button"
-                                        onClick={() => void onStartStep(s)}
-                                        disabled={s.status !== "ready" || startingStepId === s.id}
-                                      >
-                                        {startingStepId === s.id ? "启动中…" : "启动"}
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        className="buttonSecondary"
-                                        onClick={() => void onRollback(t, s)}
-                                        disabled={rollingBackStepId === s.id}
-                                      >
-                                        {rollingBackStepId === s.id ? "回滚中…" : "回滚到此步"}
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-
-                                {s.status === "waiting_human" && latest?.id && latest.executorType === "human" ? (
-                                  <tr>
-                                    <td colSpan={6}>
-                                      <div className="row gap" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
-                                        {s.kind === "pr.merge" ? (
-                                          <>
-                                            <label className="label" style={{ margin: 0 }}>
-                                              squash
-                                              <input
-                                                type="checkbox"
-                                                checked={Boolean(form?.squash)}
-                                                onChange={(e) => patchHumanForm(latest.id, { squash: e.target.checked })}
-                                                disabled={submittingRunId === latest.id}
-                                              />
-                                            </label>
-                                            <label className="label" style={{ margin: 0, minWidth: 320 }}>
-                                              merge message（可选）
-                                              <input
-                                                value={form?.mergeCommitMessage ?? ""}
-                                                onChange={(e) => patchHumanForm(latest.id, { mergeCommitMessage: e.target.value })}
-                                                disabled={submittingRunId === latest.id}
-                                                placeholder="留空使用默认"
-                                              />
-                                            </label>
-                                            <button
-                                              type="button"
-                                              onClick={() => void onSubmitHuman(s, latest.id)}
-                                              disabled={!canSubmit || submittingRunId === latest.id}
-                                            >
-                                              {submittingRunId === latest.id ? "合并中…" : "合并"}
-                                            </button>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <label className="label" style={{ margin: 0 }}>
-                                              verdict
-                                              <select
-                                                value={form?.verdict ?? "approve"}
-                                                onChange={(e) =>
-                                                  patchHumanForm(latest.id, {
-                                                    verdict: e.target.value as "approve" | "changes_requested",
-                                                  })
-                                                }
-                                                disabled={submittingRunId === latest.id}
-                                              >
-                                                <option value="approve">approve</option>
-                                                <option value="changes_requested">changes_requested</option>
-                                              </select>
-                                            </label>
-                                            <label className="label" style={{ margin: 0, minWidth: 360 }}>
-                                              comment（Markdown，可选）
-                                              <textarea
-                                                value={form?.comment ?? ""}
-                                                onChange={(e) => patchHumanForm(latest.id, { comment: e.target.value })}
-                                                disabled={submittingRunId === latest.id}
-                                                placeholder="写评审意见/修改建议…"
-                                              />
-                                            </label>
-                                            <button
-                                              type="button"
-                                              onClick={() => void onSubmitHuman(s, latest.id)}
-                                              disabled={!canSubmit || submittingRunId === latest.id}
-                                            >
-                                              {submittingRunId === latest.id ? "提交中…" : "提交"}
-                                            </button>
-                                          </>
-                                        )}
-                                        {!canSubmit ? (
-                                          <span className="muted">当前账号无权限提交该步骤</span>
-                                        ) : null}
                                       </div>
                                     </td>
                                   </tr>
-                                ) : null}
-                              </Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+
+                                  {s.status === "waiting_human" && latest?.id && latest.executorType === "human" ? (
+                                    <tr>
+                                      <td colSpan={6}>
+                                        <div className="row gap" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+                                          {s.kind === "pr.merge" ? (
+                                            <>
+                                              <label className="label" style={{ margin: 0 }}>
+                                                squash
+                                                <input
+                                                  type="checkbox"
+                                                  checked={Boolean(form?.squash)}
+                                                  onChange={(e) => patchHumanForm(latest.id, { squash: e.target.checked })}
+                                                  disabled={submittingRunId === latest.id}
+                                                />
+                                              </label>
+                                              <label className="label" style={{ margin: 0, flex: "1 1 320px", minWidth: 0 }}>
+                                                merge message（可选）
+                                                <input
+                                                  value={form?.mergeCommitMessage ?? ""}
+                                                  onChange={(e) =>
+                                                    patchHumanForm(latest.id, { mergeCommitMessage: e.target.value })
+                                                  }
+                                                  disabled={submittingRunId === latest.id}
+                                                  placeholder="留空使用默认"
+                                                />
+                                              </label>
+                                              <button
+                                                type="button"
+                                                onClick={() => void onSubmitHuman(s, latest.id)}
+                                                disabled={!canSubmit || submittingRunId === latest.id}
+                                              >
+                                                {submittingRunId === latest.id ? "合并中…" : "合并"}
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <label className="label" style={{ margin: 0 }}>
+                                                verdict
+                                                <select
+                                                  value={form?.verdict ?? "approve"}
+                                                  onChange={(e) =>
+                                                    patchHumanForm(latest.id, {
+                                                      verdict: e.target.value as "approve" | "changes_requested",
+                                                    })
+                                                  }
+                                                  disabled={submittingRunId === latest.id}
+                                                >
+                                                  <option value="approve">approve</option>
+                                                  <option value="changes_requested">changes_requested</option>
+                                                </select>
+                                              </label>
+                                              <label className="label" style={{ margin: 0, flex: "1 1 360px", minWidth: 0 }}>
+                                                comment（Markdown，可选）
+                                                <textarea
+                                                  value={form?.comment ?? ""}
+                                                  onChange={(e) => patchHumanForm(latest.id, { comment: e.target.value })}
+                                                  disabled={submittingRunId === latest.id}
+                                                  placeholder="写评审意见/修改建议…"
+                                                />
+                                              </label>
+                                              <button
+                                                type="button"
+                                                onClick={() => void onSubmitHuman(s, latest.id)}
+                                                disabled={!canSubmit || submittingRunId === latest.id}
+                                              >
+                                                {submittingRunId === latest.id ? "提交中…" : "提交"}
+                                              </button>
+                                            </>
+                                          )}
+                                          {!canSubmit ? (
+                                            <span className="muted">当前账号无权限提交该步骤</span>
+                                          ) : null}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ) : null}
+                                </Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </details>
                   );
                 })}

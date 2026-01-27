@@ -178,7 +178,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
         </div>
       ) : (
         <div className="row gap">
-          <label className="label" style={{ margin: 0, minWidth: 240 }}>
+          <label className="label" style={{ margin: 0, flex: "1 1 240px", minWidth: 0 }}>
             Worktree 名称（可选）
             <input
               value={worktreeName}
