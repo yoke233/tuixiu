@@ -172,6 +172,106 @@ describe("Runs routes", () => {
     await server.close();
   });
 
+  it("POST /api/runs/:id/prompt does not persist user message when ACP tunnel missing", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          workspacePath: "C:/repo/.worktrees/run-1",
+          acpSessionId: null,
+          agent: { proxyId: "proxy-1" },
+          issue: { title: "t1" },
+          artifacts: [],
+        }),
+      },
+      event: { create: vi.fn(), findMany: vi.fn() },
+    } as any;
+
+    await server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/prompt",
+      payload: { text: "hello" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: false,
+      error: { code: "NO_AGENT_GATEWAY", message: "ACP 隧道未配置" },
+    });
+
+    expect(prisma.event.create).not.toHaveBeenCalled();
+    await server.close();
+  });
+
+  it("POST /api/runs/:id/prompt does not persist user message when sending fails", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          workspacePath: "C:/repo/.worktrees/run-1",
+          acpSessionId: null,
+          agent: { proxyId: "proxy-1" },
+          issue: { title: "t1" },
+          artifacts: [],
+        }),
+      },
+      event: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
+    } as any;
+
+    const acp = { promptRun: vi.fn().mockRejectedValue(new Error("boom")) } as any;
+    await server.register(makeRunRoutes({ prisma, acp }), { prefix: "/api/runs" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/prompt",
+      payload: { text: "hello" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("AGENT_SEND_FAILED");
+    expect(prisma.event.create).not.toHaveBeenCalled();
+    await server.close();
+  });
+
+  it("POST /api/runs/:id/prompt returns ok when event persistence fails after sending", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          workspacePath: "C:/repo/.worktrees/run-1",
+          acpSessionId: null,
+          agent: { proxyId: "proxy-1" },
+          issue: { title: "t1" },
+          artifacts: [],
+        }),
+      },
+      event: { create: vi.fn().mockRejectedValue(new Error("db down")), findMany: vi.fn().mockResolvedValue([]) },
+    } as any;
+
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    await server.register(makeRunRoutes({ prisma, acp }), { prefix: "/api/runs" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/prompt",
+      payload: { text: "hello" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: true,
+      data: { ok: true, warning: { code: "EVENT_PERSIST_FAILED", message: "消息已发送，但写入事件失败" } },
+    });
+
+    expect(acp.promptRun).toHaveBeenCalled();
+    expect(prisma.event.create).toHaveBeenCalled();
+    await server.close();
+  });
+
   it("POST /api/runs/:id/pause forwards session_cancel to agent", async () => {
     const server = createHttpServer();
     const prisma = {
