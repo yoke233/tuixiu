@@ -11,7 +11,7 @@
 - [x] **多来源接入**：GitHub（import + webhook）、GitLab webhook、消息入口 → 幂等 upsert `Issue`
 - [x] **PM 分析/分配/启动**：`POST /api/pm/issues/:id/analyze`、`POST /api/pm/issues/:id/dispatch`；开启 `PM_AUTOMATION_ENABLED` 后 Issue upsert 自动启动 Run（同一 Issue 串行）
 - [x] **LLM 接入**：OpenAI 兼容接口（`PM_LLM_*`）；严格 JSON schema 校验；失败回退 fallback
-- [x] **GitHub Issue 自动评论**（best-effort，不阻塞主流程）：分配/开始执行等状态回写（格式化 Markdown）
+- [x] **GitHub Issue 自动评论**（best-effort，不阻塞主流程）：分配/开始执行/创建 PR 等状态回写（格式化 Markdown）
 - [x] **高危动作审批**（MVP）：`POST /api/runs/:id/merge-pr` 默认创建审批并返回 `APPROVAL_REQUIRED`；审批通过后执行合并；审计写入 `Run events` 并回写 GitHub 评论
 - [x] **前端接入**：Issue 详情页 PM 面板（分析/分配并启动）；Admin 审批队列（批准/拒绝）；RunChangesPanel 发起合并审批与展示状态
 - [x] **GitHub 合并阻塞修复**：移除 `main` 上导致 PR “无法合并/被 BLOCKED” 的规则集/保护配置
@@ -38,7 +38,7 @@
 ### 已知缺口 ⚠️（当前主线未完成）
 
 - [ ] **Policy/策略系统（扩展）**：已支持 Project policy 存取与 PM autoStart gate；仍缺动作级 gate（create_pr/publish/ci/merge 等）与敏感目录门禁自动升级/进入审批
-- [ ] **auto-review（回写增强）**：已支持手动触发与 Run 完成自动触发；仍缺测试结果聚合增强与 GitHub Issue 评论回写（best-effort）
+- [ ] **auto-review（回写增强）**：已支持手动触发与自动触发（含 GitHub Issue best-effort 摘要回写）；仍缺测试结果聚合增强（例如更完整的测试摘要、diff 摘要压缩与证据链接）
 - [ ] **自动推进到 PR（Task 流）门禁完善**：已支持 Task 的 `ready` Step 自动推进；仍缺对更多 Step(kind) 的动作级 gate（例如 publish/test/ci 等）与敏感目录命中后的自动降级/审批
 - [ ] **CI/Webhook 闭环（增强）**：GitHub 已基础接入；仍缺 GitLab pipeline 回写、CI Run 关联增强（`head_sha/PR`）、CI 不可用时的 workspace test 降级策略
 - [ ] **Review Gate 聚合**：Task 级打回/回滚已具备，但缺少 “AI review / 人 review / 合并审批” 的统一门禁聚合与可视化

@@ -17,7 +17,7 @@
 - **交付物发布（落盘并 commit）**：支持把 `report/ci_result` 发布到 workspace 并提交 commit（带脱敏与敏感信息拦截）
 - **轻量登录与角色（JWT）**：新增 `/api/auth/bootstrap|login|me`；默认对非 GET API 做登录校验，关键配置（Project/Role）限制 admin
 - **GitHub CI 结果回写（基础）**：GitHub webhook 兼容 `workflow_run/check_suite/check_run`，可驱动 `waiting_ci` Run 结束并写入 `ci_result`
-- **PM Agent v1（任务管理员雏形）**：多来源接入（GitHub/GitLab/webhook/消息入口）→ 自动分析/分配/启动（可开关）；GitHub Issue 状态回写评论
+- **PM Agent v1（任务管理员雏形）**：多来源接入（GitHub/GitLab/webhook/消息入口）→ 自动分析/分配/启动（可开关）；GitHub Issue 状态回写评论（分配/开始/创建 PR）
 - **高危动作审批（MVP）**：`merge-pr` 默认进入审批队列，通过后才执行；审批审计写入 Run events 并回写 GitHub 评论
 - **Policy MVP（Project 级）**：`GET/PUT /api/policies?projectId=...`；Admin 页支持配置 `Project.branchProtection.pmPolicy`；PM 自动化尊重 `autoStartIssue`
 - **Run 自动验收（auto-review）**：`POST /api/pm/runs/:id/auto-review` 生成验收报告（report 产物）；Run 变更面板支持一键触发
@@ -38,7 +38,7 @@
 - **会话/在线状态面板**：Agent 是否在线、Run 是否绑定到有效 ACP session、断线重连策略与提示
 - **Project/Agent 维度分配**：Project 负责人/可用 Agent 列表/策略（例如固定/轮询/按负载）
 - **Policy/审批扩展**：在 Policy MVP 基础上，补充动作级 gate（create_pr/publish/ci/merge）与敏感目录门禁自动升级/进入审批
-- **Run 自动验收（回写增强）**：在已支持“手动 + 自动触发”基础上，补充测试结果聚合增强、GitHub Issue 评论回写
+- **Run 自动验收（回写增强）**：在已支持“手动 + 自动触发（含 GitHub Issue best-effort 摘要回写）”基础上，补充测试结果聚合增强（更完整测试摘要/证据链接等）
 - **Task 流门禁完善**：已支持 Task 自动推进；仍缺对更多 Step(kind) 的动作级 gate（例如 publish/test/ci 等）与敏感目录命中后的自动降级/审批
 
 ## 未完成（P1：增强体验）
