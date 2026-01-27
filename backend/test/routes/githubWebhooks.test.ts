@@ -137,6 +137,53 @@ describe("GitHub webhook routes", () => {
     await server.close();
   });
 
+  it("POST /api/webhooks/github handles check_suite completed and resolves run by PR artifact", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      project: {
+        findMany: vi.fn().mockResolvedValue([{ id: "p1", repoUrl: "https://github.com/o/r", scmType: "github" }])
+      },
+      run: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findUnique: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: null, stepId: null, status: "waiting_ci", branchName: "run/xyz" }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      artifact: {
+        findFirst: vi.fn().mockResolvedValue({ id: "pr1", runId: "r1", content: { provider: "github", number: 123, sourceBranch: "run/xyz" } }),
+        create: vi.fn().mockResolvedValue({ id: "a1" })
+      }
+    } as any;
+
+    await server.register(makeGitHubWebhookRoutes({ prisma }), { prefix: "/api/webhooks" });
+
+    const payload = {
+      action: "completed",
+      check_suite: {
+        head_branch: "",
+        head_sha: "abc",
+        status: "completed",
+        conclusion: "success",
+        pull_requests: [{ number: 123 }]
+      },
+      repository: { html_url: "https://github.com/o/r" }
+    };
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/webhooks/github",
+      headers: { "x-github-event": "check_suite" },
+      payload
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { ok: true, handled: true, runId: "r1", passed: true } });
+    expect(prisma.artifact.findFirst).toHaveBeenCalled();
+    expect(prisma.run.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "r1" } }));
+    expect(prisma.run.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "r1" } }));
+
+    await server.close();
+  });
+
   it("POST /api/webhooks/github returns BAD_PAYLOAD when body invalid", async () => {
     const server = createHttpServer();
     const prisma = {
