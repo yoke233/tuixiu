@@ -1,4 +1,16 @@
-# 多执行器任务系统（Task/Step/Execution）+ 回滚重跑（4A 内置模板）实现计划
+---
+title: "多执行器任务系统（Task/Step/Execution）+ 回滚重跑（4A 内置模板）实现计划"
+owner: "@tuixiu-maintainers"
+status: "archived"
+result: "done"
+last_reviewed: "2026-01-27"
+superseded_by: "docs/00_overview/roadmap.md"
+---
+
+# 多执行器任务系统（Task/Step/Execution）+ 回滚重跑（4A 内置模板）实现计划（已归档）
+
+> ⚠️ **已归档 / 已过期**：本文件仅用于历史追溯，可能与当前实现不一致，请勿作为开发依据。  
+> 当前请以 `README.md`、`docs/00_overview/roadmap.md`、`docs/03_guides/quick-start.md` 为准。
 
 > 对应 PRD：`docs/archive/plans/2026-01-27-executor-task-prd.md`  
 > 范围：MVP 先落地 **内置模板（4A）**，不做工作流编辑器；但在数据模型与服务层预留未来可配置 DAG 的扩展位。
@@ -279,7 +291,7 @@
 2. UI 渐进迁移：
    - Issue 详情优先展示 Tasks；旧 Runs 区块保留但标记为 “Legacy”
 3. 文档补充：
-   - 更新 `docs/ROADMAP.md` 与 `README.md`（新增 Task/Step/Executor 的概念与端点摘要）
+   - 更新 `docs/00_overview/roadmap.md` 与 `README.md`（新增 Task/Step/Executor 的概念与端点摘要）
 
 **Verification:**
 - Run: `pnpm test`

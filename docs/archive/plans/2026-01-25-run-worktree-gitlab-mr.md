@@ -1,4 +1,16 @@
-# ACP 协作台：Run Worktree + GitLab MR 实现计划
+---
+title: "ACP 协作台：Run Worktree + GitLab MR 实现计划"
+owner: "@tuixiu-maintainers"
+status: "archived"
+result: "done"
+last_reviewed: "2026-01-27"
+superseded_by: "docs/00_overview/roadmap.md"
+---
+
+# ACP 协作台：Run Worktree + GitLab MR 实现计划（已归档）
+
+> ⚠️ **已归档 / 已过期**：本文件仅用于历史追溯，可能与当前实现不一致，请勿作为开发依据。  
+> 当前请以 `README.md`、`docs/00_overview/roadmap.md`、`docs/03_guides/quick-start.md` 为准。
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 

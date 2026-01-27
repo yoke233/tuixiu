@@ -1,4 +1,16 @@
-# PRD：多执行器任务系统（Task/Step/Execution）与步骤回滚重跑（ACP 协作台）
+---
+title: "PRD：多执行器任务系统（Task/Step/Execution）与步骤回滚重跑（ACP 协作台）"
+owner: "@tuixiu-maintainers"
+status: "archived"
+result: "done"
+last_reviewed: "2026-01-27"
+superseded_by: "docs/00_overview/roadmap.md"
+---
+
+# PRD：多执行器任务系统（Task/Step/Execution）与步骤回滚重跑（ACP 协作台）（已归档）
+
+> ⚠️ **已归档 / 已过期**：本文件仅用于历史追溯，可能与当前实现不一致，请勿作为开发依据。  
+> 当前请以 `README.md`、`docs/00_overview/roadmap.md`、`docs/03_guides/quick-start.md` 为准。
 
 > 说明：本 PRD 面向当前仓库（`backend/` + `acp-proxy/` + `frontend/`）的下一阶段演进：把“一个 Issue 只能跑一个 coding Run”的模型，升级为“一个 Work Item（默认就是 Issue）下可编排多个 Step，由不同执行器（Agent/CI/人）完成，并支持打回回滚与重跑”。  
 > 决策已按你确认的默认项固化：**人 + Agent 都支持**、**测试双模（workspace 快速 + CI 权威门禁，CI 不可用自动降级）**、**交付物默认落库并可一键落盘 commit**、**MVP 采用内置工作流模板（4A）但预留可配置扩展**、**支持回滚到任意 Step 并从该处继续（复用同一分支）**、**轻量登录与角色（admin/pm/reviewer/dev）**。

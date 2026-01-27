@@ -1,4 +1,16 @@
-# Run 全量 Clone 工作区 + Git 缓存 + BoxLite 沙箱（GitHub，HTTPS/SSH）PRD
+---
+title: "Run 全量 Clone 工作区 + Git 缓存 + BoxLite 沙箱（GitHub，HTTPS/SSH）PRD"
+owner: "@tuixiu-maintainers"
+status: "archived"
+result: "done"
+last_reviewed: "2026-01-27"
+superseded_by: "docs/00_overview/roadmap.md"
+---
+
+# Run 全量 Clone 工作区 + Git 缓存 + BoxLite 沙箱（GitHub，HTTPS/SSH）PRD（已归档）
+
+> ⚠️ **已归档 / 已过期**：本文件仅用于历史追溯，可能与当前实现不一致，请勿作为开发依据。  
+> 当前请以 `README.md`、`docs/00_overview/roadmap.md`、`docs/03_guides/quick-start.md` 为准。
 
 ### 1. Executive Summary
 
