@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { approveApproval, rejectApproval } from "../api/approvals";
 import {
@@ -11,6 +12,7 @@ import {
   syncRunPr,
   type RunChanges,
 } from "../api/runs";
+import { useAuth } from "../auth/AuthContext";
 import type { Project, Run } from "../types";
 
 type Props = {
@@ -73,6 +75,9 @@ function buildCreatePrUrl(opts: { project?: Project; baseBranch: string; branch:
 }
 
 export function RunChangesPanel(props: Props) {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [changes, setChanges] = useState<RunChanges | null>(null);
@@ -127,6 +132,13 @@ export function RunChangesPanel(props: Props) {
   const providerLabel = "PR";
   const canUseApi = provider === "gitlab" || provider === "github";
 
+  function requireLogin(): boolean {
+    if (auth.user) return true;
+    const next = encodeURIComponent(`${location.pathname}${location.search}`);
+    navigate(`/login?next=${next}`);
+    return false;
+  }
+
   async function refreshRun() {
     if (!props.runId) return;
     try {
@@ -178,6 +190,7 @@ export function RunChangesPanel(props: Props) {
 
   async function onCreatePr() {
     if (!props.runId) return;
+    if (!requireLogin()) return;
     setPrLoading(true);
     setError(null);
     try {
@@ -193,6 +206,7 @@ export function RunChangesPanel(props: Props) {
 
   async function onMergePr() {
     if (!props.runId) return;
+    if (!requireLogin()) return;
     setPrLoading(true);
     setError(null);
     try {
@@ -271,6 +285,7 @@ export function RunChangesPanel(props: Props) {
 
   async function onSyncPr() {
     if (!props.runId) return;
+    if (!requireLogin()) return;
     setPrLoading(true);
     setError(null);
     try {
@@ -286,10 +301,15 @@ export function RunChangesPanel(props: Props) {
 
   async function onAskAgentToFixMerge() {
     if (!props.runId) return;
+    if (!requireLogin()) return;
     setPrLoading(true);
     setError(null);
     try {
       const run = props.run ?? (await getRun(props.runId));
+      if (run.executorType !== "agent") {
+        setError("当前 Run 不是 Agent 执行器，无法发送 prompt");
+        return;
+      }
       const base = prInfo?.targetBranch || changes?.baseBranch || props.project?.defaultBranch || "main";
       const head = prInfo?.sourceBranch || changes?.branch || run.branchName || "";
       const workspace = run.workspacePath || "";

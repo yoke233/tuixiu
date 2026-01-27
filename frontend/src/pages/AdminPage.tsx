@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { approveApproval, listApprovals, rejectApproval } from "../api/approvals";
 import { createIssue, listIssues, updateIssue } from "../api/issues";
 import { importGitHubIssue } from "../api/githubIssues";
 import { createProject, listProjects } from "../api/projects";
 import { createRole } from "../api/roles";
+import { useAuth } from "../auth/AuthContext";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type { Approval, Issue, IssueStatus, Project } from "../types";
 import { getShowArchivedIssues, setShowArchivedIssues } from "../utils/settings";
@@ -22,6 +23,9 @@ function isArchivableStatus(status: IssueStatus): boolean {
 }
 
 export function AdminPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const auth = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -93,9 +97,23 @@ export function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function requireAdmin(): boolean {
+    if (!auth.user) {
+      const next = encodeURIComponent(`${location.pathname}${location.search}`);
+      navigate(`/login?next=${next}`);
+      return false;
+    }
+    if (!auth.hasRole(["admin"])) {
+      setError("需要管理员权限");
+      return false;
+    }
+    return true;
+  }
+
   async function onCreateProject(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!requireAdmin()) return;
     try {
       const gitlabProjectIdRaw = projectGitlabProjectId.trim();
       const gitlabProjectId = gitlabProjectIdRaw ? Number(gitlabProjectIdRaw) : undefined;
@@ -132,6 +150,7 @@ export function AdminPage() {
   async function onCreateIssue(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!requireAdmin()) return;
     try {
       if (!issueTitle.trim()) {
         setError("Issue 标题不能为空");
@@ -161,6 +180,7 @@ export function AdminPage() {
   async function onImportGithubIssue(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!requireAdmin()) return;
     if (!effectiveProjectId) {
       setError("请先创建 Project");
       return;
@@ -185,6 +205,7 @@ export function AdminPage() {
   async function onCreateRole(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!requireAdmin()) return;
     if (!effectiveProjectId) {
       setError("请先创建 Project");
       return;
@@ -214,6 +235,7 @@ export function AdminPage() {
 
   async function onToggleArchived(issue: Issue) {
     setError(null);
+    if (!requireAdmin()) return;
     try {
       const next = !issue.archivedAt;
       await updateIssue(issue.id, { archived: next });
@@ -264,6 +286,24 @@ export function AdminPage() {
         <div className="row gap">
           <Link to="/issues">← 返回看板</Link>
           <ThemeToggle />
+          {auth.user ? (
+            <span className="muted" title={auth.user.id}>
+              {auth.user.username} ({auth.user.role})
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="buttonSecondary"
+              onClick={() => navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`)}
+            >
+              登录
+            </button>
+          )}
+          {auth.user ? (
+            <button type="button" className="buttonSecondary" onClick={() => auth.logout()}>
+              退出
+            </button>
+          ) : null}
           <button onClick={() => refresh()} disabled={loading}>
             刷新
           </button>

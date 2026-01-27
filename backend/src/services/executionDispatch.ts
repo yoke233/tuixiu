@@ -1,0 +1,66 @@
+import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { CreateWorkspace } from "../executors/types.js";
+import { startAcpAgentExecution } from "../executors/acpAgentExecutor.js";
+import { startCiExecution } from "../executors/ciExecutor.js";
+import { startHumanExecution } from "../executors/humanExecutor.js";
+import { startSystemExecution } from "../executors/systemExecutor.js";
+import { advanceTaskFromRunTerminal } from "./taskProgress.js";
+
+export async function dispatchExecutionForRun(
+  deps: { prisma: PrismaDeps; sendToAgent?: SendToAgent; createWorkspace?: CreateWorkspace },
+  runId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const run = await deps.prisma.run.findUnique({
+    where: { id: runId },
+    select: { id: true, executorType: true, agentId: true },
+  });
+  if (!run) return { success: false, error: "Run 不存在" };
+
+  const executorType = String((run as any).executorType ?? "agent").toLowerCase();
+  try {
+    if (executorType === "agent") {
+      await startAcpAgentExecution({ prisma: deps.prisma, sendToAgent: deps.sendToAgent, createWorkspace: deps.createWorkspace }, runId);
+      return { success: true };
+    }
+    if (executorType === "human") {
+      await startHumanExecution({ prisma: deps.prisma }, runId);
+      return { success: true };
+    }
+    if (executorType === "ci") {
+      await startCiExecution({ prisma: deps.prisma }, runId);
+      return { success: true };
+    }
+    if (executorType === "system") {
+      await startSystemExecution({ prisma: deps.prisma }, runId);
+      return { success: true };
+    }
+
+    throw new Error(`未知 executorType: ${executorType}`);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+
+    await deps.prisma.run
+      .update({
+        where: { id: runId },
+        data: {
+          status: "failed",
+          completedAt: new Date(),
+          failureReason: "executor_failed",
+          errorMessage,
+        } as any,
+      })
+      .catch(() => {});
+
+    await advanceTaskFromRunTerminal({ prisma: deps.prisma }, runId, "failed", { errorMessage }).catch(() => {});
+
+    const latest = await deps.prisma.run.findUnique({ where: { id: runId }, select: { agentId: true } }).catch(() => null);
+    const agentId = latest ? ((latest as any).agentId as string | null) : null;
+    if (agentId) {
+      await deps.prisma.agent
+        .update({ where: { id: agentId }, data: { currentLoad: { decrement: 1 } } })
+        .catch(() => {});
+    }
+
+    return { success: false, error: errorMessage };
+  }
+}

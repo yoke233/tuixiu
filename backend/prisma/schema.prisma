@@ -28,10 +28,45 @@ enum AgentStatus {
   suspended
 }
 
+enum UserRole {
+  admin
+  pm
+  reviewer
+  dev
+}
+
+enum ExecutorType {
+  agent
+  ci
+  human
+  system
+}
+
 enum RunStatus {
   pending
   running
   waiting_ci
+  completed
+  failed
+  cancelled
+}
+
+enum TaskStatus {
+  pending
+  running
+  blocked
+  completed
+  failed
+  cancelled
+}
+
+enum StepStatus {
+  pending
+  ready
+  running
+  waiting_ci
+  waiting_human
+  blocked
   completed
   failed
   cancelled
@@ -108,6 +143,7 @@ model Issue {
   archivedAt         DateTime?
 
   runs               Run[]
+  tasks              Task[]
 
   @@index([projectId, status])
   @@index([assignedAgentId])
@@ -150,8 +186,18 @@ model Run {
   issueId        String    @db.Uuid
   issue          Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
 
-  agentId        String    @db.Uuid
-  agent          Agent     @relation(fields: [agentId], references: [id])
+  agentId        String?   @db.Uuid
+  agent          Agent?    @relation(fields: [agentId], references: [id])
+
+  executorType   ExecutorType @default(agent)
+
+  taskId         String?   @db.Uuid
+  task           Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  stepId         String?   @db.Uuid
+  step           Step?     @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  attempt        Int       @default(1)
 
   acpSessionId   String?   @db.VarChar(100)
 
@@ -178,6 +224,8 @@ model Run {
 
   @@index([issueId])
   @@index([agentId, status])
+  @@index([taskId, startedAt])
+  @@index([stepId, startedAt])
   @@index([acpSessionId])
   @@index([status])
 }
@@ -232,4 +280,77 @@ model RoleTemplate {
 
   @@unique([projectId, key])
   @@index([projectId])
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  username     String   @unique @db.VarChar(100)
+  passwordHash String   @db.VarChar(255)
+  role         UserRole @default(dev)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tasksCreated Task[]   @relation("TaskCreatedBy")
+}
+
+model Task {
+  id            String     @id @default(uuid()) @db.Uuid
+
+  issueId        String    @db.Uuid
+  issue          Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  templateKey    String    @db.VarChar(100)
+  status         TaskStatus @default(pending)
+
+  currentStepId  String?   @unique @db.Uuid
+  currentStep    Step?     @relation("TaskCurrentStep", fields: [currentStepId], references: [id])
+
+  workspaceType  String?   @db.VarChar(20)
+  workspacePath  String?   @db.VarChar(500)
+  branchName     String?   @db.VarChar(200)
+  baseBranch     String?   @db.VarChar(100)
+
+  createdByUserId String?  @db.Uuid
+  createdByUser   User?    @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  metadata       Json?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  steps          Step[]
+  runs           Run[]
+
+  @@index([issueId, status])
+  @@index([status])
+  @@index([createdByUserId])
+}
+
+model Step {
+  id           String      @id @default(uuid()) @db.Uuid
+
+  taskId       String      @db.Uuid
+  task         Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  key          String      @db.VarChar(100)
+  kind         String      @db.VarChar(100)
+  order        Int
+  status       StepStatus  @default(pending)
+
+  executorType ExecutorType @default(agent)
+  roleKey      String?     @db.VarChar(100)
+  params       Json?
+  dependsOn    Json?
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  runs         Run[]
+  currentOfTask Task?      @relation("TaskCurrentStep")
+
+  @@unique([taskId, key])
+  @@index([taskId, order])
+  @@index([taskId, status])
+  @@index([status])
 }

@@ -8,6 +8,14 @@ export type ApiEnvelope<T> =
   | { success: true; data: T }
   | { success: false; error: ApiError; data?: unknown };
 
+export type UserRole = "admin" | "pm" | "reviewer" | "dev";
+
+export type User = {
+  id: string;
+  username: string;
+  role: UserRole;
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -36,10 +44,16 @@ export type Issue = {
 
 export type RunStatus = "pending" | "running" | "waiting_ci" | "completed" | "failed" | "cancelled";
 
+export type ExecutorType = "agent" | "ci" | "human" | "system";
+
 export type Run = {
   id: string;
   issueId: string;
-  agentId: string;
+  agentId: string | null;
+  executorType: ExecutorType;
+  taskId?: string | null;
+  stepId?: string | null;
+  attempt?: number;
   acpSessionId?: string | null;
   workspacePath?: string | null;
   branchName?: string | null;
@@ -48,6 +62,52 @@ export type Run = {
   completedAt?: string | null;
   artifacts?: Artifact[];
 };
+
+export type TaskStatus = "pending" | "running" | "blocked" | "completed" | "failed" | "cancelled";
+
+export type StepStatus =
+  | "pending"
+  | "ready"
+  | "running"
+  | "waiting_ci"
+  | "waiting_human"
+  | "blocked"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type Step = {
+  id: string;
+  taskId: string;
+  key: string;
+  kind: string;
+  order: number;
+  status: StepStatus;
+  executorType: ExecutorType;
+  roleKey?: string | null;
+  params?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Task = {
+  id: string;
+  issueId: string;
+  templateKey: string;
+  status: TaskStatus;
+  currentStepId?: string | null;
+  workspaceType?: string | null;
+  workspacePath?: string | null;
+  branchName?: string | null;
+  baseBranch?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  steps: Step[];
+  runs?: Run[];
+};
+
+export type TaskTemplateStep = { key: string; kind: string; executorType: ExecutorType };
+export type TaskTemplate = { key: string; displayName: string; description: string; steps: TaskTemplateStep[] };
 
 export type EventSource = "acp" | "gitlab" | "system" | "user";
 

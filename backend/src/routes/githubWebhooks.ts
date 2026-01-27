@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { PrismaDeps } from "../deps.js";
 import * as github from "../integrations/github.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
 
 function getHeader(headers: Record<string, unknown>, name: string): string | undefined {
   const key = name.toLowerCase();
@@ -91,8 +92,103 @@ export function makeGitHubWebhookRoutes(deps: {
           return { success: true, data: { ok: true, event: "ping" } };
         }
 
-        if (event !== "issues") {
+        const ciEvents = new Set(["workflow_run", "check_suite", "check_run"]);
+        if (event !== "issues" && !ciEvents.has(event)) {
           return { success: true, data: { ok: true, ignored: true, reason: "UNSUPPORTED_EVENT", event } };
+        }
+
+        if (ciEvents.has(event)) {
+          const repoUrl =
+            typeof (request.body as any)?.repository?.html_url === "string" ? String((request.body as any).repository.html_url) : "";
+
+          const parsedRepo = parseRepo(repoUrl);
+          if (!parsedRepo) {
+            return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 webhook repoUrl 解析 GitHub owner/repo" } };
+          }
+          const repoKey = toRepoKey(parsedRepo);
+
+          const projects = await deps.prisma.project.findMany();
+          const project =
+            (projects as any[]).find((p) => {
+              const pr = typeof p?.repoUrl === "string" ? parseRepo(p.repoUrl) : null;
+              return pr ? toRepoKey(pr) === repoKey : false;
+            }) ?? null;
+
+          if (!project) {
+            return {
+              success: false,
+              error: { code: "NO_PROJECT", message: "未找到与该 GitHub 仓库匹配的 Project", details: parsedRepo.webBaseUrl }
+            };
+          }
+
+          const branch =
+            event === "workflow_run"
+              ? String((request.body as any)?.workflow_run?.head_branch ?? "")
+              : event === "check_suite"
+                ? String((request.body as any)?.check_suite?.head_branch ?? "")
+                : String((request.body as any)?.check_run?.check_suite?.head_branch ?? (request.body as any)?.check_run?.head_branch ?? "");
+
+          const status =
+            event === "workflow_run"
+              ? String((request.body as any)?.workflow_run?.status ?? "")
+              : event === "check_suite"
+                ? String((request.body as any)?.check_suite?.status ?? "")
+                : String((request.body as any)?.check_run?.status ?? "");
+
+          const conclusion =
+            event === "workflow_run"
+              ? (request.body as any)?.workflow_run?.conclusion
+              : event === "check_suite"
+                ? (request.body as any)?.check_suite?.conclusion
+                : (request.body as any)?.check_run?.conclusion;
+
+          const completed = String(status).toLowerCase() === "completed" || String((request.body as any)?.action ?? "") === "completed";
+          if (!branch || !completed) {
+            return { success: true, data: { ok: true, ignored: true, reason: "NOT_COMPLETED", event, branch } };
+          }
+
+          const run = await deps.prisma.run.findFirst({
+            where: { status: "waiting_ci", branchName: branch, issue: { projectId: project.id } } as any,
+            orderBy: { startedAt: "desc" },
+            select: { id: true, issueId: true, taskId: true, stepId: true },
+          });
+
+          if (!run) {
+            return { success: true, data: { ok: true, ignored: true, reason: "NO_RUN", branch } };
+          }
+
+          const passed = String(conclusion ?? "").toLowerCase() === "success";
+
+          await deps.prisma.artifact
+            .create({
+              data: {
+                id: uuidv7(),
+                runId: run.id,
+                type: "ci_result",
+                content: { provider: "github", event, branch, status, conclusion, passed } as any,
+              },
+            })
+            .catch(() => {});
+
+          await deps.prisma.run
+            .update({
+              where: { id: run.id },
+              data: {
+                status: passed ? "completed" : "failed",
+                completedAt: new Date(),
+                ...(passed ? null : { failureReason: "ci_failed", errorMessage: `ci_failed: ${String(conclusion ?? "unknown")}` }),
+              } as any,
+            })
+            .catch(() => {});
+
+          await advanceTaskFromRunTerminal(
+            { prisma: deps.prisma },
+            run.id,
+            passed ? "completed" : "failed",
+            passed ? undefined : { errorMessage: `ci_failed: ${String(conclusion ?? "unknown")}` },
+          ).catch(() => {});
+
+          return { success: true, data: { ok: true, handled: true, runId: run.id, passed } };
         }
 
         const bodySchema = z.object({

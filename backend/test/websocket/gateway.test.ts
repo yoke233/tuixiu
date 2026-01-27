@@ -165,9 +165,9 @@ describe("WebSocketGateway", () => {
     await flushMicrotasks();
 
     expect(prisma.event.create).toHaveBeenCalled();
-    expect(prisma.run.findUnique).toHaveBeenCalledWith({
+    expect(prisma.run.findUnique).toHaveBeenNthCalledWith(1, {
       where: { id: "r1" },
-      select: { id: true, status: true, issueId: true, agentId: true }
+      select: { id: true, status: true, issueId: true, agentId: true, taskId: true, stepId: true }
     });
     expect(prisma.run.update).toHaveBeenCalled();
     expect(prisma.issue.updateMany).toHaveBeenCalledWith({

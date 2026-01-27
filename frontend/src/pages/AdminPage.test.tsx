@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminPage } from "./AdminPage";
+import { AuthProvider } from "../auth/AuthProvider";
 import { ThemeProvider } from "../theme";
 
 function mockFetchJsonOnce(body: unknown) {
@@ -15,6 +16,8 @@ function mockFetchJsonOnce(body: unknown) {
 describe("AdminPage", () => {
   beforeEach(() => {
     localStorage.removeItem("showArchivedIssues");
+    localStorage.setItem("authToken", "test-token");
+    localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "admin", role: "admin" }));
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -28,13 +31,15 @@ describe("AdminPage", () => {
     mockFetchJsonOnce({ success: true, data: { approvals: [] } });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/admin"]}>
-          <Routes>
-            <Route path="/admin" element={<AdminPage />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/admin"]}>
+            <Routes>
+              <Route path="/admin" element={<AdminPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     const checkbox = await screen.findByRole("checkbox", { name: "主界面显示已归档 Issue" });
@@ -137,13 +142,15 @@ describe("AdminPage", () => {
     mockFetchJsonOnce({ success: true, data: { approvals: [] } });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/admin"]}>
-          <Routes>
-            <Route path="/admin" element={<AdminPage />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/admin"]}>
+            <Routes>
+              <Route path="/admin" element={<AdminPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     expect(await screen.findByText("Done issue")).toBeInTheDocument();

@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 
 import type { PrismaDeps } from "../deps.js";
 import { buildContextFromRun } from "../services/runContext.js";
+import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
 import { uuidv7 } from "../utils/uuid.js";
 
 type AgentRegisterMessage = {
@@ -283,7 +284,7 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             if (contentType === "prompt_result") {
               const run = await deps.prisma.run.findUnique({
                 where: { id: message.run_id },
-                select: { id: true, status: true, issueId: true, agentId: true }
+                select: { id: true, status: true, issueId: true, agentId: true, taskId: true, stepId: true }
               });
 
               if (run && run.status === "running") {
@@ -292,16 +293,24 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                   data: { status: "completed", completedAt: new Date() }
                 });
 
-                await deps.prisma.issue
-                  .updateMany({
-                    where: { id: run.issueId, status: "running" },
-                    data: { status: "reviewing" }
-                  })
-                  .catch(() => {});
+                const advanced = await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(
+                  () => ({ handled: false }),
+                );
 
-                await deps.prisma.agent
-                  .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
-                  .catch(() => {});
+                if (!advanced.handled) {
+                  await deps.prisma.issue
+                    .updateMany({
+                      where: { id: run.issueId, status: "running" },
+                      data: { status: "reviewing" }
+                    })
+                    .catch(() => {});
+                }
+
+                if (run.agentId) {
+                  await deps.prisma.agent
+                    .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
+                    .catch(() => {});
+                }
               }
             }
 
@@ -335,16 +344,27 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                     })
                     .catch(() => {});
 
-                  await deps.prisma.issue
-                    .updateMany({
-                      where: { id: run.issueId, status: "running" },
-                      data: { status: "failed" }
-                    })
-                    .catch(() => {});
+                  const advanced = await advanceTaskFromRunTerminal(
+                    { prisma: deps.prisma },
+                    run.id,
+                    "failed",
+                    { errorMessage: `initScript 失败: ${details}` },
+                  ).catch(() => ({ handled: false }));
 
-                  await deps.prisma.agent
-                    .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
-                    .catch(() => {});
+                  if (!advanced.handled) {
+                    await deps.prisma.issue
+                      .updateMany({
+                        where: { id: run.issueId, status: "running" },
+                        data: { status: "failed" }
+                      })
+                      .catch(() => {});
+                  }
+
+                  if (run.agentId) {
+                    await deps.prisma.agent
+                      .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
+                      .catch(() => {});
+                  }
                 }
               }
             }

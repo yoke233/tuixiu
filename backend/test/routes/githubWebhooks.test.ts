@@ -87,6 +87,56 @@ describe("GitHub webhook routes", () => {
     await server.close();
   });
 
+  it("POST /api/webhooks/github handles workflow_run completed and updates waiting_ci run", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      project: {
+        findMany: vi.fn().mockResolvedValue([{ id: "p1", repoUrl: "https://github.com/o/r", scmType: "github" }])
+      },
+      run: {
+        findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: null, stepId: null }),
+        findUnique: vi.fn().mockResolvedValue({ id: "r1" }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "a1" }) }
+    } as any;
+
+    await server.register(makeGitHubWebhookRoutes({ prisma }), { prefix: "/api/webhooks" });
+
+    const payload = {
+      action: "completed",
+      workflow_run: {
+        head_branch: "run/xyz",
+        status: "completed",
+        conclusion: "success"
+      },
+      repository: { html_url: "https://github.com/o/r" }
+    };
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/webhooks/github",
+      headers: { "x-github-event": "workflow_run" },
+      payload
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { ok: true, handled: true, runId: "r1", passed: true } });
+    expect(prisma.artifact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ runId: "r1", type: "ci_result" })
+      })
+    );
+    expect(prisma.run.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({ status: "completed" })
+      })
+    );
+
+    await server.close();
+  });
+
   it("POST /api/webhooks/github returns BAD_PAYLOAD when body invalid", async () => {
     const server = createHttpServer();
     const prisma = {

@@ -43,6 +43,19 @@ export async function pauseRun(id: string): Promise<void> {
   await apiPost<{ ok: true }>(`/runs/${id}/pause`, {});
 }
 
+export async function submitRun(
+  id: string,
+  input: {
+    verdict: "approve" | "changes_requested";
+    comment?: string;
+    squash?: boolean;
+    mergeCommitMessage?: string;
+  }
+): Promise<{ ok: true; blocked?: boolean }> {
+  const data = await apiPost<{ ok: true; blocked?: boolean }>(`/runs/${id}/submit`, input);
+  return data;
+}
+
 
 export async function createRunPr(id: string): Promise<Artifact> {
   const data = await apiPost<{ pr: Artifact }>(`/runs/${id}/create-pr`, {});

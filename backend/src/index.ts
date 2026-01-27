@@ -5,8 +5,11 @@ import Fastify from "fastify";
 
 import { loadEnv } from "./config.js";
 import { prisma } from "./db.js";
+import { registerAuth } from "./auth.js";
 import { makeAgentRoutes } from "./routes/agents.js";
 import { makeApprovalRoutes } from "./routes/approvals.js";
+import { makeArtifactRoutes } from "./routes/artifacts.js";
+import { makeAuthRoutes } from "./routes/auth.js";
 import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
 import { makeGitHubWebhookRoutes } from "./routes/githubWebhooks.js";
 import { makeGitLabWebhookRoutes } from "./routes/gitlabWebhooks.js";
@@ -16,6 +19,8 @@ import { makePmRoutes } from "./routes/pm.js";
 import { makeProjectRoutes } from "./routes/projects.js";
 import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
 import { makeRunRoutes } from "./routes/runs.js";
+import { makeStepRoutes } from "./routes/steps.js";
+import { makeTaskRoutes } from "./routes/tasks.js";
 import { createPmAutomation } from "./services/pm/pmAutomation.js";
 import { createRunWorkspace } from "./utils/runWorkspace.js";
 import { startWorkspaceCleanupLoop } from "./services/workspaceCleanup.js";
@@ -31,6 +36,39 @@ const server = Fastify({
 
 await server.register(cors, { origin: true });
 await server.register(websocket);
+
+const auth = await registerAuth(server, { jwtSecret: env.JWT_SECRET });
+server.register(
+  makeAuthRoutes({
+    prisma,
+    auth,
+    bootstrap: { username: env.BOOTSTRAP_ADMIN_USERNAME, password: env.BOOTSTRAP_ADMIN_PASSWORD },
+  }),
+  { prefix: "/api/auth" },
+);
+
+server.addHook("preHandler", async (request, reply) => {
+  const url = String(request.url ?? "");
+  const pathOnly = url.split("?")[0] ?? url;
+  if (!pathOnly.startsWith("/api/")) return;
+  if (pathOnly.startsWith("/api/auth/")) return;
+  if (pathOnly.startsWith("/api/webhooks/")) return;
+  if (pathOnly.startsWith("/api/integrations/")) return;
+  if (request.method === "GET") return;
+
+  await auth.authenticate(request, reply);
+  if ((reply as any).sent) return;
+
+  const role = String(((request as any).user as any)?.role ?? "");
+
+  const isProjectCreate = request.method === "POST" && pathOnly === "/api/projects";
+  const isProjectUpdate = request.method === "PATCH" && /^\/api\/projects\/[0-9a-f-]{36}$/i.test(pathOnly);
+  const isRoleTemplateMutation = /^\/api\/projects\/[0-9a-f-]{36}\/roles(\/|$)/i.test(pathOnly) && request.method !== "GET";
+
+  if ((isProjectCreate || isProjectUpdate || isRoleTemplateMutation) && role !== "admin") {
+    reply.code(403).send({ success: false, error: { code: "FORBIDDEN", message: "仅 admin 可修改 Project/Role 配置" } });
+  }
+});
 
 const wsGateway = createWebSocketGateway({ prisma });
 wsGateway.init(server);
@@ -61,7 +99,6 @@ const pm = createPmAutomation({
   createWorkspace,
   log: (msg, extra) => server.log.info(extra ? { ...extra, msg } : { msg }),
 });
-
 server.register(
   makeIssueRoutes({
     prisma,
@@ -92,6 +129,9 @@ server.register(
   { prefix: "/api/integrations" },
 );
 server.register(makePmRoutes({ prisma, pm }), { prefix: "/api/pm" });
+server.register(makeTaskRoutes({ prisma }), { prefix: "/api" });
+server.register(makeStepRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, createWorkspace, autoDispatch: true }), { prefix: "/api" });
+server.register(makeArtifactRoutes({ prisma }), { prefix: "/api" });
 
 startWorkspaceCleanupLoop({
   prisma,

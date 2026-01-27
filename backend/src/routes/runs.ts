@@ -17,6 +17,7 @@ import {
   syncReviewRequestForRun,
 } from "../services/runReviewRequest.js";
 import { requestMergePrApproval } from "../services/approvalRequests.js";
+import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
@@ -285,6 +286,12 @@ export function makeRunRoutes(deps: {
           error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" },
         };
       }
+      if (!run.agent) {
+        return {
+          success: false,
+          error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法发送 prompt" },
+        };
+      }
 
       try {
         const recentEvents = await deps.prisma.event.findMany({
@@ -320,6 +327,103 @@ export function makeRunRoutes(deps: {
       return { success: true, data: { ok: true } };
     });
 
+    server.post("/:id/submit", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const bodySchema = z.object({
+        verdict: z.enum(["approve", "changes_requested"]),
+        comment: z.string().max(20_000).optional(),
+        squash: z.boolean().optional(),
+        mergeCommitMessage: z.string().min(1).max(2000).optional(),
+      });
+      const { id } = paramsSchema.parse(request.params);
+      const body = bodySchema.parse(request.body ?? {});
+
+      const run = await deps.prisma.run.findUnique({
+        where: { id },
+        include: {
+          step: true,
+          task: { include: { steps: { orderBy: { order: "asc" } } } },
+          issue: { include: { project: true } },
+          artifacts: { orderBy: { createdAt: "desc" } },
+        },
+      });
+      if (!run) {
+        return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+      }
+
+      if (run.executorType !== "human") {
+        return { success: false, error: { code: "BAD_EXECUTOR", message: "该 Run 不是 human executor" } };
+      }
+
+      const stepKind = typeof (run as any).step?.kind === "string" ? (run as any).step.kind : "";
+      const actorRole = String(((request as any).user as any)?.role ?? "");
+      if (actorRole) {
+        const allow =
+          stepKind === "code.review" || stepKind === "pr.merge"
+            ? ["reviewer", "admin"].includes(actorRole)
+            : stepKind === "prd.review"
+              ? ["pm", "admin"].includes(actorRole)
+              : ["dev", "pm", "reviewer", "admin"].includes(actorRole);
+        if (!allow) {
+          return { success: false, error: { code: "FORBIDDEN", message: "无权限提交该步骤" } };
+        }
+      }
+      const verdict = body.verdict;
+      const comment = typeof body.comment === "string" ? body.comment.trim() : "";
+
+      const reportKind =
+        stepKind === "code.review"
+          ? "review"
+          : stepKind === "prd.review"
+            ? "prd_review"
+            : stepKind === "pr.merge"
+              ? "merge"
+              : stepKind || "human";
+
+      await deps.prisma.artifact
+        .create({
+          data: {
+            id: uuidv7(),
+            runId: run.id,
+            type: "report",
+            content: { kind: reportKind, verdict, markdown: comment } as any,
+          },
+        })
+        .catch(() => {});
+
+      if (stepKind === "pr.merge") {
+        const mergeRes = await mergeReviewRequestForRun(
+          { prisma: deps.prisma, gitPush, gitlab: deps.gitlab, github: deps.github },
+          run.id,
+          { squash: body.squash, mergeCommitMessage: body.mergeCommitMessage },
+        );
+        if (!mergeRes.success) return mergeRes;
+
+        await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed", completedAt: new Date() } as any }).catch(() => {});
+        await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(() => {});
+        return { success: true, data: { ok: true } };
+      }
+
+      await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed", completedAt: new Date() } as any }).catch(() => {});
+
+      if (verdict === "changes_requested") {
+        if ((run as any).stepId) {
+          await deps.prisma.step
+            .update({ where: { id: (run as any).stepId }, data: { status: "completed" } as any })
+            .catch(() => {});
+        }
+        await setTaskBlockedFromRun(
+          { prisma: deps.prisma },
+          run.id,
+          { code: "CHANGES_REQUESTED", message: comment || "changes requested" },
+        ).catch(() => {});
+        return { success: true, data: { ok: true, blocked: true } };
+      }
+
+      await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(() => {});
+      return { success: true, data: { ok: true } };
+    });
+
     server.post("/:id/pause", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const { id } = paramsSchema.parse(request.params);
@@ -339,6 +443,12 @@ export function makeRunRoutes(deps: {
         return {
           success: false,
           error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" },
+        };
+      }
+      if (!run.agent) {
+        return {
+          success: false,
+          error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法暂停" },
         };
       }
 
@@ -381,22 +491,27 @@ export function makeRunRoutes(deps: {
       });
 
       if (deps.sendToAgent) {
-        await deps.sendToAgent(run.agent.proxyId, {
-          type: "cancel_task",
-          run_id: id,
-          session_id: run.acpSessionId ?? undefined,
-        }).catch(() => {});
+        const proxyId = run.agent?.proxyId ?? null;
+        if (proxyId) {
+          await deps.sendToAgent(proxyId, {
+            type: "cancel_task",
+            run_id: id,
+            session_id: run.acpSessionId ?? undefined,
+          }).catch(() => {});
+        }
       }
 
       await deps.prisma.issue
         .update({ where: { id: run.issueId }, data: { status: "cancelled" } })
         .catch(() => {});
-      await deps.prisma.agent
-        .update({
-          where: { id: run.agentId },
-          data: { currentLoad: { decrement: 1 } },
-        })
-        .catch(() => {});
+      if (run.agentId) {
+        await deps.prisma.agent
+          .update({
+            where: { id: run.agentId },
+            data: { currentLoad: { decrement: 1 } },
+          })
+          .catch(() => {});
+      }
 
       return { success: true, data: { run } };
     });
@@ -413,12 +528,14 @@ export function makeRunRoutes(deps: {
       await deps.prisma.issue
         .update({ where: { id: run.issueId }, data: { status: "reviewing" } })
         .catch(() => {});
-      await deps.prisma.agent
-        .update({
-          where: { id: run.agentId },
-          data: { currentLoad: { decrement: 1 } },
-        })
-        .catch(() => {});
+      if (run.agentId) {
+        await deps.prisma.agent
+          .update({
+            where: { id: run.agentId },
+            data: { currentLoad: { decrement: 1 } },
+          })
+          .catch(() => {});
+      }
 
       return { success: true, data: { run } };
     });
