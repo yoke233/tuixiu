@@ -116,6 +116,8 @@ export function IssueDetailPage() {
   const [chatText, setChatText] = useState<string>("");
   const [sending, setSending] = useState(false);
   const [pausing, setPausing] = useState(false);
+  const [cancellingRun, setCancellingRun] = useState(false);
+  const [completingRun, setCompletingRun] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -164,6 +166,11 @@ export function IssueDetailPage() {
 
   const sessionId = run?.acpSessionId ?? null;
   const sessionKnown = !!sessionId;
+
+  const runArtifacts = run?.artifacts ?? [];
+  const showArtifacts = runArtifacts.length > 0;
+  const showChanges =
+    Boolean(run?.branchName) || runArtifacts.some((a) => a.type === "branch" || a.type === "pr" || a.type === "patch");
 
   const pmFromArtifact = useMemo(() => {
     const artifacts = run?.artifacts ?? [];
@@ -459,13 +466,17 @@ export function IssueDetailPage() {
       setError("当前账号无权限操作 Run");
       return;
     }
+    if (cancellingRun || completingRun) return;
     setError(null);
+    setCancellingRun(true);
     try {
       const r = await cancelRun(currentRunId);
       setRun(r);
       await refresh({ silent: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCancellingRun(false);
     }
   }
 
@@ -476,13 +487,17 @@ export function IssueDetailPage() {
       setError("当前账号无权限操作 Run");
       return;
     }
+    if (cancellingRun || completingRun) return;
     setError(null);
+    setCompletingRun(true);
     try {
       const r = await completeRun(currentRunId);
       setRun(r);
       await refresh({ silent: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCompletingRun(false);
     }
   }
 
@@ -622,6 +637,13 @@ export function IssueDetailPage() {
     );
     return groups;
   }, [visibleTaskTemplates]);
+
+  const hasNonTerminalTask = useMemo(() => {
+    if (!tasksLoaded || tasksError) return false;
+    return tasks.some((t) => t.status !== "completed" && t.status !== "failed" && t.status !== "cancelled");
+  }, [tasks, tasksError, tasksLoaded]);
+
+  const canCreateAnotherTask = tasksLoaded && !tasksError && !hasNonTerminalTask;
 
   useEffect(() => {
     if (!taskTemplatesLoaded) return;
@@ -923,69 +945,81 @@ export function IssueDetailPage() {
                 <div className="muted">Task/Step（支持回滚重跑与多执行器）</div>
               </div>
               <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <select
-                  aria-label="选择任务模板"
-                  value={selectedTemplateKey}
-                  onChange={(e) => setSelectedTemplateKey(e.target.value)}
-                  disabled={!taskTemplatesLoaded && !taskTemplatesError}
-                >
-                  <option value="">选择模板…</option>
-                  {visibleTaskTemplatesByTrack.quick.length ? (
-                    <optgroup label="Track：quick">
-                      {visibleTaskTemplatesByTrack.quick.map((t) => (
-                        <option key={t.key} value={t.key}>
-                          {t.displayName}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  {visibleTaskTemplatesByTrack.planning.length ? (
-                    <optgroup label="Track：planning">
-                      {visibleTaskTemplatesByTrack.planning.map((t) => (
-                        <option key={t.key} value={t.key}>
-                          {t.displayName}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  {visibleTaskTemplatesByTrack.enterprise.length ? (
-                    <optgroup label="Track：enterprise">
-                      {visibleTaskTemplatesByTrack.enterprise.map((t) => (
-                        <option key={t.key} value={t.key}>
-                          {t.displayName}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  {visibleTaskTemplatesByTrack.other.length ? (
-                    <optgroup label="其他">
-                      {visibleTaskTemplatesByTrack.other.map((t) => (
-                        <option key={t.key} value={t.key}>
-                          {t.displayName}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                </select>
-                <select
-                  aria-label="选择 Track"
-                  value={selectedTaskTrack}
-                  onChange={(e) => setSelectedTaskTrack(e.target.value as TaskTrack | "")}
-                  disabled={creatingTask}
-                >
-                  <option value="">Track：自动</option>
-                  <option value="quick">Track：quick</option>
-                  <option value="planning">Track：planning</option>
-                  <option value="enterprise">Track：enterprise</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={onCreateTask}
-                  disabled={creatingTask || !selectedTemplateKey || !allowTaskOps}
-                  title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
-                >
-                  {creatingTask ? "创建中…" : "创建任务"}
-                </button>
+                {canCreateAnotherTask ? (
+                  <>
+                    <select
+                      aria-label="选择任务模板"
+                      value={selectedTemplateKey}
+                      onChange={(e) => setSelectedTemplateKey(e.target.value)}
+                      disabled={!taskTemplatesLoaded && !taskTemplatesError}
+                    >
+                      <option value="">选择模板…</option>
+                      {visibleTaskTemplatesByTrack.quick.length ? (
+                        <optgroup label="Track：quick">
+                          {visibleTaskTemplatesByTrack.quick.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.displayName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {visibleTaskTemplatesByTrack.planning.length ? (
+                        <optgroup label="Track：planning">
+                          {visibleTaskTemplatesByTrack.planning.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.displayName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {visibleTaskTemplatesByTrack.enterprise.length ? (
+                        <optgroup label="Track：enterprise">
+                          {visibleTaskTemplatesByTrack.enterprise.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.displayName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {visibleTaskTemplatesByTrack.other.length ? (
+                        <optgroup label="其他">
+                          {visibleTaskTemplatesByTrack.other.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.displayName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                    </select>
+                    <select
+                      aria-label="选择 Track"
+                      value={selectedTaskTrack}
+                      onChange={(e) => setSelectedTaskTrack(e.target.value as TaskTrack | "")}
+                      disabled={creatingTask}
+                    >
+                      <option value="">Track：自动</option>
+                      <option value="quick">Track：quick</option>
+                      <option value="planning">Track：planning</option>
+                      <option value="enterprise">Track：enterprise</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={onCreateTask}
+                      disabled={creatingTask || !selectedTemplateKey || !allowTaskOps}
+                      title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
+                    >
+                      {creatingTask ? "创建中…" : "创建任务"}
+                    </button>
+                  </>
+                ) : (
+                  <span className="muted">
+                    {!tasksLoaded
+                      ? "Task 加载中：暂不可创建"
+                      : tasksError
+                        ? "Task 加载失败：暂不可创建"
+                        : "已有进行中的 Task：请在下方继续执行/回滚重跑"}
+                  </span>
+                )}
                 <button type="button" className="buttonSecondary" onClick={() => refresh()} disabled={refreshing}>
                   同步
                 </button>
@@ -1392,23 +1426,26 @@ export function IssueDetailPage() {
             )}
           </details>
 
-            <IssueRunCard
-              run={run}
-              currentRunId={currentRunId}
-              sessionId={sessionId}
-              sessionKnown={sessionKnown}
+          <IssueRunCard
+            run={run}
+            currentRunId={currentRunId}
+            sessionId={sessionId}
+            sessionKnown={sessionKnown}
+            refreshing={refreshing}
+            cancellingRun={cancellingRun}
+            completingRun={completingRun}
             onRefresh={() => {
               void refresh();
             }}
             onStartRun={onStartRun}
-              onCancelRun={onCancelRun}
-              onCompleteRun={onCompleteRun}
-              canStartRun={canStartRun}
-              canManageRun={allowRunActions}
-              agents={agents}
-              agentsLoaded={agentsLoaded}
-              agentsError={agentsError}
-              availableAgentsCount={availableAgents.length}
+            onCancelRun={onCancelRun}
+            onCompleteRun={onCompleteRun}
+            canStartRun={canStartRun}
+            canManageRun={allowRunActions}
+            agents={agents}
+            agentsLoaded={agentsLoaded}
+            agentsError={agentsError}
+            availableAgentsCount={availableAgents.length}
             currentAgent={currentAgent}
             currentAgentEnvLabel={currentAgentEnvLabel}
             currentAgentSandbox={currentAgentSandbox}
@@ -1426,36 +1463,43 @@ export function IssueDetailPage() {
             onWorktreeNameChange={setWorktreeName}
           />
 
-          <section className="card">
-            <details
-              onToggle={(e) => {
-                setChangesOpen((e.currentTarget as HTMLDetailsElement).open);
-              }}
-            >
-              <summary className="detailsSummary">变更</summary>
-              {changesOpen ? (
-                <RunChangesPanel
-                  runId={run?.id ?? ""}
-                  run={run}
-                  project={issue.project}
-                  onRunUpdated={setRun}
-                  onAfterAction={() => refresh({ silent: true })}
-                />
-              ) : (
-                <div className="muted" style={{ padding: "10px 0" }}>
-                  展开后加载变更与 diff
-                </div>
-              )}
-            </details>
-          </section>
-          <section className="card">
-            <details>
-              <summary className="detailsSummary">
-                交付物{run?.artifacts?.length ? ` (${run.artifacts.length})` : ""}
-              </summary>
-              <ArtifactList artifacts={run?.artifacts ?? []} />
-            </details>
-          </section>
+          {showChanges || showArtifacts ? (
+            <div className="grid2">
+              {showChanges ? (
+                <section className="card">
+                  <details
+                    onToggle={(e) => {
+                      setChangesOpen((e.currentTarget as HTMLDetailsElement).open);
+                    }}
+                  >
+                    <summary className="detailsSummary">变更</summary>
+                    {changesOpen ? (
+                      <RunChangesPanel
+                        runId={run?.id ?? ""}
+                        run={run}
+                        project={issue.project}
+                        onRunUpdated={setRun}
+                        onAfterAction={() => refresh({ silent: true })}
+                      />
+                    ) : (
+                      <div className="muted" style={{ padding: "10px 0" }}>
+                        展开后加载变更与 diff
+                      </div>
+                    )}
+                  </details>
+                </section>
+              ) : null}
+
+              {showArtifacts ? (
+                <section className="card">
+                  <details>
+                    <summary className="detailsSummary">交付物{runArtifacts.length ? ` (${runArtifacts.length})` : ""}</summary>
+                    <ArtifactList artifacts={runArtifacts} />
+                  </details>
+                </section>
+              ) : null}
+            </div>
+          ) : null}
         </>
       ) : (
         <div className="muted">Issue 不存在</div>

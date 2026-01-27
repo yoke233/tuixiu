@@ -121,7 +121,7 @@ pnpm -C frontend dev
      - CI 回写：**Workflow runs** / **Check runs** / **Check suites**
      - PR 流转（推荐）：**Pull requests**（用于同步 PR 状态/合并回写/打回重跑）
      - PR 人工评审（可选）：**Pull request reviews**（用于 `CHANGES_REQUESTED` 打回）
-3. GitHub 访问不到 `localhost`，需要用 ngrok / Cloudflare Tunnel 等把 `3000` 端口暴露出去
+3. GitHub 访问不到 `localhost`，需要用 ngrok / Cloudflare Tunnel 等把 `3000` 端口暴露出去（Cloudflare Tunnel 固定域名做法见：`docs/10_CLOUDFLARE_TUNNEL_GITHUB_WEBHOOK.md`）
 
 **PR 自动评审（可选）**
 

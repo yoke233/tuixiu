@@ -25,6 +25,8 @@ export type Project = {
   workspaceMode?: "worktree" | "clone";
   gitAuthMode?: "https_pat" | "ssh";
   defaultRoleKey?: string | null;
+  githubPollingEnabled?: boolean;
+  githubPollingCursor?: string | null;
   createdAt: string;
 };
 

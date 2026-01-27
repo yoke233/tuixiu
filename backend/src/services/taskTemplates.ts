@@ -40,6 +40,11 @@ const TEST_ONLY_STEPS: TaskTemplateStep[] = [
   { key: "test.publish", kind: "report.publish", executorType: "system", params: { kind: "test" } },
 ];
 
+const PR_REVIEW_STEPS: TaskTemplateStep[] = [
+  { key: "pr.review.ai", kind: "code.review", executorType: "agent", params: { mode: "ai" } },
+  { key: "pr.review.publish", kind: "report.publish", executorType: "system", params: { kind: "review" } },
+];
+
 export const TASK_TEMPLATES: TaskTemplate[] = [
   {
     key: "quick.admin.session",
@@ -72,6 +77,13 @@ export const TASK_TEMPLATES: TaskTemplate[] = [
     displayName: "Quick：测试（运行→发布）",
     track: "quick",
     steps: TEST_ONLY_STEPS,
+  },
+  {
+    key: "quick.pr.review",
+    displayName: "Quick：PR 评审（AI→发布）",
+    description: "用于评审外部 Pull Request：在 workspace 拉取并检出 PR 后，执行对抗式评审并发布评审报告。",
+    track: "quick",
+    steps: PR_REVIEW_STEPS,
   },
   {
     key: "enterprise.dev.full",
