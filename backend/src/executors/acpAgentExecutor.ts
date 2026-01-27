@@ -79,11 +79,40 @@ function buildStepInstruction(step: any, issue: any): string {
 
   if (kind === "code.review") {
     const who = mode === "ai" ? "AI Reviewer（对抗式）" : "Reviewer";
+    const githubPr = (params as any).githubPr;
+    const prNumber =
+      githubPr && typeof githubPr === "object" && Number.isFinite((githubPr as any).number)
+        ? Number((githubPr as any).number)
+        : 0;
+    const prUrl = githubPr && typeof githubPr === "object" ? String((githubPr as any).url ?? "").trim() : "";
+    const baseBranch = githubPr && typeof githubPr === "object" ? String((githubPr as any).baseBranch ?? "").trim() : "";
+    const headBranch = githubPr && typeof githubPr === "object" ? String((githubPr as any).headBranch ?? "").trim() : "";
+    const headSha = githubPr && typeof githubPr === "object" ? String((githubPr as any).headSha ?? "").trim() : "";
+
+    const prInstructions =
+      prNumber > 0
+        ? [
+            "本步骤用于评审外部 GitHub Pull Request，请先在 workspace 中拉取并检出 PR 代码：",
+            prUrl ? `- PR：#${prNumber}（${prUrl}）` : `- PR：#${prNumber}`,
+            baseBranch ? `- Base：${baseBranch}` : "",
+            headBranch ? `- Head：${headBranch}${headSha ? `（${headSha.slice(0, 12)}）` : ""}` : "",
+            "",
+            "建议命令：",
+            `- git fetch origin pull/${prNumber}/head:pr-${prNumber}`,
+            `- git checkout pr-${prNumber}`,
+            baseBranch ? `- git fetch origin ${baseBranch}` : "",
+            baseBranch ? `- git diff ${baseBranch}...HEAD` : "- git diff <base-branch>...HEAD",
+            "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : "";
     return [
+      prInstructions,
       `你是 ${who}。请对当前分支改动进行对抗式代码评审（默认更严格）。`,
       "评审输入：仅基于 `git diff`（相对 base branch）+ 关键文件 + 测试/CI 产物（如有）。不要假设额外上下文。",
       "要求：必须给出问题清单；若确实 0 findings，必须解释为什么确信没问题，并列出你检查过的项目（checks）。",
-      "请显式引用 DoD（`docs/dod.md`）判断是否可以 approve；不满足 DoD 则应 `changes_requested`。",
+      "请显式引用 DoD（`docs/05_process/definition-of-done.md`）判断是否可以 approve；不满足 DoD 则应 `changes_requested`。",
       "",
       "最后请输出一个代码块：```REPORT_JSON```，其内容必须是 JSON：",
       `- kind: "review"`,

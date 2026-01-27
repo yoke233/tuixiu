@@ -141,7 +141,7 @@ pnpm -C frontend dev
 
 ### GitLab
 
-已支持 PR/MR 创建/合并与基础集成，详见：`docs/05_GITLAB_INTEGRATION.md`。
+已支持 PR/MR 创建/合并与基础集成，详见：`docs/03_guides/gitlab-integration.md`。
 
 ---
 
@@ -175,10 +175,12 @@ pnpm test
 
 ## 更多文档（按需深入）
 
-- 快速跑通一次闭环：`docs/06_QUICK_START_GUIDE.md`
-- 系统架构与数据流：`docs/01_SYSTEM_ARCHITECTURE.md`
-- 当前进度与下一步：`docs/ROADMAP.md`
-- 当前执行计划（PM Agent）：`docs/plans/2026-01-27-pm-agent-execution-plan.md`
-- 历史计划归档：`docs/archive/plans/`
-- 工作流优化方案（BMAD-Lite）：`docs/09_WORKFLOW_OPTIMIZATION_BMAD_LITE.md`
-- 完整 PRD（历史/设计文档）：`PRD_ACP_Driven_Dev_Collab_System_v2.md`
+- 文档索引（权威入口）：`docs/00_overview/index.md`
+- 快速跑通一次闭环：`docs/03_guides/quick-start.md`
+- 系统架构与数据流：`docs/01_architecture/system-architecture.md`
+- 当前进度与下一步：`docs/00_overview/roadmap.md`
+- 当前执行计划（PM Agent）：`docs/00_overview/plans/2026-01-27-pm-agent-execution-plan.md`
+- 历史计划归档（已过期，仅供追溯）：`docs/archive/plans/README.md`
+- 工作流优化方案（BMAD-Lite）：`docs/05_process/workflow-optimization-bmad-lite.md`
+- 文档治理规范：`docs/_meta/docs-governance.md`
+- 完整 PRD（历史/设计文档）：`docs/archive/prd/acp-driven-dev-collab-system-v2.md`

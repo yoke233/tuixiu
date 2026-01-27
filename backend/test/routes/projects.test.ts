@@ -48,7 +48,8 @@ describe("Projects routes", () => {
         gitlabProjectId: undefined,
         gitlabAccessToken: undefined,
         gitlabWebhookSecret: undefined,
-        githubAccessToken: undefined
+        githubAccessToken: undefined,
+        githubPollingEnabled: false,
       }
     });
     await server.close();

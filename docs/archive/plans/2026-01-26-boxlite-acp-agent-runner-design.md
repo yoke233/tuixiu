@@ -1,4 +1,16 @@
-# BoxLite + ACP 多 Agent Runner 设计草案
+---
+title: "BoxLite + ACP 多 Agent Runner 设计草案"
+owner: "@tuixiu-maintainers"
+status: "archived"
+result: "done"
+last_reviewed: "2026-01-27"
+superseded_by: "docs/00_overview/roadmap.md"
+---
+
+# BoxLite + ACP 多 Agent Runner 设计草案（已归档）
+
+> ⚠️ **已归档 / 已过期**：本文件仅用于历史追溯，可能与当前实现不一致，请勿作为开发依据。  
+> 当前请以 `README.md`、`docs/00_overview/roadmap.md`、`docs/03_guides/quick-start.md` 为准。
 
 **目标**：把“ACP 运行时”从某个具体 Agent（如 Codex）里抽离，支持 **可插拔的 ACP Agent**（Codex 只是其中一个 profile）；同时把“沙箱能力”抽象成可替换的 Provider（BoxLite 只是第一版），用于把 Agent 放到 **OCI/micro-VM 沙箱**中运行（隔离 + 可控资源 + 可观测）。
 
