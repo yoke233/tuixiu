@@ -282,13 +282,29 @@ export async function startAcpAgentExecution(deps: {
   await deps.prisma.agent.update({ where: { id: agent.id }, data: { currentLoad: { increment: 1 } } }).catch(() => {});
 
   const promptParts: string[] = [];
+  const baseBranchForPrompt = String(workspace.baseBranch ?? task.baseBranch ?? project.defaultBranch ?? "main");
+  const workspaceNoticeVars = {
+    workspace: String(workspace.workspacePath),
+    branch: String(workspace.branchName),
+    workspaceMode: String(mode),
+    repoUrl: String(project.repoUrl ?? ""),
+    scmType: String(project.scmType ?? ""),
+    defaultBranch: String(project.defaultBranch ?? ""),
+    baseBranch: baseBranchForPrompt,
+  };
+  const noticeTemplate = process.env.AGENT_WORKSPACE_NOTICE_TEMPLATE;
+  const workspaceNoticeDefault =
+    "请在该工作区中进行修改。若该工作区是 Git 仓库，请在任务完成后将修改提交（git commit）到该分支；否则无需执行 git commit。";
+  const workspaceNotice =
+    noticeTemplate === undefined
+      ? workspaceNoticeDefault
+      : renderTemplate(String(noticeTemplate), workspaceNoticeVars).trim();
   promptParts.push(
     [
       mode === "clone" ? "你正在一个独立的 Git clone 工作区中执行任务：" : "你正在一个独立的 Git worktree 中执行任务：",
       `- workspace: ${workspace.workspacePath}`,
       `- branch: ${workspace.branchName}`,
-      "",
-      "请在该分支上进行修改，并在任务完成后将修改提交（git commit）到该分支。",
+      ...(workspaceNotice ? ["", workspaceNotice] : []),
     ].join("\n"),
   );
 
@@ -341,27 +357,32 @@ export async function startAcpAgentExecution(deps: {
   if (roleEnv.GITHUB_TOKEN && roleEnv.GH_TOKEN === undefined) {
     roleEnv.GH_TOKEN = roleEnv.GITHUB_TOKEN;
   }
-  const init =
-    role?.initScript?.trim()
-      ? {
-          script: role.initScript,
-          timeout_seconds: role.initTimeoutSeconds,
-          env: {
-            ...(project.githubAccessToken
-              ? { GH_TOKEN: project.githubAccessToken, GITHUB_TOKEN: project.githubAccessToken }
-              : {}),
-            ...roleEnv,
-            TUIXIU_PROJECT_ID: issue.projectId,
-            TUIXIU_PROJECT_NAME: String(project.name ?? ""),
-            TUIXIU_REPO_URL: String(project.repoUrl ?? ""),
-            TUIXIU_DEFAULT_BRANCH: String(project.defaultBranch ?? ""),
-            TUIXIU_ROLE_KEY: role.key,
-            TUIXIU_RUN_ID: run.id,
-            TUIXIU_WORKSPACE: workspace.workspacePath,
-            TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${issue.projectId}`,
-          },
-        }
-      : undefined;
+  const initEnv: Record<string, string> = {
+    ...(project.githubAccessToken
+      ? { GH_TOKEN: String(project.githubAccessToken), GITHUB_TOKEN: String(project.githubAccessToken) }
+      : {}),
+    ...(project.gitlabAccessToken
+      ? { GITLAB_TOKEN: String(project.gitlabAccessToken), GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken) }
+      : {}),
+    ...roleEnv,
+    TUIXIU_PROJECT_ID: String(issue.projectId),
+    TUIXIU_PROJECT_NAME: String(project.name ?? ""),
+    TUIXIU_REPO_URL: String(project.repoUrl ?? ""),
+    TUIXIU_SCM_TYPE: String(project.scmType ?? ""),
+    TUIXIU_DEFAULT_BRANCH: String(project.defaultBranch ?? ""),
+    TUIXIU_BASE_BRANCH: baseBranchForPrompt,
+    TUIXIU_RUN_ID: String(run.id),
+    TUIXIU_RUN_BRANCH: String(workspace.branchName),
+    TUIXIU_WORKSPACE: String(workspace.workspacePath),
+    TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(issue.projectId)}`,
+  };
+  if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
+
+  const init = {
+    script: role?.initScript?.trim() ? String(role.initScript) : "",
+    timeout_seconds: role?.initTimeoutSeconds,
+    env: initEnv,
+  };
 
   await deps.acp.promptRun({
     proxyId: String(agent.proxyId ?? ""),

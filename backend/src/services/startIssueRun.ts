@@ -125,6 +125,7 @@ export async function startIssueRun(opts: {
 
   let workspacePath = "";
   let branchName = "";
+  let baseBranchForRun = String(((issue as any).project as any).defaultBranch ?? "").trim() || "main";
   let workspaceMode: WorkspaceMode = "worktree";
   try {
     const baseBranch = ((issue as any).project as any).defaultBranch || "main";
@@ -151,7 +152,8 @@ export async function startIssueRun(opts: {
     workspacePath = ws.workspacePath;
     branchName = ws.branchName;
     workspaceMode = ws.workspaceMode === "clone" ? "clone" : "worktree";
-    const baseBranchSnapshot = ws.baseBranch?.trim() ? ws.baseBranch.trim() : baseBranch;
+    const resolvedBaseBranch = ws.baseBranch?.trim() ? ws.baseBranch.trim() : baseBranch;
+    baseBranchForRun = resolvedBaseBranch;
     const timingsMsSnapshot = ws.timingsMs && typeof ws.timingsMs === "object" ? ws.timingsMs : {};
 
     const caps = (selectedAgent as any)?.capabilities;
@@ -164,7 +166,7 @@ export async function startIssueRun(opts: {
       workspaceMode,
       workspacePath,
       branchName,
-      baseBranch: baseBranchSnapshot,
+      baseBranch: resolvedBaseBranch,
       gitAuthMode: ws.gitAuthMode ?? ((issue as any).project as any)?.gitAuthMode ?? null,
       sandbox: { provider: sandboxProvider },
       agent: { max_concurrent: (selectedAgent as any).maxConcurrentRuns },
@@ -185,7 +187,7 @@ export async function startIssueRun(opts: {
         id: uuidv7(),
         runId: (run as any).id,
         type: "branch",
-        content: { branch: branchName, baseBranch: baseBranchSnapshot, workspacePath, workspaceMode } as any,
+        content: { branch: branchName, baseBranch: resolvedBaseBranch, workspacePath, workspaceMode } as any,
       },
     });
   } catch (error) {
@@ -210,13 +212,29 @@ export async function startIssueRun(opts: {
   }
 
   const promptParts: string[] = [];
+  const projectForPrompt: any = (issue as any).project;
+  const workspaceNoticeVars = {
+    workspace: String(workspacePath),
+    branch: String(branchName),
+    workspaceMode: String(workspaceMode),
+    repoUrl: String(projectForPrompt?.repoUrl ?? ""),
+    scmType: String(projectForPrompt?.scmType ?? ""),
+    defaultBranch: String(projectForPrompt?.defaultBranch ?? ""),
+    baseBranch: String(baseBranchForRun),
+  };
+  const noticeTemplate = process.env.AGENT_WORKSPACE_NOTICE_TEMPLATE;
+  const workspaceNoticeDefault =
+    "请在该工作区中进行修改。若该工作区是 Git 仓库，请在任务完成后将修改提交（git commit）到该分支；否则无需执行 git commit。";
+  const workspaceNotice =
+    noticeTemplate === undefined
+      ? workspaceNoticeDefault
+      : renderTemplate(String(noticeTemplate), workspaceNoticeVars).trim();
   promptParts.push(
     [
       workspaceMode === "clone" ? "你正在一个独立的 Git clone 工作区中执行任务：" : "你正在一个独立的 Git worktree 中执行任务：",
       `- workspace: ${workspacePath}`,
       `- branch: ${branchName}`,
-      "",
-      "请在该分支上进行修改，并在任务完成后将修改提交（git commit）到该分支。",
+      ...(workspaceNotice ? ["", workspaceNotice] : []),
     ].join("\n"),
   );
 
@@ -260,7 +278,8 @@ export async function startIssueRun(opts: {
   }
 
   try {
-    const roleEnv = role ? parseEnvText((role as any).envText) : {};
+    const project: any = (issue as any).project;
+    const roleEnv = role ? parseEnvText(String((role as any).envText)) : {};
     if (roleEnv.GH_TOKEN && roleEnv.GITHUB_TOKEN === undefined) {
       roleEnv.GITHUB_TOKEN = roleEnv.GH_TOKEN;
     }
@@ -268,30 +287,32 @@ export async function startIssueRun(opts: {
       roleEnv.GH_TOKEN = roleEnv.GITHUB_TOKEN;
     }
 
-    const init =
-      role?.initScript?.trim()
-        ? {
-            script: (role as any).initScript,
-            timeout_seconds: (role as any).initTimeoutSeconds,
-            env: {
-              ...(((issue as any).project as any).githubAccessToken
-                ? {
-                    GH_TOKEN: ((issue as any).project as any).githubAccessToken,
-                    GITHUB_TOKEN: ((issue as any).project as any).githubAccessToken,
-                  }
-                : {}),
-              ...roleEnv,
-              TUIXIU_PROJECT_ID: (issue as any).projectId,
-              TUIXIU_PROJECT_NAME: String(((issue as any).project as any)?.name ?? ""),
-              TUIXIU_REPO_URL: String(((issue as any).project as any).repoUrl ?? ""),
-              TUIXIU_DEFAULT_BRANCH: String(((issue as any).project as any).defaultBranch ?? ""),
-              TUIXIU_ROLE_KEY: (role as any).key,
-              TUIXIU_RUN_ID: (run as any).id,
-              TUIXIU_WORKSPACE: workspacePath,
-              TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${(issue as any).projectId}`,
-            },
-          }
-        : undefined;
+    const initEnv: Record<string, string> = {
+      ...(project?.githubAccessToken
+        ? { GH_TOKEN: String(project.githubAccessToken), GITHUB_TOKEN: String(project.githubAccessToken) }
+        : {}),
+      ...(project?.gitlabAccessToken
+        ? { GITLAB_TOKEN: String(project.gitlabAccessToken), GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken) }
+        : {}),
+      ...roleEnv,
+      TUIXIU_PROJECT_ID: String((issue as any).projectId),
+      TUIXIU_PROJECT_NAME: String(project?.name ?? ""),
+      TUIXIU_REPO_URL: String(project?.repoUrl ?? ""),
+      TUIXIU_SCM_TYPE: String(project?.scmType ?? ""),
+      TUIXIU_DEFAULT_BRANCH: String(project?.defaultBranch ?? ""),
+      TUIXIU_BASE_BRANCH: String(baseBranchForRun),
+      TUIXIU_RUN_ID: String((run as any).id),
+      TUIXIU_RUN_BRANCH: String(branchName),
+      TUIXIU_WORKSPACE: String(workspacePath),
+      TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String((issue as any).projectId)}`,
+    };
+    if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
+
+    const init = {
+      script: role?.initScript?.trim() ? String(role.initScript) : "",
+      timeout_seconds: role?.initTimeoutSeconds,
+      env: initEnv,
+    };
 
     await opts.acp.promptRun({
       proxyId: String((selectedAgent as any).proxyId ?? ""),

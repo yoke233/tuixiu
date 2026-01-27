@@ -65,14 +65,36 @@ function toEnvArray(env: Record<string, string> | undefined): Array<[string, str
 
 export class BoxliteSandbox implements SandboxProvider {
   private box: any | null = null;
+  private boxMeta: { image: string; workingDir: string } | null = null;
 
   constructor(private readonly opts: { log: Logger; config: BoxliteSandboxConfig }) {}
 
-  async runProcess(opts: RunProcessOpts): Promise<ProcessHandle> {
+  private async ensureBox(opts: { cwd: string; envForProc: Record<string, string> }): Promise<any> {
     await assertBoxliteSupportedPlatform();
 
     const cfg = this.opts.config;
     if (!cfg.image.trim()) throw new Error("BoxLite 配置缺失：sandbox.boxlite.image");
+
+    const workingDir = opts.cwd.trim() ? opts.cwd.trim() : (cfg.workingDir?.trim() ? cfg.workingDir.trim() : opts.cwd);
+
+    const shouldReuse =
+      this.box &&
+      this.boxMeta &&
+      this.boxMeta.image === cfg.image &&
+      this.boxMeta.workingDir === workingDir;
+
+    if (shouldReuse) return this.box;
+
+    if (this.box) {
+      try {
+        await this.box.stop();
+      } catch (err) {
+        this.opts.log("boxlite stop previous box failed", { err: String(err) });
+      } finally {
+        this.box = null;
+        this.boxMeta = null;
+      }
+    }
 
     const mod = await importBoxliteModule();
     const JsBoxlite = mod.JsBoxlite ?? mod.Boxlite ?? mod.default?.JsBoxlite ?? null;
@@ -82,36 +104,33 @@ export class BoxliteSandbox implements SandboxProvider {
 
     const runtime = JsBoxlite.withDefaultConfig();
 
-    const envForProc = { ...cfg.env, ...opts.env };
-
     const boxOpts = {
       image: cfg.image,
       cpus: cfg.cpus,
       memoryMib: cfg.memoryMib,
       autoRemove: true,
-      workingDir: cfg.workingDir?.trim() ? cfg.workingDir.trim() : opts.cwd,
-      env: Object.entries(envForProc).map(([key, value]) => ({ key, value })),
+      workingDir,
+      env: Object.entries(opts.envForProc).map(([key, value]) => ({ key, value })),
       volumes: cfg.volumes,
     };
 
     this.opts.log("boxlite create", { image: cfg.image, workingDir: boxOpts.workingDir });
-    if (this.box) {
-      try {
-        await this.box.stop();
-      } catch (err) {
-        this.opts.log("boxlite stop previous box failed", { err: String(err) });
-      } finally {
-        this.box = null;
-      }
-    }
 
     const box = await runtime.create(boxOpts, null);
     this.box = box;
+    this.boxMeta = { image: cfg.image, workingDir };
+    return box;
+  }
+
+  async runProcess(opts: RunProcessOpts): Promise<ProcessHandle> {
+    const cfg = this.opts.config;
+    const envForProc = { ...cfg.env, ...opts.env };
+    const box = await this.ensureBox({ cwd: opts.cwd, envForProc });
 
     if (!opts.command.length) throw new Error("agent_command 为空");
     const [cmd, ...args] = opts.command;
 
-    this.opts.log("boxlite exec acp agent", { cmd, args, cwd: boxOpts.workingDir });
+    this.opts.log("boxlite exec acp agent", { cmd, args, cwd: (this.boxMeta?.workingDir ?? opts.cwd) });
 
     const exec = await box.exec(cmd, args, toEnvArray(envForProc), false);
 
@@ -162,6 +181,7 @@ export class BoxliteSandbox implements SandboxProvider {
           this.opts.log("boxlite stop failed", { err: String(err) });
         } finally {
           if (this.box === box) this.box = null;
+          if (this.box === null) this.boxMeta = null;
         }
       },
       onExit: (cb) => {
@@ -174,11 +194,10 @@ export class BoxliteSandbox implements SandboxProvider {
 
   async execProcess(opts: RunProcessOpts): Promise<ProcessHandle> {
     await assertBoxliteSupportedPlatform();
-    const box = this.box;
-    if (!box) throw new Error("BoxLite box 尚未创建，无法 exec。请先启动 ACP agent");
 
     const cfg = this.opts.config;
     const envForProc = { ...cfg.env, ...opts.env };
+    const box = await this.ensureBox({ cwd: opts.cwd, envForProc });
 
     if (!opts.command.length) throw new Error("command 为空");
     const [cmd, ...args] = opts.command;
@@ -239,6 +258,7 @@ export class BoxliteSandbox implements SandboxProvider {
   async stopBox(): Promise<void> {
     const box = this.box;
     this.box = null;
+    this.boxMeta = null;
     if (!box) return;
     try {
       await box.stop();

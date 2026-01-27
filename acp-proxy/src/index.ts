@@ -9,6 +9,7 @@ import WebSocket from "ws";
 import { loadConfig } from "./config.js";
 import type { AgentUpdateMessage, IncomingMessage } from "./types.js";
 import { DefaultAgentLauncher } from "./launchers/defaultLauncher.js";
+import type { AcpTransport, AgentLauncher } from "./launchers/types.js";
 import { HostProcessSandbox } from "./sandbox/hostProcessSandbox.js";
 import { BoxliteSandbox } from "./sandbox/boxliteSandbox.js";
 
@@ -134,31 +135,47 @@ async function main() {
   };
 
   const mapCwd = (cwd: string): string => mapHostPathToBox(mapWindowsPathToWsl(cwd));
-  const defaultCwd = mapCwd(cfg.cwd);
 
-  const sandbox =
+  const boxliteWorkspaceMode =
     cfg.sandbox.provider === "boxlite_oci"
-      ? new BoxliteSandbox({
-          log,
-          config: {
-            image: cfg.sandbox.boxlite?.image ?? "",
-            workingDir: cfg.sandbox.boxlite?.workingDir,
-            volumes: cfg.sandbox.boxlite?.volumes,
-            env: cfg.sandbox.boxlite?.env,
-            cpus: cfg.sandbox.boxlite?.cpus,
-            memoryMib: cfg.sandbox.boxlite?.memoryMib,
-          },
-        })
-      : new HostProcessSandbox({ log });
+      ? (cfg.sandbox.boxlite?.workspaceMode ?? "mount")
+      : "mount";
 
-  const launcher = new DefaultAgentLauncher({
-    sandbox,
+  const isBoxliteGitClone =
+    cfg.sandbox.provider === "boxlite_oci" && boxliteWorkspaceMode === "git_clone";
+
+  const boxliteWorkingDir =
+    cfg.sandbox.provider === "boxlite_oci"
+      ? (cfg.sandbox.boxlite?.workingDir?.trim()
+          ? cfg.sandbox.boxlite.workingDir.trim()
+          : "/workspace")
+      : "";
+
+  const defaultCwd = isBoxliteGitClone ? boxliteWorkingDir : mapCwd(cfg.cwd);
+
+  const hostSandbox = new HostProcessSandbox({ log });
+  const hostLauncher = new DefaultAgentLauncher({
+    sandbox: hostSandbox,
     command: cfg.agent_command,
   });
 
+  const createBoxliteSandbox = (runId: string) =>
+    new BoxliteSandbox({
+      log: (msg, extra) => log(`[run:${runId}] ${msg}`, extra),
+      config: {
+        image: cfg.sandbox.boxlite?.image ?? "",
+        workingDir: cfg.sandbox.boxlite?.workingDir,
+        volumes: cfg.sandbox.boxlite?.volumes,
+        env: cfg.sandbox.boxlite?.env,
+        cpus: cfg.sandbox.boxlite?.cpus,
+        memoryMib: cfg.sandbox.boxlite?.memoryMib,
+      },
+    });
+
   type RunState = {
     cwd: string;
-    transport: Awaited<ReturnType<(typeof launcher)["launch"]>>;
+    envKey: string;
+    transport: AcpTransport;
     stream: acp.Stream;
     lastUsedAt: number;
     writeQueue: Promise<void>;
@@ -191,6 +208,7 @@ async function main() {
   };
 
   const getRunCwd = (runId: string, incomingCwd?: string): string => {
+    if (isBoxliteGitClone) return defaultCwd;
     if (typeof incomingCwd === "string" && incomingCwd.trim()) {
       setRunCwd(runId, incomingCwd);
       return runToCwd.get(runId) ?? defaultCwd;
@@ -221,6 +239,7 @@ async function main() {
         ...baseBoxlite,
         image: cfg.sandbox.boxlite?.image ?? null,
         workingDir: cfg.sandbox.boxlite?.workingDir ?? null,
+        workspaceMode: cfg.sandbox.boxlite?.workspaceMode ?? "mount",
       };
     }
 
@@ -269,7 +288,7 @@ async function main() {
     log("run closed", { runId, reason });
   };
 
-  const runInitScript = async (opts: {
+  const runInitScriptHost = async (opts: {
     runId: string;
     cwd: string;
     init?: {
@@ -351,9 +370,196 @@ async function main() {
     return true;
   };
 
-  const ensureRun = async (runId: string, cwd: string): Promise<RunState> => {
+  const boxliteCloneInitScript = [
+    "set -euo pipefail",
+    "",
+    'WORKSPACE="${TUIXIU_BOX_WORKSPACE:-/workspace}"',
+    'REPO_URL="${TUIXIU_REPO_URL:-}"',
+    'BASE_BRANCH="${TUIXIU_BASE_BRANCH:-${TUIXIU_DEFAULT_BRANCH:-main}}"',
+    'RUN_BRANCH="${TUIXIU_RUN_BRANCH:-}"',
+    "",
+    'if [ -z "$REPO_URL" ]; then',
+    '  echo "[tuixiu] missing TUIXIU_REPO_URL" >&2',
+    "  exit 2",
+    "fi",
+    'if [ -z "$RUN_BRANCH" ]; then',
+    '  RUN_BRANCH="run/${TUIXIU_RUN_ID:-run}"',
+    "fi",
+    "",
+    'mkdir -p "$WORKSPACE"',
+    'cd "$WORKSPACE"',
+    "",
+    "# Prepare GIT_ASKPASS so git clone/push can run non-interactively when token is provided.",
+    'ASKPASS_DIR="$WORKSPACE/.tuixiu"',
+    'ASKPASS="$ASKPASS_DIR/askpass.sh"',
+    'mkdir -p "$ASKPASS_DIR"',
+    'cat > "$ASKPASS" <<\'EOF\'',
+    "#!/bin/sh",
+    'prompt="$1"',
+    'token="${GH_TOKEN:-${GITHUB_TOKEN:-${GITLAB_TOKEN:-${GITLAB_ACCESS_TOKEN:-}}}}"',
+    'if [ -z "$token" ]; then',
+    "  exit 1",
+    "fi",
+    'case "${TUIXIU_REPO_URL:-}" in',
+    "  *github.com*) user=\"x-access-token\" ;;",
+    "  *) user=\"oauth2\" ;;",
+    "esac",
+    'case "$prompt" in',
+    '  *Username*|*username*) echo "$user" ;;',
+    '  *Password*|*password*) echo "$token" ;;',
+    "  *) echo \"\" ;;",
+    "esac",
+    "EOF",
+    'chmod +x "$ASKPASS"',
+    'export GIT_ASKPASS="$ASKPASS"',
+    'export GIT_TERMINAL_PROMPT=0',
+    "",
+    'if [ ! -d .git ]; then',
+    '  echo "[tuixiu] git clone $REPO_URL" >&2',
+    '  git clone "$REPO_URL" .',
+    "else",
+    '  echo "[tuixiu] workspace already has .git; skipping clone" >&2',
+    "fi",
+    "",
+    'git remote set-url origin "$REPO_URL" >/dev/null 2>&1 || true',
+    'git fetch origin --prune',
+    "",
+    "# Checkout run branch: prefer remote branch if it exists; otherwise create from base branch.",
+    'if git show-ref --verify --quiet "refs/remotes/origin/$RUN_BRANCH"; then',
+    '  git checkout -B "$RUN_BRANCH" "origin/$RUN_BRANCH"',
+    "else",
+    '  git checkout -B "$RUN_BRANCH" "origin/$BASE_BRANCH"',
+    "fi",
+    "",
+    'git config user.name "${TUIXIU_GIT_NAME:-tuixiu-bot}" >/dev/null 2>&1 || true',
+    'git config user.email "${TUIXIU_GIT_EMAIL:-tuixiu-bot@localhost}" >/dev/null 2>&1 || true',
+  ].join("\n");
+
+  const runInitScriptBoxlite = async (opts: {
+    runId: string;
+    cwd: string;
+    sandbox: BoxliteSandbox;
+    init?: {
+      script?: string;
+      timeout_seconds?: number;
+      env?: Record<string, string>;
+    };
+  }): Promise<boolean> => {
+    const extra = opts.init?.script?.trim() ?? "";
+    const script = `${isBoxliteGitClone ? boxliteCloneInitScript : ""}\n\n${extra}`.trim();
+    if (!script) return true;
+
+    const timeoutSecondsRaw = opts.init?.timeout_seconds ?? 900;
+    const timeoutSeconds = Number.isFinite(timeoutSecondsRaw)
+      ? Math.max(1, Math.min(3600, timeoutSecondsRaw))
+      : 900;
+
+    const env = { ...(opts.init?.env ?? {}) };
+    if (isBoxliteGitClone && !env.TUIXIU_BOX_WORKSPACE) {
+      env.TUIXIU_BOX_WORKSPACE = opts.cwd;
+    }
+    const secrets = pickSecretValues(env);
+    const redact = (line: string) => redactSecrets(line, secrets);
+
+    const readLines = async (
+      stream: ReadableStream<Uint8Array> | undefined,
+      label: "stdout" | "stderr",
+    ) => {
+      if (!stream) return;
+      const decoder = new TextDecoder();
+      const reader = stream.getReader();
+      let buf = "";
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split(/\r?\n/g);
+          buf = parts.pop() ?? "";
+          for (const line of parts) {
+            const text = redact(line);
+            if (!text.trim()) continue;
+            sendUpdate(opts.runId, { type: "text", text: `[init:${label}] ${text}` });
+          }
+        }
+      } finally {
+        const rest = redact(buf);
+        if (rest.trim()) sendUpdate(opts.runId, { type: "text", text: `[init:${label}] ${rest}` });
+      }
+    };
+
+    sendUpdate(opts.runId, {
+      type: "text",
+      text: `[init] start (boxlite, bash, timeout=${timeoutSeconds}s)`,
+    });
+
+    const proc = await opts.sandbox.execProcess({
+      command: ["bash", "-lc", script],
+      cwd: opts.cwd,
+      env,
+    });
+
+    const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+      proc.onExit?.((info) => resolve(info));
+    });
+
+    const outP = readLines(proc.stdout, "stdout");
+    const errP = readLines(proc.stderr, "stderr");
+
+    const raced = await Promise.race([
+      exitP.then((r) => ({ kind: "exit" as const, ...r })),
+      delay(timeoutSeconds * 1000).then(() => ({ kind: "timeout" as const })),
+    ]);
+
+    if (raced.kind === "timeout") {
+      sendUpdate(opts.runId, {
+        type: "text",
+        text: `[init] timeout after ${timeoutSeconds}s (stopping box)`,
+      });
+      await opts.sandbox.stopBox();
+      await Promise.allSettled([outP, errP]);
+      sendUpdate(opts.runId, { type: "init_result", ok: false, exitCode: null, error: "timeout" });
+      return false;
+    }
+
+    await Promise.allSettled([outP, errP]);
+
+    if (raced.code !== 0) {
+      sendUpdate(opts.runId, {
+        type: "init_result",
+        ok: false,
+        exitCode: raced.code,
+        error: `exitCode=${raced.code}`,
+      });
+      return false;
+    }
+
+    sendUpdate(opts.runId, { type: "init_result", ok: true });
+    sendUpdate(opts.runId, { type: "text", text: "[init] done" });
+    return true;
+  };
+
+  const normalizeEnvKey = (env: Record<string, string> | undefined): string => {
+    if (!env) return "";
+    try {
+      const keys = Object.keys(env).sort();
+      const normalized: Record<string, string> = {};
+      for (const k of keys) normalized[k] = String(env[k] ?? "");
+      return JSON.stringify(normalized);
+    } catch {
+      return "";
+    }
+  };
+
+  const ensureRun = async (
+    runId: string,
+    cwd: string,
+    launcher: AgentLauncher,
+    env: Record<string, string> | undefined,
+  ): Promise<RunState> => {
+    const envKey = normalizeEnvKey(env);
     const existing = runStates.get(runId);
-    if (existing && existing.cwd === cwd) {
+    if (existing && existing.cwd === cwd && existing.envKey === envKey) {
       existing.lastUsedAt = Date.now();
       return existing;
     }
@@ -362,11 +568,12 @@ async function main() {
       await closeRun(runId, "cwd_changed");
     }
 
-    const transport = await launcher.launch({ cwd });
+    const transport = await launcher.launch({ cwd, env });
     const stream = acp.ndJsonStream(transport.input, transport.output);
 
     const state: RunState = {
       cwd,
+      envKey,
       transport,
       stream,
       lastUsedAt: Date.now(),
@@ -420,14 +627,40 @@ async function main() {
 
     const cwd = getRunCwd(runId, typeof msg.cwd === "string" ? msg.cwd : undefined);
     const init = isRecord(msg.init) ? (msg.init as any) : undefined;
+    const env = init && isRecord(init.env) ? (init.env as Record<string, string>) : undefined;
+    const envKey = normalizeEnvKey(env);
+
+    const existing = runStates.get(runId);
+    if (existing && existing.cwd === cwd && existing.envKey === envKey) {
+      existing.lastUsedAt = Date.now();
+      try {
+        send({ type: "acp_opened", run_id: runId, ok: true });
+      } catch {
+        // ignore
+      }
+      return;
+    }
 
     try {
-      const initOk = await runInitScript({ runId, cwd, init });
-      if (!initOk) {
-        send({ type: "acp_opened", run_id: runId, ok: false, error: "init_failed" });
-        return;
+      if (cfg.sandbox.provider === "boxlite_oci") {
+        const sandbox = createBoxliteSandbox(runId);
+        const initOk = await runInitScriptBoxlite({ runId, cwd, sandbox, init });
+        if (!initOk) {
+          send({ type: "acp_opened", run_id: runId, ok: false, error: "init_failed" });
+          return;
+        }
+
+        const launcher = new DefaultAgentLauncher({ sandbox, command: cfg.agent_command });
+        await ensureRun(runId, cwd, launcher, env);
+      } else {
+        const initOk = await runInitScriptHost({ runId, cwd, init });
+        if (!initOk) {
+          send({ type: "acp_opened", run_id: runId, ok: false, error: "init_failed" });
+          return;
+        }
+        await ensureRun(runId, cwd, hostLauncher, env);
       }
-      await ensureRun(runId, cwd);
+
       send({ type: "acp_opened", run_id: runId, ok: true });
     } catch (err) {
       send({ type: "acp_opened", run_id: runId, ok: false, error: String(err) });
