@@ -786,7 +786,7 @@ export function AdminPage() {
                         autoCreatePr: true,
                         autoRequestMergeApproval: true,
                       },
-                      approvals: { requireForActions: ["merge_pr"] },
+                      approvals: { requireForActions: ["merge_pr"], escalateOnSensitivePaths: ["create_pr", "publish_artifact"] },
                       sensitivePaths: [],
                     } satisfies PmPolicy,
                     null,
@@ -834,7 +834,7 @@ export function AdminPage() {
             rows={14}
             className="inputMono"
             style={{ width: "100%", marginTop: 10 }}
-            placeholder='{"version":1,"automation":{"autoStartIssue":true,"autoReview":true,"autoCreatePr":true,"autoRequestMergeApproval":true},"approvals":{"requireForActions":["merge_pr"]},"sensitivePaths":[] }'
+            placeholder='{"version":1,"automation":{"autoStartIssue":true,"autoReview":true,"autoCreatePr":true,"autoRequestMergeApproval":true},"approvals":{"requireForActions":["merge_pr"],"escalateOnSensitivePaths":["create_pr","publish_artifact"]},"sensitivePaths":[] }'
           />
         )}
 

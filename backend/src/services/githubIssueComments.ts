@@ -1,9 +1,24 @@
 import * as github from "../integrations/github.js";
 
 type CommentKind = "assigned" | "started";
-type ApprovalCommentKind = "merge_pr_requested" | "merge_pr_approved" | "merge_pr_rejected" | "merge_pr_executed" | "merge_pr_failed";
+type ApprovalCommentKind =
+  | "merge_pr_requested"
+  | "merge_pr_approved"
+  | "merge_pr_rejected"
+  | "merge_pr_executed"
+  | "merge_pr_failed"
+  | "create_pr_requested"
+  | "create_pr_approved"
+  | "create_pr_rejected"
+  | "create_pr_executed"
+  | "create_pr_failed"
+  | "publish_artifact_requested"
+  | "publish_artifact_approved"
+  | "publish_artifact_rejected"
+  | "publish_artifact_executed"
+  | "publish_artifact_failed";
 type PrCommentProvider = "github" | "gitlab" | "unknown";
-type AutoReviewNextAction = "create_pr" | "wait_ci" | "request_merge_approval" | "manual_review" | "none";
+type AutoReviewNextAction = "create_pr" | "request_create_pr_approval" | "wait_ci" | "request_merge_approval" | "manual_review" | "none";
 
 function formatRole(roleKey?: string | null): string {
   const raw = typeof roleKey === "string" ? roleKey.trim() : "";
@@ -111,6 +126,183 @@ export function renderGitHubApprovalComment(opts: {
   const prUrl = typeof opts.prUrl === "string" ? opts.prUrl.trim() : "";
   const reason = typeof opts.reason === "string" ? opts.reason.trim() : "";
   const error = typeof opts.error === "string" ? opts.error.trim() : "";
+
+  if (opts.kind === "create_pr_requested") {
+    return fmt(
+      [
+        "### 🛡️ 已发起创建 PR 审批",
+        "",
+        "- 动作：创建 PR",
+        `- Run：\`${runId}\``,
+        `- 审批单：\`${approvalId}\``,
+        "- 状态：待审批",
+        "",
+        "> 由 ACP 协作台发起审批",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (opts.kind === "create_pr_approved") {
+    return fmt(
+      [
+        "### ✅ 审批通过，开始创建 PR",
+        "",
+        "- 动作：创建 PR",
+        `- 审批人：**${actor}**`,
+        `- Run：\`${runId}\``,
+        `- 审批单：\`${approvalId}\``,
+        "",
+        "> 由 ACP 协作台创建 PR",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (opts.kind === "create_pr_rejected") {
+    return fmt(
+      [
+        "### ⛔ 审批被拒绝",
+        "",
+        "- 动作：创建 PR",
+        `- 审批人：**${actor}**`,
+        `- Run：\`${runId}\``,
+        `- 审批单：\`${approvalId}\``,
+        reason ? `- 原因：${reason}` : "",
+        "",
+        "> 如需继续，请重新发起审批",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (opts.kind === "create_pr_executed") {
+    return fmt(
+      [
+        "### 🎉 PR 已创建",
+        "",
+        "- 动作：创建 PR",
+        `- 审批人：**${actor}**`,
+        `- Run：\`${runId}\``,
+        prUrl ? `- PR：${prUrl}` : "",
+        `- 审批单：\`${approvalId}\``,
+        "- 状态：已创建",
+        "",
+        "> 由 ACP 协作台完成创建",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (opts.kind === "create_pr_failed") {
+    return fmt(
+      [
+        "### ❌ 创建 PR 失败",
+        "",
+        "- 动作：创建 PR",
+        `- 审批人：**${actor}**`,
+        `- Run：\`${runId}\``,
+        `- 审批单：\`${approvalId}\``,
+        error ? `- 错误：${error}` : "",
+        "",
+        "> 请在协作台查看错误详情后重试",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (opts.kind === "publish_artifact_requested") {
+    return fmt(
+      [
+        "### 🛡️ 已发起发布交付物审批",
+        "",
+        "- 动作：发布交付物",
+        `- Run：\`${runId}\``,
+        `- 审批单：\`${approvalId}\``,
+        "- 状态：待审批",
+        "",
+        "> 由 ACP 协作台发起审批",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (opts.kind === "publish_artifact_approved") {
+    return fmt(
+      [
+        "### ✅ 审批通过，开始发布",
+        "",
+        "- 动作：发布交付物",
+        `- 审批人：**${actor}**`,
+        `- Run：\`${runId}\``,
+        `- 审批单：\`${approvalId}\``,
+        "",
+        "> 由 ACP 协作台执行发布",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (opts.kind === "publish_artifact_rejected") {
+    return fmt(
+      [
+        "### ⛔ 审批被拒绝",
+        "",
+        "- 动作：发布交付物",
+        `- 审批人：**${actor}**`,
+        `- Run：\`${runId}\``,
+        `- 审批单：\`${approvalId}\``,
+        reason ? `- 原因：${reason}` : "",
+        "",
+        "> 如需继续，请重新发起审批",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (opts.kind === "publish_artifact_executed") {
+    return fmt(
+      [
+        "### 🎉 发布已完成",
+        "",
+        "- 动作：发布交付物",
+        `- 审批人：**${actor}**`,
+        `- Run：\`${runId}\``,
+        `- 审批单：\`${approvalId}\``,
+        "- 状态：已发布",
+        "",
+        "> 由 ACP 协作台完成发布",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  if (opts.kind === "publish_artifact_failed") {
+    return fmt(
+      [
+        "### ❌ 发布执行失败",
+        "",
+        "- 动作：发布交付物",
+        `- 审批人：**${actor}**`,
+        `- Run：\`${runId}\``,
+        `- 审批单：\`${approvalId}\``,
+        error ? `- 错误：${error}` : "",
+        "",
+        "> 请在协作台查看错误详情后重试",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
 
   if (opts.kind === "merge_pr_requested") {
     return fmt(

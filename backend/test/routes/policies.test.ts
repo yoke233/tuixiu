@@ -27,7 +27,7 @@ describe("Policy routes", () => {
     expect(body.data.policy).toEqual({
       version: 1,
       automation: { autoStartIssue: true, autoReview: true, autoCreatePr: true, autoRequestMergeApproval: true },
-      approvals: { requireForActions: ["merge_pr"] },
+      approvals: { requireForActions: ["merge_pr"], escalateOnSensitivePaths: ["create_pr", "publish_artifact"] },
       sensitivePaths: [],
     });
 
@@ -67,7 +67,7 @@ describe("Policy routes", () => {
         policy: {
           version: 1,
           automation: { autoStartIssue: false, autoReview: true, autoCreatePr: true, autoRequestMergeApproval: true },
-          approvals: { requireForActions: ["merge_pr"] },
+          approvals: { requireForActions: ["merge_pr"], escalateOnSensitivePaths: ["create_pr", "publish_artifact"] },
           sensitivePaths: ["backend/prisma/**"],
         },
       },
@@ -81,7 +81,7 @@ describe("Policy routes", () => {
           pmPolicy: {
             version: 1,
             automation: { autoStartIssue: false, autoReview: true, autoCreatePr: true, autoRequestMergeApproval: true },
-            approvals: { requireForActions: ["merge_pr"] },
+            approvals: { requireForActions: ["merge_pr"], escalateOnSensitivePaths: ["create_pr", "publish_artifact"] },
             sensitivePaths: ["backend/prisma/**"],
           },
         },
