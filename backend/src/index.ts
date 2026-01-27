@@ -14,6 +14,7 @@ import { makeAuthRoutes } from "./routes/auth.js";
 import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
 import { makeGitHubWebhookRoutes } from "./routes/githubWebhooks.js";
 import { makeGitLabWebhookRoutes } from "./routes/gitlabWebhooks.js";
+import { makeCodeupWebhookRoutes } from "./routes/codeupWebhooks.js";
 import { makeIssueRoutes } from "./routes/issues.js";
 import { makeMessageInboundRoutes } from "./routes/messageInbound.js";
 import { makePmRoutes } from "./routes/pm.js";
@@ -131,6 +132,10 @@ server.register(
 );
 server.register(
   makeGitLabWebhookRoutes({ prisma, webhookSecret: env.GITLAB_WEBHOOK_SECRET, onIssueUpserted: pm.triggerAutoStart }),
+  { prefix: "/api/webhooks" },
+);
+server.register(
+  makeCodeupWebhookRoutes({ prisma, webhookSecret: env.CODEUP_WEBHOOK_SECRET, broadcastToClients: wsGateway.broadcastToClients }),
   { prefix: "/api/webhooks" },
 );
 server.register(
