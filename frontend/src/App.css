@@ -268,9 +268,25 @@ button {
 }
 
 .buttonSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  text-decoration: none;
+  line-height: 1.2;
   background: transparent;
   color: inherit;
   border: 1px solid var(--card-border);
+}
+
+.buttonSecondary:hover {
+  text-decoration: none;
+  background: color-mix(in oklab, var(--card-bg), transparent 40%);
 }
 
 button:disabled {
