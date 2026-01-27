@@ -34,13 +34,16 @@ export function makeAcpSessionRoutes(deps: {
         });
         const { projectId, limit } = querySchema.parse(request.query);
 
+        const issueWhere: Record<string, unknown> = { archivedAt: null };
+        if (projectId) {
+          issueWhere.projectId = projectId;
+        }
+
         const where: Record<string, unknown> = {
           executorType: "agent",
           acpSessionId: { not: null },
+          issue: issueWhere,
         };
-        if (projectId) {
-          where.issue = { projectId };
-        }
 
         const runs = await deps.prisma.run.findMany({
           where: where as any,
@@ -132,7 +135,6 @@ export function makeAcpSessionRoutes(deps: {
             title,
             description: goal || null,
             status: "pending",
-            archivedAt: now,
             createdBy,
             labels: ["_session"],
             assignedAgentId: body.agentId ?? null,

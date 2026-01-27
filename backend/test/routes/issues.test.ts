@@ -820,6 +820,93 @@ describe("Issues routes", () => {
     await server.close();
   });
 
+  it("PATCH /api/issues/:id archives issue and cancels acp session", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({ id: "i1", status: "done", archivedAt: null, labels: [] }),
+        update: vi.fn().mockResolvedValue({ id: "i1", status: "done", archivedAt: "2026-01-25T00:00:00.000Z" })
+      },
+      run: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "r1",
+            acpSessionId: "s1",
+            workspacePath: "C:/repo/.worktrees/run-1",
+            agent: { proxyId: "proxy-1" }
+          }
+        ])
+      }
+    } as any;
+    const acp = { cancelSession: vi.fn().mockResolvedValue(undefined) } as any;
+
+    await server.register(makeIssueRoutes({ prisma, acp }), { prefix: "/api/issues" });
+
+    const id = "00000000-0000-0000-0000-000000000001";
+    const res = await server.inject({
+      method: "PATCH",
+      url: `/api/issues/${id}`,
+      payload: { archived: true }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prisma.run.findMany).toHaveBeenCalledWith({
+      where: { issueId: id, acpSessionId: { not: null } },
+      select: {
+        id: true,
+        acpSessionId: true,
+        workspacePath: true,
+        agent: { select: { proxyId: true } }
+      }
+    });
+    expect(acp.cancelSession).toHaveBeenCalledWith({
+      proxyId: "proxy-1",
+      runId: "r1",
+      cwd: "C:/repo/.worktrees/run-1",
+      sessionId: "s1"
+    });
+
+    await server.close();
+  });
+
+  it("PATCH /api/issues/:id archives running session issue", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({ id: "i1", status: "running", archivedAt: null, labels: ["_session"] }),
+        update: vi.fn().mockResolvedValue({ id: "i1", status: "running", archivedAt: "2026-01-25T00:00:00.000Z" })
+      },
+      run: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "r1",
+            acpSessionId: "s1",
+            workspacePath: "C:/repo/.worktrees/run-1",
+            agent: { proxyId: "proxy-1" }
+          }
+        ])
+      }
+    } as any;
+    const acp = { cancelSession: vi.fn().mockResolvedValue(undefined) } as any;
+
+    await server.register(makeIssueRoutes({ prisma, acp }), { prefix: "/api/issues" });
+
+    const id = "00000000-0000-0000-0000-000000000010";
+    const res = await server.inject({
+      method: "PATCH",
+      url: `/api/issues/${id}`,
+      payload: { archived: true }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(acp.cancelSession).toHaveBeenCalledWith({
+      proxyId: "proxy-1",
+      runId: "r1",
+      cwd: "C:/repo/.worktrees/run-1",
+      sessionId: "s1"
+    });
+
+    await server.close();
+  });
+
   it("PATCH /api/issues/:id returns ISSUE_NOT_COMPLETED when archiving pending issue", async () => {
     const server = createHttpServer();
     const prisma = {

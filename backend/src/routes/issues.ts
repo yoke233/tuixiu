@@ -15,6 +15,11 @@ function toPublicIssue<T extends { project?: unknown }>(issue: T): T {
   return issue;
 }
 
+function hasSessionLabel(labels: unknown): boolean {
+  if (!Array.isArray(labels)) return false;
+  return labels.some((label) => typeof label === "string" && label.trim().toLowerCase() === "_session");
+}
+
 const issueStatusSchema = z.enum([
   "pending",
   "running",
@@ -177,7 +182,8 @@ export function makeIssueRoutes(deps: {
       if (!issue) {
         return { success: false, error: { code: "NOT_FOUND", message: "Issue 不存在" } };
       }
-      if (issue.status === "running") {
+      const isSessionIssue = hasSessionLabel((issue as any).labels);
+      if (issue.status === "running" && !(archived === true && isSessionIssue)) {
         return {
           success: false,
           error: { code: "ISSUE_RUNNING", message: "Issue 正在运行中，请先完成/取消 Run" }
@@ -188,7 +194,7 @@ export function makeIssueRoutes(deps: {
       }
 
       const nextStatus = status ?? issue.status;
-      if (archived === true && !["done", "failed", "cancelled"].includes(nextStatus)) {
+      if (archived === true && !isSessionIssue && !["done", "failed", "cancelled"].includes(nextStatus)) {
         return {
           success: false,
           error: { code: "ISSUE_NOT_COMPLETED", message: "仅已完成/失败/取消的 Issue 才能归档" }
@@ -205,6 +211,28 @@ export function makeIssueRoutes(deps: {
         where: { id },
         data
       });
+
+      if (archived === true && deps.acp) {
+        const runs = await deps.prisma.run.findMany({
+          where: { issueId: id, acpSessionId: { not: null } },
+          select: {
+            id: true,
+            acpSessionId: true,
+            workspacePath: true,
+            agent: { select: { proxyId: true } }
+          }
+        });
+
+        await Promise.all(
+          runs.map(async (run) => {
+            const proxyId = String((run as any).agent?.proxyId ?? "").trim();
+            const sessionId = String((run as any).acpSessionId ?? "").trim();
+            const cwd = String((run as any).workspacePath ?? "").trim();
+            if (!proxyId || !sessionId || !cwd) return;
+            await deps.acp.cancelSession({ proxyId, runId: run.id, cwd, sessionId }).catch(() => {});
+          })
+        );
+      }
 
       return { success: true, data: { issue: updated } };
     });
