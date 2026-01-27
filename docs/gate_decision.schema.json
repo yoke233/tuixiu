@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tuixiu.example/schemas/gate_decision.schema.json",
+  "title": "gate_decision",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["kind", "version", "gate", "decision", "reasons", "requiredActions", "evidence"],
+  "properties": {
+    "kind": { "const": "gate_decision" },
+    "version": { "type": "integer", "minimum": 1, "default": 1 },
+    "gate": {
+      "type": "string",
+      "minLength": 1,
+      "description": "门禁名称，例如 implementation_readiness / review / release"
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["PASS", "CONCERNS", "FAIL", "WAIVED"]
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "requiredActions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["type", "ref"],
+        "properties": {
+          "type": { "type": "string", "minLength": 1 },
+          "ref": { "type": "string", "minLength": 1 },
+          "note": { "type": "string", "minLength": 1 }
+        }
+      },
+      "default": []
+    },
+    "createdAt": { "type": "string", "minLength": 1 }
+  }
+}

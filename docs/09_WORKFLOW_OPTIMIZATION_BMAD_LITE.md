@@ -173,7 +173,7 @@ Human review 的价值是做最终裁决与风险兜底，因此建议：
 
 - 新增 `docs/project-context.md`（手工维护即可）
 - 新增 `docs/dod.md`（review 与 merge 的最低标准）
-- 新增 `gate_decision` Artifact schema（不一定要改 DB，先用 JSON content 约定）
+- 新增 `gate_decision` Artifact schema（不一定要改 DB，先用 JSON content 约定；见 `docs/gate_decision.schema.json`）
 - AI review 改为默认对抗式 + 结构化输出更严格
 - 新增 “next action” 读接口/前端提示（减少“下一步做什么”的沟通成本）
 

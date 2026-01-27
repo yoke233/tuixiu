@@ -4,9 +4,16 @@ import { z } from "zod";
 import type { PrismaDeps } from "../deps.js";
 import type { PmAutomation } from "../services/pm/pmAutomation.js";
 import { autoReviewRunForPm } from "../services/pm/pmAutoReviewRun.js";
+import { getPmNextActionForIssue } from "../services/pm/pmNextAction.js";
 
 export function makePmRoutes(deps: { prisma: PrismaDeps; pm: PmAutomation }): FastifyPluginAsync {
   return async (server) => {
+    server.get("/issues/:id/next-action", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const { id } = paramsSchema.parse(request.params);
+      return await getPmNextActionForIssue({ prisma: deps.prisma }, id);
+    });
+
     server.post("/issues/:id/analyze", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const { id } = paramsSchema.parse(request.params);

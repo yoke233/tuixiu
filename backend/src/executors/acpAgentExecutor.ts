@@ -2,6 +2,7 @@ import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
 import type { AcpTunnel } from "../services/acpTunnel.js";
+import { buildContextPackPrompt } from "../services/contextPack.js";
 
 import type { CreateWorkspace, CreateWorkspaceResult } from "./types.js";
 
@@ -77,16 +78,19 @@ function buildStepInstruction(step: any, issue: any): string {
   }
 
   if (kind === "code.review") {
-    const who = mode === "ai" ? "AI Reviewer" : "Reviewer";
+    const who = mode === "ai" ? "AI Reviewer（对抗式）" : "Reviewer";
     return [
-      `你是 ${who}。请对当前分支改动进行代码评审。`,
-      "请基于 `git diff`（相对 base branch）输出关键问题、建议修改与风险。",
+      `你是 ${who}。请对当前分支改动进行对抗式代码评审（默认更严格）。`,
+      "评审输入：仅基于 `git diff`（相对 base branch）+ 关键文件 + 测试/CI 产物（如有）。不要假设额外上下文。",
+      "要求：必须给出问题清单；若确实 0 findings，必须解释为什么确信没问题，并列出你检查过的项目（checks）。",
+      "请显式引用 DoD（`docs/dod.md`）判断是否可以 approve；不满足 DoD 则应 `changes_requested`。",
       "",
       "最后请输出一个代码块：```REPORT_JSON```，其内容必须是 JSON：",
       `- kind: "review"`,
       `- verdict: "approve" | "changes_requested"`,
-      `- findings: { severity: "high"|"medium"|"low"; message: string; path?: string }[]`,
-      `- markdown: string（评审报告 Markdown）`,
+      `- checks: string[]（你实际检查过的项目）`,
+      `- findings: { severity: "high"|"medium"|"low"; message: string; path?: string; suggestion?: string }[]`,
+      `- markdown: string（评审报告 Markdown：结论、问题清单、风险、建议、证据）`,
     ].join("\n");
   }
 
@@ -275,6 +279,12 @@ export async function startAcpAgentExecution(deps: {
     });
     promptParts.push(`角色指令:\n${rendered}`);
   }
+
+  const contextPack = await buildContextPackPrompt({
+    workspacePath: workspace.workspacePath,
+    stepKind: String(step?.kind ?? ""),
+  });
+  if (contextPack) promptParts.push(contextPack);
 
   promptParts.push(`当前步骤: ${stepTitle(step)}`);
   promptParts.push(buildStepInstruction(step, issue));
