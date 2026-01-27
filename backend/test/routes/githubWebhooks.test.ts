@@ -362,4 +362,180 @@ describe("GitHub webhook routes", () => {
 
     await server.close();
   });
+
+  it("POST /api/webhooks/github handles pull_request and updates pr artifact", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      project: { findMany: vi.fn().mockResolvedValue([{ id: "p1", repoUrl: "https://github.com/o/r", scmType: "github" }]) },
+      artifact: {
+        findFirst: vi.fn().mockResolvedValue({ id: "a1", runId: "r1", type: "pr", content: { provider: "github", number: 123 } }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    } as any;
+
+    await server.register(makeGitHubWebhookRoutes({ prisma }), { prefix: "/api/webhooks" });
+
+    const payload = {
+      action: "opened",
+      pull_request: {
+        number: 123,
+        html_url: "https://github.com/o/r/pull/123",
+        state: "open",
+        title: "PR",
+        body: "desc",
+        head: { ref: "run/xyz", sha: "abc" },
+        base: { ref: "main" },
+        draft: false,
+      },
+      repository: { html_url: "https://github.com/o/r" },
+    };
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/webhooks/github",
+      headers: { "x-github-event": "pull_request" },
+      payload,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({ ok: true, handled: true, event: "pull_request", prNumber: 123, headSha: "abc" }),
+      }),
+    );
+    expect(prisma.artifact.update).toHaveBeenCalled();
+    await server.close();
+  });
+
+  it("POST /api/webhooks/github handles pull_request_review changes_requested and blocks task", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      project: { findMany: vi.fn().mockResolvedValue([{ id: "p1", repoUrl: "https://github.com/o/r", scmType: "github" }]) },
+      artifact: {
+        findFirst: vi.fn().mockResolvedValue({ id: "a1", runId: "r1", type: "pr", content: { provider: "github", number: 123 } }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      run: {
+        findUnique: vi.fn().mockImplementation(async (args: any) => {
+          const id = String(args?.where?.id ?? "");
+          if (id === "r1") return { taskId: "t1", issueId: "i1" };
+          if (id === "mergeRun") {
+            return {
+              id: "mergeRun",
+              taskId: "t1",
+              stepId: "s1",
+              task: { id: "t1", issueId: "i1", steps: [] },
+              step: { id: "s1", kind: "pr.merge" },
+            };
+          }
+          return null;
+        }),
+        findFirst: vi.fn().mockResolvedValue({ id: "mergeRun" }),
+      },
+      task: { update: vi.fn().mockResolvedValue({}) },
+      issue: { update: vi.fn().mockResolvedValue({}) },
+      event: { create: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    await server.register(makeGitHubWebhookRoutes({ prisma }), { prefix: "/api/webhooks" });
+
+    const payload = {
+      action: "submitted",
+      review: { state: "changes_requested", body: "pls fix" },
+      pull_request: {
+        number: 123,
+        html_url: "https://github.com/o/r/pull/123",
+        head: { ref: "run/xyz", sha: "abc" },
+        base: { ref: "main" },
+      },
+      repository: { html_url: "https://github.com/o/r" },
+    };
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/webhooks/github",
+      headers: { "x-github-event": "pull_request_review" },
+      payload,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({ ok: true, handled: true, event: "pull_request_review", prNumber: 123, reviewState: "changes_requested" }),
+      }),
+    );
+    expect(prisma.task.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "t1" }, data: { status: "blocked" } }));
+    expect(prisma.issue.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "i1" }, data: { status: "reviewing" } }));
+    await server.close();
+  });
+
+  it("POST /api/webhooks/github handles pull_request merged and completes pr.merge run", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      project: { findMany: vi.fn().mockResolvedValue([{ id: "p1", repoUrl: "https://github.com/o/r", scmType: "github" }]) },
+      artifact: {
+        findFirst: vi.fn().mockResolvedValue({ id: "a1", runId: "r1", type: "pr", content: { provider: "github", number: 123 } }),
+        update: vi.fn().mockResolvedValue({}),
+        create: vi.fn().mockResolvedValue({ id: "x" }),
+      },
+      run: {
+        findUnique: vi.fn().mockImplementation(async (args: any) => {
+          const id = String(args?.where?.id ?? "");
+          if (id === "r1") return { taskId: "t1", issueId: "i1" };
+          if (id === "mergeRun") {
+            return {
+              id: "mergeRun",
+              taskId: "t1",
+              stepId: "s1",
+              executorType: "human",
+              task: { id: "t1", issueId: "i1", steps: [{ id: "s1", kind: "pr.merge", order: 1, status: "waiting_human" }] },
+              step: { id: "s1", kind: "pr.merge", order: 1 },
+            };
+          }
+          return null;
+        }),
+        findMany: vi.fn().mockResolvedValue([{ id: "mergeRun", issueId: "i1", taskId: "t1", stepId: "s1" }]),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      step: { update: vi.fn().mockResolvedValue({}) },
+      task: { update: vi.fn().mockResolvedValue({}) },
+      issue: { update: vi.fn().mockResolvedValue({}) },
+      event: { create: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    await server.register(makeGitHubWebhookRoutes({ prisma }), { prefix: "/api/webhooks" });
+
+    const payload = {
+      action: "closed",
+      pull_request: {
+        number: 123,
+        html_url: "https://github.com/o/r/pull/123",
+        state: "closed",
+        merged: true,
+        head: { ref: "run/xyz", sha: "abc" },
+        base: { ref: "main" },
+      },
+      repository: { html_url: "https://github.com/o/r" },
+    };
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/webhooks/github",
+      headers: { "x-github-event": "pull_request" },
+      payload,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(expect.objectContaining({ success: true, data: expect.objectContaining({ handled: true, merged: true }) }));
+    expect(prisma.run.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "mergeRun" },
+        data: expect.objectContaining({ status: "completed" }),
+      }),
+    );
+    expect(prisma.issue.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "i1" }, data: { status: "done" } }));
+    await server.close();
+  });
 });

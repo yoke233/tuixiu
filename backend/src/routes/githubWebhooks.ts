@@ -6,7 +6,9 @@ import { z } from "zod";
 import type { PrismaDeps } from "../deps.js";
 import * as github from "../integrations/github.js";
 import { uuidv7 } from "../utils/uuid.js";
-import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
+import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
+import { triggerGitHubPrAutoReview } from "../services/githubPrAutoReview.js";
+import { rollbackTaskToStep } from "../services/taskEngine.js";
 import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
 import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
 
@@ -96,7 +98,8 @@ export function makeGitHubWebhookRoutes(deps: {
         }
 
         const ciEvents = new Set(["workflow_run", "check_suite", "check_run"]);
-        if (event !== "issues" && !ciEvents.has(event)) {
+        const prEvents = new Set(["pull_request", "pull_request_review"]);
+        if (event !== "issues" && !ciEvents.has(event) && !prEvents.has(event)) {
           return { success: true, data: { ok: true, ignored: true, reason: "UNSUPPORTED_EVENT", event } };
         }
 
@@ -214,6 +217,407 @@ export function makeGitHubWebhookRoutes(deps: {
           }
 
           return { success: true, data: { ok: true, handled: true, runId: run.id, passed } };
+        }
+
+        if (event === "pull_request") {
+          const bodySchema = z
+            .object({
+              action: z.string().min(1),
+              pull_request: z
+                .object({
+                  number: z.number().int().positive(),
+                  html_url: z.string().min(1),
+                  state: z.string().optional(),
+                  title: z.string().optional(),
+                  body: z.string().nullable().optional(),
+                  merged: z.boolean().optional(),
+                  merged_at: z.string().nullable().optional(),
+                  head: z
+                    .object({
+                      ref: z.string().min(1),
+                      sha: z.string().min(1),
+                    })
+                    .passthrough(),
+                  base: z
+                    .object({
+                      ref: z.string().min(1),
+                    })
+                    .passthrough(),
+                })
+                .passthrough(),
+              repository: z.object({ html_url: z.string().min(1) }),
+            })
+            .passthrough();
+
+          let payload: z.infer<typeof bodySchema>;
+          try {
+            payload = bodySchema.parse(request.body ?? {});
+          } catch (err) {
+            return { success: false, error: { code: "BAD_PAYLOAD", message: "Webhook payload 格式不合法", details: String(err) } };
+          }
+
+          const repoParsed = parseRepo(payload.repository.html_url);
+          if (!repoParsed) {
+            return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 webhook repoUrl 解析 GitHub owner/repo" } };
+          }
+          const repoKey = toRepoKey(repoParsed);
+
+          const projects = await deps.prisma.project.findMany();
+          const project =
+            (projects as any[]).find((p) => {
+              const pr = typeof p?.repoUrl === "string" ? parseRepo(p.repoUrl) : null;
+              return pr ? toRepoKey(pr) === repoKey : false;
+            }) ?? null;
+
+          if (!project) {
+            return {
+              success: false,
+              error: { code: "NO_PROJECT", message: "未找到与该 GitHub 仓库匹配的 Project", details: repoParsed.webBaseUrl },
+            };
+          }
+
+          const prNumber = payload.pull_request.number;
+          const headRef = payload.pull_request.head.ref;
+          const headSha = payload.pull_request.head.sha;
+          const prUrl = payload.pull_request.html_url;
+          const prState = typeof payload.pull_request.state === "string" ? payload.pull_request.state : "";
+          const prTitle = typeof payload.pull_request.title === "string" ? payload.pull_request.title : "";
+          const merged =
+            typeof payload.pull_request.merged === "boolean"
+              ? payload.pull_request.merged
+              : Boolean(payload.pull_request.merged_at);
+
+          const prArtifact = await deps.prisma.artifact
+            .findFirst({
+              where: {
+                type: "pr",
+                run: { is: { issue: { is: { projectId: (project as any).id } } } } as any,
+                AND: [
+                  { content: { path: ["provider"], equals: "github" } as any },
+                  { content: { path: ["number"], equals: prNumber } as any },
+                ] as any,
+              } as any,
+              orderBy: { createdAt: "desc" },
+            })
+            .catch(() => null);
+
+          if (!prArtifact) {
+            return { success: true, data: { ok: true, ignored: true, reason: "NO_PR_ARTIFACT", prNumber } };
+          }
+
+          const content = ((prArtifact as any).content ?? {}) as any;
+          await deps.prisma.artifact
+            .update({
+              where: { id: (prArtifact as any).id },
+              data: {
+                content: {
+                  ...content,
+                  number: content.number ?? prNumber,
+                  webUrl: content.webUrl ?? prUrl,
+                  state: prState || content.state,
+                  title: prTitle || content.title,
+                  sourceBranch: headRef || content.sourceBranch,
+                  headSha,
+                  merged,
+                  merged_at: payload.pull_request.merged_at ?? content.merged_at ?? null,
+                  lastWebhookAt: new Date().toISOString(),
+                } as any,
+              } as any,
+            })
+            .catch(() => {});
+
+          const action = String(payload.action ?? "").trim().toLowerCase();
+          const isDraft = Boolean((payload.pull_request as any).draft);
+          const shouldAutoReview =
+            !merged &&
+            (action === "opened" || action === "reopened" || action === "ready_for_review" || action === "synchronize") &&
+            (!isDraft || action === "ready_for_review");
+          if (shouldAutoReview) {
+            triggerGitHubPrAutoReview(
+              { prisma: deps.prisma },
+              {
+                prArtifactId: String((prArtifact as any).id),
+                prNumber,
+                prUrl,
+                title: prTitle || null,
+                body: typeof payload.pull_request.body === "string" ? payload.pull_request.body : null,
+                headSha,
+                sourceBranch: headRef,
+                targetBranch: payload.pull_request.base.ref,
+              },
+            );
+          }
+
+          if (merged && String(payload.action ?? "").trim().toLowerCase() === "closed") {
+            const prRun = await deps.prisma.run
+              .findUnique({
+                where: { id: (prArtifact as any).runId },
+                select: { taskId: true, issueId: true } as any,
+              })
+              .catch(() => null);
+
+            const taskId = String((prRun as any)?.taskId ?? "").trim();
+            const issueId = String((prRun as any)?.issueId ?? "").trim();
+            if (taskId) {
+              const runs = await deps.prisma.run
+                .findMany({
+                  where: {
+                    taskId,
+                    status: "running",
+                    executorType: "human",
+                    branchName: headRef,
+                    step: { is: { kind: "pr.merge" } } as any,
+                  } as any,
+                  select: { id: true, issueId: true, taskId: true, stepId: true },
+                })
+                .catch(() => []);
+
+              let updatedCount = 0;
+              for (const r of runs as any[]) {
+                await deps.prisma.run
+                  .update({ where: { id: r.id }, data: { status: "completed", completedAt: new Date() } as any })
+                  .then(() => {
+                    updatedCount += 1;
+                  })
+                  .catch(() => {});
+                await advanceTaskFromRunTerminal({ prisma: deps.prisma }, r.id, "completed").catch(() => {});
+                deps.broadcastToClients?.({
+                  type: "task_updated",
+                  issue_id: r.issueId,
+                  task_id: r.taskId,
+                  step_id: r.stepId ?? undefined,
+                  run_id: r.id,
+                  reason: "github_pull_request_merged",
+                });
+              }
+
+              if (updatedCount === 0) {
+                const task = await deps.prisma.task
+                  .findUnique({
+                    where: { id: taskId },
+                    include: { steps: { orderBy: { order: "asc" } } } as any,
+                  })
+                  .catch(() => null);
+                const steps = Array.isArray((task as any)?.steps) ? ((task as any).steps as any[]) : [];
+                const currentStepId = String((task as any)?.currentStepId ?? "").trim();
+                const current = steps.find((s) => String(s?.id ?? "") === currentStepId) ?? null;
+                if (current && String(current.kind ?? "") === "pr.merge") {
+                  await deps.prisma.step
+                    .update({ where: { id: current.id }, data: { status: "completed" } as any })
+                    .catch(() => {});
+                  await deps.prisma.task.update({ where: { id: taskId }, data: { status: "completed" } as any }).catch(() => {});
+                  if (issueId) {
+                    await deps.prisma.issue.update({ where: { id: issueId }, data: { status: "done" } as any }).catch(() => {});
+                  }
+                  await deps.prisma.event
+                    .create({
+                      data: {
+                        id: uuidv7(),
+                        runId: (prArtifact as any).runId,
+                        source: "system",
+                        type: "github.pr.merged",
+                        payload: { prNumber, headSha } as any,
+                      } as any,
+                    })
+                    .catch(() => {});
+                  deps.broadcastToClients?.({
+                    type: "task_updated",
+                    issue_id: issueId,
+                    task_id: taskId,
+                    reason: "github_pull_request_merged",
+                  });
+                }
+              }
+            }
+          } else if (String(payload.action ?? "").trim().toLowerCase() === "synchronize") {
+            const prRun = await deps.prisma.run
+              .findUnique({
+                where: { id: (prArtifact as any).runId },
+                select: { taskId: true, issueId: true } as any,
+              })
+              .catch(() => null);
+            const taskId = String((prRun as any)?.taskId ?? "").trim();
+            if (taskId) {
+              const task = await deps.prisma.task
+                .findUnique({
+                  where: { id: taskId },
+                  include: { steps: { orderBy: { order: "asc" } } } as any,
+                })
+                .catch(() => null);
+              if (task && String((task as any).status ?? "") === "blocked") {
+                const steps = Array.isArray((task as any).steps) ? ((task as any).steps as any[]) : [];
+                const target = steps.find((s) => String(s?.kind ?? "") === "dev.implement") ?? steps[0] ?? null;
+                if (target) {
+                  await rollbackTaskToStep({ prisma: deps.prisma }, taskId, { stepId: target.id }).catch(() => {});
+                  await deps.prisma.event
+                    .create({
+                      data: {
+                        id: uuidv7(),
+                        runId: (prArtifact as any).runId,
+                        source: "system",
+                        type: "github.pr.synchronize.rollback",
+                        payload: { prNumber, headSha, taskId, stepId: target.id } as any,
+                      } as any,
+                    })
+                    .catch(() => {});
+                  deps.broadcastToClients?.({
+                    type: "task_updated",
+                    issue_id: (task as any).issueId,
+                    task_id: taskId,
+                    step_id: target.id,
+                    reason: "github_pull_request_synchronize",
+                  });
+                }
+              }
+            }
+          }
+
+          return {
+            success: true,
+            data: { ok: true, handled: true, event: "pull_request", action: payload.action, prNumber, merged, headSha },
+          };
+        }
+
+        if (event === "pull_request_review") {
+          const bodySchema = z
+            .object({
+              action: z.string().min(1),
+              review: z
+                .object({
+                  state: z.string().optional(),
+                  body: z.string().nullable().optional(),
+                })
+                .passthrough(),
+              pull_request: z
+                .object({
+                  number: z.number().int().positive(),
+                  html_url: z.string().min(1),
+                  head: z
+                    .object({
+                      ref: z.string().min(1),
+                      sha: z.string().min(1),
+                    })
+                    .passthrough(),
+                  base: z
+                    .object({
+                      ref: z.string().min(1),
+                    })
+                    .passthrough(),
+                })
+                .passthrough(),
+              repository: z.object({ html_url: z.string().min(1) }),
+            })
+            .passthrough();
+
+          let payload: z.infer<typeof bodySchema>;
+          try {
+            payload = bodySchema.parse(request.body ?? {});
+          } catch (err) {
+            return { success: false, error: { code: "BAD_PAYLOAD", message: "Webhook payload 格式不合法", details: String(err) } };
+          }
+
+          const repoParsed = parseRepo(payload.repository.html_url);
+          if (!repoParsed) {
+            return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 webhook repoUrl 解析 GitHub owner/repo" } };
+          }
+          const repoKey = toRepoKey(repoParsed);
+
+          const projects = await deps.prisma.project.findMany();
+          const project =
+            (projects as any[]).find((p) => {
+              const pr = typeof p?.repoUrl === "string" ? parseRepo(p.repoUrl) : null;
+              return pr ? toRepoKey(pr) === repoKey : false;
+            }) ?? null;
+
+          if (!project) {
+            return {
+              success: false,
+              error: { code: "NO_PROJECT", message: "未找到与该 GitHub 仓库匹配的 Project", details: repoParsed.webBaseUrl },
+            };
+          }
+
+          const prNumber = payload.pull_request.number;
+          const reviewState = String(payload.review?.state ?? "").trim().toLowerCase();
+
+          const prArtifact = await deps.prisma.artifact
+            .findFirst({
+              where: {
+                type: "pr",
+                run: { is: { issue: { is: { projectId: (project as any).id } } } } as any,
+                AND: [
+                  { content: { path: ["provider"], equals: "github" } as any },
+                  { content: { path: ["number"], equals: prNumber } as any },
+                ] as any,
+              } as any,
+              orderBy: { createdAt: "desc" },
+            })
+            .catch(() => null);
+
+          if (!prArtifact) {
+            return { success: true, data: { ok: true, ignored: true, reason: "NO_PR_ARTIFACT", prNumber, reviewState } };
+          }
+
+          const content = ((prArtifact as any).content ?? {}) as any;
+          await deps.prisma.artifact
+            .update({
+              where: { id: (prArtifact as any).id },
+              data: {
+                content: {
+                  ...content,
+                  headSha: payload.pull_request.head.sha,
+                  sourceBranch: payload.pull_request.head.ref,
+                  lastReviewState: reviewState,
+                  lastReviewAt: new Date().toISOString(),
+                } as any,
+              } as any,
+            })
+            .catch(() => {});
+
+          const action = String(payload.action ?? "").trim().toLowerCase();
+          if (action === "submitted" && reviewState === "changes_requested") {
+            const prRun = await deps.prisma.run
+              .findUnique({
+                where: { id: (prArtifact as any).runId },
+                select: { taskId: true, issueId: true } as any,
+              })
+              .catch(() => null);
+            const taskId = String((prRun as any)?.taskId ?? "").trim();
+            const issueId = String((prRun as any)?.issueId ?? "").trim();
+
+            const comment = typeof payload.review?.body === "string" ? payload.review.body.trim() : "";
+            const reason = { code: "CHANGES_REQUESTED", message: comment || "changes requested" };
+
+            if (taskId) {
+              const activeRun = await deps.prisma.run
+                .findFirst({
+                  where: {
+                    taskId,
+                    branchName: payload.pull_request.head.ref,
+                    status: { in: ["running", "waiting_ci"] } as any,
+                  } as any,
+                  orderBy: { startedAt: "desc" },
+                  select: { id: true } as any,
+                })
+                .catch(() => null);
+
+              const runId = String((activeRun as any)?.id ?? (prArtifact as any).runId).trim();
+              await setTaskBlockedFromRun({ prisma: deps.prisma }, runId, reason).catch(() => {});
+              if (taskId && issueId) {
+                deps.broadcastToClients?.({
+                  type: "task_updated",
+                  issue_id: issueId,
+                  task_id: taskId,
+                  run_id: runId,
+                  reason: "github_pull_request_changes_requested",
+                });
+              }
+            }
+          }
+
+          return {
+            success: true,
+            data: { ok: true, handled: true, event: "pull_request_review", action: payload.action, prNumber, reviewState },
+          };
         }
 
         const bodySchema = z.object({
