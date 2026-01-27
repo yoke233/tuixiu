@@ -26,6 +26,7 @@
 - [x] **Run 自动推进（非 Task 流）**：Run 完成自动生成 auto-review；检测到变更时自动 `create-pr`；GitHub CI 通过后自动发起 `merge_pr` 审批（仍需人工批准/执行合并）；受 `PM_AUTOMATION_ENABLED` 与 `pmPolicy.automation.*` 控制
 - [x] **Task 自动推进（Task 流）**：Task 创建/回滚后自动启动首个 `ready` 且非 `human` 的 Step；Run/CI 完成后自动启动下一个 `ready` 且非 `human` 的 Step；遇到 `human` Step 自动停（`pr.create` 受 `pmPolicy.automation.autoCreatePr` 门禁）
 - [x] **BMAD-Lite P0**：Context Pack（docs + 注入）、next-action 读接口+前端提示、对抗式 `code.review`、`gate_decision` schema
+- [x] **Context manifest（P1 基础）**：支持通过 `docs/context-manifest.json` 按 `step.kind` 配置 Context Pack 注入（无需改代码即可调整）
 
 **来源（已合入 `main`）**
 - PR `#26`：PM automation v1（多来源 + 自动分析/分配/启动 + GitHub 评论 + 审批队列初版）
@@ -69,7 +70,7 @@
 ### P1：CI/Webhook 闭环 + Review 流转
 
 - [ ] 引入 `track`（quick/planning/enterprise）字段或模板升级（先预留，后续做推荐与 UI）
-- [ ] 引入 `docs/context-manifest.yaml`（按 `step.kind` 自动注入上下文；支持片段/截断策略）
+- [x] 引入 `docs/context-manifest.json`（按 `step.kind` 自动注入上下文；支持片段/截断策略）
 - [ ] 增加 `gate.implementation_readiness` 与 `correct-course`（重规划）并与 Policy/Approval 对齐
 - [ ] 接入 GitLab `pipeline` webhook：写 `Artifact(type=ci_result)` 并驱动 `Run.status=waiting_ci → completed/failed`（同时增强 CI 关联：`head_sha/PR` 等）
 - [ ] 自动/半自动合并 gate：CI 全绿 + Policy 允许 → auto merge，否则进入审批
