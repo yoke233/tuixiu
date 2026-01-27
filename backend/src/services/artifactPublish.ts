@@ -73,13 +73,31 @@ async function gitCommitIfNeeded(opts: { cwd: string; message: string }): Promis
   return String(stdout ?? "").trim();
 }
 
-export async function publishArtifact(deps: { prisma: PrismaDeps }, artifactId: string, body?: { path?: string }) {
+type PublishPlan = {
+  artifact: any;
+  run: any;
+  issue: any;
+  workspacePath: string;
+  kind: string;
+  relPath: string;
+  absPath: string;
+  safeMarkdown: string;
+};
+
+async function buildPublishPlan(
+  deps: { prisma: PrismaDeps },
+  artifactId: string,
+  body?: { path?: string },
+): Promise<
+  | { success: true; data: PublishPlan }
+  | { success: false; error: { code: string; message: string; details?: string } }
+> {
   const artifact = await deps.prisma.artifact.findUnique({
     where: { id: artifactId },
     include: {
       run: {
         include: {
-          issue: true,
+          issue: { include: { project: true } } as any,
           task: true,
         },
       },
@@ -125,6 +143,33 @@ export async function publishArtifact(deps: { prisma: PrismaDeps }, artifactId: 
     return { success: false, error: { code: "BAD_PATH", message: "path 越界" } };
   }
 
+  return {
+    success: true,
+    data: {
+      artifact,
+      run,
+      issue,
+      workspacePath,
+      kind,
+      relPath,
+      absPath,
+      safeMarkdown,
+    },
+  };
+}
+
+export async function planArtifactPublish(deps: { prisma: PrismaDeps }, artifactId: string, body?: { path?: string }) {
+  const plan = await buildPublishPlan(deps, artifactId, body);
+  if (!plan.success) return plan;
+  return { success: true, data: { kind: plan.data.kind, path: plan.data.relPath } };
+}
+
+export async function publishArtifact(deps: { prisma: PrismaDeps }, artifactId: string, body?: { path?: string }) {
+  const plan = await buildPublishPlan(deps, artifactId, body);
+  if (!plan.success) return plan;
+
+  const { run, issue, workspacePath, kind, relPath, absPath, safeMarkdown, artifact } = plan.data;
+
   await mkdir(path.dirname(absPath), { recursive: true });
   await writeFile(absPath, safeMarkdown.endsWith("\n") ? safeMarkdown : `${safeMarkdown}\n`, "utf8");
 
@@ -140,7 +185,7 @@ export async function publishArtifact(deps: { prisma: PrismaDeps }, artifactId: 
         id: uuidv7(),
         runId: run.id,
         type: "patch",
-        content: { path: relPath, commitSha, sourceArtifactId: artifact.id } as any,
+        content: { path: relPath, commitSha, sourceArtifactId: (artifact as any).id } as any,
       },
     })
     .catch(() => {});

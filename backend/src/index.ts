@@ -115,7 +115,15 @@ server.register(
   },
 );
 server.register(makeRunRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, broadcastToClients: wsGateway.broadcastToClients }), { prefix: "/api/runs" });
-server.register(makeApprovalRoutes({ prisma }), { prefix: "/api/approvals" });
+server.register(
+  makeApprovalRoutes({
+    prisma,
+    sendToAgent: wsGateway.sendToAgent,
+    createWorkspace,
+    broadcastToClients: wsGateway.broadcastToClients,
+  }),
+  { prefix: "/api/approvals" },
+);
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });

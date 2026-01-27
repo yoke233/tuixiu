@@ -3,39 +3,12 @@ import { uuidv7 } from "../../utils/uuid.js";
 import { getRunChanges, type RunChangeFile } from "../runGitChanges.js";
 import { postGitHubAutoReviewCommentBestEffort } from "../githubIssueComments.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
+import { computeSensitiveHitFromFiles } from "./pmSensitivePaths.js";
 
-type NextAction = "create_pr" | "wait_ci" | "request_merge_approval" | "manual_review" | "none";
+type NextAction = "create_pr" | "request_create_pr_approval" | "wait_ci" | "request_merge_approval" | "manual_review" | "none";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function toPosixPath(p: string): string {
-  return p.replace(/\\/g, "/");
-}
-
-function globToRegExp(pattern: string): RegExp {
-  // Very small glob subset:
-  // - `**` matches any chars (including `/`)
-  // - `*` matches any chars except `/`
-  const raw = toPosixPath(pattern.trim());
-  const escaped = raw.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const withDoubleStar = escaped.replace(/\*\*/g, "§§DOUBLESTAR§§");
-  const withSingleStar = withDoubleStar.replace(/\*/g, "[^/]*");
-  const final = withSingleStar.replace(/§§DOUBLESTAR§§/g, ".*");
-  return new RegExp(`^${final}$`);
-}
-
-function matchAnyGlob(path: string, patterns: string[]): string[] {
-  const p = toPosixPath(path);
-  const matched: string[] = [];
-  for (const raw of patterns) {
-    const pat = String(raw ?? "").trim();
-    if (!pat) continue;
-    const re = globToRegExp(pat);
-    if (re.test(p)) matched.push(pat);
-  }
-  return matched;
 }
 
 function normalizePrInfo(content: unknown): { webUrl: string; state: string; mergeable: boolean | null; mergeableState: string } | null {
@@ -169,18 +142,7 @@ export async function autoReviewRunForPm(
   const prInfo = latestPr ? normalizePrInfo((latestPr as any).content) : null;
   const ciInfo = latestCi ? normalizeCiResult((latestCi as any).content) : null;
 
-  const matchedFiles: string[] = [];
-  const matchedPatterns = new Set<string>();
-  if (sensitivePatterns.length && files.length) {
-    for (const f of files) {
-      const pats = matchAnyGlob(f.path, sensitivePatterns);
-      if (pats.length) {
-        matchedFiles.push(f.path);
-        for (const p of pats) matchedPatterns.add(p);
-      }
-    }
-  }
-  const sensitive = matchedFiles.length ? { matchedFiles, patterns: [...matchedPatterns] } : null;
+  const sensitive = computeSensitiveHitFromFiles(files, sensitivePatterns);
 
   let nextAction: NextAction = "none";
   let nextReason = "无需动作";
@@ -192,13 +154,27 @@ export async function autoReviewRunForPm(
       nextAction = "none";
       nextReason = "未发现变更文件，无需创建 PR";
     } else {
-      nextAction = "create_pr";
-      nextReason = "尚未发现 PR 交付物，建议先创建 PR 进入 Review/CI 流程";
+      const requireCreatePrApproval =
+        policy.approvals.requireForActions.includes("create_pr") ||
+        (sensitive && policy.approvals.escalateOnSensitivePaths.includes("create_pr"));
+
+      if (requireCreatePrApproval) {
+        nextAction = "request_create_pr_approval";
+        nextReason = sensitive
+          ? "变更触达敏感目录；创建 PR 需要审批/人工确认后再继续"
+          : "创建 PR 需要审批/人工确认后再继续";
+      } else {
+        nextAction = "create_pr";
+        nextReason = "尚未发现 PR 交付物，建议先创建 PR 进入 Review/CI 流程";
+      }
     }
   } else if (!ciInfo || ciInfo.passed !== true) {
     nextAction = "wait_ci";
     nextReason = !ciInfo ? "尚未发现测试/CI 结果，建议先运行测试或等待 CI 回写" : "测试未通过，建议先修复并补测";
-  } else if (policy.approvals.requireForActions.includes("merge_pr")) {
+  } else if (
+    policy.approvals.requireForActions.includes("merge_pr") ||
+    (sensitive && policy.approvals.escalateOnSensitivePaths.includes("merge_pr"))
+  ) {
     nextAction = "request_merge_approval";
     nextReason = "测试通过且已存在 PR；合并属于高危动作，建议发起合并审批/人工确认后合并";
   } else {

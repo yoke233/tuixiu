@@ -16,10 +16,12 @@ import {
   mergeReviewRequestForRun,
   syncReviewRequestForRun,
 } from "../services/runReviewRequest.js";
-import { requestMergePrApproval } from "../services/approvalRequests.js";
+import { requestCreatePrApproval, requestMergePrApproval } from "../services/approvalRequests.js";
 import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
 import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
+import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
+import { computeSensitiveHitFromFiles } from "../services/pm/pmSensitivePaths.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
 
@@ -184,6 +186,61 @@ export function makeRunRoutes(deps: {
       });
       const { id } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
+
+      const run = await deps.prisma.run.findUnique({
+        where: { id },
+        include: { issue: { include: { project: true } } } as any,
+      });
+      if (!run) return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+
+      const project = (run as any)?.issue?.project;
+      if (!project) return { success: false, error: { code: "BAD_RUN", message: "Run 缺少 project" } };
+
+      const { policy } = getPmPolicyFromBranchProtection(project.branchProtection);
+      const sensitivePatterns = Array.isArray(policy.sensitivePaths) ? policy.sensitivePaths : [];
+      const needSensitiveCheck =
+        sensitivePatterns.length > 0 && policy.approvals.escalateOnSensitivePaths.includes("create_pr");
+
+      let sensitive = null as ReturnType<typeof computeSensitiveHitFromFiles> | null;
+      let sensitiveCheckFailed = false;
+      if (needSensitiveCheck) {
+        try {
+          const changes = await getRunChanges({ prisma: deps.prisma, runId: id });
+          sensitive = computeSensitiveHitFromFiles(changes.files ?? [], sensitivePatterns);
+        } catch {
+          sensitiveCheckFailed = true;
+        }
+      }
+
+      const requireApproval =
+        policy.approvals.requireForActions.includes("create_pr") ||
+        (needSensitiveCheck && (sensitive !== null || sensitiveCheckFailed));
+
+      if (requireApproval) {
+        const req = await requestCreatePrApproval({
+          prisma: deps.prisma,
+          runId: id,
+          requestedBy: "api_create_pr",
+          payload: {
+            title: body.title,
+            description: body.description,
+            targetBranch: body.targetBranch,
+            sensitive: sensitive
+              ? { patterns: sensitive.patterns.slice(0, 20), matchedFiles: sensitive.matchedFiles.slice(0, 60) }
+              : undefined,
+          },
+        });
+        if (!req.success) return req;
+
+        return {
+          success: false,
+          error: {
+            code: "APPROVAL_REQUIRED",
+            message: "创建 PR 属于受控动作，需要审批。已创建审批请求，请在 /api/approvals 中批准后执行。",
+          },
+          data: req.data,
+        };
+      }
 
       return await createReviewRequestForRun(
         {

@@ -37,7 +37,7 @@
 - **Review 工作流（增强）**：把 “AI review / 人 review / 合并审批” 做更清晰的门禁与状态机（目前已能打回/回滚/继续，但缺少统一的 gate 聚合与可视化）
 - **会话/在线状态面板**：Agent 是否在线、Run 是否绑定到有效 ACP session、断线重连策略与提示
 - **Project/Agent 维度分配**：Project 负责人/可用 Agent 列表/策略（例如固定/轮询/按负载）
-- **Policy/审批扩展**：在 Policy MVP 基础上，补充动作级 gate（create_pr/publish/ci/merge）与敏感目录门禁自动升级/进入审批
+- **Policy/审批扩展（已部分完成）**：已完成 `create_pr` / `publish_artifact` 动作级 gate + `sensitivePaths` 命中自动升级进入审批；仍缺 `ci/test/merge auto-exec` 等动作的门禁聚合与策略化
 - **Run 自动验收（回写增强）**：在已支持“手动 + 自动触发（含 GitHub Issue best-effort 摘要回写）”基础上，补充测试结果聚合增强（更完整测试摘要/证据链接等）
 - **Task 流门禁完善**：已支持 Task 自动推进；仍缺对更多 Step(kind) 的动作级 gate（例如 publish/test/ci 等）与敏感目录命中后的自动降级/审批
 
