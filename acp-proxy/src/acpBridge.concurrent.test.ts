@@ -4,6 +4,7 @@ import * as acp from "@agentclientprotocol/sdk";
 
 import { AcpBridge } from "./acpBridge.js";
 import type { AcpTransport, AgentLauncher } from "./launchers/types.js";
+import type { SandboxProvider } from "./sandbox/types.js";
 
 describe("AcpBridge concurrency", () => {
   it("dedupes concurrent ensureInitialized() calls", async () => {
@@ -57,6 +58,7 @@ describe("AcpBridge concurrency", () => {
 
     const bridge = new AcpBridge({
       launcher,
+      sandbox: { runProcess: async () => { throw new Error("not used"); } } satisfies SandboxProvider,
       cwd: "/tmp",
       log: () => {},
       onSessionUpdate: () => {},
@@ -115,6 +117,7 @@ describe("AcpBridge concurrency", () => {
 
     const bridge = new AcpBridge({
       launcher,
+      sandbox: { runProcess: async () => { throw new Error("not used"); } } satisfies SandboxProvider,
       cwd: "/tmp",
       log: () => {},
       onSessionUpdate: () => {},

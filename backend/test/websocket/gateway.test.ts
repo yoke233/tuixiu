@@ -294,6 +294,63 @@ describe("WebSocketGateway", () => {
     expect(clientSocket.sent.some((s) => JSON.parse(s).type === "event_added")).toBe(true);
   });
 
+  it("session_state updates run.metadata.acpSessionState", async () => {
+    const prisma = {
+      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+      run: {
+        findUnique: vi.fn().mockResolvedValue({ metadata: { roleKey: "dev" } }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: {
+            type: "session_state",
+            session_id: "s1",
+            activity: "busy",
+            in_flight: 2,
+            updated_at: "2026-01-25T00:00:00.000Z",
+            current_mode_id: "m1",
+            current_model_id: "model1",
+            last_stop_reason: "end_turn",
+            note: "prompt_start",
+          },
+        }),
+      ),
+    );
+
+    await flushMicrotasks();
+
+    expect(prisma.run.findUnique).toHaveBeenCalledWith({ where: { id: "r1" }, select: { metadata: true } });
+    expect(prisma.run.update).toHaveBeenCalledWith({
+      where: { id: "r1" },
+      data: {
+        metadata: {
+          roleKey: "dev",
+          acpSessionState: {
+            sessionId: "s1",
+            activity: "busy",
+            inFlight: 2,
+            updatedAt: "2026-01-25T00:00:00.000Z",
+            currentModeId: "m1",
+            currentModelId: "model1",
+            lastStopReason: "end_turn",
+            note: "prompt_start",
+          },
+        },
+      },
+    });
+  });
+
   it("init_result(ok=false) marks run/issue failed and decrements agent load", async () => {
     const prisma = {
       event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },

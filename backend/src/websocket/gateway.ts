@@ -283,6 +283,44 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                   .catch(() => {});
               }
             }
+
+            if (contentType === "session_state") {
+              const raw = message.content as any;
+              const sessionId = typeof raw.session_id === "string" ? raw.session_id : "";
+              const activity = typeof raw.activity === "string" ? raw.activity : "";
+              const inFlightRaw = raw.in_flight;
+              const inFlight =
+                typeof inFlightRaw === "number" && Number.isFinite(inFlightRaw) ? Math.max(0, inFlightRaw) : 0;
+              const updatedAt = typeof raw.updated_at === "string" ? raw.updated_at : new Date().toISOString();
+              const currentModeId = typeof raw.current_mode_id === "string" ? raw.current_mode_id : null;
+              const currentModelId = typeof raw.current_model_id === "string" ? raw.current_model_id : null;
+              const lastStopReason = typeof raw.last_stop_reason === "string" ? raw.last_stop_reason : null;
+              const note = typeof raw.note === "string" ? raw.note : null;
+
+              if (sessionId) {
+                const run = await deps.prisma.run
+                  .findUnique({ where: { id: message.run_id }, select: { metadata: true } })
+                  .catch(() => null);
+                const prev = run && isRecord(run.metadata) ? (run.metadata as Record<string, unknown>) : {};
+                const next = {
+                  ...prev,
+                  acpSessionState: {
+                    sessionId,
+                    activity,
+                    inFlight,
+                    updatedAt,
+                    currentModeId,
+                    currentModelId,
+                    lastStopReason,
+                    note,
+                  },
+                };
+                await deps.prisma.run
+                  .update({ where: { id: message.run_id }, data: { metadata: next as any } })
+                  .catch(() => {});
+              }
+            }
+
             if (contentType === "prompt_result") {
               const run = await deps.prisma.run.findUnique({
                 where: { id: message.run_id },
