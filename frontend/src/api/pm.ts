@@ -11,3 +11,7 @@ export async function dispatchIssue(issueId: string, reason?: string): Promise<u
   return data;
 }
 
+export async function autoReviewRun(runId: string): Promise<{ runId: string; artifactId: string; report: unknown }> {
+  const data = await apiPost<{ runId: string; artifactId: string; report: unknown }>(`/pm/runs/${runId}/auto-review`, {});
+  return data;
+}

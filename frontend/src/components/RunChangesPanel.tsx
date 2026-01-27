@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { approveApproval, rejectApproval } from "../api/approvals";
+import { autoReviewRun } from "../api/pm";
 import {
   createRunPr,
   getRun,
@@ -85,6 +86,7 @@ export function RunChangesPanel(props: Props) {
   const [diff, setDiff] = useState<string>("");
   const [diffLoading, setDiffLoading] = useState(false);
   const [prLoading, setPrLoading] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const prArtifact = useMemo(() => {
     const arts = props.run?.artifacts ?? [];
@@ -201,6 +203,22 @@ export function RunChangesPanel(props: Props) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPrLoading(false);
+    }
+  }
+
+  async function onAutoReview() {
+    if (!props.runId) return;
+    if (!requireLogin()) return;
+    setReviewLoading(true);
+    setError(null);
+    try {
+      await autoReviewRun(props.runId);
+      await refreshRun();
+      props.onAfterAction?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReviewLoading(false);
     }
   }
 
@@ -369,6 +387,9 @@ export function RunChangesPanel(props: Props) {
         <div className="row gap">
           <button onClick={refresh} disabled={loading}>
             刷新
+          </button>
+          <button onClick={onAutoReview} disabled={reviewLoading}>
+            {reviewLoading ? "验收中…" : "自动验收"}
           </button>
           {canUseApi ? (
             prInfo ? (

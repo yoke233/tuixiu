@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
 import type { PmAutomation } from "../services/pm/pmAutomation.js";
+import { autoReviewRunForPm } from "../services/pm/pmAutoReviewRun.js";
 
 export function makePmRoutes(deps: { prisma: PrismaDeps; pm: PmAutomation }): FastifyPluginAsync {
   return async (server) => {
@@ -26,6 +27,11 @@ export function makePmRoutes(deps: { prisma: PrismaDeps; pm: PmAutomation }): Fa
       const res = await deps.pm.dispatch(id, reason);
       return res as any;
     });
+
+    server.post("/runs/:id/auto-review", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const { id } = paramsSchema.parse(request.params);
+      return await autoReviewRunForPm({ prisma: deps.prisma }, id);
+    });
   };
 }
-
