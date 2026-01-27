@@ -546,10 +546,22 @@ async function runGitHubPrAutoReviewOnce(
       return;
     }
 
-    review = { verdict: llm.value.verdict, findings: llm.value.findings, markdown: llm.value.markdown };
+    review = {
+      verdict: llm.value.verdict,
+      findings: llm.value.findings ?? [],
+      markdown: llm.value.markdown,
+    };
     model = llm.model;
     note = "评审基于 GitHub PR files patch（可能被截断），仅供参考。";
   }
+
+  if (!review) return;
+
+  const normalized: NormalizedReview = {
+    verdict: review.verdict ?? null,
+    findings: review.findings ?? [],
+    markdown: review.markdown,
+  };
 
   const reportArtifact = await deps.prisma.artifact
     .create({
@@ -565,9 +577,9 @@ async function runGitHubPrAutoReviewOnce(
           prUrl,
           headSha,
           baseSha: baseSha || null,
-          verdict: review.verdict,
-          findings: review.findings,
-          markdown: review.markdown,
+          verdict: normalized.verdict,
+          findings: normalized.findings,
+          markdown: normalized.markdown,
           model,
           agentRunId,
           generationError,
@@ -582,8 +594,8 @@ async function runGitHubPrAutoReviewOnce(
     prNumber,
     prUrl: prUrl || undefined,
     headSha,
-    verdict: review.verdict ?? null,
-    markdown: review.markdown,
+    verdict: normalized.verdict ?? null,
+    markdown: normalized.markdown,
     note: note || "自动评审（无说明）",
   });
 
@@ -593,7 +605,7 @@ async function runGitHubPrAutoReviewOnce(
     const prReview = await createPullRequestReview(auth, {
       pullNumber: prNumber,
       body: clampText(body, 60_000),
-      event: toGitHubReviewEvent(review.verdict),
+      event: toGitHubReviewEvent(normalized.verdict),
       commitId: headSha || undefined,
     });
     reviewId = typeof (prReview as any)?.id === "number" ? (prReview as any).id : null;
@@ -613,7 +625,7 @@ async function runGitHubPrAutoReviewOnce(
           lastAutoReviewRunId: agentRunId,
           lastAutoReviewReviewId: reviewId,
           lastAutoReviewReviewError: reviewError,
-          lastAutoReviewVerdict: review.verdict,
+          lastAutoReviewVerdict: normalized.verdict,
           lastWebhookAt: content.lastWebhookAt ?? nowIso,
         } as any,
       } as any,
@@ -627,7 +639,15 @@ async function runGitHubPrAutoReviewOnce(
         runId: run.id,
         source: "system",
         type: reviewError ? "github.pr.auto_review.review_failed" : "github.pr.auto_review.reviewed",
-        payload: { prNumber, headSha, baseSha: baseSha || null, verdict: review.verdict, reviewId, error: reviewError, agentRunId } as any,
+        payload: {
+          prNumber,
+          headSha,
+          baseSha: baseSha || null,
+          verdict: normalized.verdict,
+          reviewId,
+          error: reviewError,
+          agentRunId,
+        } as any,
       } as any,
     })
     .catch(() => {});
