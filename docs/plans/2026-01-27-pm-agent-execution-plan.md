@@ -34,6 +34,8 @@
 - PR `#34`：Policy MVP（后端策略 API + Admin 配置入口 + PM autoStart gate）
 - PR `#35`：auto-review（后端端点 + 前端一键触发）
 - PR `#41`：Run 自动推进（auto-review 自动触发 + 自动 create-pr + CI 通过自动发起 merge 审批）
+- PR `#45`：Task 自动推进（Task/Step ready 自动启动非 human executor）
+- PR `#46`：GitHub Issue 回写增强（创建 PR 与 auto-review 摘要 best-effort 评论）
 
 ### 已知缺口 ⚠️（当前主线未完成）
 
