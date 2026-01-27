@@ -89,6 +89,20 @@ async function main() {
     }
   }
 
+  const boxliteWorkspaceMode =
+    cfg.sandbox.provider === "boxlite_oci"
+      ? (cfg.sandbox.boxlite?.workspaceMode ?? "mount")
+      : "mount";
+
+  if (cfg.sandbox.provider === "boxlite_oci" && boxliteWorkspaceMode === "mount") {
+    const volumes = cfg.sandbox.boxlite?.volumes ?? [];
+    if (!Array.isArray(volumes) || volumes.length === 0) {
+      throw new Error(
+        "BoxLite mount 模式必须配置 sandbox.boxlite.volumes（至少挂载一个包含 Run workspace 的目录）。若不想挂载请改用 sandbox.boxlite.workspaceMode=git_clone。",
+      );
+    }
+  }
+
   const isWsl = process.platform === "linux" && !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
 
   const mapWindowsPathToWsl = (cwd: string): string => {
@@ -135,11 +149,6 @@ async function main() {
   };
 
   const mapCwd = (cwd: string): string => mapHostPathToBox(mapWindowsPathToWsl(cwd));
-
-  const boxliteWorkspaceMode =
-    cfg.sandbox.provider === "boxlite_oci"
-      ? (cfg.sandbox.boxlite?.workspaceMode ?? "mount")
-      : "mount";
 
   const isBoxliteGitClone =
     cfg.sandbox.provider === "boxlite_oci" && boxliteWorkspaceMode === "git_clone";
@@ -455,6 +464,7 @@ async function main() {
       : 900;
 
     const env = { ...(opts.init?.env ?? {}) };
+    env.TUIXIU_WORKSPACE = opts.cwd;
     if (isBoxliteGitClone && !env.TUIXIU_BOX_WORKSPACE) {
       env.TUIXIU_BOX_WORKSPACE = opts.cwd;
     }

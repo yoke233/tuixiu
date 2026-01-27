@@ -16,6 +16,7 @@ const createProjectBodySchema = z.object({
   workspaceMode: workspaceModeSchema.optional(),
   gitAuthMode: gitAuthModeSchema.optional(),
   defaultRoleKey: z.string().min(1).max(100).optional(),
+  agentWorkspaceNoticeTemplate: z.string().optional(),
   gitlabProjectId: z.coerce.number().int().positive().optional(),
   gitlabAccessToken: z.string().min(1).optional(),
   gitlabWebhookSecret: z.string().min(1).optional(),
@@ -42,6 +43,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
           workspaceMode: body.workspaceMode ?? "worktree",
           gitAuthMode: body.gitAuthMode ?? "https_pat",
           defaultRoleKey: body.defaultRoleKey,
+          agentWorkspaceNoticeTemplate: body.agentWorkspaceNoticeTemplate,
           gitlabProjectId: body.gitlabProjectId,
           gitlabAccessToken: body.gitlabAccessToken,
           gitlabWebhookSecret: body.gitlabWebhookSecret,
@@ -62,6 +64,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
         workspaceMode: workspaceModeSchema.nullable().optional(),
         gitAuthMode: gitAuthModeSchema.nullable().optional(),
         defaultRoleKey: z.string().min(1).max(100).nullable().optional(),
+        agentWorkspaceNoticeTemplate: z.string().nullable().optional(),
         gitlabProjectId: z.coerce.number().int().positive().nullable().optional(),
         gitlabAccessToken: z.string().min(1).nullable().optional(),
         gitlabWebhookSecret: z.string().min(1).nullable().optional(),
@@ -85,6 +88,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
       if (body.workspaceMode !== undefined) data.workspaceMode = body.workspaceMode;
       if (body.gitAuthMode !== undefined) data.gitAuthMode = body.gitAuthMode;
       if (body.defaultRoleKey !== undefined) data.defaultRoleKey = body.defaultRoleKey;
+      if (body.agentWorkspaceNoticeTemplate !== undefined) data.agentWorkspaceNoticeTemplate = body.agentWorkspaceNoticeTemplate;
       if (body.gitlabProjectId !== undefined) data.gitlabProjectId = body.gitlabProjectId;
       if (body.gitlabAccessToken !== undefined) data.gitlabAccessToken = body.gitlabAccessToken;
       if (body.gitlabWebhookSecret !== undefined) data.gitlabWebhookSecret = body.gitlabWebhookSecret;

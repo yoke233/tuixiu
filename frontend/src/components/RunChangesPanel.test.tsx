@@ -33,6 +33,7 @@ describe("RunChangesPanel", () => {
       repoUrl: "https://github.com/octo-org/octo-repo.git",
       scmType: "github",
       defaultBranch: "main",
+      hasGithubAccessToken: true,
       createdAt: "2026-01-25T00:00:00.000Z",
     };
 
@@ -92,6 +93,60 @@ describe("RunChangesPanel", () => {
       expect(body.text).toMatch(/解决合并冲突/);
       expect(body.text).toMatch(/git merge origin\/main/);
     });
+  });
+
+  it("shows PR link even when API is disabled (no token)", async () => {
+    const project: Project = {
+      id: "p1",
+      name: "demo",
+      repoUrl: "https://github.com/octo-org/octo-repo.git",
+      scmType: "github",
+      defaultBranch: "main",
+      hasGithubAccessToken: false,
+      createdAt: "2026-01-25T00:00:00.000Z",
+    };
+
+    const run: Run = {
+      id: "r1",
+      issueId: "i1",
+      agentId: "a1",
+      executorType: "agent",
+      status: "waiting_ci",
+      startedAt: "2026-01-25T00:00:00.000Z",
+      workspacePath: "D:\\repo\\.worktrees\\run-r1",
+      branchName: "run/r1",
+      artifacts: [
+        {
+          id: "pr-1",
+          runId: "r1",
+          type: "pr",
+          content: {
+            webUrl: "https://github.com/octo-org/octo-repo/pull/12",
+            state: "open",
+            number: 12,
+            sourceBranch: "run/r1",
+            targetBranch: "main",
+          },
+          createdAt: "2026-01-25T00:00:00.000Z",
+        },
+      ],
+    };
+
+    mockFetchJsonOnce({ success: true, data: { baseBranch: "main", branch: "run/r1", files: [] } });
+
+    render(
+      <AuthProvider>
+        <MemoryRouter>
+          <RunChangesPanel runId="r1" project={project} run={run} />
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+
+    const link = await screen.findByRole("link", { name: /打开 PR/i });
+    expect(link.getAttribute("href")).toBe("https://github.com/octo-org/octo-repo/pull/12");
+
+    expect(screen.queryByRole("button", { name: "同步 PR 状态" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "发起合并审批" })).toBeNull();
   });
 });
 

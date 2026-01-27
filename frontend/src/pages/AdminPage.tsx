@@ -20,6 +20,7 @@ type AdminSectionKey = (typeof ADMIN_SECTION_KEYS)[number];
 const ARCHIVE_STATUSES: IssueStatus[] = ["done", "failed", "cancelled"];
 type ArchiveStatusFilter = "all" | "done" | "failed" | "cancelled";
 type ArchiveArchivedFilter = "all" | "archived" | "unarchived";
+type WorkspaceNoticeMode = "default" | "hidden" | "custom";
 
 function getSectionFromSearch(search: string): AdminSectionKey | null {
   const raw = new URLSearchParams(search).get("section");
@@ -71,7 +72,13 @@ export function AdminPage() {
   const [projectGitlabWebhookSecret, setProjectGitlabWebhookSecret] = useState("");
   const [projectGithubAccessToken, setProjectGithubAccessToken] = useState("");
   const [projectGithubPollingEnabled, setProjectGithubPollingEnabled] = useState(false);
+  const [projectAgentWorkspaceNoticeMode, setProjectAgentWorkspaceNoticeMode] = useState<WorkspaceNoticeMode>("default");
+  const [projectAgentWorkspaceNoticeTemplate, setProjectAgentWorkspaceNoticeTemplate] = useState("");
   const [savingGithubPollingEnabled, setSavingGithubPollingEnabled] = useState(false);
+
+  const [agentWorkspaceNoticeMode, setAgentWorkspaceNoticeMode] = useState<WorkspaceNoticeMode>("default");
+  const [agentWorkspaceNoticeTemplate, setAgentWorkspaceNoticeTemplate] = useState("");
+  const [savingAgentWorkspaceNotice, setSavingAgentWorkspaceNotice] = useState(false);
 
   const [issueTitle, setIssueTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
@@ -126,6 +133,22 @@ export function AdminPage() {
   const editingRole = useMemo(() => {
     return roles.find((role) => role.id === roleEditingId) ?? null;
   }, [roleEditingId, roles]);
+
+  useEffect(() => {
+    const raw = effectiveProject?.agentWorkspaceNoticeTemplate;
+    if (raw === "") {
+      setAgentWorkspaceNoticeMode("hidden");
+      setAgentWorkspaceNoticeTemplate("");
+      return;
+    }
+    if (raw === null || raw === undefined) {
+      setAgentWorkspaceNoticeMode("default");
+      setAgentWorkspaceNoticeTemplate("");
+      return;
+    }
+    setAgentWorkspaceNoticeMode("custom");
+    setAgentWorkspaceNoticeTemplate(String(raw));
+  }, [effectiveProject?.agentWorkspaceNoticeTemplate, effectiveProjectId]);
 
   async function refresh() {
     setLoading(true);
@@ -310,6 +333,12 @@ export function AdminPage() {
         defaultBranch: projectDefaultBranch.trim() || undefined,
         workspaceMode: projectWorkspaceMode,
         gitAuthMode: projectGitAuthMode,
+        agentWorkspaceNoticeTemplate:
+          projectAgentWorkspaceNoticeMode === "default"
+            ? undefined
+            : projectAgentWorkspaceNoticeMode === "hidden"
+              ? ""
+              : projectAgentWorkspaceNoticeTemplate,
         gitlabProjectId: Number.isFinite(gitlabProjectId ?? NaN) ? gitlabProjectId : undefined,
         gitlabAccessToken: projectGitlabAccessToken.trim() || undefined,
         gitlabWebhookSecret: projectGitlabWebhookSecret.trim() || undefined,
@@ -327,6 +356,8 @@ export function AdminPage() {
       setProjectGitlabWebhookSecret("");
       setProjectGithubAccessToken("");
       setProjectGithubPollingEnabled(false);
+      setProjectAgentWorkspaceNoticeMode("default");
+      setProjectAgentWorkspaceNoticeTemplate("");
       await refresh();
       setSelectedProjectId(p.id);
     } catch (err) {
@@ -350,6 +381,31 @@ export function AdminPage() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSavingGithubPollingEnabled(false);
+    }
+  }
+
+  async function onSaveAgentWorkspaceNotice() {
+    setError(null);
+    if (!requireAdmin()) return;
+    if (!effectiveProjectId) {
+      setError("请先创建 Project");
+      return;
+    }
+
+    setSavingAgentWorkspaceNotice(true);
+    try {
+      const value =
+        agentWorkspaceNoticeMode === "default"
+          ? null
+          : agentWorkspaceNoticeMode === "hidden"
+            ? ""
+            : agentWorkspaceNoticeTemplate;
+      await updateProject(effectiveProjectId, { agentWorkspaceNoticeTemplate: value });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingAgentWorkspaceNotice(false);
     }
   }
 
@@ -1224,6 +1280,49 @@ export function AdminPage() {
                   </div>
                 </div>
               ) : null}
+
+              <details style={{ marginTop: 12 }}>
+                <summary>Agent 工作区提示（可选）</summary>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  支持模板变量：
+                  <code>{"{{workspace}}"}</code> <code>{"{{branch}}"}</code> <code>{"{{workspaceMode}}"}</code>{" "}
+                  <code>{"{{repoUrl}}"}</code> <code>{"{{scmType}}"}</code> <code>{"{{defaultBranch}}"}</code>{" "}
+                  <code>{"{{baseBranch}}"}</code>。平台默认可通过 <code>AGENT_WORKSPACE_NOTICE_TEMPLATE</code> 配置。
+                </div>
+                <div className="form" style={{ marginTop: 10 }}>
+                  <label className="label">
+                    模式
+                    <select
+                      value={agentWorkspaceNoticeMode}
+                      disabled={savingAgentWorkspaceNotice || !auth.hasRole(["admin"])}
+                      onChange={(e) => setAgentWorkspaceNoticeMode(e.target.value as WorkspaceNoticeMode)}
+                    >
+                      <option value="default">使用平台默认</option>
+                      <option value="hidden">隐藏提示</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                  </label>
+                  {agentWorkspaceNoticeMode === "custom" ? (
+                    <label className="label">
+                      模板
+                      <textarea
+                        value={agentWorkspaceNoticeTemplate}
+                        disabled={savingAgentWorkspaceNotice || !auth.hasRole(["admin"])}
+                        onChange={(e) => setAgentWorkspaceNoticeTemplate(e.target.value)}
+                        rows={4}
+                        placeholder="例如：请在 {{workspace}} 中修改；若为 Git 仓库请 git commit。"
+                      />
+                    </label>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={onSaveAgentWorkspaceNotice}
+                    disabled={savingAgentWorkspaceNotice || !auth.hasRole(["admin"])}
+                  >
+                    {savingAgentWorkspaceNotice ? "保存中…" : "保存"}
+                  </button>
+                </div>
+              </details>
             </>
           ) : (
             <div className="muted">暂无 Project，请先创建</div>
@@ -1281,6 +1380,37 @@ export function AdminPage() {
                 <option value="ssh">ssh</option>
               </select>
             </label>
+            <details>
+              <summary>Agent 工作区提示（可选）</summary>
+              <div className="muted" style={{ marginTop: 6 }}>
+                支持模板变量：
+                <code>{"{{workspace}}"}</code> <code>{"{{branch}}"}</code> <code>{"{{workspaceMode}}"}</code>{" "}
+                <code>{"{{repoUrl}}"}</code> <code>{"{{scmType}}"}</code> <code>{"{{defaultBranch}}"}</code>{" "}
+                <code>{"{{baseBranch}}"}</code>。
+              </div>
+              <label className="label">
+                模式
+                <select
+                  value={projectAgentWorkspaceNoticeMode}
+                  onChange={(e) => setProjectAgentWorkspaceNoticeMode(e.target.value as WorkspaceNoticeMode)}
+                >
+                  <option value="default">使用平台默认</option>
+                  <option value="hidden">隐藏提示</option>
+                  <option value="custom">自定义</option>
+                </select>
+              </label>
+              {projectAgentWorkspaceNoticeMode === "custom" ? (
+                <label className="label">
+                  模板
+                  <textarea
+                    value={projectAgentWorkspaceNoticeTemplate}
+                    onChange={(e) => setProjectAgentWorkspaceNoticeTemplate(e.target.value)}
+                    rows={4}
+                    placeholder="例如：请在 {{workspace}} 中修改；若为 Git 仓库请 git commit。"
+                  />
+                </label>
+              ) : null}
+            </details>
             {projectScmType === "gitlab" ? (
               <details>
                 <summary>GitLab 配置（可选）</summary>

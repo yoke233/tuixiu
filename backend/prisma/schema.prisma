@@ -110,6 +110,7 @@ model Project {
   githubPollingCursor    DateTime?
   branchProtection       Json?
   agentAllocationStrategy String? @db.VarChar(20)
+  agentWorkspaceNoticeTemplate String? @db.Text
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
