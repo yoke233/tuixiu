@@ -48,6 +48,18 @@ function buildStepInstruction(step: any, issue: any): string {
     ].join("\n");
   }
 
+  if (kind === "session.interactive") {
+    return [
+      "你是一个用于内部协作的 CLI Agent。当前是一个交互式 Session：",
+      "- 请优先等待用户输入的指令，再执行对应开发任务。",
+      "- 不要自行开始大规模改动；如需修改/执行命令，请先说明理由与计划。",
+      "",
+      "请先输出一行：READY",
+      "并简要说明：你看到的 workspace 路径、当前分支名、以及你能协助的事项。",
+      "随后等待用户输入。",
+    ].join("\n");
+  }
+
   if (kind === "test.run") {
     const cmd = inferTestCommand(step, issue);
     return [

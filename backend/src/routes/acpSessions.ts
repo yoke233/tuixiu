@@ -3,6 +3,10 @@ import { z } from "zod";
 
 import type { AuthHelpers } from "../auth.js";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { CreateWorkspace } from "../executors/types.js";
+import { dispatchExecutionForRun } from "../services/executionDispatch.js";
+import { TaskEngineError, createTaskFromTemplate, startStep } from "../services/taskEngine.js";
+import { uuidv7 } from "../utils/uuid.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -11,6 +15,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function makeAcpSessionRoutes(deps: {
   prisma: PrismaDeps;
   sendToAgent?: SendToAgent;
+  createWorkspace?: CreateWorkspace;
+  broadcastToClients?: (payload: unknown) => void;
   auth: AuthHelpers;
 }): FastifyPluginAsync {
   return async (server) => {
@@ -67,6 +73,107 @@ export function makeAcpSessionRoutes(deps: {
         }));
 
         return { success: true, data: { sessions } };
+      },
+    );
+
+    server.post(
+      "/acp-sessions/start",
+      { preHandler: requireAdmin },
+      async (request) => {
+        const bodySchema = z.object({
+          projectId: z.string().uuid(),
+          goal: z.string().trim().max(4000).optional(),
+          worktreeName: z.string().trim().min(1).max(100).optional(),
+          agentId: z.string().uuid().optional(),
+          roleKey: z.string().trim().min(1).max(100).optional(),
+        });
+        const body = bodySchema.parse(request.body ?? {});
+
+        const actor = (request as any).user as { userId?: string; username?: string } | undefined;
+        const createdBy = typeof actor?.username === "string" && actor.username.trim() ? actor.username.trim() : null;
+        const createdByUserId = typeof actor?.userId === "string" && actor.userId.trim() ? actor.userId.trim() : null;
+
+        const project = await deps.prisma.project.findUnique({ where: { id: body.projectId } });
+        if (!project) {
+          return { success: false, error: { code: "NOT_FOUND", message: "Project 不存在" } };
+        }
+        if (!deps.sendToAgent) {
+          return { success: false, error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" } };
+        }
+        if (!deps.createWorkspace) {
+          return { success: false, error: { code: "NO_WORKSPACE", message: "Workspace 创建器未配置" } };
+        }
+
+        const now = new Date();
+        const name = body.worktreeName?.trim() ?? "";
+        const goal = body.goal?.trim() ?? "";
+        const goalLine = goal ? (goal.split(/\r?\n/)[0] ?? "").trim() : "";
+        const titleBase = name ? `Session · ${name}` : goalLine ? `Session · ${goalLine}` : `Session · ${now.toISOString()}`;
+        const title = titleBase.length > 255 ? titleBase.slice(0, 255) : titleBase;
+
+        const issue = await deps.prisma.issue.create({
+          data: {
+            id: uuidv7(),
+            projectId: project.id,
+            title,
+            description: goal || null,
+            status: "pending",
+            archivedAt: now,
+            createdBy,
+            labels: ["_session"],
+            assignedAgentId: body.agentId ?? null,
+          } as any,
+        });
+
+        try {
+          const task = await createTaskFromTemplate({ prisma: deps.prisma }, issue.id, { templateKey: "template.admin.session" });
+          if (createdByUserId) {
+            await deps.prisma.task
+              .update({ where: { id: (task as any).id }, data: { createdByUserId } as any })
+              .catch(() => {});
+          }
+
+          const stepId = (task as any).currentStepId ?? (task as any).steps?.[0]?.id ?? null;
+          if (!stepId) {
+            return { success: false, error: { code: "BAD_TASK", message: "Task 缺少可启动的 Step" } };
+          }
+
+          const started = await startStep({ prisma: deps.prisma }, stepId, { roleKey: body.roleKey } as any);
+
+          const dispatched = await dispatchExecutionForRun(
+            {
+              prisma: deps.prisma,
+              sendToAgent: deps.sendToAgent,
+              createWorkspace: deps.createWorkspace,
+              broadcastToClients: deps.broadcastToClients,
+            },
+            (started as any).run.id,
+          );
+          if (!dispatched.success) {
+            return {
+              success: false,
+              error: { code: "DISPATCH_FAILED", message: "启动 Session 失败", details: dispatched.error },
+              data: { issueId: issue.id, taskId: (started as any).task.id, stepId: (started as any).step.id, runId: (started as any).run.id },
+            };
+          }
+
+          deps.broadcastToClients?.({ type: "task_created", issue_id: issue.id, task_id: (started as any).task.id, run_id: (started as any).run.id });
+
+          return {
+            success: true,
+            data: {
+              issueId: issue.id,
+              taskId: (started as any).task.id,
+              stepId: (started as any).step.id,
+              runId: (started as any).run.id,
+            },
+          };
+        } catch (err) {
+          if (err instanceof TaskEngineError) {
+            return { success: false, error: { code: err.code, message: err.message, details: err.details } };
+          }
+          return { success: false, error: { code: "UNKNOWN", message: "启动 Session 失败", details: String(err) } };
+        }
       },
     );
 
