@@ -511,8 +511,10 @@ export function IssueDetailPage() {
     if (!effectivePmAnalysis) return;
     const roleKey = effectivePmAnalysis.recommendedRoleKey ?? "";
     const agentId = effectivePmAnalysis.recommendedAgentId ?? "";
+    const track = effectivePmAnalysis.recommendedTrack ?? "";
     if (roleKey) setSelectedRoleKey(roleKey);
     if (agentId) setSelectedAgentId(agentId);
+    if (track) setSelectedTaskTrack(track);
   }
 
 
@@ -1208,6 +1210,14 @@ export function IssueDetailPage() {
                       <code title={recommendedAgentName}>{recommendedAgentName}</code>
                     ) : (
                       <span className="muted">自动/无</span>
+                    )}
+                  </div>
+                  <div className="kvItem">
+                    <div className="muted">推荐 Track</div>
+                    {effectivePmAnalysis?.recommendedTrack ? (
+                      <code title={effectivePmAnalysis.recommendedTrack}>{effectivePmAnalysis.recommendedTrack}</code>
+                    ) : (
+                      <span className="muted">无</span>
                     )}
                   </div>
                 </div>

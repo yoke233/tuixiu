@@ -230,6 +230,7 @@ export type PmAnalysis = {
   questions: string[];
   recommendedRoleKey?: string | null;
   recommendedAgentId?: string | null;
+  recommendedTrack?: TaskTrack | null;
 };
 
 export type PmAnalysisMeta = {
