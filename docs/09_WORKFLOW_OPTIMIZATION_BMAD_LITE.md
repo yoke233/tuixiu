@@ -70,12 +70,13 @@ BMAD 的价值不在某个具体工具，而在一套面向多 agent/多人协�
 - PM 自动推荐 track（结合 issue 标签/目录变更/风险词），用户可覆盖
   - 已支持：PM 分析输出 `recommendedTrack`，并可在 UI 中一键应用（后续可继续增强信号与模板升级）
 
-当前内置模板（建议优先使用带 track 前缀的新 key；legacy `template.*` 仍兼容）：
+当前内置模板（建议优先使用带 track 前缀的新 key；legacy `template.*` 仍兼容，但会在创建 Task 时自动规范化为对应的 canonical key）：
 
 - `quick.dev.full`：实现→测试→评审→PR→CI→合并
 - `planning.prd.dev.full`：PRD→实现→测试→评审→PR→CI→合并
 - `planning.prd.only`：PRD 生成→评审→发布
 - `quick.test.only`：测试运行→发布
+- `enterprise.dev.full`：（预留）更强门禁/审计轨道的开发全流程（步骤与 `quick.dev.full` 一致）
 
 ### 4.2 Context Pack（共享上下文）= 解决“多人/多 agent 冲突”的根因
 

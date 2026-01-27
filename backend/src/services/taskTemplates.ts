@@ -14,6 +14,7 @@ export type TaskTemplate = {
   description?: string;
   track?: TaskTrack;
   deprecated?: boolean;
+  aliasOf?: string;
   steps: TaskTemplateStep[];
 };
 
@@ -40,7 +41,20 @@ const TEST_ONLY_STEPS: TaskTemplateStep[] = [
   { key: "test.publish", kind: "report.publish", executorType: "system", params: { kind: "test" } },
 ];
 
-export const TASK_TEMPLATES: TaskTemplate[] = [
+export const TASK_TEMPLATE_ALIASES: Record<string, string> = {
+  "template.admin.session": "quick.admin.session",
+  "template.dev.full": "quick.dev.full",
+  "template.prd.only": "planning.prd.only",
+  "template.test.only": "quick.test.only",
+};
+
+export function resolveTaskTemplateKey(key: string): string {
+  const k = String(key ?? "").trim();
+  if (!k) return "";
+  return TASK_TEMPLATE_ALIASES[k] ?? k;
+}
+
+const CANONICAL_TASK_TEMPLATES: TaskTemplate[] = [
   {
     key: "quick.admin.session",
     displayName: "Quick：管理员会话（交互式 Session）",
@@ -57,6 +71,7 @@ export const TASK_TEMPLATES: TaskTemplate[] = [
   {
     key: "planning.prd.dev.full",
     displayName: "Planning：PRD→开发全流程（PRD→实现→测试→评审→PR→CI→合并）",
+    description: "会先生成/评审/发布 PRD（提交到当前分支），随后进入开发全流程；PRD 会与后续代码一起进入同一个 PR。",
     track: "planning",
     steps: [...PRD_ONLY_STEPS, ...DEV_FULL_STEPS],
   },
@@ -73,42 +88,64 @@ export const TASK_TEMPLATES: TaskTemplate[] = [
     steps: TEST_ONLY_STEPS,
   },
   {
+    key: "enterprise.dev.full",
+    displayName: "Enterprise：开发全流程（更强门禁/审计预留）",
+    description: "（预留）与 quick.dev.full 步骤一致，用于需要更强合规/审计策略的任务轨道。",
+    track: "enterprise",
+    steps: DEV_FULL_STEPS,
+  },
+];
+
+function getCanonicalTemplateOrThrow(key: string): TaskTemplate {
+  const t = CANONICAL_TASK_TEMPLATES.find((x) => x.key === key);
+  if (!t) throw new Error(`canonical template not found: ${key}`);
+  return t;
+}
+
+const LEGACY_TASK_TEMPLATES: TaskTemplate[] = [
+  {
     key: "template.admin.session",
     displayName: "管理员会话（交互式 Session）",
-    description: "（legacy）创建一个独立分支/worktree，用于与 Agent 像 CLI 一样持续对话协作（不依赖 Issue 流程）",
-    track: "quick",
+    description: "（legacy，alias → quick.admin.session）创建一个独立分支/worktree，用于与 Agent 像 CLI 一样持续对话协作（不依赖 Issue 流程）",
     deprecated: true,
-    steps: ADMIN_SESSION_STEPS,
+    aliasOf: "quick.admin.session",
+    track: getCanonicalTemplateOrThrow("quick.admin.session").track,
+    steps: getCanonicalTemplateOrThrow("quick.admin.session").steps,
   },
   {
     key: "template.dev.full",
     displayName: "开发全流程（实现→测试→评审→PR→CI→合并）",
-    description: "（legacy）推荐改用 quick.dev.full",
-    track: "quick",
+    description: "（legacy，alias → quick.dev.full）",
     deprecated: true,
-    steps: DEV_FULL_STEPS,
+    aliasOf: "quick.dev.full",
+    track: getCanonicalTemplateOrThrow("quick.dev.full").track,
+    steps: getCanonicalTemplateOrThrow("quick.dev.full").steps,
   },
   {
     key: "template.prd.only",
     displayName: "PRD（生成→评审→发布）",
-    description: "（legacy）推荐改用 planning.prd.only",
-    track: "planning",
+    description: "（legacy，alias → planning.prd.only）",
     deprecated: true,
-    steps: PRD_ONLY_STEPS,
+    aliasOf: "planning.prd.only",
+    track: getCanonicalTemplateOrThrow("planning.prd.only").track,
+    steps: getCanonicalTemplateOrThrow("planning.prd.only").steps,
   },
   {
     key: "template.test.only",
     displayName: "测试（运行→发布）",
-    description: "（legacy）推荐改用 quick.test.only",
-    track: "quick",
+    description: "（legacy，alias → quick.test.only）",
     deprecated: true,
-    steps: TEST_ONLY_STEPS,
+    aliasOf: "quick.test.only",
+    track: getCanonicalTemplateOrThrow("quick.test.only").track,
+    steps: getCanonicalTemplateOrThrow("quick.test.only").steps,
   },
 ];
 
+export const TASK_TEMPLATES: TaskTemplate[] = [...CANONICAL_TASK_TEMPLATES, ...LEGACY_TASK_TEMPLATES];
+
 export function getTaskTemplate(key: string): TaskTemplate | null {
-  const k = String(key ?? "").trim();
+  const k = resolveTaskTemplateKey(key);
   if (!k) return null;
-  return TASK_TEMPLATES.find((t) => t.key === k) ?? null;
+  return CANONICAL_TASK_TEMPLATES.find((t) => t.key === k) ?? null;
 }
 
