@@ -37,6 +37,7 @@ const sandboxSchema = z
       .object({
         image: z.string().min(1).optional(),
         workingDir: z.string().min(1).optional(),
+        workspaceMode: z.enum(["mount", "git_clone"]).default("mount"),
         volumes: z
           .array(boxliteVolumeSchema)
           .optional(),

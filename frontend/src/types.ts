@@ -217,6 +217,7 @@ export type RoleTemplate = {
   promptTemplate?: string | null;
   initScript?: string | null;
   initTimeoutSeconds: number;
+  envKeys?: string[];
   createdAt: string;
   updatedAt: string;
 };

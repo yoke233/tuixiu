@@ -1,0 +1,28 @@
+{
+  "orchestrator_url": "ws://localhost:3000/ws/agent",
+  "auth_token": "",
+  "cwd": "/workspace",
+  "sandbox": {
+    "provider": "boxlite_oci",
+    "boxlite": {
+      "image": "ghcr.io/<org>/codex-acp:latest",
+      "workingDir": "/workspace",
+      "workspaceMode": "git_clone",
+      "env": {
+        "OPENAI_API_KEY": "<set-me>"
+      }
+    }
+  },
+  "agent": {
+    "id": "codex-boxlite-1",
+    "name": "codex-boxlite-1",
+    "max_concurrent": 5,
+    "capabilities": {
+      "languages": ["typescript"],
+      "tools": ["git", "docker", "pnpm"]
+    }
+  },
+  "heartbeat_seconds": 30,
+  "mock_mode": false,
+  "agent_command": ["npx", "--yes", "@zed-industries/codex-acp"]
+}

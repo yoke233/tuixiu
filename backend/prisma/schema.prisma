@@ -283,6 +283,7 @@ model RoleTemplate {
   promptTemplate     String?  @db.Text
   initScript         String?  @db.Text
   initTimeoutSeconds Int      @default(300)
+  envText            String?  @db.Text
 
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
