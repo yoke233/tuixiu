@@ -21,8 +21,8 @@ async function makeTempWorkspace(files: Record<string, string>): Promise<string>
 describe("Context Pack", () => {
   it("falls back to default mapping when manifest missing", async () => {
     const ws = await makeTempWorkspace({
-      "docs/project-context.md": "PROJECT_CONTEXT",
-      "docs/dod.md": "DOD",
+      "docs/05_process/project-context.md": "PROJECT_CONTEXT",
+      "docs/05_process/definition-of-done.md": "DOD",
     });
 
     const implement = await buildContextPackPrompt({ workspacePath: ws, stepKind: "dev.implement" });
@@ -36,8 +36,8 @@ describe("Context Pack", () => {
 
   it("loads docs from context-manifest.json when present", async () => {
     const ws = await makeTempWorkspace({
-      "docs/project-context.md": "PROJECT_CONTEXT",
-      "docs/dod.md": "DOD",
+      "docs/05_process/project-context.md": "PROJECT_CONTEXT",
+      "docs/05_process/definition-of-done.md": "DOD",
       "docs/foo.md": "FOO",
       "docs/context-manifest.json": JSON.stringify(
         {
@@ -61,4 +61,3 @@ describe("Context Pack", () => {
     expect(review).not.toContain("DOD");
   });
 });
-

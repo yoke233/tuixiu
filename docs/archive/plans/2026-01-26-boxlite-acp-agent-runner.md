@@ -1,4 +1,16 @@
-# BoxLite + ACP 多 Agent Runner 实施计划
+---
+title: "BoxLite + ACP 多 Agent Runner 实施计划"
+owner: "@tuixiu-maintainers"
+status: "archived"
+result: "done"
+last_reviewed: "2026-01-27"
+superseded_by: "docs/00_overview/roadmap.md"
+---
+
+# BoxLite + ACP 多 Agent Runner 实施计划（已归档）
+
+> ⚠️ **已归档 / 已过期**：本文件仅用于历史追溯，可能与当前实现不一致，请勿作为开发依据。  
+> 当前请以 `README.md`、`docs/00_overview/roadmap.md`、`docs/03_guides/quick-start.md` 为准。
 
 > **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
 
@@ -21,7 +33,7 @@
 
 **Files:**
 - Create: `docs/archive/plans/2026-01-26-boxlite-acp-agent-runner-design.md`
-- Modify: `docs/02_ENVIRONMENT_SETUP.md`
+- Modify: `docs/03_guides/environment-setup.md`
 
 **Step 1: 记录 A 形态的关键配置**
 - `orchestrator_url`：在 WSL2 里不能用 `localhost`，需要用 Windows Host IP（建议写一个“如何取 IP”的命令片段）。
@@ -89,7 +101,7 @@ export interface SandboxProvider {
 **Files:**
 - Modify: `acp-proxy/src/config.ts`
 - Modify: `acp-proxy/config.json.example`
-- Modify: `docs/06_QUICK_START_GUIDE.md`
+- Modify: `docs/03_guides/quick-start.md`
 
 **Step 1: 配置 schema 增加 sandbox/provider**
 - `sandbox.provider: "host_process" | "boxlite_oci"`（默认 `host_process`）
@@ -140,9 +152,9 @@ export interface SandboxProvider {
 ### Task 5: 准备一个可运行的 ACP Agent 容器镜像（以 Codex 为例）
 
 **Files:**
-- Create: `docs/references/agent-images/codex-acp/Dockerfile`
-- Modify: `docs/02_ENVIRONMENT_SETUP.md`
-- Modify: `docs/06_QUICK_START_GUIDE.md`
+- Create: `docs/03_guides/agent-images/codex-acp/Dockerfile`
+- Modify: `docs/03_guides/environment-setup.md`
+- Modify: `docs/03_guides/quick-start.md`
 
 **Step 1: 写 Dockerfile（最小可运行）**
 - 基于 `node:20-slim`

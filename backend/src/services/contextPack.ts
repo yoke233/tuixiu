@@ -51,8 +51,8 @@ function defaultManifest(): ContextManifest {
   return {
     version: 1,
     docs: {
-      projectContext: { path: "docs/project-context.md", title: "项目上下文（硬约束）", maxChars: 9000 },
-      dod: { path: "docs/dod.md", title: "DoD（完成定义）", maxChars: 9000 },
+      projectContext: { path: "docs/05_process/project-context.md", title: "项目上下文（硬约束）", maxChars: 9000 },
+      dod: { path: "docs/05_process/definition-of-done.md", title: "DoD（完成定义）", maxChars: 9000 },
     },
     defaults: ["projectContext"],
     stepKinds: {
