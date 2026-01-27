@@ -18,6 +18,7 @@ import {
 } from "../services/runReviewRequest.js";
 import { requestMergePrApproval } from "../services/approvalRequests.js";
 import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
+import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
@@ -417,6 +418,10 @@ export function makeRunRoutes(deps: {
             step_id: (run as any).stepId,
             run_id: run.id,
           });
+          triggerTaskAutoAdvance(
+            { prisma: deps.prisma, sendToAgent: deps.sendToAgent, broadcastToClients: deps.broadcastToClients },
+            { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
+          );
         }
         return { success: true, data: { ok: true } };
       }
@@ -456,6 +461,10 @@ export function makeRunRoutes(deps: {
           step_id: (run as any).stepId,
           run_id: run.id,
         });
+        triggerTaskAutoAdvance(
+          { prisma: deps.prisma, sendToAgent: deps.sendToAgent, broadcastToClients: deps.broadcastToClients },
+          { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
+        );
       }
       return { success: true, data: { ok: true } };
     });

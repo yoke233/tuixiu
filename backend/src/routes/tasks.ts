@@ -1,7 +1,9 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { CreateWorkspace } from "../executors/types.js";
+import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
 import {
   TaskEngineError,
   createTaskFromTemplate,
@@ -12,6 +14,8 @@ import {
 
 export function makeTaskRoutes(deps: {
   prisma: PrismaDeps;
+  sendToAgent?: SendToAgent;
+  createWorkspace?: CreateWorkspace;
   broadcastToClients?: (payload: unknown) => void;
 }): FastifyPluginAsync {
   return async (server) => {
@@ -36,6 +40,15 @@ export function makeTaskRoutes(deps: {
       try {
         const task = await createTaskFromTemplate({ prisma: deps.prisma }, id, body);
         deps.broadcastToClients?.({ type: "task_created", issue_id: id, task_id: (task as any).id });
+        triggerTaskAutoAdvance(
+          {
+            prisma: deps.prisma,
+            sendToAgent: deps.sendToAgent,
+            createWorkspace: deps.createWorkspace,
+            broadcastToClients: deps.broadcastToClients,
+          },
+          { issueId: id, taskId: (task as any).id, trigger: "task_created" },
+        );
         return { success: true, data: { task } };
       } catch (err) {
         if (err instanceof TaskEngineError) {

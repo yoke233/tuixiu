@@ -138,7 +138,15 @@ server.register(
   { prefix: "/api/integrations" },
 );
 server.register(makePmRoutes({ prisma, pm }), { prefix: "/api/pm" });
-server.register(makeTaskRoutes({ prisma, broadcastToClients: wsGateway.broadcastToClients }), { prefix: "/api" });
+server.register(
+  makeTaskRoutes({
+    prisma,
+    sendToAgent: wsGateway.sendToAgent,
+    createWorkspace,
+    broadcastToClients: wsGateway.broadcastToClients,
+  }),
+  { prefix: "/api" },
+);
 server.register(
   makeStepRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, createWorkspace, autoDispatch: true, broadcastToClients: wsGateway.broadcastToClients }),
   { prefix: "/api" },
