@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from "./client";
+import { apiGet, apiPatch, apiPost, apiRequest } from "./client";
 import type { RoleTemplate } from "../types";
 
 export type CreateRoleTemplateInput = {
@@ -27,5 +27,9 @@ export async function updateRole(
 ): Promise<RoleTemplate> {
   const data = await apiPatch<{ role: RoleTemplate }>(`/projects/${projectId}/roles/${roleId}`, input);
   return data.role;
+}
+
+export async function deleteRole(projectId: string, roleId: string): Promise<{ roleId: string }> {
+  return await apiRequest<{ roleId: string }>(`/projects/${projectId}/roles/${roleId}`, { method: "DELETE" });
 }
 

@@ -7,11 +7,11 @@ import { createIssue, listIssues, updateIssue } from "../api/issues";
 import { importGitHubIssue } from "../api/githubIssues";
 import { getPmPolicy, updatePmPolicy } from "../api/policies";
 import { createProject, listProjects } from "../api/projects";
-import { createRole } from "../api/roles";
+import { createRole, deleteRole, listRoles, updateRole } from "../api/roles";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { AcpSessionSummary, Approval, Issue, IssueStatus, PmPolicy, Project } from "../types";
+import type { AcpSessionSummary, Approval, Issue, IssueStatus, PmPolicy, Project, RoleTemplate } from "../types";
 import { getShowArchivedIssues, setShowArchivedIssues } from "../utils/settings";
 
 const ADMIN_SECTION_KEYS = ["acpSessions", "approvals", "settings", "policy", "projects", "issues", "roles", "archive"] as const;
@@ -83,6 +83,17 @@ export function AdminPage() {
   const [rolePromptTemplate, setRolePromptTemplate] = useState("");
   const [roleInitScript, setRoleInitScript] = useState("");
   const [roleInitTimeoutSeconds, setRoleInitTimeoutSeconds] = useState("300");
+  const [roles, setRoles] = useState<RoleTemplate[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [rolesError, setRolesError] = useState<string | null>(null);
+  const [roleEditingId, setRoleEditingId] = useState("");
+  const [roleEditDisplayName, setRoleEditDisplayName] = useState("");
+  const [roleEditDescription, setRoleEditDescription] = useState("");
+  const [roleEditPromptTemplate, setRoleEditPromptTemplate] = useState("");
+  const [roleEditInitScript, setRoleEditInitScript] = useState("");
+  const [roleEditInitTimeoutSeconds, setRoleEditInitTimeoutSeconds] = useState("");
+  const [roleSavingId, setRoleSavingId] = useState("");
+  const [roleDeletingId, setRoleDeletingId] = useState("");
 
   const [archiveItems, setArchiveItems] = useState<Issue[]>([]);
   const [archiveTotal, setArchiveTotal] = useState(0);
@@ -106,6 +117,10 @@ export function AdminPage() {
     return effectiveProjectId ? projects.find((p) => p.id === effectiveProjectId) ?? null : null;
   }, [effectiveProjectId, projects]);
 
+  const editingRole = useMemo(() => {
+    return roles.find((role) => role.id === roleEditingId) ?? null;
+  }, [roleEditingId, roles]);
+
   async function refresh() {
     setLoading(true);
     setError(null);
@@ -119,6 +134,20 @@ export function AdminPage() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshRoles() {
+    if (!effectiveProjectId) return;
+    setRolesLoading(true);
+    setRolesError(null);
+    try {
+      const items = await listRoles(effectiveProjectId);
+      setRoles(items);
+    } catch (e) {
+      setRolesError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRolesLoading(false);
     }
   }
 
@@ -166,6 +195,16 @@ export function AdminPage() {
         setPolicyLoading(false);
       }
     })();
+  }, [activeSection, effectiveProjectId]);
+
+  useEffect(() => {
+    if (activeSection !== "roles") {
+      resetRoleEdit();
+      return;
+    }
+    resetRoleEdit();
+    void refreshRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, effectiveProjectId]);
 
   useEffect(() => {
@@ -368,8 +407,93 @@ export function AdminPage() {
       setRolePromptTemplate("");
       setRoleInitScript("");
       setRoleInitTimeoutSeconds("300");
+      await refreshRoles();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function resetRoleEdit() {
+    setRoleEditingId("");
+    setRoleEditDisplayName("");
+    setRoleEditDescription("");
+    setRoleEditPromptTemplate("");
+    setRoleEditInitScript("");
+    setRoleEditInitTimeoutSeconds("");
+  }
+
+  function startRoleEdit(role: RoleTemplate) {
+    setRoleEditingId(role.id);
+    setRoleEditDisplayName(role.displayName ?? "");
+    setRoleEditDescription(role.description ?? "");
+    setRoleEditPromptTemplate(role.promptTemplate ?? "");
+    setRoleEditInitScript(role.initScript ?? "");
+    setRoleEditInitTimeoutSeconds(String(role.initTimeoutSeconds ?? 300));
+  }
+
+  async function onUpdateRole(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!requireAdmin()) return;
+    if (!effectiveProjectId) {
+      setError("请先创建 Project");
+      return;
+    }
+    if (!roleEditingId) return;
+
+    const displayName = roleEditDisplayName.trim();
+    if (!displayName) {
+      setError("显示名称不能为空");
+      return;
+    }
+
+    const timeoutRaw = roleEditInitTimeoutSeconds.trim();
+    let timeoutSeconds: number | undefined;
+    if (timeoutRaw) {
+      const parsed = Number(timeoutRaw);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setError("init 超时秒数需要正整数");
+        return;
+      }
+      timeoutSeconds = parsed;
+    }
+
+    setRoleSavingId(roleEditingId);
+    try {
+      await updateRole(effectiveProjectId, roleEditingId, {
+        displayName,
+        description: roleEditDescription.trim(),
+        promptTemplate: roleEditPromptTemplate.trim(),
+        initScript: roleEditInitScript.trim(),
+        initTimeoutSeconds: timeoutSeconds
+      });
+      resetRoleEdit();
+      await refreshRoles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRoleSavingId("");
+    }
+  }
+
+  async function onDeleteRole(role: RoleTemplate) {
+    setError(null);
+    if (!requireAdmin()) return;
+    if (!effectiveProjectId) {
+      setError("请先创建 Project");
+      return;
+    }
+    if (!window.confirm(`确认删除 RoleTemplate？\n\n${role.displayName} (${role.key})`)) return;
+
+    setRoleDeletingId(role.id);
+    try {
+      await deleteRole(effectiveProjectId, role.id);
+      if (roleEditingId === role.id) resetRoleEdit();
+      await refreshRoles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRoleDeletingId("");
     }
   }
 
@@ -474,7 +598,7 @@ export function AdminPage() {
       policy: { title: "策略（Policy）", desc: "Project 级：自动化开关 / 审批门禁 / 敏感目录（JSON）" },
       projects: { title: "项目管理", desc: "创建/配置 Project（仓库、SCM、认证方式等）" },
       issues: { title: "Issue 管理", desc: "创建需求或导入外部 Issue" },
-      roles: { title: "角色模板", desc: "创建 RoleTemplate（Prompt / initScript 等）" },
+      roles: { title: "角色模板", desc: "创建/维护 RoleTemplate（Prompt / initScript 等）" },
       archive: { title: "Issue 归档", desc: "管理已完成/失败/取消的 Issue 归档状态" },
       acpSessions: { title: "ACP Sessions", desc: "查看/关闭 ACP session，并可快速启动独立的交互式 Session" }
     };
@@ -916,6 +1040,91 @@ export function AdminPage() {
           />
         )}
 
+        <details style={{ marginTop: 12 }}>
+          <summary>字段说明</summary>
+          <div className="muted" style={{ marginTop: 8 }}>
+            <div>
+              <code>version</code>：配置版本号（当前固定为 <code>1</code>）。
+            </div>
+            <div>
+              <code>automation</code>：自动化开关集合（创建 Issue / Review / 创建 PR / 自动请求合并审批）。
+            </div>
+            <div>
+              <code>approvals.requireForActions</code>：这些动作必须人工审批（如 <code>merge_pr</code>）。
+            </div>
+            <div>
+              <code>approvals.escalateOnSensitivePaths</code>：命中敏感目录时，强制审批的动作列表（如 <code>create_pr</code>）。
+            </div>
+            <div>
+              动作枚举：<code>merge_pr</code> / <code>create_pr</code> / <code>publish_artifact</code>。
+            </div>
+            <div>
+              <code>sensitivePaths</code>：敏感路径规则数组（支持 glob，例如 <code>backend/**</code>、<code>.env*</code>）。
+            </div>
+            <div style={{ marginTop: 6 }}>
+              后端校验：<code>backend/src/services/pm/pmPolicy.ts</code>（Zod：<code>pmPolicyV1Schema</code>，<code>.strict()</code>）。
+            </div>
+          </div>
+        </details>
+
+        <details style={{ marginTop: 10 }}>
+          <summary>示例</summary>
+          <pre className="pre">{`{
+  "version": 1,
+  "automation": {
+    "autoStartIssue": true,
+    "autoReview": true,
+    "autoCreatePr": true,
+    "autoRequestMergeApproval": true
+  },
+  "approvals": {
+    "requireForActions": ["merge_pr"],
+    "escalateOnSensitivePaths": ["create_pr", "publish_artifact"]
+  },
+  "sensitivePaths": ["backend/**", ".env*"]
+}`}</pre>
+        </details>
+
+        <details style={{ marginTop: 10 }}>
+          <summary>JSON Schema / 结构</summary>
+          <pre className="pre">{`{
+  "type": "object",
+  "properties": {
+    "version": { "type": "integer", "enum": [1] },
+    "automation": {
+      "type": "object",
+      "properties": {
+        "autoStartIssue": { "type": "boolean" },
+        "autoReview": { "type": "boolean" },
+        "autoCreatePr": { "type": "boolean" },
+        "autoRequestMergeApproval": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "approvals": {
+      "type": "object",
+      "properties": {
+        "requireForActions": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["merge_pr", "create_pr", "publish_artifact"] }
+        },
+        "escalateOnSensitivePaths": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["merge_pr", "create_pr", "publish_artifact"] }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sensitivePaths": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["version"],
+  "additionalProperties": false
+}`}</pre>
+          <div className="muted" style={{ marginTop: 6 }}>
+            结构层级固定为 <code>version/automation/approvals/sensitivePaths</code>；未填写字段会按后端默认值补全，且不允许额外字段。
+          </div>
+        </details>
+
         <div className="muted" style={{ marginTop: 8 }}>
           后端接口：<code>GET/PUT /api/policies?projectId=...</code>（存储在 <code>Project.branchProtection.pmPolicy</code>）。
         </div>
@@ -1161,7 +1370,139 @@ export function AdminPage() {
           </div>
         </section>
 
-        <section className="card" hidden={activeSection !== "archive"}>
+        <section className="card" hidden={activeSection !== "roles"}>
+          <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+            <div>
+              <h2 style={{ marginTop: 0 }}>已创建角色</h2>
+              <div className="muted">维护 Prompt / initScript / 超时等配置。</div>
+            </div>
+            <button
+              type="button"
+              className="buttonSecondary"
+              onClick={() => void refreshRoles()}
+              disabled={!effectiveProjectId || rolesLoading}
+            >
+              刷新
+            </button>
+          </div>
+
+          {!effectiveProjectId ? (
+            <div className="muted">请先创建 Project</div>
+          ) : rolesLoading ? (
+            <div className="muted" style={{ marginTop: 10 }}>
+              加载中…
+            </div>
+          ) : rolesError ? (
+            <div className="muted" style={{ marginTop: 10 }} title={rolesError}>
+              角色列表加载失败：{rolesError}
+            </div>
+          ) : roles.length ? (
+            <div className="tableScroll" style={{ marginTop: 10 }}>
+              <table className="table tableWrap">
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>显示名称</th>
+                    <th>init 超时</th>
+                    <th>更新时间</th>
+                    <th style={{ textAlign: "right" }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roles.map((role) => {
+                    const editing = roleEditingId === role.id;
+                    const busy = roleSavingId === role.id || roleDeletingId === role.id;
+                    return (
+                      <tr key={role.id}>
+                        <td>
+                          <code title={role.key}>{role.key}</code>
+                        </td>
+                        <td>
+                          <div className="cellStack">
+                            <div>{role.displayName}</div>
+                            {role.description ? <div className="cellSub">{role.description}</div> : null}
+                          </div>
+                        </td>
+                        <td>{role.initTimeoutSeconds}s</td>
+                        <td>{new Date(role.updatedAt).toLocaleString()}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <div className="row gap" style={{ justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              className="buttonSecondary"
+                              onClick={() => (editing ? resetRoleEdit() : startRoleEdit(role))}
+                              disabled={rolesLoading || busy}
+                            >
+                              {editing ? "取消编辑" : "编辑"}
+                            </button>
+                            <button
+                              type="button"
+                              className="buttonSecondary"
+                              onClick={() => onDeleteRole(role)}
+                              disabled={rolesLoading || roleDeletingId === role.id}
+                            >
+                              {roleDeletingId === role.id ? "删除中…" : "删除"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="muted" style={{ marginTop: 10 }}>
+              暂无 RoleTemplate
+            </div>
+          )}
+
+          {editingRole ? (
+            <form onSubmit={onUpdateRole} className="form" style={{ marginTop: 16 }}>
+              <h3 style={{ marginTop: 0 }}>编辑角色</h3>
+              <div className="muted">
+                key: <code>{editingRole.key}</code> · id: <code>{editingRole.id}</code>
+              </div>
+              <label className="label">
+                显示名称 *
+                <input value={roleEditDisplayName} onChange={(e) => setRoleEditDisplayName(e.target.value)} />
+              </label>
+              <label className="label">
+                描述（可选）
+                <input value={roleEditDescription} onChange={(e) => setRoleEditDescription(e.target.value)} />
+              </label>
+              <label className="label">
+                Prompt Template（可选）
+                <textarea
+                  value={roleEditPromptTemplate}
+                  onChange={(e) => setRoleEditPromptTemplate(e.target.value)}
+                  rows={3}
+                />
+              </label>
+              <label className="label">
+                initScript（bash，可选）
+                <textarea value={roleEditInitScript} onChange={(e) => setRoleEditInitScript(e.target.value)} rows={3} />
+              </label>
+              <label className="label">
+                init 超时秒数（可选）
+                <input
+                  value={roleEditInitTimeoutSeconds}
+                  onChange={(e) => setRoleEditInitTimeoutSeconds(e.target.value)}
+                />
+              </label>
+              <div className="row gap" style={{ marginTop: 10 }}>
+                <button type="submit" disabled={roleSavingId === editingRole.id || roleDeletingId === editingRole.id}>
+                  {roleSavingId === editingRole.id ? "保存中…" : "保存修改"}
+                </button>
+                <button type="button" className="buttonSecondary" onClick={resetRoleEdit}>
+                  取消
+                </button>
+              </div>
+            </form>
+          ) : null}
+        </section>
+
+        <section className="card" style={{ gridColumn: "1 / -1" }} hidden={activeSection !== "archive"}>
           <div className="row spaceBetween" style={{ alignItems: "baseline" }}>
             <div>
               <h2 style={{ marginTop: 0 }}>Issue 归档</h2>

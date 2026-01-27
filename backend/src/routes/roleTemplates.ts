@@ -84,6 +84,20 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
 
       return { success: true, data: { role } };
     });
+
+    server.delete("/:projectId/roles/:roleId", async (request) => {
+      const paramsSchema = z.object({ projectId: z.string().uuid(), roleId: z.string().uuid() });
+      const { projectId, roleId } = paramsSchema.parse(request.params);
+
+      const existing = await deps.prisma.roleTemplate.findFirst({ where: { id: roleId, projectId } });
+      if (!existing) {
+        return { success: false, error: { code: "NOT_FOUND", message: "RoleTemplate 不存在" } };
+      }
+
+      await deps.prisma.roleTemplate.delete({ where: { id: roleId } });
+
+      return { success: true, data: { roleId } };
+    });
   };
 }
 
