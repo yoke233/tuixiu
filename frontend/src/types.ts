@@ -38,6 +38,7 @@ export type Issue = {
   description?: string | null;
   status: IssueStatus;
   archivedAt?: string | null;
+  labels?: unknown;
   createdAt: string;
   updatedAt?: string;
   externalProvider?: string | null;
@@ -161,7 +162,7 @@ export type Artifact = {
   createdAt: string;
 };
 
-export type ApprovalAction = "merge_pr";
+export type ApprovalAction = "merge_pr" | "create_pr" | "publish_artifact";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "executing" | "executed" | "failed";
 
@@ -243,6 +244,7 @@ export type PmPolicy = {
   };
   approvals: {
     requireForActions: ApprovalAction[];
+    escalateOnSensitivePaths: ApprovalAction[];
   };
   sensitivePaths: string[];
 };

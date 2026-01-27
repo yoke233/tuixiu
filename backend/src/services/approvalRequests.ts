@@ -4,7 +4,7 @@ import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { postGitHubApprovalCommentBestEffort } from "./githubIssueComments.js";
 
-const approvalActionSchema = z.enum(["merge_pr"]);
+const approvalActionSchema = z.enum(["merge_pr", "create_pr", "publish_artifact"]);
 export type ApprovalAction = z.infer<typeof approvalActionSchema>;
 
 const approvalStatusSchema = z.enum(["pending", "approved", "rejected", "executing", "executed", "failed"]);
@@ -194,6 +194,199 @@ export async function requestMergePrApproval(opts: {
       runId: String((run as any).id),
       approvalId: String((created as any).id),
       prUrl: prUrl || null,
+    });
+  }
+
+  const summary = toApprovalSummary(created, run);
+  if (!summary) {
+    return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
+  }
+  return { success: true, data: { approval: summary } };
+}
+
+export async function requestCreatePrApproval(opts: {
+  prisma: PrismaDeps;
+  runId: string;
+  requestedBy?: string;
+  payload?: { title?: string; description?: string; targetBranch?: string; sensitive?: { patterns: string[]; matchedFiles: string[] } };
+}): Promise<
+  | { success: true; data: { approval: ApprovalSummary } }
+  | { success: false; error: { code: string; message: string; details?: string } }
+> {
+  const run = await opts.prisma.run.findUnique({
+    where: { id: opts.runId },
+    include: { issue: { include: { project: true } }, artifacts: true },
+  });
+  if (!run) {
+    return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+  }
+
+  const existing = findLatestApprovalArtifact({
+    artifacts: (run as any)?.artifacts ?? [],
+    action: "create_pr",
+    status: ["pending", "approved", "executing"],
+  });
+  if (existing) {
+    const summary = toApprovalSummary(existing.artifact, run);
+    if (summary) return { success: true, data: { approval: summary } };
+  }
+
+  const now = new Date().toISOString();
+  const requestedBy = typeof opts.requestedBy === "string" && opts.requestedBy.trim() ? opts.requestedBy.trim() : "user";
+  const payload = opts.payload && typeof opts.payload === "object" ? opts.payload : {};
+
+  const created = await opts.prisma.artifact.create({
+    data: {
+      id: uuidv7(),
+      runId: (run as any).id,
+      type: "report",
+      content: {
+        kind: "approval_request",
+        version: 1,
+        action: "create_pr",
+        status: "pending",
+        requestedBy,
+        requestedAt: now,
+        payload: {
+          title: typeof payload.title === "string" ? payload.title : undefined,
+          description: typeof payload.description === "string" ? payload.description : undefined,
+          targetBranch: typeof payload.targetBranch === "string" ? payload.targetBranch : undefined,
+          sensitive: payload.sensitive && typeof payload.sensitive === "object" ? payload.sensitive : undefined,
+        },
+      } as any,
+    },
+  });
+
+  await opts.prisma.event
+    .create({
+      data: {
+        id: uuidv7(),
+        runId: (run as any).id,
+        source: "system",
+        type: "approval.create_pr.requested",
+        payload: {
+          approvalId: (created as any).id,
+          requestedBy,
+          requestedAt: now,
+        } as any,
+      },
+    })
+    .catch(() => {});
+
+  const issue: any = (run as any)?.issue;
+  const project: any = issue?.project;
+  const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
+  const issueNumber = Number(issue?.externalNumber ?? 0);
+  const token = String(project?.githubAccessToken ?? "").trim();
+  const repoUrl = String(project?.repoUrl ?? "").trim();
+
+  if (issueIsGitHub && token) {
+    await postGitHubApprovalCommentBestEffort({
+      repoUrl,
+      githubAccessToken: token,
+      issueNumber,
+      kind: "create_pr_requested",
+      runId: String((run as any).id),
+      approvalId: String((created as any).id),
+    });
+  }
+
+  const summary = toApprovalSummary(created, run);
+  if (!summary) {
+    return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
+  }
+  return { success: true, data: { approval: summary } };
+}
+
+export async function requestPublishArtifactApproval(opts: {
+  prisma: PrismaDeps;
+  artifactId: string;
+  requestedBy?: string;
+  payload?: { path?: string; sensitive?: { patterns: string[]; matchedFiles: string[] } };
+}): Promise<
+  | { success: true; data: { approval: ApprovalSummary } }
+  | { success: false; error: { code: string; message: string; details?: string } }
+> {
+  const artifact = await opts.prisma.artifact.findUnique({
+    where: { id: opts.artifactId },
+    include: { run: { include: { issue: { include: { project: true } }, artifacts: true } } } as any,
+  });
+  if (!artifact) {
+    return { success: false, error: { code: "NOT_FOUND", message: "Artifact 不存在" } };
+  }
+
+  const run = (artifact as any)?.run;
+  if (!run) {
+    return { success: false, error: { code: "NO_RUN", message: "Artifact 未绑定 Run" } };
+  }
+
+  const existing = findLatestApprovalArtifact({
+    artifacts: (run as any)?.artifacts ?? [],
+    action: "publish_artifact",
+    status: ["pending", "approved", "executing"],
+  });
+  if (existing) {
+    const summary = toApprovalSummary(existing.artifact, run);
+    if (summary) return { success: true, data: { approval: summary } };
+  }
+
+  const now = new Date().toISOString();
+  const requestedBy = typeof opts.requestedBy === "string" && opts.requestedBy.trim() ? opts.requestedBy.trim() : "user";
+  const payload = opts.payload && typeof opts.payload === "object" ? opts.payload : {};
+
+  const created = await opts.prisma.artifact.create({
+    data: {
+      id: uuidv7(),
+      runId: String((run as any).id),
+      type: "report",
+      content: {
+        kind: "approval_request",
+        version: 1,
+        action: "publish_artifact",
+        status: "pending",
+        requestedBy,
+        requestedAt: now,
+        payload: {
+          sourceArtifactId: String((artifact as any).id),
+          path: typeof payload.path === "string" ? payload.path : undefined,
+          sensitive: payload.sensitive && typeof payload.sensitive === "object" ? payload.sensitive : undefined,
+        },
+      } as any,
+    },
+  });
+
+  await opts.prisma.event
+    .create({
+      data: {
+        id: uuidv7(),
+        runId: String((run as any).id),
+        source: "system",
+        type: "approval.publish_artifact.requested",
+        payload: {
+          approvalId: (created as any).id,
+          requestedBy,
+          requestedAt: now,
+          artifactId: String((artifact as any).id),
+        } as any,
+      },
+    })
+    .catch(() => {});
+
+  const issue: any = (run as any)?.issue;
+  const project: any = issue?.project;
+  const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
+  const issueNumber = Number(issue?.externalNumber ?? 0);
+  const token = String(project?.githubAccessToken ?? "").trim();
+  const repoUrl = String(project?.repoUrl ?? "").trim();
+
+  if (issueIsGitHub && token) {
+    await postGitHubApprovalCommentBestEffort({
+      repoUrl,
+      githubAccessToken: token,
+      issueNumber,
+      kind: "publish_artifact_requested",
+      runId: String((run as any).id),
+      approvalId: String((created as any).id),
     });
   }
 

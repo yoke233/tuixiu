@@ -128,7 +128,15 @@ server.register(
   makeRunRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, acp: acpTunnel, broadcastToClients: wsGateway.broadcastToClients }),
   { prefix: "/api/runs" },
 );
-server.register(makeApprovalRoutes({ prisma }), { prefix: "/api/approvals" });
+server.register(
+  makeApprovalRoutes({
+    prisma,
+    sendToAgent: wsGateway.sendToAgent,
+    createWorkspace,
+    broadcastToClients: wsGateway.broadcastToClients,
+  }),
+  { prefix: "/api/approvals" },
+);
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
@@ -170,7 +178,17 @@ server.register(
   { prefix: "/api" },
 );
 server.register(makeArtifactRoutes({ prisma }), { prefix: "/api" });
-server.register(makeAcpSessionRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, acp: acpTunnel, auth }), { prefix: "/api/admin" });
+server.register(
+  makeAcpSessionRoutes({
+    prisma,
+    sendToAgent: wsGateway.sendToAgent,
+    acp: acpTunnel,
+    createWorkspace,
+    broadcastToClients: wsGateway.broadcastToClients,
+    auth,
+  }),
+  { prefix: "/api/admin" },
+);
 
 startWorkspaceCleanupLoop({
   prisma,

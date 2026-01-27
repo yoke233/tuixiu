@@ -16,3 +16,16 @@ export async function cancelAcpSession(runId: string, sessionId: string): Promis
   return data;
 }
 
+export async function startAcpSession(input: {
+  projectId: string;
+  goal?: string;
+  worktreeName?: string;
+  agentId?: string;
+  roleKey?: string;
+}): Promise<{ issueId: string; taskId: string; stepId: string; runId: string }> {
+  const data = await apiPost<{ issueId: string; taskId: string; stepId: string; runId: string }>(
+    `/admin/acp-sessions/start`,
+    input,
+  );
+  return data;
+}

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../../deps.js";
 
-const approvalActionSchema = z.enum(["merge_pr"]);
+const approvalActionSchema = z.enum(["merge_pr", "create_pr", "publish_artifact"]);
 
 export const pmPolicyV1Schema = z
   .object({
@@ -18,8 +18,9 @@ export const pmPolicyV1Schema = z
     approvals: z
       .object({
         requireForActions: z.array(approvalActionSchema).default(["merge_pr"]),
+        escalateOnSensitivePaths: z.array(approvalActionSchema).default(["create_pr", "publish_artifact"]),
       })
-      .default({ requireForActions: ["merge_pr"] }),
+      .default({ requireForActions: ["merge_pr"], escalateOnSensitivePaths: ["create_pr", "publish_artifact"] }),
     sensitivePaths: z.array(z.string().min(1)).default([]),
   })
   .strict();

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { approveApproval, listApprovals, rejectApproval } from "../api/approvals";
-import { cancelAcpSession, listAcpSessions } from "../api/acpSessions";
+import { cancelAcpSession, listAcpSessions, startAcpSession } from "../api/acpSessions";
 import { createIssue, listIssues, updateIssue } from "../api/issues";
 import { importGitHubIssue } from "../api/githubIssues";
 import { getPmPolicy, updatePmPolicy } from "../api/policies";
@@ -49,6 +49,9 @@ export function AdminPage() {
   const [acpSessions, setAcpSessions] = useState<AcpSessionSummary[]>([]);
   const [loadingAcpSessions, setLoadingAcpSessions] = useState(false);
   const [cancelingAcpSessionKey, setCancelingAcpSessionKey] = useState<string>("");
+  const [startingAcpSession, setStartingAcpSession] = useState(false);
+  const [acpSessionGoal, setAcpSessionGoal] = useState("");
+  const [acpSessionWorktreeName, setAcpSessionWorktreeName] = useState("");
 
   const [showArchivedOnBoard, setShowArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -432,6 +435,32 @@ export function AdminPage() {
     }
   }
 
+  async function onStartAcpSession() {
+    setError(null);
+    if (!requireAdmin()) return;
+    if (!effectiveProjectId) {
+      setError("请先选择 Project");
+      return;
+    }
+
+    setStartingAcpSession(true);
+    try {
+      const res = await startAcpSession({
+        projectId: effectiveProjectId,
+        goal: acpSessionGoal.trim() ? acpSessionGoal.trim() : undefined,
+        worktreeName: acpSessionWorktreeName.trim() ? acpSessionWorktreeName.trim() : undefined,
+      });
+      setAcpSessionGoal("");
+      setAcpSessionWorktreeName("");
+      await refreshAcpSessions();
+      navigate(`/sessions/${res.runId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStartingAcpSession(false);
+    }
+  }
+
   function onShowArchivedOnBoardChange(next: boolean) {
     setShowArchivedOnBoard(next);
     setShowArchivedIssues(next);
@@ -446,7 +475,7 @@ export function AdminPage() {
       issues: { title: "Issue 管理", desc: "创建需求或导入外部 Issue" },
       roles: { title: "角色模板", desc: "创建 RoleTemplate（Prompt / initScript 等）" },
       archive: { title: "Issue 归档", desc: "管理已完成/失败/取消的 Issue 归档状态" },
-      acpSessions: { title: "ACP Sessions", desc: "查看/手动关闭 ACP agent session（用于清理遗留会话）" }
+      acpSessions: { title: "ACP Sessions", desc: "查看/关闭 ACP session，并可快速启动独立的交互式 Session" }
     };
     return meta[activeSection];
   }, [activeSection]);
@@ -659,6 +688,32 @@ export function AdminPage() {
           列出当前项目下已建立的 ACP session（来自 Run.acpSessionId），可手动发送 <code>session/cancel</code> 关闭遗留会话。
         </div>
 
+        <div style={{ marginTop: 12 }}>
+          <div className="muted">快速启动一个独立 Session（会创建隐藏 Issue + 单步 Task，并打开全屏控制台）。</div>
+          <div className="row gap" style={{ alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
+            <label className="label" style={{ margin: 0, flex: "2 1 320px", minWidth: 240 }}>
+              目标（可选）
+              <textarea
+                value={acpSessionGoal}
+                onChange={(e) => setAcpSessionGoal(e.target.value)}
+                rows={3}
+                placeholder="例如：修复登录；实现导入；排查构建失败…"
+              />
+            </label>
+            <label className="label" style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}>
+              Worktree 名称（可选）
+              <input
+                value={acpSessionWorktreeName}
+                onChange={(e) => setAcpSessionWorktreeName(e.target.value)}
+                placeholder="session-fix-login"
+              />
+            </label>
+            <button type="button" onClick={onStartAcpSession} disabled={!effectiveProjectId || startingAcpSession}>
+              {startingAcpSession ? "启动中…" : "启动 Session"}
+            </button>
+          </div>
+        </div>
+
         {loadingAcpSessions ? (
           <div className="muted" style={{ marginTop: 12 }}>
             加载中…
@@ -674,6 +729,7 @@ export function AdminPage() {
                   <th>Run 状态</th>
                   <th>Issue</th>
                   <th>Run</th>
+                  <th>Console</th>
                   <th>开始时间</th>
                   <th />
                 </tr>
@@ -740,6 +796,11 @@ export function AdminPage() {
                       <td>
                         <code title={s.runId}>{s.runId.slice(0, 8)}…</code>
                       </td>
+                      <td>
+                        <Link className="buttonSecondary" to={`/sessions/${s.runId}`}>
+                          打开
+                        </Link>
+                      </td>
                       <td className="muted">{new Date(s.startedAt).toLocaleString()}</td>
                       <td style={{ textAlign: "right" }}>
                         <button
@@ -795,7 +856,7 @@ export function AdminPage() {
                         autoCreatePr: true,
                         autoRequestMergeApproval: true,
                       },
-                      approvals: { requireForActions: ["merge_pr"] },
+                      approvals: { requireForActions: ["merge_pr"], escalateOnSensitivePaths: ["create_pr", "publish_artifact"] },
                       sensitivePaths: [],
                     } satisfies PmPolicy,
                     null,
@@ -843,7 +904,7 @@ export function AdminPage() {
             rows={14}
             className="inputMono"
             style={{ width: "100%", marginTop: 10 }}
-            placeholder='{"version":1,"automation":{"autoStartIssue":true,"autoReview":true,"autoCreatePr":true,"autoRequestMergeApproval":true},"approvals":{"requireForActions":["merge_pr"]},"sensitivePaths":[] }'
+            placeholder='{"version":1,"automation":{"autoStartIssue":true,"autoReview":true,"autoCreatePr":true,"autoRequestMergeApproval":true},"approvals":{"requireForActions":["merge_pr"],"escalateOnSensitivePaths":["create_pr","publish_artifact"]},"sensitivePaths":[] }'
           />
         )}
 

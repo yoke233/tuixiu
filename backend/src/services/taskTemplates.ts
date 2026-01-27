@@ -15,6 +15,12 @@ export type TaskTemplate = {
 
 export const TASK_TEMPLATES: TaskTemplate[] = [
   {
+    key: "template.admin.session",
+    displayName: "管理员会话（交互式 Session）",
+    description: "创建一个独立分支/worktree，用于与 Agent 像 CLI 一样持续对话协作（不依赖 Issue 流程）",
+    steps: [{ key: "session.interactive", kind: "session.interactive", executorType: "agent" }],
+  },
+  {
     key: "template.dev.full",
     displayName: "开发全流程（实现→测试→评审→PR→CI→合并）",
     steps: [

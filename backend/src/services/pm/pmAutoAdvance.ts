@@ -5,11 +5,12 @@ import type { PrismaDeps } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { createGitProcessEnv } from "../../utils/gitAuth.js";
 import { createReviewRequestForRun } from "../runReviewRequest.js";
-import { requestMergePrApproval } from "../approvalRequests.js";
+import { requestCreatePrApproval, requestMergePrApproval } from "../approvalRequests.js";
 import { getRunChanges } from "../runGitChanges.js";
 import { autoReviewRunForPm } from "./pmAutoReviewRun.js";
 import { isPmAutomationEnabled } from "./pmLlm.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
+import { computeSensitiveHitFromFiles } from "./pmSensitivePaths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -102,6 +103,42 @@ async function runAutoAdvanceOnce(
     if (hasPr) return;
     if (!changes || "error" in changes) return;
     if (!Array.isArray((changes as any).files) || (changes as any).files.length === 0) return;
+
+    const sensitive = computeSensitiveHitFromFiles((changes as any).files ?? [], Array.isArray(policy.sensitivePaths) ? policy.sensitivePaths : []);
+    const requireCreatePrApproval =
+      policy.approvals.requireForActions.includes("create_pr") ||
+      (sensitive && policy.approvals.escalateOnSensitivePaths.includes("create_pr"));
+
+    if (requireCreatePrApproval) {
+      const req = await requestCreatePrApproval({
+        prisma: deps.prisma,
+        runId,
+        requestedBy: "pm_auto",
+        payload: {
+          sensitive: sensitive
+            ? { patterns: sensitive.patterns.slice(0, 20), matchedFiles: sensitive.matchedFiles.slice(0, 60) }
+            : undefined,
+        },
+      }).catch((err: unknown) => ({
+        success: false,
+        error: { code: "APPROVAL_REQUEST_FAILED", message: "创建 PR 审批请求失败", details: String(err) },
+      }));
+
+      await deps.prisma.event
+        .create({
+          data: {
+            id: uuidv7(),
+            runId,
+            source: "system",
+            type: req.success ? "pm.pr.auto_create.approval_requested" : "pm.pr.auto_create.approval_request_failed",
+            payload: req.success ? { trigger, approvalId: req.data.approval.id } : { trigger, error: (req as any).error },
+          } as any,
+        })
+        .catch(() => {});
+
+      if (!req.success) log("pm auto request create-pr approval failed", { runId, trigger, error: (req as any).error });
+      return;
+    }
 
     const gitPush = deps.gitPush ?? defaultGitPush;
     const res = await createReviewRequestForRun({ prisma: deps.prisma, gitPush }, runId, {}).catch((err: unknown) => ({

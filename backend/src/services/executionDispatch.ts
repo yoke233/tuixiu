@@ -40,7 +40,7 @@ export async function dispatchExecutionForRun(
       return { success: true };
     }
     if (executorType === "system") {
-      await startSystemExecution({ prisma: deps.prisma }, runId);
+      const sysRes = await startSystemExecution({ prisma: deps.prisma }, runId);
       if ((run as any).taskId) {
         deps.broadcastToClients?.({
           type: "task_updated",
@@ -49,16 +49,18 @@ export async function dispatchExecutionForRun(
           step_id: (run as any).stepId,
           run_id: (run as any).id,
         });
-        triggerTaskAutoAdvance(
-          {
-            prisma: deps.prisma,
-            sendToAgent: deps.sendToAgent,
-            acp: deps.acp,
-            createWorkspace: deps.createWorkspace,
-            broadcastToClients: deps.broadcastToClients,
-          },
-          { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
-        );
+        if (sysRes.executed) {
+          triggerTaskAutoAdvance(
+            {
+              prisma: deps.prisma,
+              sendToAgent: deps.sendToAgent,
+              acp: deps.acp,
+              createWorkspace: deps.createWorkspace,
+              broadcastToClients: deps.broadcastToClients,
+            },
+            { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
+          );
+        }
       }
       return { success: true };
     }
