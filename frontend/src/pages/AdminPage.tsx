@@ -951,7 +951,38 @@ export function AdminPage() {
           </form>
         </section>
 
-        <section id="issue-create" className="card" hidden={activeSection !== "issues"}>
+        <section
+          id="issue-github-import"
+          className="card"
+          style={{ gridColumn: "1 / -1" }}
+          hidden={activeSection !== "issues"}
+        >
+          <h2 style={{ marginTop: 0 }}>导入 GitHub Issue</h2>
+          {effectiveProject?.scmType?.toLowerCase() === "github" ? (
+            <form onSubmit={onImportGithubIssue} className="form">
+              <label className="label">
+                Issue Number 或 URL
+                <input
+                  value={githubImport}
+                  onChange={(e) => setGithubImport(e.target.value)}
+                  placeholder="123 或 https://github.com/o/r/issues/123"
+                />
+              </label>
+              <button type="submit" disabled={!githubImport.trim() || importingGithub || !effectiveProjectId}>
+                {importingGithub ? "导入中…" : "导入"}
+              </button>
+            </form>
+          ) : (
+            <div className="muted">当前 Project 不是 GitHub SCM</div>
+          )}
+        </section>
+
+        <section
+          id="issue-create"
+          className="card"
+          style={{ gridColumn: "1 / -1" }}
+          hidden={activeSection !== "issues"}
+        >
           <h2 style={{ marginTop: 0 }}>创建 Issue（进入需求池）</h2>
           <form onSubmit={onCreateIssue} className="form">
             <label className="label">
@@ -975,27 +1006,6 @@ export function AdminPage() {
             </button>
           </form>
           {!effectiveProjectId ? <div className="muted">请先创建 Project</div> : null}
-        </section>
-
-        <section id="issue-github-import" className="card" hidden={activeSection !== "issues"}>
-          <h2 style={{ marginTop: 0 }}>导入 GitHub Issue</h2>
-          {effectiveProject?.scmType?.toLowerCase() === "github" ? (
-            <form onSubmit={onImportGithubIssue} className="form">
-              <label className="label">
-                Issue Number 或 URL
-                <input
-                  value={githubImport}
-                  onChange={(e) => setGithubImport(e.target.value)}
-                  placeholder="123 或 https://github.com/o/r/issues/123"
-                />
-              </label>
-              <button type="submit" disabled={!githubImport.trim() || importingGithub || !effectiveProjectId}>
-                {importingGithub ? "导入中…" : "导入"}
-              </button>
-            </form>
-          ) : (
-            <div className="muted">当前 Project 不是 GitHub SCM</div>
-          )}
         </section>
 
         <section className="card" hidden={activeSection !== "roles"}>
