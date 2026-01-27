@@ -23,6 +23,7 @@
 - [x] **Policy MVP（Project 级）**：`GET/PUT /api/policies?projectId=...`（存储于 `Project.branchProtection.pmPolicy`）；Admin 页提供 JSON 配置入口；PM 自动化会尊重 `automation.autoStartIssue`
 - [x] **Run 自动验收（auto-review）**：`POST /api/pm/runs/:id/auto-review` 生成 `report(kind=auto_review)`；Run 变更面板提供“一键自动验收”按钮
 - [x] **Run 自动推进（非 Task 流）**：Run 完成自动生成 auto-review；检测到变更时自动 `create-pr`；GitHub CI 通过后自动发起 `merge_pr` 审批（仍需人工批准/执行合并）；受 `PM_AUTOMATION_ENABLED` 与 `pmPolicy.automation.*` 控制
+- [x] **Task 自动推进（Task 流）**：Task 创建/回滚后自动启动首个 `ready` 且非 `human` 的 Step；Run/CI 完成后自动启动下一个 `ready` 且非 `human` 的 Step；遇到 `human` Step 自动停（`pr.create` 受 `pmPolicy.automation.autoCreatePr` 门禁）
 
 **来源（已合入 `main`）**
 - PR `#26`：PM automation v1（多来源 + 自动分析/分配/启动 + GitHub 评论 + 审批队列初版）
@@ -38,7 +39,7 @@
 
 - [ ] **Policy/策略系统（扩展）**：已支持 Project policy 存取与 PM autoStart gate；仍缺动作级 gate（create_pr/publish/ci/merge 等）与敏感目录门禁自动升级/进入审批
 - [ ] **auto-review（回写增强）**：已支持手动触发与 Run 完成自动触发；仍缺测试结果聚合增强与 GitHub Issue 评论回写（best-effort）
-- [ ] **自动推进到 PR（Task 流）**：内置模板已包含 `pr.create` system step，但“Step ready 自动启动/全自动推进”仍未实现（当前仅非 Task 流已支持 Run 完成自动 create-pr）
+- [ ] **自动推进到 PR（Task 流）门禁完善**：已支持 Task 的 `ready` Step 自动推进；仍缺对更多 Step(kind) 的动作级 gate（例如 publish/test/ci 等）与敏感目录命中后的自动降级/审批
 - [ ] **CI/Webhook 闭环（增强）**：GitHub 已基础接入；仍缺 GitLab pipeline 回写、CI Run 关联增强（`head_sha/PR`）、CI 不可用时的 workspace test 降级策略
 - [ ] **Review Gate 聚合**：Task 级打回/回滚已具备，但缺少 “AI review / 人 review / 合并审批” 的统一门禁聚合与可视化
 - [ ] **安全/可靠性增强**：webhook secret 强制、幂等 eventId、限流；token 加密存储与脱敏审计；覆盖率门槛与 CI 对齐（若启用 `test:coverage`）
@@ -87,7 +88,8 @@
 - Run 完成后，在满足策略门禁时自动创建 PR；失败不阻塞，降级为“提示如何手动创建/重试”。
 
 **Done**
-- 在 PM 自动化里增加 `maybeCreatePr(runId)`：受 Policy 控制（仅非 Task 流）
+- 在 PM 自动化里增加 `maybeCreatePr(runId)`：受 Policy 控制（非 Task 流）
+- Task 流：通过 `pr.create` system step + Task 自动推进实现自动创建 PR（可用 `pmPolicy.automation.autoCreatePr=false` 关闭自动执行）
 - 创建 PR 成功后：写 `Artifact(type=pr)` 并在 Issue（GitHub 来源）评论回写 PR 链接
 - UI 展示“已自动创建 PR / 需要人工处理”的明确状态
 

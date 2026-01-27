@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import type { CreateWorkspace } from "../executors/types.js";
 import { dispatchExecutionForRun } from "../services/executionDispatch.js";
+import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
 import { RollbackTaskBody, StartStepBody, TaskEngineError, rollbackTaskToStep, startStep } from "../services/taskEngine.js";
 
 export function makeStepRoutes(deps: {
@@ -69,6 +70,15 @@ export function makeStepRoutes(deps: {
           task_id: (task as any).id,
           step_id: body.stepId,
         });
+        triggerTaskAutoAdvance(
+          {
+            prisma: deps.prisma,
+            sendToAgent: deps.sendToAgent,
+            createWorkspace: deps.createWorkspace,
+            broadcastToClients: deps.broadcastToClients,
+          },
+          { issueId: (task as any).issueId, taskId: (task as any).id, trigger: "task_rolled_back" },
+        );
         return { success: true, data: { task } };
       } catch (err) {
         if (err instanceof TaskEngineError) {

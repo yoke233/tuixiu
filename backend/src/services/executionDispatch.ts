@@ -5,6 +5,7 @@ import { startCiExecution } from "../executors/ciExecutor.js";
 import { startHumanExecution } from "../executors/humanExecutor.js";
 import { startSystemExecution } from "../executors/systemExecutor.js";
 import { advanceTaskFromRunTerminal } from "./taskProgress.js";
+import { triggerTaskAutoAdvance } from "./taskAutoAdvance.js";
 
 export async function dispatchExecutionForRun(
   deps: {
@@ -45,6 +46,15 @@ export async function dispatchExecutionForRun(
           step_id: (run as any).stepId,
           run_id: (run as any).id,
         });
+        triggerTaskAutoAdvance(
+          {
+            prisma: deps.prisma,
+            sendToAgent: deps.sendToAgent,
+            createWorkspace: deps.createWorkspace,
+            broadcastToClients: deps.broadcastToClients,
+          },
+          { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
+        );
       }
       return { success: true };
     }
