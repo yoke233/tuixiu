@@ -120,7 +120,7 @@ async function runAutoAdvanceOnce(
             : undefined,
         },
       }).catch((err: unknown) => ({
-        success: false,
+        success: false as const,
         error: { code: "APPROVAL_REQUEST_FAILED", message: "创建 PR 审批请求失败", details: String(err) },
       }));
 
