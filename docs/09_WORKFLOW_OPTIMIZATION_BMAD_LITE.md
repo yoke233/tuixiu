@@ -66,7 +66,7 @@ BMAD 的价值不在某个具体工具，而在一套面向多 agent/多人协�
 落地方式（不改变数据模型也能先做）：
 
 - 在 `Task.templateKey` 约定前缀：`quick.*`、`planning.*`
-- 或新增 `Task.track` 字段（更清晰，推荐后续加）
+- 或新增 `Task.track` 字段（更清晰，已支持）
 - PM 自动推荐 track（结合 issue 标签/目录变更/风险词），用户可覆盖
 
 ### 4.2 Context Pack（共享上下文）= 解决“多人/多 agent 冲突”的根因

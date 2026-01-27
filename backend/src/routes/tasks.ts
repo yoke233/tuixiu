@@ -33,7 +33,10 @@ export function makeTaskRoutes(deps: {
 
     server.post("/issues/:id/tasks", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
-      const bodySchema = z.object({ templateKey: z.string().min(1).max(100) });
+      const bodySchema = z.object({
+        templateKey: z.string().min(1).max(100),
+        track: z.enum(["quick", "planning", "enterprise"]).optional(),
+      });
       const { id } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
 

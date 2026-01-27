@@ -60,6 +60,12 @@ enum TaskStatus {
   cancelled
 }
 
+enum TaskTrack {
+  quick
+  planning
+  enterprise
+}
+
 enum StepStatus {
   pending
   ready
@@ -301,6 +307,7 @@ model Task {
   issue          Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
 
   templateKey    String    @db.VarChar(100)
+  track          TaskTrack?
   status         TaskStatus @default(pending)
 
   currentStepId  String?   @unique @db.Uuid

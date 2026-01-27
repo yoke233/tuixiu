@@ -16,7 +16,7 @@ import { RunConsole } from "../components/RunConsole";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useWsClient, type WsMessage } from "../hooks/useWsClient";
-import type { Agent, Artifact, Event, Issue, PmAnalysis, PmAnalysisMeta, PmNextAction, PmRisk, RoleTemplate, Run, Step, Task, TaskTemplate, UserRole } from "../types";
+import type { Agent, Artifact, Event, Issue, PmAnalysis, PmAnalysisMeta, PmNextAction, PmRisk, RoleTemplate, Run, Step, Task, TaskTemplate, TaskTrack, UserRole } from "../types";
 import { getAgentEnvLabel, getAgentSandboxLabel } from "../utils/agentLabels";
 import { canManageTasks, canPauseAgent, canRunIssue, canUsePmTools } from "../utils/permissions";
 
@@ -47,6 +47,7 @@ export function IssueDetailPage() {
   const [taskTemplatesLoaded, setTaskTemplatesLoaded] = useState(false);
   const [taskTemplatesError, setTaskTemplatesError] = useState<string | null>(null);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>("");
+  const [selectedTaskTrack, setSelectedTaskTrack] = useState<TaskTrack | "">("");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -607,7 +608,10 @@ export function IssueDetailPage() {
     setCreatingTask(true);
     setError(null);
     try {
-      const created = await createIssueTask(issueId, { templateKey: selectedTemplateKey });
+      const created = await createIssueTask(issueId, {
+        templateKey: selectedTemplateKey,
+        track: selectedTaskTrack ? selectedTaskTrack : undefined,
+      });
       setTasks((prev) => [created, ...prev]);
       await refresh({ silent: true });
     } catch (e) {
@@ -839,6 +843,17 @@ export function IssueDetailPage() {
                     </option>
                   ))}
                 </select>
+                <select
+                  aria-label="选择 Track"
+                  value={selectedTaskTrack}
+                  onChange={(e) => setSelectedTaskTrack(e.target.value as TaskTrack | "")}
+                  disabled={creatingTask}
+                >
+                  <option value="">Track：自动</option>
+                  <option value="quick">Track：quick</option>
+                  <option value="planning">Track：planning</option>
+                  <option value="enterprise">Track：enterprise</option>
+                </select>
                 <button
                   type="button"
                   onClick={onCreateTask}
@@ -879,6 +894,7 @@ export function IssueDetailPage() {
                           <div className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
                             <span className="toolSummaryTitle">{template?.displayName ?? t.templateKey}</span>
                             <StatusBadge status={t.status} />
+                            {t.track ? <code title={`track: ${t.track}`}>{t.track}</code> : null}
                             {t.branchName ? <code title={t.branchName}>{t.branchName}</code> : null}
                           </div>
                           <span className="muted">{new Date(t.createdAt).toLocaleString()}</span>
@@ -887,6 +903,12 @@ export function IssueDetailPage() {
 
                       <div className="muted" style={{ marginTop: 8 }}>
                         taskId: <code title={t.id}>{t.id}</code>
+                        {t.track ? (
+                          <>
+                            {" "}
+                            · track: <code>{t.track}</code>
+                          </>
+                        ) : null}
                       </div>
 
                       <div className="tableScroll">
