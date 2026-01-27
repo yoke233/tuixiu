@@ -71,7 +71,8 @@
 ### P1：CI/Webhook 闭环 + Review 流转
 
 - [x] 引入 `track`（quick/planning/enterprise）字段（Task 支持持久化 + 创建时可选指定 + UI 展示）
-- [ ] PM 自动推荐 track（结合 issue 标签/风险/目录命中）与模板升级（quick/planning 模板体系）
+- [x] PM 自动推荐 track（基础）：PM 分析输出 `recommendedTrack`（LLM + fallback），并可在 UI 一键应用到 Task track 选择
+- [ ] PM 自动推荐 track（增强）：结合 issue 标签/敏感目录命中/变更规模等信号；并推动模板升级（quick/planning 模板体系）
 - [x] 引入 `docs/context-manifest.json`（按 `step.kind` 自动注入上下文；支持片段/截断策略）
 - [ ] 增加 `gate.implementation_readiness` 与 `correct-course`（重规划）并与 Policy/Approval 对齐
 - [ ] 接入 GitLab `pipeline` webhook：写 `Artifact(type=ci_result)` 并驱动 `Run.status=waiting_ci → completed/failed`（同时增强 CI 关联：`head_sha/PR` 等）

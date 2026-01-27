@@ -66,6 +66,7 @@ export function createPmAutomation(deps: {
     const extraPrompt = [
       "（系统/PM）以下为 PM 自动分析结果（供参考）：",
       `- 风险等级: ${analysis.risk}`,
+      analysis.recommendedTrack ? `- 推荐轨道: ${analysis.recommendedTrack}` : "",
       `- 摘要: ${analysis.summary}`,
       analysis.questions.length ? `- 需要确认:\n${analysis.questions.map((q) => `  - ${q}`).join("\n")}` : "",
       `- 触发原因: ${reason}`,

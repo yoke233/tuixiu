@@ -5,12 +5,15 @@ import { callPmLlmJson, isPmLlmEnabled } from "./pmLlm.js";
 
 export const pmRiskSchema = z.enum(["low", "medium", "high"]);
 
+export const pmTrackSchema = z.enum(["quick", "planning", "enterprise"]);
+
 export const pmAnalysisSchema = z.object({
   summary: z.string().min(1),
   risk: pmRiskSchema,
   questions: z.array(z.string()).default([]),
   recommendedRoleKey: z.string().min(1).nullable().optional(),
   recommendedAgentId: z.string().min(1).nullable().optional(),
+  recommendedTrack: pmTrackSchema.nullable().optional(),
 });
 
 export type PmAnalysis = z.infer<typeof pmAnalysisSchema>;
@@ -37,6 +40,51 @@ function sanitizeAgentId(agentId: unknown, allowed: Set<string>): string | null 
   const raw = typeof agentId === "string" ? agentId.trim() : "";
   if (!raw) return null;
   return allowed.has(raw) ? raw : null;
+}
+
+function sanitizeTrack(track: unknown): z.infer<typeof pmTrackSchema> | null {
+  const raw = typeof track === "string" ? track.trim().toLowerCase() : "";
+  if (!raw) return null;
+  if (raw === "quick" || raw === "planning" || raw === "enterprise") return raw;
+  return null;
+}
+
+function inferTrackFromIssue(issue: any): z.infer<typeof pmTrackSchema> {
+  const title = String(issue?.title ?? "").toLowerCase();
+  const desc = String(issue?.description ?? "").toLowerCase();
+  const text = `${title}\n${desc}`;
+
+  const planningHints = [
+    "prd",
+    "design",
+    "architecture",
+    "workflow",
+    "migration",
+    "migrate",
+    "prisma",
+    "database",
+    "schema",
+    "auth",
+    "jwt",
+    "token",
+    "permission",
+    "rbac",
+    "security",
+    "webhook",
+    "ci",
+    "pipeline",
+    "policy",
+    "gate",
+    "dod",
+    "refactor",
+    "breaking",
+  ];
+
+  for (const hint of planningHints) {
+    if (text.includes(hint)) return "planning";
+  }
+
+  return "quick";
 }
 
 export async function analyzeIssueForPm(opts: {
@@ -77,6 +125,7 @@ export async function analyzeIssueForPm(opts: {
     questions: [],
     recommendedRoleKey: fallbackRoleKey,
     recommendedAgentId: null,
+    recommendedTrack: inferTrackFromIssue(issue),
   };
 
   if (!isPmLlmEnabled()) {
@@ -111,12 +160,14 @@ export async function analyzeIssueForPm(opts: {
         '  "risk": "low" | "medium" | "high",',
         '  "questions": string[],',
         '  "recommendedRoleKey": string | null,',
-        '  "recommendedAgentId": string | null',
+        '  "recommendedAgentId": string | null,',
+        '  "recommendedTrack": "quick" | "planning" | "enterprise" | null',
         "}",
         "",
         "规则：",
         "- recommendedRoleKey 必须是给定列表中的一个，否则返回 null。",
         "- recommendedAgentId 必须是给定列表中的一个，否则返回 null。",
+        "- recommendedTrack 用于选择执行轨道：quick=快速实现+测试；planning=先固化 PRD/拆解/门禁再实施；enterprise=预留（更强合规/审计）。不确定时优先 quick；高风险/范围大时用 planning。",
         "- questions 用于向提问者补齐信息，尽量少且关键（0-5 条）。",
       ].join("\n"),
     },
@@ -151,6 +202,7 @@ export async function analyzeIssueForPm(opts: {
     questions: normalizeList((analysis as any).questions, 8),
     recommendedRoleKey: sanitizeRoleKey((analysis as any).recommendedRoleKey, roleKeys),
     recommendedAgentId: sanitizeAgentId((analysis as any).recommendedAgentId, agentIds),
+    recommendedTrack: sanitizeTrack((analysis as any).recommendedTrack) ?? fallback.recommendedTrack,
   };
 
   return { ok: true, analysis: normalized, meta: { source: "llm", model: res.model } };
