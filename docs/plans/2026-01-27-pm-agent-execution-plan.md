@@ -32,9 +32,7 @@
 - PR `#30`：PM Agent 执行计划与 Roadmap 补齐（docs）
 - PR `#34`：Policy MVP（后端策略 API + Admin 配置入口 + PM autoStart gate）
 - PR `#35`：auto-review（后端端点 + 前端一键触发）
-
-**来源（待合并）**
-- PR `TBD`：Run 自动推进（auto-review 自动触发 + 自动 create-pr + CI 通过自动发起 merge 审批）
+- PR `#41`：Run 自动推进（auto-review 自动触发 + 自动 create-pr + CI 通过自动发起 merge 审批）
 
 ### 已知缺口 ⚠️（当前主线未完成）
 
