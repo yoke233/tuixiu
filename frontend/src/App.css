@@ -681,6 +681,7 @@ a:hover {
   display: grid;
   gap: 10px;
   align-content: start;
+  min-width: 0;
 }
 
 .kanbanEmpty {
@@ -718,6 +719,9 @@ a:hover {
 .issueCard {
   display: grid;
   gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   padding: 12px;
   padding-right: 46px;
   border-radius: 12px;
@@ -730,6 +734,7 @@ a:hover {
 
 .issueCardWrap {
   position: relative;
+  min-width: 0;
 }
 
 .issueCardAction {

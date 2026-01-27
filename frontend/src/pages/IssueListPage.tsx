@@ -434,11 +434,13 @@ export function IssueListPage() {
         </div>
       </div>
 
-      {error ? (
-        <div role="alert" className="alert">
-          {error}
-        </div>
-      ) : null}
+      <div>
+        {error ? (
+          <div role="alert" className="alert">
+            {error}
+          </div>
+        ) : null}
+      </div>
 
       <div ref={splitRef} className={`issuesSplit ${hasDetail ? "hasDetail" : ""}`} style={splitStyle}>
         <main className="issuesBoard">
