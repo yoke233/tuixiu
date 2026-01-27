@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./client";
+import { apiGet, apiPatch, apiPost } from "./client";
 import type { Project } from "../types";
 
 export type CreateProjectInput = {
@@ -12,6 +12,7 @@ export type CreateProjectInput = {
   gitlabAccessToken?: string;
   gitlabWebhookSecret?: string;
   githubAccessToken?: string;
+  githubPollingEnabled?: boolean;
 };
 
 export async function listProjects(): Promise<Project[]> {
@@ -21,5 +22,17 @@ export async function listProjects(): Promise<Project[]> {
 
 export async function createProject(input: CreateProjectInput): Promise<Project> {
   const data = await apiPost<{ project: Project }>("/projects", input);
+  return data.project;
+}
+
+export type UpdateProjectInput = Partial<CreateProjectInput> & {
+  name?: string;
+  repoUrl?: string;
+  scmType?: string;
+  defaultBranch?: string;
+};
+
+export async function updateProject(projectId: string, input: UpdateProjectInput): Promise<Project> {
+  const data = await apiPatch<{ project: Project }>(`/projects/${projectId}`, input);
   return data.project;
 }
