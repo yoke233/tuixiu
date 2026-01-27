@@ -373,18 +373,17 @@ export function RunChangesPanel(props: Props) {
 
   if (!props.runId) {
     return (
-      <section className="card">
-        <h2>变更</h2>
-        <div className="muted">暂无 Run</div>
-      </section>
+      <div className="muted">暂无 Run</div>
     );
   }
 
   return (
-    <section className="card">
-      <div className="row spaceBetween">
-        <h2>变更</h2>
-        <div className="row gap">
+    <div>
+      <div className="row spaceBetween" style={{ alignItems: "center" }}>
+        <div className="muted" style={{ fontSize: 12 }}>
+          {changes ? `${changes.baseBranch} → ${changes.branch} · ${changes.files.length} files` : "变更与 diff"}
+        </div>
+        <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
           <button onClick={refresh} disabled={loading}>
             刷新
           </button>
@@ -474,10 +473,6 @@ export function RunChangesPanel(props: Props) {
         <div className="muted">加载变更中…</div>
       ) : changes ? (
         <>
-          <div className="muted" style={{ marginBottom: 10 }}>
-            {changes.baseBranch} → {changes.branch} · {changes.files.length} files
-          </div>
-
           <div className="changesGrid">
             <div className="changesFiles" role="list" aria-label="变更文件列表">
               {changes.files.length ? (
@@ -516,6 +511,6 @@ export function RunChangesPanel(props: Props) {
       ) : (
         <div className="muted">暂无变更信息（需要 branch 产物或已推送分支）</div>
       )}
-    </section>
+    </div>
   );
 }
