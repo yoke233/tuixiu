@@ -31,6 +31,7 @@ const envSchema = z.object({
   GITLAB_PROJECT_ID: z.string().optional(),
   GITLAB_WEBHOOK_SECRET: z.string().optional(),
   GITHUB_WEBHOOK_SECRET: z.string().optional(),
+  CODEUP_WEBHOOK_SECRET: z.string().optional(),
   MESSAGE_WEBHOOK_SECRET: z.string().optional(),
 
   PM_AUTOMATION_ENABLED: z.string().optional(),
