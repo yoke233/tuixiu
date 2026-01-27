@@ -8,6 +8,7 @@ import { prisma } from "./db.js";
 import { registerAuth } from "./auth.js";
 import { makeAgentRoutes } from "./routes/agents.js";
 import { makeApprovalRoutes } from "./routes/approvals.js";
+import { makeAcpSessionRoutes } from "./routes/acpSessions.js";
 import { makeArtifactRoutes } from "./routes/artifacts.js";
 import { makeAuthRoutes } from "./routes/auth.js";
 import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
@@ -143,6 +144,7 @@ server.register(
   { prefix: "/api" },
 );
 server.register(makeArtifactRoutes({ prisma }), { prefix: "/api" });
+server.register(makeAcpSessionRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, auth }), { prefix: "/api/admin" });
 
 startWorkspaceCleanupLoop({
   prisma,
