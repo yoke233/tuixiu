@@ -107,7 +107,7 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 - `POST /api/runs/:id/prompt`：继续对话（后端会尽量复用 `Run.acpSessionId`）
 - `GET /api/runs/:id/changes` / `GET /api/runs/:id/diff?path=...`：变更列表与 diff
 - `POST /api/runs/:id/create-pr`：创建 PR（GitLab MR / GitHub PR）
-- `POST /api/runs/:id/merge-pr`：合并 PR（高危动作；推荐走审批流程）
+- `POST /api/runs/:id/merge-pr`：高危动作，默认要求审批（返回 `APPROVAL_REQUIRED` 并创建审批请求）
 - `POST /api/runs/:id/request-merge-pr`：发起“合并 PR”审批请求（生成 `report(kind=approval_request)`）
 - `GET /api/approvals`：查看审批队列
 - `POST /api/approvals/:id/approve`：批准并执行（例如合并 PR）

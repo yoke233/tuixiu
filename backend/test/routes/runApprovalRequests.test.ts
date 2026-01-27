@@ -7,6 +7,7 @@ describe("Run approval request routes", () => {
   it("POST /api/runs/:id/request-merge-pr creates approval artifact", async () => {
     const server = createHttpServer();
     const prisma = {
+      event: { create: vi.fn().mockResolvedValue({}) },
       run: {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
@@ -50,6 +51,7 @@ describe("Run approval request routes", () => {
   it("POST /api/runs/:id/request-merge-pr returns existing pending approval", async () => {
     const server = createHttpServer();
     const prisma = {
+      event: { create: vi.fn().mockResolvedValue({}) },
       run: {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
@@ -81,4 +83,3 @@ describe("Run approval request routes", () => {
     await server.close();
   });
 });
-
