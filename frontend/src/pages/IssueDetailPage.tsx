@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useOutletContext, useParams } from "rea
 
 import { listAgents } from "../api/agents";
 import { getIssue, startIssue } from "../api/issues";
-import { analyzeIssue as analyzePmIssue, dispatchIssue as dispatchPmIssue } from "../api/pm";
+import { analyzeIssue as analyzePmIssue, dispatchIssue as dispatchPmIssue, getIssueNextAction } from "../api/pm";
 import { listRoles } from "../api/roles";
 import { cancelRun, completeRun, getRun, listRunEvents, pauseRun, promptRun, submitRun } from "../api/runs";
 import { startStep as startTaskStep, rollbackTask as rollbackTaskToStep } from "../api/steps";
@@ -16,7 +16,7 @@ import { RunConsole } from "../components/RunConsole";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useWsClient, type WsMessage } from "../hooks/useWsClient";
-import type { Agent, Artifact, Event, Issue, PmAnalysis, PmAnalysisMeta, PmRisk, RoleTemplate, Run, Step, Task, TaskTemplate, UserRole } from "../types";
+import type { Agent, Artifact, Event, Issue, PmAnalysis, PmAnalysisMeta, PmNextAction, PmRisk, RoleTemplate, Run, Step, Task, TaskTemplate, UserRole } from "../types";
 import { getAgentEnvLabel, getAgentSandboxLabel } from "../utils/agentLabels";
 import { canManageTasks, canPauseAgent, canRunIssue, canUsePmTools } from "../utils/permissions";
 
@@ -81,6 +81,25 @@ export function IssueDetailPage() {
   const [pmAnalysis, setPmAnalysis] = useState<PmAnalysis | null>(null);
   const [pmMeta, setPmMeta] = useState<PmAnalysisMeta | null>(null);
   const [pmError, setPmError] = useState<string | null>(null);
+  const [pmOpen, setPmOpen] = useState(false);
+  const [nextAction, setNextAction] = useState<PmNextAction | null>(null);
+  const [nextActionLoading, setNextActionLoading] = useState(false);
+  const [nextActionError, setNextActionError] = useState<string | null>(null);
+
+  const refreshNextAction = useCallback(async () => {
+    if (!issueId) return;
+    setNextActionLoading(true);
+    setNextActionError(null);
+    try {
+      const res = await getIssueNextAction(issueId);
+      setNextAction(res);
+    } catch (e) {
+      setNextAction(null);
+      setNextActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setNextActionLoading(false);
+    }
+  }, [issueId]);
 
   const currentRunId = useMemo(() => selectedRunId || run?.id || issue?.runs?.[0]?.id || "", [issue, run, selectedRunId]);
   const currentAgentId = useMemo(() => run?.agentId ?? issue?.runs?.[0]?.agentId ?? "", [issue, run]);
@@ -235,8 +254,16 @@ export function IssueDetailPage() {
     if (!issueId) return;
     setSelectedRunId("");
     selectedRunIdRef.current = "";
+    setNextAction(null);
+    setNextActionError(null);
     refresh();
   }, [issueId, refresh]);
+
+  useEffect(() => {
+    if (!pmOpen) return;
+    if (!issueId) return;
+    void refreshNextAction();
+  }, [issueId, pmOpen, refreshNextAction]);
 
   useEffect(() => {
     listAgents()
@@ -1041,7 +1068,12 @@ export function IssueDetailPage() {
             )}
           </details>
 
-          <details className="card">
+          <details
+            className="card"
+            onToggle={(e) => {
+              setPmOpen((e.currentTarget as HTMLDetailsElement).open);
+            }}
+          >
             <summary className="detailsSummary">
               <div className="row spaceBetween" style={{ alignItems: "center" }}>
                 <span className="toolSummaryTitle">PM</span>
@@ -1075,6 +1107,56 @@ export function IssueDetailPage() {
                 {pmError}
               </div>
             ) : null}
+
+            <div className="row spaceBetween" style={{ marginTop: 10, alignItems: "center" }}>
+              <div>
+                <div className="muted">下一步建议</div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {nextAction?.source ? `来源：${nextAction.source}` : "（打开后自动加载，可手动刷新）"}
+                </div>
+              </div>
+              <button type="button" className="buttonSecondary" onClick={() => void refreshNextAction()} disabled={!issueId || nextActionLoading}>
+                {nextActionLoading ? "刷新中…" : "刷新建议"}
+              </button>
+            </div>
+
+            {nextActionError ? (
+              <div role="alert" className="alert" style={{ marginTop: 10 }}>
+                {nextActionError}
+              </div>
+            ) : null}
+
+            {nextAction ? (
+              <div style={{ marginTop: 8 }}>
+                <div className="pre">{`动作：${nextAction.action}\n原因：${nextAction.reason}`}</div>
+                {nextAction.approval ? (
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    待审批：<code>{nextAction.approval.action}</code> · <code>{nextAction.approval.id}</code>{" "}
+                    <Link to="/admin" style={{ marginLeft: 6 }}>
+                      前往审批队列
+                    </Link>
+                  </div>
+                ) : null}
+                {nextAction.step ? (
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    当前 Step：<code>{nextAction.step.kind}</code> · <code>{nextAction.step.status}</code> · <code>{nextAction.step.executorType}</code>
+                  </div>
+                ) : null}
+                {nextAction.run ? (
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    关联 Run：<code>{nextAction.run.id}</code> · <code>{nextAction.run.status}</code>
+                  </div>
+                ) : null}
+              </div>
+            ) : nextActionLoading ? (
+              <div className="muted" style={{ marginTop: 8 }}>
+                加载中…
+              </div>
+            ) : (
+              <div className="muted" style={{ marginTop: 8 }}>
+                暂无建议
+              </div>
+            )}
 
             {effectivePmAnalysis ? (
               <>

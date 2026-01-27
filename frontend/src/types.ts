@@ -234,6 +234,19 @@ export type PmAnalysisMeta = {
   model?: string;
 };
 
+export type PmNextActionSource = "approval" | "task" | "auto_review" | "issue" | "fallback";
+
+export type PmNextAction = {
+  issueId: string;
+  action: string;
+  reason: string;
+  source: PmNextActionSource;
+  taskId: string | null;
+  step: { id: string; key: string; kind: string; status: StepStatus; executorType: ExecutorType } | null;
+  run: { id: string; status: RunStatus } | null;
+  approval: Approval | null;
+};
+
 export type PmPolicy = {
   version: 1;
   automation: {

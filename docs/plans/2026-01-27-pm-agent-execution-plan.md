@@ -41,6 +41,11 @@
 
 ### 已知缺口 ⚠️（当前主线未完成）
 
+- [ ] **BMAD-Lite 对齐（P0）**：缺少 `docs/project-context.md` / `docs/dod.md`，且 Task 流 agent prompt 还不能按 `step.kind` 自动注入共享上下文（Context Pack）
+- [ ] **“下一步做什么？”系统能力**：缺少统一的 next-action 读接口与 UI 提示（当前仅 `auto-review` 报告里有推荐动作，覆盖面有限）
+- [ ] **AI Review（对抗式默认）**：`code.review` 的提示词偏宽松；缺少 DoD 引用与 “0 findings” 的检查项说明
+- [ ] **Gate/DoD 聚合（预备）**：缺少 `gate_decision` 结构化产物约定与 gate step（`implementation_readiness/review/release`）的聚合能力
+- [ ] **Track（轨道选择）**：缺少显式 `track` 字段/模板体系（quick/planning/enterprise）；目前只能通过 `templateKey`/人工约定实现
 - [ ] **Policy/策略系统（扩展）**：已支持 Project policy 存取与 PM autoStart gate；已完成 `create_pr`/`publish_artifact` 动作级 gate 与敏感目录升级；仍缺更多动作（`ci/test/merge auto-exec` 等）的门禁聚合与策略化
 - [ ] **auto-review（回写增强）**：已支持手动触发与自动触发（含 GitHub Issue best-effort 摘要回写）；仍缺测试结果聚合增强（例如更完整的测试摘要、diff 摘要压缩与证据链接）
 - [ ] **自动推进到 PR（Task 流）门禁完善**：已支持 Task 的 `ready` Step 自动推进；已为 `pr.create`/`report.publish` 接入 gate + `sensitivePaths` 升级；仍缺对更多 Step(kind)（test/ci 等）的动作级门禁与策略聚合
@@ -50,66 +55,94 @@
 - [ ] **worktree 生命周期**：完成/合并后自动清理/归档策略未实现
 - [ ] **PM × Task/Step 对齐**：把“分析/分配/启动/验收/交付”映射到 `TaskTemplate + Step`（避免仅靠散落的 Run/Artifact 做状态推断）
 
-## 1. 下一步执行计划（P0：先把闭环跑通）
+## 1. 下一步执行计划（P0：BMAD-Lite 最少增量，立刻收益）
 
-### Task P0-1：Policy MVP（Project 级配置 + 工具门禁）
+> 对齐文档：`docs/09_WORKFLOW_OPTIMIZATION_BMAD_LITE.md`（P0/P1/P2 路线图与定义）。
+
+### Task P0-1：Context Pack（共享上下文）文档资产
 
 **目标**
-- 让系统能按 Project 配置：哪些动作可自动执行、哪些动作必须审批、哪些目录/文件触碰即升级风险并进入审批。
-
-**建议落地（MVP 取舍）**
-- 先用 `Project.branchProtection`（JSON）承载 `pmPolicy`（避免立刻加表迁移），后续再迁移到专用表。
-- 默认策略：`merge_pr` 必须审批；其余动作按风险/目录门禁决定是否自动。
+- 用最小成本把“仓库硬约束”固化成可复用上下文，减少 agent/人协作时的误改与返工。
 
 **Done**
-- 提供 `GET/PUT /api/policies`（按 Project）用于读写策略
-- 在 `create_pr`/`publish_artifact` 执行前做 gate 判定：命中 `approvals.requireForActions` 或 `sensitivePaths` 升级则创建审批并等待/返回 `APPROVAL_REQUIRED`
-- 前端提供一个最小配置入口（Admin 页或 Project 设置页）
+- 新增 `docs/project-context.md`：目录结构、命名/格式、测试命令、禁改目录、常见坑等（手工维护即可）
+- 新增 `docs/dod.md`：DoD 清单（实现/测试/评审/文档/审计的最低标准）
 
 **验证**
-- 用一个命中 `sensitivePaths` 的 Run：create-pr/publish 会进入审批；merge 仍必须走审批（审计/评论齐全）
+- 任意人/agent 打开 docs 即可作为统一约束；后续 Step 执行可引用 DoD 做验收
 
 ---
 
-### Task P0-2：Run 自动验收报告（`auto-review`）
+### Task P0-2：Context Pack 自动注入（按 `step.kind`）
 
 **目标**
-- Run 完成后自动生成可 review 的“验收报告”（`Artifact(type=report)`），并给出下一步建议（创建 PR/请求审批/需要补测等）。
+- Task 流的 agent prompt 自动加载 Context Pack（按步骤类型选择），让不同 agent 执行一致。
 
 **Done**
-- 新增 `POST /api/pm/runs/:id/auto-review`：汇总 diff、变更文件、`pnpm test`（如有）、风险点、建议
-- 在 Run 完成/CI 结果回写时（或由 PM 自动化触发）写入 `report` Artifact
-- GitHub 来源的 Issue：在评论里追加“验收摘要”（best-effort）
+- 在后端实现基于 `step.kind` 的 context manifest（先用代码常量，后续再迁移到 `docs/context-manifest.yaml`）
+- `acpAgentExecutor` 拼 prompt 时：从 workspace 读取对应 docs，并做限长/截断（避免 prompt 过大）
 
 **验证**
-- 运行一次 Run（含变更与测试），能在 UI 看到报告；报告包含：变更摘要/测试摘要/风险点/建议下一步
+- 启动任意 `dev.implement` / `code.review` Step：ACP prompt 中可看到注入的 Context Pack 内容
 
 ---
 
-### Task P0-3：自动 `create-pr`（满足门禁则全自动，否则给出可执行建议）
+### Task P0-3：“Next Action” 读接口 + 前端提示
 
 **目标**
-- Run 完成后，在满足策略门禁时自动创建 PR；失败不阻塞，降级为“提示如何手动创建/重试”。
+- 把“下一步做什么”变成系统能力：给出阻塞原因、缺失产物与可执行动作（先读接口即可）。
 
 **Done**
-- 在 PM 自动化里增加 `maybeCreatePr(runId)`：受 Policy 控制（非 Task 流）
-- Task 流：通过 `pr.create` system step + Task 自动推进实现自动创建 PR（可用 `pmPolicy.automation.autoCreatePr=false` 关闭自动执行）
-- 创建 PR 成功后：写 `Artifact(type=pr)` 并在 Issue（GitHub 来源）评论回写 PR 链接
-- UI 展示“已自动创建 PR / 需要人工处理”的明确状态
+- 新增 `GET /api/pm/issues/:id/next-action`（可扩展到 taskId/runId）：根据 Task/Step 状态、审批队列、PR/CI/报告等聚合建议
+- 前端 Issue 详情页展示 next action（动作 + 原因 + 相关链接/按钮）
 
 **验证**
-- 低风险 Issue：Run 完成后自动创建 PR；高风险/不满足门禁：不自动创建但给出明确下一步
+- 对一个等待审批/等待 CI/Task blocked 的 Issue：能看到明确下一步与原因
+
+---
+
+### Task P0-4：AI Review 默认“对抗式” + 引用 DoD
+
+**目标**
+- 提升 review 信噪比：必须给出问题清单；若 0 findings 必须解释并列出检查项；评审标准引用 DoD。
+
+**Done**
+- `code.review` 的 prompt 统一改为对抗式输出（结构化 JSON + Markdown）
+- 默认将 `docs/dod.md` 注入到 `code.review` 的上下文中
+
+**验证**
+- 运行一次 `code.review` Step：输出包含 findings；或 0 findings 时包含检查项与理由
+
+---
+
+### Task P0-5：`gate_decision` 结构化产物约定（先不改 DB）
+
+**目标**
+- 把“能继续吗”显式化为结构化数据，为后续 gate step 聚合与审计打基础。
+
+**Done**
+- 新增 `gate_decision` JSON schema（Artifact(type=`report`) 的 `content.kind="gate_decision"` 约定）
+  - Schema 文件：`docs/gate_decision.schema.json`
+- 在后续 P1 引入 `gate.review` / `gate.implementation_readiness` 时直接复用该 schema（避免返工）
+
+**验证**
+- schema 可用于 LLM 输出校验/后端持久化；并能在 UI/导出中展示（后续实现）
 
 ## 2. 后续执行计划（P1/P2）
 
 ### P1：CI/Webhook 闭环 + Review 流转
 
+- [ ] 引入 `track`（quick/planning/enterprise）字段或模板升级（先预留，后续做推荐与 UI）
+- [ ] 引入 `docs/context-manifest.yaml`（按 `step.kind` 自动注入上下文；支持片段/截断策略）
+- [ ] 增加 `gate.implementation_readiness` 与 `correct-course`（重规划）并与 Policy/Approval 对齐
 - [ ] 接入 GitLab `pipeline` webhook：写 `Artifact(type=ci_result)` 并驱动 `Run.status=waiting_ci → completed/failed`（同时增强 CI 关联：`head_sha/PR` 等）
 - [ ] 自动/半自动合并 gate：CI 全绿 + Policy 允许 → auto merge，否则进入审批
 - [ ] Review Gate 聚合：把 “AI review / 人 review / 合并审批” 做统一门禁与状态机（对 Task/Run/PR 一致）
 
 ### P2：安全、可观测、生命周期
 
+- [ ] 模板持久化（DB）+ 编辑器（UI）：可配置 TaskTemplate/Step，支持企业级流程扩展
+- [ ] 执行器插件化：更多 CI provider、远程 runner、容器化（减少本机依赖）
 - [ ] Webhook：secret 强制校验（prod 模式）、幂等 eventId、限流与重放保护
 - [ ] Token：Project token 加密存储/脱敏审计（避免明文）
 - [ ] 指标与审计：LLM tokens/latency/成本按 Project 汇总；自动化决策可回放
