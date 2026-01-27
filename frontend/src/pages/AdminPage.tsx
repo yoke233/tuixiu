@@ -12,6 +12,15 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import type { Approval, Issue, IssueStatus, PmPolicy, Project } from "../types";
 import { getShowArchivedIssues, setShowArchivedIssues } from "../utils/settings";
 
+const ADMIN_SECTION_KEYS = ["approvals", "settings", "projects", "issues", "roles", "policy", "archive"] as const;
+type AdminSectionKey = (typeof ADMIN_SECTION_KEYS)[number];
+
+function getSectionFromSearch(search: string): AdminSectionKey | null {
+  const raw = new URLSearchParams(search).get("section");
+  if (!raw) return null;
+  return (ADMIN_SECTION_KEYS as readonly string[]).includes(raw) ? (raw as AdminSectionKey) : null;
+}
+
 function splitLines(s: string): string[] {
   return s
     .split(/\r?\n/g)
@@ -24,8 +33,6 @@ function isArchivableStatus(status: IssueStatus): boolean {
 }
 
 export function AdminPage() {
-  type AdminSectionKey = "projects" | "issues" | "roles" | "approvals" | "settings" | "policy" | "archive";
-
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
@@ -35,7 +42,7 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvalBusyId, setApprovalBusyId] = useState<string>("");
-  const [activeSection, setActiveSection] = useState<AdminSectionKey>("projects");
+  const [activeSection, setActiveSection] = useState<AdminSectionKey>(() => getSectionFromSearch(location.search) ?? "projects");
 
   const [showArchivedOnBoard, setShowArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -123,6 +130,18 @@ export function AdminPage() {
       }
     })();
   }, [activeSection, effectiveProjectId]);
+
+  useEffect(() => {
+    const fromUrl = getSectionFromSearch(location.search);
+    if (fromUrl && fromUrl !== activeSection) setActiveSection(fromUrl);
+  }, [activeSection, location.search]);
+
+  function setActiveSectionWithUrl(next: AdminSectionKey) {
+    setActiveSection(next);
+    const params = new URLSearchParams(location.search);
+    params.set("section", next);
+    navigate(`${location.pathname}?${params.toString()}`);
+  }
 
   function requireAdmin(): boolean {
     if (!auth.user) {
@@ -274,6 +293,7 @@ export function AdminPage() {
 
   async function onApproveApproval(id: string) {
     setError(null);
+    if (!requireAdmin()) return;
     setApprovalBusyId(id);
     try {
       await approveApproval(id, "admin");
@@ -287,6 +307,7 @@ export function AdminPage() {
 
   async function onRejectApproval(id: string) {
     setError(null);
+    if (!requireAdmin()) return;
     setApprovalBusyId(id);
     try {
       await rejectApproval(id, { actor: "admin", reason: "rejected by admin" });
@@ -367,7 +388,7 @@ export function AdminPage() {
           <button
             type="button"
             className={`adminNavItem ${activeSection === "approvals" ? "active" : ""}`}
-            onClick={() => setActiveSection("approvals")}
+            onClick={() => setActiveSectionWithUrl("approvals")}
           >
             <span>审批队列</span>
             {approvals.length ? <span className="badge orange">{approvals.length}</span> : null}
@@ -375,42 +396,42 @@ export function AdminPage() {
           <button
             type="button"
             className={`adminNavItem ${activeSection === "settings" ? "active" : ""}`}
-            onClick={() => setActiveSection("settings")}
+            onClick={() => setActiveSectionWithUrl("settings")}
           >
             <span>平台设置</span>
           </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "policy" ? "active" : ""}`}
-            onClick={() => setActiveSection("policy")}
+            onClick={() => setActiveSectionWithUrl("policy")}
           >
             <span>策略</span>
           </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "projects" ? "active" : ""}`}
-            onClick={() => setActiveSection("projects")}
+            onClick={() => setActiveSectionWithUrl("projects")}
           >
             <span>项目管理</span>
           </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "issues" ? "active" : ""}`}
-            onClick={() => setActiveSection("issues")}
+            onClick={() => setActiveSectionWithUrl("issues")}
           >
             <span>Issue 管理</span>
           </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "roles" ? "active" : ""}`}
-            onClick={() => setActiveSection("roles")}
+            onClick={() => setActiveSectionWithUrl("roles")}
           >
             <span>角色模板</span>
           </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "archive" ? "active" : ""}`}
-            onClick={() => setActiveSection("archive")}
+            onClick={() => setActiveSectionWithUrl("archive")}
           >
             <span>Issue 归档</span>
           </button>
