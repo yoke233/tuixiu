@@ -25,6 +25,10 @@ export type Project = {
   workspaceMode?: "worktree" | "clone";
   gitAuthMode?: "https_pat" | "ssh";
   defaultRoleKey?: string | null;
+  agentWorkspaceNoticeTemplate?: string | null;
+  gitlabProjectId?: number | null;
+  hasGitlabAccessToken?: boolean;
+  hasGithubAccessToken?: boolean;
   githubPollingEnabled?: boolean;
   githubPollingCursor?: string | null;
   createdAt: string;

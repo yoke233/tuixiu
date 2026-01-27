@@ -139,5 +139,44 @@ describe("createReviewRequestForRun", () => {
       expect.objectContaining({ body: "See https://github.com/o/r/issues/3" }),
     );
   });
+
+  it("BoxLite git_clone：跳过 gitPush（由 VM 内 Agent 负责 push）", async () => {
+    const { prisma, gitPush, parseRepo, createPullRequest } = makeDeps({
+      run: {
+        agent: {
+          capabilities: {
+            sandbox: { provider: "boxlite_oci", boxlite: { workspaceMode: "git_clone" } },
+          },
+        },
+      },
+    });
+
+    const res = await createReviewRequestForRun(
+      { prisma, gitPush, github: { parseRepo, createPullRequest } } as any,
+      "r1",
+      {},
+    );
+
+    expect(res.success).toBe(true);
+    expect(gitPush).not.toHaveBeenCalled();
+    expect(createPullRequest).toHaveBeenCalled();
+  });
+
+  it("UNSUPPORTED_SCM：不应尝试 gitPush", async () => {
+    const { prisma, gitPush, parseRepo, createPullRequest } = makeDeps({
+      project: { scmType: "gitee" },
+    });
+
+    const res = await createReviewRequestForRun(
+      { prisma, gitPush, github: { parseRepo, createPullRequest } } as any,
+      "r1",
+      {},
+    );
+
+    expect(res.success).toBe(false);
+    expect((res as any).error?.code).toBe("UNSUPPORTED_SCM");
+    expect(gitPush).not.toHaveBeenCalled();
+    expect(createPullRequest).not.toHaveBeenCalled();
+  });
 });
 

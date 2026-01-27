@@ -45,6 +45,27 @@ function appendGitHubIssueLinkForPrBody(params: {
   return `${trimmed}${trimmed ? "\n\n" : ""}Closes #${externalNumber}`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function pickBoxliteWorkspaceModeFromCaps(capabilities: unknown): "mount" | "git_clone" | null {
+  if (!isRecord(capabilities)) return null;
+  const sandbox = capabilities.sandbox;
+  if (!isRecord(sandbox)) return null;
+  if (sandbox.provider !== "boxlite_oci") return null;
+  const boxlite = sandbox.boxlite;
+  if (!isRecord(boxlite)) return "mount";
+  return boxlite.workspaceMode === "git_clone" ? "git_clone" : "mount";
+}
+
+function isBoxliteGitCloneRun(run: any): boolean {
+  const assignedCaps = run?.issue?.assignedAgent?.capabilities;
+  const runCaps = run?.agent?.capabilities;
+  const mode = pickBoxliteWorkspaceModeFromCaps(assignedCaps ?? runCaps);
+  return mode === "git_clone";
+}
+
 export async function createReviewRequestForRun(
   deps: RunReviewDeps,
   runId: string,
@@ -63,7 +84,8 @@ export async function createReviewRequestForRun(
   const run = await deps.prisma.run.findUnique({
     where: { id: runId },
     include: {
-      issue: { include: { project: true } },
+      agent: { select: { id: true, capabilities: true } } as any,
+      issue: { include: { project: true, assignedAgent: { select: { id: true, capabilities: true } } } } as any,
       artifacts: { orderBy: { createdAt: "desc" } }
     }
   });
@@ -71,8 +93,10 @@ export async function createReviewRequestForRun(
     return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
   }
 
+  const runAny = run as any;
+
   const taskId = (run as any).taskId as string | null;
-  const existingPrInRun = run.artifacts.find((a: any) => a.type === "pr");
+  const existingPrInRun = runAny.artifacts.find((a: any) => a.type === "pr");
   if (existingPrInRun) {
     return { success: true, data: { pr: existingPrInRun } };
   }
@@ -87,24 +111,30 @@ export async function createReviewRequestForRun(
     }
   }
 
-  const project = run.issue.project;
+  const project = runAny.issue.project;
   const scm = String(project.scmType ?? "").toLowerCase();
 
-  const branchArtifact = run.artifacts.find((a: any) => a.type === "branch");
+  if (scm !== "gitlab" && scm !== "codeup" && scm !== "github") {
+    return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub/Codeup" } };
+  }
+
+  const branchArtifact = runAny.artifacts.find((a: any) => a.type === "branch");
   const branchFromArtifact = (branchArtifact?.content as any)?.branch;
-  const branch = run.branchName || (typeof branchFromArtifact === "string" ? branchFromArtifact : "");
+  const branch = runAny.branchName || (typeof branchFromArtifact === "string" ? branchFromArtifact : "");
   if (!branch) {
     return { success: false, error: { code: "NO_BRANCH", message: "Run 暂无 branch 信息" } };
   }
 
   const targetBranch = body.targetBranch ?? project.defaultBranch ?? "main";
-  const title = body.title ?? run.issue.title ?? `Run ${run.id}`;
-  const description = body.description ?? run.issue.description ?? "";
+  const title = body.title ?? runAny.issue.title ?? `Run ${runAny.id}`;
+  const description = body.description ?? runAny.issue.description ?? "";
 
-  try {
-    await deps.gitPush({ cwd: run.workspacePath ?? process.cwd(), branch, project });
-  } catch (err) {
-    return { success: false, error: { code: "GIT_PUSH_FAILED", message: "git push 失败", details: String(err) } };
+  if (!isBoxliteGitCloneRun(runAny)) {
+    try {
+      await deps.gitPush({ cwd: runAny.workspacePath ?? process.cwd(), branch, project });
+    } catch (err) {
+      return { success: false, error: { code: "GIT_PUSH_FAILED", message: "git push 失败", details: String(err) } };
+    }
   }
 
   if (scm === "gitlab" || scm === "codeup") {

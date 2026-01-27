@@ -63,7 +63,7 @@ function buildCreatePrUrl(opts: { project?: Project; baseBranch: string; branch:
   if (scm === "github") {
     return `${web}/compare/${base}...${head}?expand=1`;
   }
-  if (scm === "gitlab") {
+  if (scm === "gitlab" || scm === "codeup") {
     const qs = new URLSearchParams({
       "merge_request[source_branch]": opts.branch,
       "merge_request[target_branch]": opts.baseBranch,
@@ -132,7 +132,11 @@ export function RunChangesPanel(props: Props) {
 
   const provider = useMemo(() => (props.project?.scmType ?? "").toLowerCase(), [props.project]);
   const providerLabel = "PR";
-  const canUseApi = provider === "gitlab" || provider === "github";
+  const canUseApi =
+    (provider === "github" && Boolean(props.project?.hasGithubAccessToken)) ||
+    ((provider === "gitlab" || provider === "codeup") &&
+      Boolean(props.project?.gitlabProjectId) &&
+      Boolean(props.project?.hasGitlabAccessToken));
 
   function requireLogin(): boolean {
     if (auth.user) return true;
@@ -390,55 +394,57 @@ export function RunChangesPanel(props: Props) {
           <button onClick={onAutoReview} disabled={reviewLoading}>
             {reviewLoading ? "验收中…" : "自动验收"}
           </button>
-          {canUseApi ? (
-            prInfo ? (
-              <>
-                <a className="buttonSecondary" href={prInfo.webUrl || "#"} target="_blank" rel="noreferrer">
-                  打开 {providerLabel}
-                  {prInfo.num ? ` #${prInfo.num}` : ""}
-                </a>
-                <button onClick={onSyncPr} disabled={prLoading}>
-                  同步 {providerLabel} 状态
-                </button>
-                {prInfo.mergeableState === "dirty" || prInfo.mergeableState === "behind" ? (
-                  <button onClick={onAskAgentToFixMerge} disabled={prLoading}>
-                    让 Agent {prInfo.mergeableState === "dirty" ? "解决冲突" : "更新分支"}
+          {prInfo ? (
+            <>
+              <a className="buttonSecondary" href={prInfo.webUrl || "#"} target="_blank" rel="noreferrer">
+                打开 {providerLabel}
+                {prInfo.num ? ` #${prInfo.num}` : ""}
+              </a>
+              {canUseApi ? (
+                <>
+                  <button onClick={onSyncPr} disabled={prLoading}>
+                    同步 {providerLabel} 状态
                   </button>
-                ) : null}
-                {mergeApproval?.content?.status === "pending" ? (
-                  <>
-                    <span className="muted" style={{ marginLeft: 4 }}>
-                      待审批
-                    </span>
-                    <button onClick={onApproveMerge} disabled={prLoading}>
-                      批准并合并
+                  {prInfo.mergeableState === "dirty" || prInfo.mergeableState === "behind" ? (
+                    <button onClick={onAskAgentToFixMerge} disabled={prLoading}>
+                      让 Agent {prInfo.mergeableState === "dirty" ? "解决冲突" : "更新分支"}
                     </button>
-                    <button onClick={onRejectMerge} disabled={prLoading}>
-                      拒绝
+                  ) : null}
+                  {mergeApproval?.content?.status === "pending" ? (
+                    <>
+                      <span className="muted" style={{ marginLeft: 4 }}>
+                        待审批
+                      </span>
+                      <button onClick={onApproveMerge} disabled={prLoading}>
+                        批准并合并
+                      </button>
+                      <button onClick={onRejectMerge} disabled={prLoading}>
+                        拒绝
+                      </button>
+                    </>
+                  ) : mergeApproval?.content?.status === "executing" ? (
+                    <button disabled>
+                      正在合并…
                     </button>
-                  </>
-                ) : mergeApproval?.content?.status === "executing" ? (
-                  <button disabled>
-                    正在合并…
-                  </button>
-                ) : mergeApproval?.content?.status === "executed" ? (
-                  <button disabled>
-                    已合并
-                  </button>
-                ) : (
-                  <button
-                    onClick={onMergePr}
-                    disabled={prLoading || prInfo.mergeableState === "dirty" || prInfo.mergeable === false}
-                  >
-                    发起合并审批
-                  </button>
-                )}
-              </>
-            ) : (
-              <button onClick={onCreatePr} disabled={prLoading}>
-                创建 {providerLabel}
-              </button>
-            )
+                  ) : mergeApproval?.content?.status === "executed" ? (
+                    <button disabled>
+                      已合并
+                    </button>
+                  ) : (
+                    <button
+                      onClick={onMergePr}
+                      disabled={prLoading || prInfo.mergeableState === "dirty" || prInfo.mergeable === false}
+                    >
+                      发起合并审批
+                    </button>
+                  )}
+                </>
+              ) : null}
+            </>
+          ) : canUseApi ? (
+            <button onClick={onCreatePr} disabled={prLoading}>
+              创建 {providerLabel}
+            </button>
           ) : createPrUrl ? (
             <a className="buttonSecondary" href={createPrUrl} target="_blank" rel="noreferrer">
               打开 PR 页面

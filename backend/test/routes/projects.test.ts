@@ -14,7 +14,10 @@ describe("Projects routes", () => {
 
     const res = await server.inject({ method: "GET", url: "/api/projects" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ success: true, data: { projects: [{ id: "p1" }] } });
+    expect(res.json()).toEqual({
+      success: true,
+      data: { projects: [{ id: "p1", hasGitlabAccessToken: false, hasGithubAccessToken: false }] },
+    });
     expect(prisma.project.findMany).toHaveBeenCalledWith({ orderBy: { createdAt: "desc" } });
     await server.close();
   });
@@ -33,7 +36,10 @@ describe("Projects routes", () => {
       payload: { name: "Demo", repoUrl: "https://example.com/repo.git" }
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ success: true, data: { project: { id: "p2" } } });
+    expect(res.json()).toEqual({
+      success: true,
+      data: { project: { id: "p2", hasGitlabAccessToken: false, hasGithubAccessToken: false } },
+    });
 
     expect(prisma.project.create).toHaveBeenCalledWith({
       data: {
