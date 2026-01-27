@@ -30,6 +30,7 @@ describe("Approvals routes", () => {
   it("POST /api/approvals/:id/approve executes merge", async () => {
     const server = createHttpServer();
     const prisma = {
+      event: { create: vi.fn().mockResolvedValue({}) },
       artifact: {
         findUnique: vi.fn().mockImplementation(async (args: any) => ({
           id: args.where.id,

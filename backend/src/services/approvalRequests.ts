@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { postGitHubApprovalCommentBestEffort } from "./githubIssueComments.js";
 
 const approvalActionSchema = z.enum(["merge_pr"]);
 export type ApprovalAction = z.infer<typeof approvalActionSchema>;
@@ -107,7 +108,7 @@ export async function requestMergePrApproval(opts: {
 > {
   const run = await opts.prisma.run.findUnique({
     where: { id: opts.runId },
-    include: { issue: true, artifacts: true },
+    include: { issue: { include: { project: true } }, artifacts: true },
   });
   if (!run) {
     return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
@@ -153,6 +154,49 @@ export async function requestMergePrApproval(opts: {
     },
   });
 
+  const prUrl =
+    typeof (pr as any)?.content?.webUrl === "string"
+      ? String((pr as any).content.webUrl).trim()
+      : typeof (pr as any)?.content?.web_url === "string"
+        ? String((pr as any).content.web_url).trim()
+        : "";
+
+  await opts.prisma.event
+    .create({
+      data: {
+        id: uuidv7(),
+        runId: (run as any).id,
+        source: "system",
+        type: "approval.merge_pr.requested",
+        payload: {
+          approvalId: (created as any).id,
+          requestedBy,
+          requestedAt: now,
+          prUrl: prUrl || undefined,
+        } as any,
+      },
+    })
+    .catch(() => {});
+
+  const issue: any = (run as any)?.issue;
+  const project: any = issue?.project;
+  const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
+  const issueNumber = Number(issue?.externalNumber ?? 0);
+  const token = String(project?.githubAccessToken ?? "").trim();
+  const repoUrl = String(project?.repoUrl ?? "").trim();
+
+  if (issueIsGitHub && token) {
+    await postGitHubApprovalCommentBestEffort({
+      repoUrl,
+      githubAccessToken: token,
+      issueNumber,
+      kind: "merge_pr_requested",
+      runId: String((run as any).id),
+      approvalId: String((created as any).id),
+      prUrl: prUrl || null,
+    });
+  }
+
   const summary = toApprovalSummary(created, run);
   if (!summary) {
     return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
@@ -165,4 +209,3 @@ export function withApprovalUpdate(prev: ApprovalContent, patch: Partial<Approva
   if (next.success) return next.data;
   return { ...prev, ...patch } as ApprovalContent;
 }
-

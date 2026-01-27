@@ -13,7 +13,6 @@ import {
 } from "../services/runGitChanges.js";
 import {
   createReviewRequestForRun,
-  mergeReviewRequestForRun,
   syncReviewRequestForRun,
 } from "../services/runReviewRequest.js";
 import { requestMergePrApproval } from "../services/approvalRequests.js";
@@ -197,22 +196,29 @@ export function makeRunRoutes(deps: {
     server.post("/:id/merge-pr", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({
+        requestedBy: z.string().min(1).max(100).optional(),
         squash: z.boolean().optional(),
         mergeCommitMessage: z.string().min(1).optional(),
       });
       const { id } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
 
-      return await mergeReviewRequestForRun(
-        {
-          prisma: deps.prisma,
-          gitPush,
-          gitlab: deps.gitlab,
-          github: deps.github,
+      const req = await requestMergePrApproval({
+        prisma: deps.prisma,
+        runId: id,
+        requestedBy: body.requestedBy ?? "api_merge_pr",
+        payload: { squash: body.squash, mergeCommitMessage: body.mergeCommitMessage },
+      });
+      if (!req.success) return req;
+
+      return {
+        success: false,
+        error: {
+          code: "APPROVAL_REQUIRED",
+          message: "合并 PR 属于高危动作，需要审批。已创建审批请求，请在 /api/approvals 中批准后执行合并。",
         },
-        id,
-        body,
-      );
+        data: req.data,
+      };
     });
 
     server.post("/:id/request-merge-pr", async (request) => {

@@ -269,9 +269,10 @@ describe("Runs routes", () => {
     await server.close();
   });
 
-  it("POST /api/runs/:id/merge-pr merges PR and marks issue done", async () => {
+  it("POST /api/runs/:id/merge-pr requires approval (creates approval request)", async () => {
     const server = createHttpServer();
     const prisma = {
+      event: { create: vi.fn().mockResolvedValue({}) },
       run: {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
@@ -281,46 +282,25 @@ describe("Runs routes", () => {
             project: {
               repoUrl: "https://gitlab.example.com/group/repo.git",
               scmType: "gitlab",
-              gitlabProjectId: 123,
-              gitlabAccessToken: "tok"
             }
           },
-          artifacts: [{ id: "pr-1", type: "pr", content: { iid: 7 } }]
+          artifacts: [{ id: "pr-1", type: "pr", content: { iid: 7, webUrl: "https://gitlab.example.com/group/repo/-/merge_requests/7" } }]
         }),
-        update: vi.fn().mockResolvedValue({})
       },
-      issue: { update: vi.fn().mockResolvedValue({}) },
-      artifact: { update: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr", content: { iid: 7, state: "merged" } }) }
+      artifact: {
+        create: vi.fn().mockResolvedValue({
+          id: "ap-1",
+          runId: "r1",
+          type: "report",
+          content: { kind: "approval_request", action: "merge_pr", status: "pending" },
+          createdAt: "2026-01-25T00:00:00.000Z"
+        })
+      }
     } as any;
-
-    const mergeMergeRequest = vi.fn().mockResolvedValue({
-      id: 9,
-      iid: 7,
-      title: "t1",
-      state: "merged",
-      web_url: "https://gitlab.example.com/group/repo/-/merge_requests/7",
-      source_branch: "run/r1",
-      target_branch: "main"
-    });
-    const getMergeRequest = vi.fn().mockResolvedValue({
-      id: 9,
-      iid: 7,
-      title: "t1",
-      state: "merged",
-      web_url: "https://gitlab.example.com/group/repo/-/merge_requests/7",
-      source_branch: "run/r1",
-      target_branch: "main"
-    });
 
     await server.register(
       makeRunRoutes({
-        prisma,
-        gitlab: {
-          inferBaseUrl: () => "https://gitlab.example.com",
-          createMergeRequest: vi.fn(),
-          mergeMergeRequest,
-          getMergeRequest
-        }
+        prisma
       }),
       { prefix: "/api/runs" }
     );
@@ -332,12 +312,14 @@ describe("Runs routes", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.success).toBe(true);
-    expect(mergeMergeRequest).toHaveBeenCalled();
-    expect(getMergeRequest).toHaveBeenCalled();
-    expect(prisma.artifact.update).toHaveBeenCalled();
-    expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
-    expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("APPROVAL_REQUIRED");
+    expect(prisma.artifact.create).toHaveBeenCalled();
+    const call = prisma.artifact.create.mock.calls[0][0];
+    expect(call.data.type).toBe("report");
+    expect(call.data.content.action).toBe("merge_pr");
+    expect(call.data.content.status).toBe("pending");
+    expect(call.data.content.requestedBy).toBe("api_merge_pr");
     await server.close();
   });
 
@@ -418,9 +400,10 @@ describe("Runs routes", () => {
     await server.close();
   });
 
-  it("POST /api/runs/:id/merge-pr supports GitHub (merges PR and marks issue done)", async () => {
+  it("POST /api/runs/:id/merge-pr supports GitHub (requires approval)", async () => {
     const server = createHttpServer();
     const prisma = {
+      event: { create: vi.fn().mockResolvedValue({}) },
       run: {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
@@ -433,41 +416,23 @@ describe("Runs routes", () => {
               githubAccessToken: "ghp_xxx"
             }
           },
-          artifacts: [{ id: "pr-1", type: "pr", content: { number: 12 } }]
+          artifacts: [{ id: "pr-1", type: "pr", content: { number: 12, webUrl: "https://github.com/octo-org/octo-repo/pull/12" } }]
         }),
-        update: vi.fn().mockResolvedValue({})
       },
-      issue: { update: vi.fn().mockResolvedValue({}) },
-      artifact: { update: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr" }) }
+      artifact: {
+        create: vi.fn().mockResolvedValue({
+          id: "ap-1",
+          runId: "r1",
+          type: "report",
+          content: { kind: "approval_request", action: "merge_pr", status: "pending" },
+          createdAt: "2026-01-25T00:00:00.000Z"
+        })
+      }
     } as any;
-
-    const mergePullRequest = vi.fn().mockResolvedValue({ merged: true, message: "Merged" });
-    const getPullRequest = vi.fn().mockResolvedValue({
-      id: 99,
-      number: 12,
-      title: "t1",
-      state: "closed",
-      html_url: "https://github.com/octo-org/octo-repo/pull/12",
-      head: { ref: "run/r1" },
-      base: { ref: "main" },
-      merged_at: new Date().toISOString()
-    });
 
     await server.register(
       makeRunRoutes({
-        prisma,
-        github: {
-          parseRepo: () => ({
-            host: "github.com",
-            owner: "octo-org",
-            repo: "octo-repo",
-            webBaseUrl: "https://github.com/octo-org/octo-repo",
-            apiBaseUrl: "https://api.github.com"
-          }),
-          createPullRequest: vi.fn(),
-          mergePullRequest,
-          getPullRequest
-        }
+        prisma
       }),
       { prefix: "/api/runs" }
     );
@@ -479,15 +444,9 @@ describe("Runs routes", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.success).toBe(true);
-    expect(mergePullRequest).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ pullNumber: 12 })
-    );
-    expect(getPullRequest).toHaveBeenCalled();
-    expect(prisma.artifact.update).toHaveBeenCalled();
-    expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
-    expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("APPROVAL_REQUIRED");
+    expect(prisma.artifact.create).toHaveBeenCalled();
     await server.close();
   });
 
