@@ -170,8 +170,9 @@ export function AdminPage() {
 
   useEffect(() => {
     const fromUrl = getSectionFromSearch(location.search);
-    if (fromUrl && fromUrl !== activeSection) setActiveSection(fromUrl);
-  }, [activeSection, location.search]);
+    if (!fromUrl) return;
+    setActiveSection((prev) => (prev === fromUrl ? prev : fromUrl));
+  }, [location.search]);
 
   useEffect(() => {
     if (activeSection !== "issues") return;
