@@ -514,7 +514,22 @@ export function IssueDetailPage() {
     const track = effectivePmAnalysis.recommendedTrack ?? "";
     if (roleKey) setSelectedRoleKey(roleKey);
     if (agentId) setSelectedAgentId(agentId);
-    if (track) setSelectedTaskTrack(track);
+    if (track) {
+      setSelectedTaskTrack(track);
+      if (!selectedTemplateKey) {
+        const preferred =
+          track === "quick"
+            ? ["quick.dev.full", "quick.test.only", "quick.admin.session"]
+            : track === "planning"
+              ? ["planning.prd.dev.full", "planning.prd.only"]
+              : ["quick.dev.full"];
+        const picked =
+          preferred.find((k) => taskTemplates.some((t) => t.key === k && !t.deprecated)) ??
+          taskTemplates.find((t) => !t.deprecated && t.track === track)?.key ??
+          "";
+        if (picked) setSelectedTemplateKey(picked);
+      }
+    }
   }
 
 
@@ -556,6 +571,44 @@ export function IssueDetailPage() {
     }
     return map;
   }, [taskTemplates]);
+
+  const selectableTaskTemplates = useMemo(() => taskTemplates.filter((t) => !t.deprecated), [taskTemplates]);
+
+  const visibleTaskTemplates = useMemo(() => {
+    if (!selectedTaskTrack) return selectableTaskTemplates;
+    return selectableTaskTemplates.filter((t) => !t.track || t.track === selectedTaskTrack);
+  }, [selectableTaskTemplates, selectedTaskTrack]);
+
+  const visibleTaskTemplatesByTrack = useMemo(() => {
+    const groups: Record<string, TaskTemplate[]> = { quick: [], planning: [], enterprise: [], other: [] };
+    for (const t of visibleTaskTemplates) {
+      if (t.track === "quick") groups.quick.push(t);
+      else if (t.track === "planning") groups.planning.push(t);
+      else if (t.track === "enterprise") groups.enterprise.push(t);
+      else groups.other.push(t);
+    }
+    return groups;
+  }, [visibleTaskTemplates]);
+
+  useEffect(() => {
+    if (!selectedTaskTrack) return;
+    const current = selectedTemplateKey ? templatesByKey[selectedTemplateKey] ?? null : null;
+    if (current && !current.deprecated && (current.track === selectedTaskTrack || !current.track)) return;
+
+    const preferred =
+      selectedTaskTrack === "quick"
+        ? ["quick.dev.full", "quick.test.only", "quick.admin.session"]
+        : selectedTaskTrack === "planning"
+          ? ["planning.prd.dev.full", "planning.prd.only"]
+          : ["quick.dev.full"];
+
+    const picked =
+      preferred.find((k) => selectableTaskTemplates.some((t) => t.key === k && t.track === selectedTaskTrack)) ??
+      selectableTaskTemplates.find((t) => t.track === selectedTaskTrack)?.key ??
+      "";
+
+    if (picked && picked !== selectedTemplateKey) setSelectedTemplateKey(picked);
+  }, [selectableTaskTemplates, selectedTaskTrack, selectedTemplateKey, templatesByKey]);
 
   const runsByStepId = useMemo(() => {
     const map: Record<string, Run[]> = {};
@@ -839,16 +892,65 @@ export function IssueDetailPage() {
                   disabled={!taskTemplatesLoaded && !taskTemplatesError}
                 >
                   <option value="">选择模板…</option>
-                  {taskTemplates.map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.displayName}
-                    </option>
-                  ))}
+                  {visibleTaskTemplatesByTrack.quick.length ? (
+                    <optgroup label="Track：quick">
+                      {visibleTaskTemplatesByTrack.quick.map((t) => (
+                        <option key={t.key} value={t.key}>
+                          {t.displayName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {visibleTaskTemplatesByTrack.planning.length ? (
+                    <optgroup label="Track：planning">
+                      {visibleTaskTemplatesByTrack.planning.map((t) => (
+                        <option key={t.key} value={t.key}>
+                          {t.displayName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {visibleTaskTemplatesByTrack.enterprise.length ? (
+                    <optgroup label="Track：enterprise">
+                      {visibleTaskTemplatesByTrack.enterprise.map((t) => (
+                        <option key={t.key} value={t.key}>
+                          {t.displayName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {visibleTaskTemplatesByTrack.other.length ? (
+                    <optgroup label="其他">
+                      {visibleTaskTemplatesByTrack.other.map((t) => (
+                        <option key={t.key} value={t.key}>
+                          {t.displayName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
                 </select>
                 <select
                   aria-label="选择 Track"
                   value={selectedTaskTrack}
-                  onChange={(e) => setSelectedTaskTrack(e.target.value as TaskTrack | "")}
+                  onChange={(e) => {
+                    const next = e.target.value as TaskTrack | "";
+                    setSelectedTaskTrack(next);
+                    if (!next) return;
+                    const current = selectedTemplateKey ? templatesByKey[selectedTemplateKey] ?? null : null;
+                    if (current && !current.deprecated && (current.track === next || !current.track)) return;
+
+                    const preferred =
+                      next === "quick"
+                        ? ["quick.dev.full", "quick.test.only", "quick.admin.session"]
+                        : next === "planning"
+                          ? ["planning.prd.dev.full", "planning.prd.only"]
+                          : ["quick.dev.full"];
+                    const picked =
+                      preferred.find((k) => selectableTaskTemplates.some((t) => t.key === k && t.track === next)) ??
+                      selectableTaskTemplates.find((t) => t.track === next)?.key ??
+                      "";
+                    if (picked) setSelectedTemplateKey(picked);
+                  }}
                   disabled={creatingTask}
                 >
                   <option value="">Track：自动</option>
