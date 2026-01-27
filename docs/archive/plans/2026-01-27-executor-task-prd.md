@@ -134,9 +134,9 @@
   5. `CiExecutor`：触发 CI → Step 进入 `waiting_ci` → webhook 回调写入 `ci_result` → 更新 Step/Task
 
 - **内置模板（MVP，示例）**
-  - `template.dev.full`：`dev.implement (agent)` → `test.run (dual)` → `code.review.ai (agent)` → `code.review.human (human)` → `pr.create (system)` → `ci.gate (ci)` → `merge (human)`
-  - `template.prd.only`：`prd.generate (agent|human)` → `prd.review (human)` → `report.publish (agent|system)`
-  - `template.test.only`：`test.run (dual)` → `report.publish (optional)`
+  - `quick.dev.full`：`dev.implement (agent)` → `test.run (dual)` → `code.review.ai (agent)` → `code.review.human (human)` → `pr.create (system)` → `ci.gate (ci)` → `merge (human)`
+  - `planning.prd.only`：`prd.generate (agent|human)` → `prd.review (human)` → `report.publish (agent|system)`
+  - `quick.test.only`：`test.run (dual)` → `report.publish (optional)`
 
 ### 4.2 Integration Points
 

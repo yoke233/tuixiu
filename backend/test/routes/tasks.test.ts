@@ -46,7 +46,7 @@ describe("Tasks routes", () => {
     const res = await server.inject({
       method: "POST",
       url: "/api/issues/00000000-0000-0000-0000-000000000001/tasks",
-      payload: { templateKey: "template.prd.only" },
+      payload: { templateKey: "planning.prd.only" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: false, error: { code: "NOT_FOUND", message: "Issue 不存在" } });
@@ -58,10 +58,12 @@ describe("Tasks routes", () => {
     const prisma = {
       issue: { findUnique: vi.fn().mockResolvedValue({ id: "i1", project: { defaultBranch: "main" } }) },
       task: {
-        create: vi.fn().mockImplementation(async (args: any) => ({
+        create: vi.fn().mockResolvedValue({ id: "t1" }),
+        update: vi.fn().mockImplementation(async (args: any) => ({
           id: "t1",
           issueId: "i1",
-          templateKey: args?.data?.templateKey ?? "unknown",
+          templateKey: "planning.prd.only",
+          currentStepId: args?.data?.currentStepId ?? null,
           status: "pending",
           steps: [
             { id: "s1", key: "prd.generate", order: 1, status: "ready" },
@@ -76,7 +78,7 @@ describe("Tasks routes", () => {
     const res = await server.inject({
       method: "POST",
       url: "/api/issues/00000000-0000-0000-0000-000000000001/tasks",
-      payload: { templateKey: "template.prd.only" },
+      payload: { templateKey: "planning.prd.only" },
     });
     expect(res.statusCode).toBe(200);
     const json = res.json();
@@ -84,13 +86,17 @@ describe("Tasks routes", () => {
     expect(json.data.task.id).toBe("t1");
     expect(json.data.task.templateKey).toBe("planning.prd.only");
 
-    const call = prisma.task.create.mock.calls[0]?.[0] as any;
-    expect(call.data.issueId).toBe("00000000-0000-0000-0000-000000000001");
-    expect(call.data.templateKey).toBe("planning.prd.only");
-    expect(call.data.steps.create.length).toBeGreaterThan(0);
-    expect(call.data.steps.create[0]).toEqual(
+    const createCall = prisma.task.create.mock.calls[0]?.[0] as any;
+    expect(createCall.data.issueId).toBe("00000000-0000-0000-0000-000000000001");
+    expect(createCall.data.templateKey).toBe("planning.prd.only");
+    expect(createCall.data.steps.create.length).toBeGreaterThan(0);
+    expect(createCall.data.steps.create[0]).toEqual(
       expect.objectContaining({ key: "prd.generate", kind: "prd.generate", order: 1, status: "ready" }),
     );
+
+    const updateCall = prisma.task.update.mock.calls[0]?.[0] as any;
+    expect(updateCall.where.id).toBeDefined();
+    expect(updateCall.data.currentStepId).toBeDefined();
     await server.close();
   });
 
