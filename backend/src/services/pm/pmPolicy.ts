@@ -10,8 +10,11 @@ export const pmPolicyV1Schema = z
     automation: z
       .object({
         autoStartIssue: z.boolean().default(true),
+        autoReview: z.boolean().default(true),
+        autoCreatePr: z.boolean().default(true),
+        autoRequestMergeApproval: z.boolean().default(true),
       })
-      .default({ autoStartIssue: true }),
+      .default({ autoStartIssue: true, autoReview: true, autoCreatePr: true, autoRequestMergeApproval: true }),
     approvals: z
       .object({
         requireForActions: z.array(approvalActionSchema).default(["merge_pr"]),

@@ -7,6 +7,7 @@ import type { PrismaDeps } from "../deps.js";
 import * as github from "../integrations/github.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
+import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
 
 function getHeader(headers: Record<string, unknown>, name: string): string | undefined {
   const key = name.toLowerCase();
@@ -198,6 +199,11 @@ export function makeGitHubWebhookRoutes(deps: {
               run_id: run.id,
             });
           }
+
+          triggerPmAutoAdvance(
+            { prisma: deps.prisma },
+            { runId: run.id, issueId: (run as any).issueId, trigger: "ci_completed" },
+          );
 
           return { success: true, data: { ok: true, handled: true, runId: run.id, passed } };
         }

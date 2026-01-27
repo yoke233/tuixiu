@@ -749,7 +749,25 @@ export function AdminPage() {
             <button
               type="button"
               className="buttonSecondary"
-              onClick={() => setPolicyText(JSON.stringify({ version: 1, automation: { autoStartIssue: true }, approvals: { requireForActions: ["merge_pr"] }, sensitivePaths: [] } satisfies PmPolicy, null, 2))}
+              onClick={() =>
+                setPolicyText(
+                  JSON.stringify(
+                    {
+                      version: 1,
+                      automation: {
+                        autoStartIssue: true,
+                        autoReview: true,
+                        autoCreatePr: true,
+                        autoRequestMergeApproval: true,
+                      },
+                      approvals: { requireForActions: ["merge_pr"] },
+                      sensitivePaths: [],
+                    } satisfies PmPolicy,
+                    null,
+                    2,
+                  ),
+                )
+              }
               disabled={!effectiveProjectId || policyLoading || policySaving}
             >
               载入默认
@@ -790,7 +808,7 @@ export function AdminPage() {
             rows={14}
             className="inputMono"
             style={{ width: "100%", marginTop: 10 }}
-            placeholder='{"version":1,"automation":{"autoStartIssue":true},"approvals":{"requireForActions":["merge_pr"]},"sensitivePaths":[] }'
+            placeholder='{"version":1,"automation":{"autoStartIssue":true,"autoReview":true,"autoCreatePr":true,"autoRequestMergeApproval":true},"approvals":{"requireForActions":["merge_pr"]},"sensitivePaths":[] }'
           />
         )}
 

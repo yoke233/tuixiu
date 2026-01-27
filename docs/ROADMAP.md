@@ -21,6 +21,7 @@
 - **高危动作审批（MVP）**：`merge-pr` 默认进入审批队列，通过后才执行；审批审计写入 Run events 并回写 GitHub 评论
 - **Policy MVP（Project 级）**：`GET/PUT /api/policies?projectId=...`；Admin 页支持配置 `Project.branchProtection.pmPolicy`；PM 自动化尊重 `autoStartIssue`
 - **Run 自动验收（auto-review）**：`POST /api/pm/runs/:id/auto-review` 生成验收报告（report 产物）；Run 变更面板支持一键触发
+- **Run 自动推进（非 Task 流）**：Run 完成自动生成 auto-review；有变更时自动 `create-pr`；GitHub CI 通过后自动发起 `merge_pr` 审批（仍需人工批准/执行合并）；受 `PM_AUTOMATION_ENABLED` 与 `pmPolicy.automation.*` 控制
 - **前端体验**：浅色/深色主题切换；详情页可调宽；控制台输出更接近 CLI（减少逐字/闪动）
 - **前端 Tasks 面板**：Issue 详情页支持创建 Task、启动 Step、回滚、Human Submit；新增登录页与 Auth Provider
 - **测试**：`backend/`、`frontend/`、`acp-proxy/` 均有单元测试并可 `pnpm -r test` 验证
@@ -36,8 +37,8 @@
 - **会话/在线状态面板**：Agent 是否在线、Run 是否绑定到有效 ACP session、断线重连策略与提示
 - **Project/Agent 维度分配**：Project 负责人/可用 Agent 列表/策略（例如固定/轮询/按负载）
 - **Policy/审批扩展**：在 Policy MVP 基础上，补充动作级 gate（create_pr/publish/ci/merge）与敏感目录门禁自动升级/进入审批
-- **Run 自动验收（自动触发/回写）**：在手动 auto-review 基础上，补充 Run 完成自动触发、测试结果聚合增强、GitHub Issue 评论回写
-- **自动推进到 PR**：满足门禁后自动 `create-pr`；失败降级为可执行的手动步骤（不阻塞）
+- **Run 自动验收（回写增强）**：在已支持“手动 + 自动触发”基础上，补充测试结果聚合增强、GitHub Issue 评论回写
+- **自动推进到 PR（Task 流）**：内置模板已包含 `pr.create` system step，但仍缺 “Step ready 自动启动/全自动推进”
 
 ## 未完成（P1：增强体验）
 

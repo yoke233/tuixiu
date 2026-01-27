@@ -152,7 +152,7 @@ export async function autoReviewRunForPm(
 
   const scopeWhere = (run as any).taskId
     ? ({ taskId: (run as any).taskId } as any)
-    : ({ issueId: (run as any).issueId } as any);
+    : ({ id: (run as any).id } as any);
 
   const [latestPr, latestCi] = await Promise.all([
     deps.prisma.artifact.findFirst({
@@ -184,8 +184,16 @@ export async function autoReviewRunForPm(
   let nextAction: NextAction = "none";
   let nextReason = "无需动作";
   if (!prInfo) {
-    nextAction = "create_pr";
-    nextReason = "尚未发现 PR 交付物，建议先创建 PR 进入 Review/CI 流程";
+    if (changesError) {
+      nextAction = "manual_review";
+      nextReason = `尚未发现 PR；但获取变更失败（${changesError}），建议人工确认后再创建 PR`;
+    } else if (files.length === 0) {
+      nextAction = "none";
+      nextReason = "未发现变更文件，无需创建 PR";
+    } else {
+      nextAction = "create_pr";
+      nextReason = "尚未发现 PR 交付物，建议先创建 PR 进入 Review/CI 流程";
+    }
   } else if (!ciInfo || ciInfo.passed !== true) {
     nextAction = "wait_ci";
     nextReason = !ciInfo ? "尚未发现测试/CI 结果，建议先运行测试或等待 CI 回写" : "测试未通过，建议先修复并补测";
