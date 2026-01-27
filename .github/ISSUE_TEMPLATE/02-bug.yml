@@ -1,12 +1,12 @@
 name: "🐞 Bug Report"
-description: "提交可复现缺陷"
+description: "Report a reproducible bug"
 title: "[Bug] "
 labels: ["type/bug", "status/triage"]
 body:
   - type: dropdown
     id: area
     attributes:
-      label: 影响范围（Area）
+      label: Area
       options:
         - backend
         - frontend
@@ -19,14 +19,14 @@ body:
   - type: textarea
     id: description
     attributes:
-      label: 现象描述
+      label: Observed behavior
     validations:
       required: true
 
   - type: textarea
     id: repro
     attributes:
-      label: 复现步骤
+      label: Steps to reproduce
       placeholder: |
         1. ...
         2. ...
@@ -37,16 +37,16 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: 期望结果
+      label: Expected behavior
     validations:
       required: true
 
   - type: textarea
     id: acceptance
     attributes:
-      label: 验收标准（建议）
+      label: Acceptance criteria (optional)
       placeholder: |
-        - [ ] 修复后复现步骤无法再触发
-        - [ ] 增加/更新测试用例
+        - [ ] Steps to reproduce no longer trigger the issue
+        - [ ] Add/update test cases
     validations:
       required: false

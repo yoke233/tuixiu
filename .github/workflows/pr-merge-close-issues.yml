@@ -19,14 +19,14 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
 
-            // GitHub 会识别 PR 描述里的 "Fixes #123" / "Closes #123"
-            // 我们这里简单从 PR body 里抓所有 #数字
+            // GitHub recognizes "Fixes #123" / "Closes #123" in PR descriptions.
+            // Here we simply extract all #numbers from the PR body.
             const body = pr.body || "";
             const matches = [...body.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10));
             const issueNumbers = [...new Set(matches)];
 
             for (const issue_number of issueNumbers) {
-              // 加 status/done，并尽量移除其它状态标签（可选）
+              // Add status/done and optionally remove other status labels.
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -34,7 +34,7 @@ jobs:
                 labels: ["status/done"]
               });
 
-              // 可选：移除 running/reviewing/ready/triage/blocked（保持状态唯一）
+              // Optional: remove running/reviewing/ready/triage/blocked (keep status unique).
               const toRemove = ["status/triage","status/ready","status/running","status/reviewing","status/blocked"];
               for (const name of toRemove) {
                 try {

@@ -1,12 +1,12 @@
 name: "🤖 ACP Task (Issue → Run → PR)"
-description: "按 tuixiu/ACP 闭环创建可执行任务卡"
+description: "Create an actionable task card following the tuixiu/ACP loop"
 title: "[ACP] "
 labels: ["type/task", "status/ready"]
 body:
   - type: dropdown
     id: area
     attributes:
-      label: 模块（Area）
+      label: Area
       options:
         - backend
         - frontend
@@ -19,54 +19,54 @@ body:
   - type: dropdown
     id: priority
     attributes:
-      label: 优先级（Priority）
+      label: Priority
       options:
-        - P0（必须）
-        - P1（应该）
-        - P2（可选）
+        - P0 (Must)
+        - P1 (Should)
+        - P2 (Optional)
     validations:
       required: true
 
   - type: textarea
     id: goal
     attributes:
-      label: 目标（Goal）
-      description: 一句话说明交付物是什么
-      placeholder: "例如：支持 xxx 接口返回 yyy 字段，并补齐测试"
+      label: Goal
+      description: One sentence describing the deliverable
+      placeholder: "e.g. Add `yyy` field to the `xxx` API response and add tests"
     validations:
       required: true
 
   - type: textarea
     id: context
     attributes:
-      label: 上下文（Context）
-      description: 相关文件/现状/约束；越具体越好
+      label: Context
+      description: Relevant files / current behavior / constraints (the more specific, the better)
       placeholder: |
-        - 相关路径/模块：
-        - 现有行为：
-        - 期望行为：
-        - 约束（最小修改/兼容性等）：
+        - Relevant paths/modules:
+        - Current behavior:
+        - Expected behavior:
+        - Constraints (minimal changes, compatibility, etc.):
     validations:
       required: true
 
   - type: textarea
     id: acceptance
     attributes:
-      label: 验收标准（Acceptance Criteria）
+      label: Acceptance Criteria
       placeholder: |
-        - [ ] 功能点A满足...
-        - [ ] 覆盖单测/回归点...
-        - [ ] CI通过（如有）
+        - [ ] Feature A works...
+        - [ ] Tests/regression coverage...
+        - [ ] CI passes (if applicable)
     validations:
       required: true
 
   - type: textarea
     id: runhint
     attributes:
-      label: 给 Agent 的执行提示（可选）
+      label: Execution hints for the agent (optional)
       placeholder: |
-        - 最小修改原则
-        - 修改范围限制（例如仅 worktree 内）
-        - 如何本地验证/回归
+        - Prefer minimal changes
+        - Scope limits (e.g. only within the worktree)
+        - How to verify/regress locally
     validations:
       required: false

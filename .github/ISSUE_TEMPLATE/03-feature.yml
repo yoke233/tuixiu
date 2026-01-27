@@ -1,12 +1,12 @@
 name: "✨ Feature Request"
-description: "提出新功能/增强需求"
+description: "Request a new feature or enhancement"
 title: "[Feature] "
 labels: ["type/feature", "status/triage"]
 body:
   - type: dropdown
     id: area
     attributes:
-      label: 模块（Area）
+      label: Area
       options:
         - backend
         - frontend
@@ -19,35 +19,35 @@ body:
   - type: dropdown
     id: priority
     attributes:
-      label: 优先级（Priority）
+      label: Priority
       options:
-        - P0（必须）
-        - P1（应该）
-        - P2（可选）
+        - P0 (Must)
+        - P1 (Should)
+        - P2 (Optional)
     validations:
       required: true
 
   - type: textarea
     id: background
     attributes:
-      label: 背景与目标
+      label: Background & goal
     validations:
       required: true
 
   - type: textarea
     id: scope
     attributes:
-      label: 需求范围（Scope）
+      label: Scope
       placeholder: |
-        - 包含：
-        - 不包含：
+        - In scope:
+        - Out of scope:
     validations:
       required: true
 
   - type: textarea
     id: acceptance
     attributes:
-      label: 验收标准（Acceptance Criteria）
+      label: Acceptance Criteria
       placeholder: |
         - [ ] ...
         - [ ] ...

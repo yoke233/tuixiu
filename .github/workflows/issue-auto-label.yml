@@ -30,8 +30,8 @@ jobs:
               });
             }
 
-            // 1) 如果模板没加 labels，这里兜底：按标题前缀识别类型/状态
-            //    你模板标题一般是 [ACP] / [Bug] / [Feature]
+            // 1) Fallback when templates don't set labels: detect type/status by title prefix.
+            //    Template titles are usually [ACP] / [Bug] / [Feature].
             if (title.startsWith("[acp]")) {
               await addLabels(["type/task", "status/ready"]);
             } else if (title.startsWith("[bug]")) {
@@ -40,9 +40,9 @@ jobs:
               await addLabels(["type/feature", "status/triage"]);
             }
 
-            // 2) 自动识别 area（两种方式：模板字段里写 “模块: backend”，或正文含关键字）
-            //    你 ACP Task 模板里如果有 "模块" 下拉，提交后正文通常会出现类似:
-            //    "模块\n\nbackend"
+            // 2) Auto-detect area (from keywords in the issue body).
+            //    If the issue form includes an "Area" dropdown, the submitted body often contains something like:
+            //    "Area\n\nbackend"
             function detectArea() {
               if (body.includes("acp-proxy") || body.includes("acp proxy")) return "area/acp-proxy";
               if (body.includes("backend")) return "area/backend";
