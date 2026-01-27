@@ -116,6 +116,8 @@ export function IssueDetailPage() {
   const [chatText, setChatText] = useState<string>("");
   const [sending, setSending] = useState(false);
   const [pausing, setPausing] = useState(false);
+  const [cancellingRun, setCancellingRun] = useState(false);
+  const [completingRun, setCompletingRun] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -164,6 +166,11 @@ export function IssueDetailPage() {
 
   const sessionId = run?.acpSessionId ?? null;
   const sessionKnown = !!sessionId;
+
+  const runArtifacts = run?.artifacts ?? [];
+  const showArtifacts = runArtifacts.length > 0;
+  const showChanges =
+    Boolean(run?.branchName) || runArtifacts.some((a) => a.type === "branch" || a.type === "pr" || a.type === "patch");
 
   const pmFromArtifact = useMemo(() => {
     const artifacts = run?.artifacts ?? [];
@@ -459,13 +466,17 @@ export function IssueDetailPage() {
       setError("当前账号无权限操作 Run");
       return;
     }
+    if (cancellingRun || completingRun) return;
     setError(null);
+    setCancellingRun(true);
     try {
       const r = await cancelRun(currentRunId);
       setRun(r);
       await refresh({ silent: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCancellingRun(false);
     }
   }
 
@@ -476,13 +487,17 @@ export function IssueDetailPage() {
       setError("当前账号无权限操作 Run");
       return;
     }
+    if (cancellingRun || completingRun) return;
     setError(null);
+    setCompletingRun(true);
     try {
       const r = await completeRun(currentRunId);
       setRun(r);
       await refresh({ silent: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCompletingRun(false);
     }
   }
 
@@ -1411,23 +1426,26 @@ export function IssueDetailPage() {
             )}
           </details>
 
-            <IssueRunCard
-              run={run}
-              currentRunId={currentRunId}
-              sessionId={sessionId}
-              sessionKnown={sessionKnown}
+          <IssueRunCard
+            run={run}
+            currentRunId={currentRunId}
+            sessionId={sessionId}
+            sessionKnown={sessionKnown}
+            refreshing={refreshing}
+            cancellingRun={cancellingRun}
+            completingRun={completingRun}
             onRefresh={() => {
               void refresh();
             }}
             onStartRun={onStartRun}
-              onCancelRun={onCancelRun}
-              onCompleteRun={onCompleteRun}
-              canStartRun={canStartRun}
-              canManageRun={allowRunActions}
-              agents={agents}
-              agentsLoaded={agentsLoaded}
-              agentsError={agentsError}
-              availableAgentsCount={availableAgents.length}
+            onCancelRun={onCancelRun}
+            onCompleteRun={onCompleteRun}
+            canStartRun={canStartRun}
+            canManageRun={allowRunActions}
+            agents={agents}
+            agentsLoaded={agentsLoaded}
+            agentsError={agentsError}
+            availableAgentsCount={availableAgents.length}
             currentAgent={currentAgent}
             currentAgentEnvLabel={currentAgentEnvLabel}
             currentAgentSandbox={currentAgentSandbox}
@@ -1445,36 +1463,43 @@ export function IssueDetailPage() {
             onWorktreeNameChange={setWorktreeName}
           />
 
-          <section className="card">
-            <details
-              onToggle={(e) => {
-                setChangesOpen((e.currentTarget as HTMLDetailsElement).open);
-              }}
-            >
-              <summary className="detailsSummary">变更</summary>
-              {changesOpen ? (
-                <RunChangesPanel
-                  runId={run?.id ?? ""}
-                  run={run}
-                  project={issue.project}
-                  onRunUpdated={setRun}
-                  onAfterAction={() => refresh({ silent: true })}
-                />
-              ) : (
-                <div className="muted" style={{ padding: "10px 0" }}>
-                  展开后加载变更与 diff
-                </div>
-              )}
-            </details>
-          </section>
-          <section className="card">
-            <details>
-              <summary className="detailsSummary">
-                交付物{run?.artifacts?.length ? ` (${run.artifacts.length})` : ""}
-              </summary>
-              <ArtifactList artifacts={run?.artifacts ?? []} />
-            </details>
-          </section>
+          {showChanges || showArtifacts ? (
+            <div className="grid2">
+              {showChanges ? (
+                <section className="card">
+                  <details
+                    onToggle={(e) => {
+                      setChangesOpen((e.currentTarget as HTMLDetailsElement).open);
+                    }}
+                  >
+                    <summary className="detailsSummary">变更</summary>
+                    {changesOpen ? (
+                      <RunChangesPanel
+                        runId={run?.id ?? ""}
+                        run={run}
+                        project={issue.project}
+                        onRunUpdated={setRun}
+                        onAfterAction={() => refresh({ silent: true })}
+                      />
+                    ) : (
+                      <div className="muted" style={{ padding: "10px 0" }}>
+                        展开后加载变更与 diff
+                      </div>
+                    )}
+                  </details>
+                </section>
+              ) : null}
+
+              {showArtifacts ? (
+                <section className="card">
+                  <details>
+                    <summary className="detailsSummary">交付物{runArtifacts.length ? ` (${runArtifacts.length})` : ""}</summary>
+                    <ArtifactList artifacts={runArtifacts} />
+                  </details>
+                </section>
+              ) : null}
+            </div>
+          ) : null}
         </>
       ) : (
         <div className="muted">Issue 不存在</div>

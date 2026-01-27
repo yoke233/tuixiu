@@ -213,6 +213,45 @@
   font-size: 12px;
 }
 
+.kvTable {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr;
+  gap: 8px 12px;
+  margin-top: 10px;
+  align-items: start;
+}
+
+.kvTable dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kvTable dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.kvTable code {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--pre-bg);
+  border-radius: 10px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+@media (max-width: 560px) {
+  .kvTable {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
 .label {
   display: grid;
   gap: 6px;
