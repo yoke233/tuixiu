@@ -664,6 +664,14 @@ a:hover {
   max-width: none;
   padding: 18px;
   padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.issueDetailDrawer .container > * {
+  min-width: 0;
 }
 
 @media (max-width: 979px) {
