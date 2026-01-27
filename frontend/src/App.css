@@ -514,6 +514,7 @@ a:hover {
 
   .issuesBoard {
     padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 }
 
@@ -555,6 +556,7 @@ a:hover {
 
 .issuesBoard {
   padding: 16px 18px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
   overflow: hidden;
   display: grid;
   grid-template-rows: auto 1fr;
@@ -604,6 +606,93 @@ a:hover {
 .issuesDetail .container {
   max-width: none;
   padding: 18px;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 640px) {
+  .issuesDetail .container {
+    padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}
+
+.sessionShell {
+  min-height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  grid-template-areas: "side main";
+  gap: 16px;
+  padding: 16px;
+  overflow: hidden;
+  align-items: stretch;
+}
+
+.sessionSide {
+  grid-area: side;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  min-width: 0;
+}
+
+.sessionMain {
+  grid-area: main;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+}
+
+.sessionConsoleCard {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.sessionMobileHeader {
+  display: none;
+}
+
+.sessionConsoleBody {
+  min-height: 0;
+}
+
+.sessionShell .console {
+  height: 100%;
+}
+
+@media (max-width: 920px) {
+  .sessionShell {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "main"
+      "side";
+    height: auto;
+    overflow: visible;
+    padding: 12px;
+  }
+
+  .sessionMobileHeader {
+    display: block;
+    position: sticky;
+    top: calc(env(safe-area-inset-top) + 0px);
+    z-index: 10;
+  }
+
+  .sessionSide {
+    overflow: visible;
+  }
+
+  .sessionMain {
+    overflow: visible;
+    grid-template-rows: auto auto;
+  }
+
+  .sessionShell .console {
+    height: min(520px, 65vh);
+  }
 }
 
 .boardHeader {

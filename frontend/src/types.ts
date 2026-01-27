@@ -38,6 +38,7 @@ export type Issue = {
   description?: string | null;
   status: IssueStatus;
   archivedAt?: string | null;
+  labels?: unknown;
   createdAt: string;
   updatedAt?: string;
   externalProvider?: string | null;
