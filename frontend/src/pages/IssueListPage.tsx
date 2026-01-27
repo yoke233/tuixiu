@@ -483,15 +483,25 @@ export function IssueListPage() {
                               className={`issueCard ${selected ? "selected" : ""} ${isDragging ? "dragging" : ""}`}
                               aria-disabled={moving ? "true" : undefined}
                             >
-                              <div className="row spaceBetween">
-                                <div className="issueTitle">{i.title}</div>
-                                <StatusBadge status={i.status} />
+                              <div className="issueTitle" title={i.title}>
+                                {i.title}
                               </div>
-                               <div className="row spaceBetween issueMeta">
-                                 <div className="muted">{new Date(i.createdAt).toLocaleDateString()}</div>
-                                 {latestRun ? <StatusBadge status={latestRun.status} /> : <span className="muted">-</span>}
-                               </div>
-                             </Link>
+                              <div className="row spaceBetween issueMeta">
+                                <div className="muted">{new Date(i.createdAt).toLocaleDateString()}</div>
+                                {latestRun ? (
+                                  <div className="row gap issueCardRun" title={`最新 Run：${latestRun.id}`}>
+                                    <span className="muted" style={{ fontSize: 12 }}>
+                                      Run
+                                    </span>
+                                    <StatusBadge status={latestRun.status} />
+                                  </div>
+                                ) : (
+                                  <span className="muted" style={{ fontSize: 12 }}>
+                                    Run —
+                                  </span>
+                                )}
+                              </div>
+                            </Link>
                              {showIssueActionsButton ? (
                                <button
                                  type="button"

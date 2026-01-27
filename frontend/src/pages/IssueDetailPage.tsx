@@ -807,9 +807,23 @@ export function IssueDetailPage() {
         <>
           <section className="card">
             <h1>{issue.title}</h1>
-            <div className="row gap">
-              <StatusBadge status={issue.status} />
+            <div className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <div className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  Issue
+                </span>
+                <StatusBadge status={issue.status} />
+              </div>
+              <div className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  Run
+                </span>
+                {issue.runs?.[0] ? <StatusBadge status={issue.runs[0].status} /> : <span className="muted">—</span>}
+              </div>
               <span className="muted">{new Date(issue.createdAt).toLocaleString()}</span>
+            </div>
+            <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+              Issue 状态表示需求在看板中的阶段；Run 状态表示该需求最近一次执行流程（Agent/CI/人工）的运行状态。
             </div>
             {issue.description ? <p className="pre">{issue.description}</p> : null}
           </section>
