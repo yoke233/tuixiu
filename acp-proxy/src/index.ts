@@ -94,7 +94,9 @@ async function main() {
       ? (cfg.sandbox.boxlite?.workspaceMode ?? "mount")
       : "mount";
 
-  if (cfg.sandbox.provider === "boxlite_oci" && boxliteWorkspaceMode === "mount") {
+  const isBoxliteMount = cfg.sandbox.provider === "boxlite_oci" && boxliteWorkspaceMode === "mount";
+
+  if (isBoxliteMount) {
     const volumes = cfg.sandbox.boxlite?.volumes ?? [];
     if (!Array.isArray(volumes) || volumes.length === 0) {
       throw new Error(
@@ -121,12 +123,12 @@ async function main() {
     return rest ? `${mountRoot}/${drive}/${rest}` : `${mountRoot}/${drive}`;
   };
 
-  const mapHostPathToBox = (cwd: string): string => {
+  const mapHostPathToBoxResult = (cwd: string): { mapped: string; matched: boolean } => {
     const raw = cwd.trim();
-    if (!raw) return raw;
-    if (cfg.sandbox.provider !== "boxlite_oci") return raw;
+    if (!raw) return { mapped: raw, matched: false };
+    if (cfg.sandbox.provider !== "boxlite_oci") return { mapped: raw, matched: true };
     const volumes = cfg.sandbox.boxlite?.volumes ?? [];
-    if (!volumes.length) return raw;
+    if (!volumes.length) return { mapped: raw, matched: false };
 
     const norm = raw.replace(/\\/g, "/");
 
@@ -144,11 +146,32 @@ async function main() {
       }
     }
 
-    if (!best) return norm;
-    return `${best.guestPath}${norm.slice(best.hostPath.length)}`;
+    if (!best) return { mapped: norm, matched: false };
+    return { mapped: `${best.guestPath}${norm.slice(best.hostPath.length)}`, matched: true };
   };
 
-  const mapCwd = (cwd: string): string => mapHostPathToBox(mapWindowsPathToWsl(cwd));
+  const mapCwdResult = (cwd: string): { mapped: string; matched: boolean } =>
+    mapHostPathToBoxResult(mapWindowsPathToWsl(cwd));
+
+  const assertBoxliteMountMapped = (label: string, hostPath: string): string => {
+    const res = mapCwdResult(hostPath);
+    if (!isBoxliteMount || res.matched) return res.mapped;
+
+    const volumes = cfg.sandbox.boxlite?.volumes ?? [];
+    const hostPaths = volumes
+      .map((v) => mapWindowsPathToWsl(String(v.hostPath ?? "")).replace(/\\/g, "/").replace(/\/+$/, ""))
+      .filter(Boolean);
+    const normalized = mapWindowsPathToWsl(hostPath).replace(/\\/g, "/");
+
+    throw new Error(
+      [
+        `BoxLite mount 模式无法映射 ${label} 路径：${hostPath}`,
+        `- 归一化后：${normalized}`,
+        hostPaths.length ? `- 已配置 volumes.hostPath：${hostPaths.join(", ")}` : "- 已配置 volumes.hostPath：<empty>",
+        "请确保该路径位于 sandbox.boxlite.volumes[].hostPath 下，并确保 volumes 覆盖 backend 创建的 Run workspace 目录。",
+      ].join("\n"),
+    );
+  };
 
   const isBoxliteGitClone =
     cfg.sandbox.provider === "boxlite_oci" && boxliteWorkspaceMode === "git_clone";
@@ -160,7 +183,29 @@ async function main() {
           : "/workspace")
       : "";
 
-  const defaultCwd = isBoxliteGitClone ? boxliteWorkingDir : mapCwd(cfg.cwd);
+  const resolveDefaultCwd = (): string => {
+    if (isBoxliteGitClone) return boxliteWorkingDir;
+
+    const mapped = mapCwdResult(cfg.cwd);
+    if (!isBoxliteMount) return mapped.mapped;
+    if (mapped.matched) return mapped.mapped;
+
+    const firstVolumeGuestPath = String(cfg.sandbox.boxlite?.volumes?.[0]?.guestPath ?? "")
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "");
+    if (firstVolumeGuestPath) {
+      log("cfg.cwd not under volumes; fallback to first volume guestPath", {
+        cwd: cfg.cwd,
+        fallback: firstVolumeGuestPath,
+      });
+      return firstVolumeGuestPath;
+    }
+
+    return mapped.mapped;
+  };
+
+  const defaultCwd = resolveDefaultCwd();
 
   const hostSandbox = new HostProcessSandbox({ log });
   const hostLauncher = new DefaultAgentLauncher({
@@ -211,7 +256,7 @@ async function main() {
   };
 
   const setRunCwd = (runId: string, cwd: string) => {
-    const value = mapCwd(cwd);
+    const value = assertBoxliteMountMapped(`run(${runId}).cwd`, cwd);
     if (!value) return;
     runToCwd.set(runId, value);
   };
@@ -635,23 +680,23 @@ async function main() {
     const runId = String(msg.run_id ?? "").trim();
     if (!runId) return;
 
-    const cwd = getRunCwd(runId, typeof msg.cwd === "string" ? msg.cwd : undefined);
-    const init = isRecord(msg.init) ? (msg.init as any) : undefined;
-    const env = init && isRecord(init.env) ? (init.env as Record<string, string>) : undefined;
-    const envKey = normalizeEnvKey(env);
-
-    const existing = runStates.get(runId);
-    if (existing && existing.cwd === cwd && existing.envKey === envKey) {
-      existing.lastUsedAt = Date.now();
-      try {
-        send({ type: "acp_opened", run_id: runId, ok: true });
-      } catch {
-        // ignore
-      }
-      return;
-    }
-
     try {
+      const cwd = getRunCwd(runId, typeof msg.cwd === "string" ? msg.cwd : undefined);
+      const init = isRecord(msg.init) ? (msg.init as any) : undefined;
+      const env = init && isRecord(init.env) ? (init.env as Record<string, string>) : undefined;
+      const envKey = normalizeEnvKey(env);
+
+      const existing = runStates.get(runId);
+      if (existing && existing.cwd === cwd && existing.envKey === envKey) {
+        existing.lastUsedAt = Date.now();
+        try {
+          send({ type: "acp_opened", run_id: runId, ok: true });
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
       if (cfg.sandbox.provider === "boxlite_oci") {
         const sandbox = createBoxliteSandbox(runId);
         const initOk = await runInitScriptBoxlite({ runId, cwd, sandbox, init });
@@ -673,7 +718,11 @@ async function main() {
 
       send({ type: "acp_opened", run_id: runId, ok: true });
     } catch (err) {
-      send({ type: "acp_opened", run_id: runId, ok: false, error: String(err) });
+      try {
+        send({ type: "acp_opened", run_id: runId, ok: false, error: String(err) });
+      } catch {
+        // ignore
+      }
     }
   };
 

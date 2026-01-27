@@ -56,17 +56,52 @@ const pathMappingSchema = z
   })
   .optional();
 
-const configSchema = z.object({
-  orchestrator_url: z.string().min(1),
-  auth_token: z.string().optional(),
-  cwd: z.string().min(1).optional(),
-  pathMapping: pathMappingSchema,
-  heartbeat_seconds: z.coerce.number().int().positive().default(30),
-  mock_mode: z.boolean().default(false),
-  sandbox: sandboxSchema,
-  agent_command: z.array(z.string().min(1)).default(["npx", "--yes", "@zed-industries/codex-acp"]),
-  agent: agentSchema,
-});
+const configSchema = z
+  .object({
+    orchestrator_url: z.string().min(1),
+    auth_token: z.string().optional(),
+    cwd: z.string().min(1).optional(),
+    pathMapping: pathMappingSchema,
+    heartbeat_seconds: z.coerce.number().int().positive().default(30),
+    mock_mode: z.boolean().default(false),
+    sandbox: sandboxSchema,
+    agent_command: z.array(z.string().min(1)).default(["npx", "--yes", "@zed-industries/codex-acp"]),
+    agent: agentSchema,
+  })
+  .superRefine((cfg, ctx) => {
+    if (cfg.sandbox.provider !== "boxlite_oci") return;
+
+    const boxlite = cfg.sandbox.boxlite;
+    if (!boxlite) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sandbox", "boxlite"],
+        message: "sandbox.provider=boxlite_oci 时必须配置 sandbox.boxlite",
+      });
+      return;
+    }
+
+    if (!String(boxlite.image ?? "").trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sandbox", "boxlite", "image"],
+        message: "sandbox.provider=boxlite_oci 时必须配置 sandbox.boxlite.image",
+      });
+    }
+
+    const mode = boxlite.workspaceMode ?? "mount";
+    if (mode === "mount") {
+      const volumes = boxlite.volumes ?? [];
+      if (!Array.isArray(volumes) || volumes.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sandbox", "boxlite", "volumes"],
+          message:
+            "BoxLite mount 模式必须配置 sandbox.boxlite.volumes（至少挂载一个包含 Run workspace 的目录）。若不想挂载请改用 sandbox.boxlite.workspaceMode=git_clone。",
+        });
+      }
+    }
+  });
 
 export type ProxyConfig = z.infer<typeof configSchema>;
 
