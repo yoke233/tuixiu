@@ -4,6 +4,9 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
+import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
+import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
 
 function getHeader(headers: Record<string, unknown>, name: string): string | undefined {
   const key = name.toLowerCase();
@@ -39,6 +42,7 @@ export function makeGitLabWebhookRoutes(deps: {
   prisma: PrismaDeps;
   webhookSecret?: string;
   onIssueUpserted?: (issueId: string, reason: string) => void;
+  broadcastToClients?: (payload: unknown) => void;
 }): FastifyPluginAsync {
   return async (server) => {
     const webhookSecret =
@@ -47,8 +51,8 @@ export function makeGitLabWebhookRoutes(deps: {
     server.post("/gitlab", async (request) => {
       const event = getHeader(request.headers as any, "x-gitlab-event") ?? "";
 
-      const bodySchema = z.object({
-        object_kind: z.string().min(1),
+      const issueSchema = z.object({
+        object_kind: z.literal("issue"),
         event_type: z.string().optional(),
         project: z
           .object({
@@ -68,6 +72,28 @@ export function makeGitLabWebhookRoutes(deps: {
         labels: z.array(z.any()).optional(),
       });
 
+      const pipelineSchema = z.object({
+        object_kind: z.literal("pipeline"),
+        project: z
+          .object({
+            id: z.number().int().positive().optional(),
+            web_url: z.string().min(1).optional(),
+          })
+          .optional(),
+        object_attributes: z.object({
+          id: z.union([z.number().int().positive(), z.string().min(1)]),
+          ref: z.string().nullable().optional(),
+          sha: z.string().nullable().optional(),
+          status: z.string().nullable().optional(),
+          detailed_status: z.string().nullable().optional(),
+          finished_at: z.string().nullable().optional(),
+        }),
+        merge_request: z.any().optional(),
+        merge_requests: z.array(z.any()).optional(),
+      });
+
+      const bodySchema = z.discriminatedUnion("object_kind", [issueSchema, pipelineSchema]);
+
       let payload: z.infer<typeof bodySchema>;
       try {
         payload = bodySchema.parse(request.body ?? {});
@@ -76,10 +102,6 @@ export function makeGitLabWebhookRoutes(deps: {
           success: false,
           error: { code: "BAD_PAYLOAD", message: "Webhook payload 格式不合法", details: String(err) },
         };
-      }
-
-      if (payload.object_kind !== "issue") {
-        return { success: true, data: { ok: true, ignored: true, reason: "UNSUPPORTED_KIND", event, kind: payload.object_kind } };
       }
 
       const projectId = payload.project?.id;
@@ -100,6 +122,115 @@ export function makeGitLabWebhookRoutes(deps: {
         if (!token || !safeTimingEqual(token, effectiveSecret)) {
           return { success: false, error: { code: "BAD_TOKEN", message: "GitLab webhook token 校验失败" } };
         }
+      }
+
+      if (payload.object_kind === "pipeline") {
+        const status = String(payload.object_attributes.status ?? payload.object_attributes.detailed_status ?? "")
+          .trim()
+          .toLowerCase();
+        const branch = String(payload.object_attributes.ref ?? "").trim();
+        const sha = String(payload.object_attributes.sha ?? "").trim();
+        const pipelineId = String(payload.object_attributes.id ?? "");
+
+        const terminalStatuses = new Set(["success", "failed", "canceled", "cancelled", "skipped"]);
+        if (!branch || !terminalStatuses.has(status)) {
+          return { success: true, data: { ok: true, ignored: true, reason: "NOT_COMPLETED", event, status, branch } };
+        }
+
+        let run = await deps.prisma.run
+          .findFirst({
+            where: { status: "waiting_ci", branchName: branch, issue: { projectId: (project as any).id } } as any,
+            orderBy: { startedAt: "desc" },
+            select: { id: true, issueId: true, taskId: true, stepId: true },
+          })
+          .catch(() => null);
+
+        if (!run) {
+          const prArtifact = await deps.prisma.artifact
+            .findFirst({
+              where: {
+                type: "pr",
+                run: { is: { issue: { is: { projectId: (project as any).id } } } } as any,
+                AND: [
+                  { content: { path: ["provider"], equals: "gitlab" } as any },
+                  { content: { path: ["sourceBranch"], equals: branch } as any },
+                ] as any,
+              } as any,
+              orderBy: { createdAt: "desc" },
+            })
+            .catch(() => null);
+
+          if (prArtifact) {
+            const prRun = await deps.prisma.run
+              .findUnique({
+                where: { id: String((prArtifact as any).runId) },
+                select: { id: true, issueId: true, taskId: true, stepId: true, status: true } as any,
+              })
+              .catch(() => null);
+            if (prRun && String((prRun as any).status ?? "") === "waiting_ci") {
+              run = prRun as any;
+            }
+          }
+        }
+
+        if (!run) {
+          return { success: true, data: { ok: true, ignored: true, reason: "NO_RUN", branch } };
+        }
+
+        const passed = status === "success";
+
+        await deps.prisma.artifact
+          .create({
+            data: {
+              id: uuidv7(),
+              runId: (run as any).id,
+              type: "ci_result",
+              content: { provider: "gitlab", event, pipelineId, branch, status, sha, passed } as any,
+            },
+          })
+          .catch(() => {});
+
+        await deps.prisma.run
+          .update({
+            where: { id: (run as any).id },
+            data: {
+              status: passed ? "completed" : "failed",
+              completedAt: new Date(),
+              ...(passed ? null : { failureReason: "ci_failed", errorMessage: `ci_failed: ${status || "unknown"}` }),
+            } as any,
+          })
+          .catch(() => {});
+
+        await advanceTaskFromRunTerminal(
+          { prisma: deps.prisma },
+          (run as any).id,
+          passed ? "completed" : "failed",
+          passed ? undefined : { errorMessage: `ci_failed: ${status || "unknown"}` },
+        ).catch(() => {});
+
+        if ((run as any).taskId) {
+          deps.broadcastToClients?.({
+            type: "task_updated",
+            issue_id: (run as any).issueId,
+            task_id: (run as any).taskId,
+            step_id: (run as any).stepId,
+            run_id: (run as any).id,
+          });
+        }
+
+        triggerPmAutoAdvance(
+          { prisma: deps.prisma },
+          { runId: (run as any).id, issueId: (run as any).issueId, trigger: "ci_completed" },
+        );
+
+        if ((run as any).taskId) {
+          triggerTaskAutoAdvance(
+            { prisma: deps.prisma, broadcastToClients: deps.broadcastToClients },
+            { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "ci_completed" },
+          );
+        }
+
+        return { success: true, data: { ok: true, handled: true, runId: (run as any).id, passed } };
       }
 
       const action = String(payload.object_attributes.action ?? "").trim().toLowerCase();
@@ -176,4 +307,3 @@ export function makeGitLabWebhookRoutes(deps: {
     });
   };
 }
-
