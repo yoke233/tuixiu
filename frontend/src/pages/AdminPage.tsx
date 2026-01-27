@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { approveApproval, listApprovals, rejectApproval } from "../api/approvals";
+import { cancelAcpSession, listAcpSessions } from "../api/acpSessions";
 import { createIssue, listIssues, updateIssue } from "../api/issues";
 import { importGitHubIssue } from "../api/githubIssues";
 import { createProject, listProjects } from "../api/projects";
 import { createRole } from "../api/roles";
 import { useAuth } from "../auth/AuthContext";
+import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { Approval, Issue, IssueStatus, Project } from "../types";
+import type { AcpSessionSummary, Approval, Issue, IssueStatus, Project } from "../types";
 import { getShowArchivedIssues, setShowArchivedIssues } from "../utils/settings";
 
 function splitLines(s: string): string[] {
@@ -23,7 +25,7 @@ function isArchivableStatus(status: IssueStatus): boolean {
 }
 
 export function AdminPage() {
-  type AdminSectionKey = "projects" | "issues" | "roles" | "approvals" | "settings" | "archive";
+  type AdminSectionKey = "projects" | "issues" | "roles" | "approvals" | "settings" | "archive" | "acpSessions";
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -35,6 +37,10 @@ export function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [approvalBusyId, setApprovalBusyId] = useState<string>("");
   const [activeSection, setActiveSection] = useState<AdminSectionKey>("projects");
+
+  const [acpSessions, setAcpSessions] = useState<AcpSessionSummary[]>([]);
+  const [loadingAcpSessions, setLoadingAcpSessions] = useState(false);
+  const [cancelingAcpSessionKey, setCancelingAcpSessionKey] = useState<string>("");
 
   const [showArchivedOnBoard, setShowArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -95,10 +101,32 @@ export function AdminPage() {
     }
   }
 
+  async function refreshAcpSessions() {
+    setLoadingAcpSessions(true);
+    setError(null);
+    try {
+      const rows = await listAcpSessions({
+        projectId: effectiveProjectId ? effectiveProjectId : undefined,
+        limit: 200,
+      });
+      setAcpSessions(rows);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingAcpSessions(false);
+    }
+  }
+
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (activeSection !== "acpSessions") return;
+    void refreshAcpSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, effectiveProjectId]);
 
   function requireAdmin(): boolean {
     if (!auth.user) {
@@ -274,6 +302,23 @@ export function AdminPage() {
     }
   }
 
+  async function onCancelAcpSession(runId: string, sessionId: string) {
+    setError(null);
+    if (!requireAdmin()) return;
+    if (!window.confirm(`确认关闭 ACP session？\n\nrunId: ${runId}\nsessionId: ${sessionId}`)) return;
+
+    const key = `${runId}:${sessionId}`;
+    setCancelingAcpSessionKey(key);
+    try {
+      await cancelAcpSession(runId, sessionId);
+      await refreshAcpSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCancelingAcpSessionKey("");
+    }
+  }
+
   function onShowArchivedOnBoardChange(next: boolean) {
     setShowArchivedOnBoard(next);
     setShowArchivedIssues(next);
@@ -286,7 +331,8 @@ export function AdminPage() {
       projects: { title: "项目管理", desc: "创建/配置 Project（仓库、SCM、认证方式等）" },
       issues: { title: "Issue 管理", desc: "创建需求或导入外部 Issue" },
       roles: { title: "角色模板", desc: "创建 RoleTemplate（Prompt / initScript 等）" },
-      archive: { title: "Issue 归档", desc: "管理已完成/失败/取消的 Issue 归档状态" }
+      archive: { title: "Issue 归档", desc: "管理已完成/失败/取消的 Issue 归档状态" },
+      acpSessions: { title: "ACP Sessions", desc: "查看/手动关闭 ACP agent session（用于清理遗留会话）" }
     };
     return meta[activeSection];
   }, [activeSection]);
@@ -339,6 +385,13 @@ export function AdminPage() {
         </div>
 
         <nav className="adminNav" aria-label="管理菜单">
+          <button
+            type="button"
+            className={`adminNavItem ${activeSection === "acpSessions" ? "active" : ""}`}
+            onClick={() => setActiveSection("acpSessions")}
+          >
+            <span>ACP Sessions</span>
+          </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "approvals" ? "active" : ""}`}
@@ -413,7 +466,10 @@ export function AdminPage() {
               退出
             </button>
           ) : null}
-          <button onClick={() => refresh()} disabled={loading}>
+          <button
+            onClick={() => (activeSection === "acpSessions" ? refreshAcpSessions() : refresh())}
+            disabled={activeSection === "acpSessions" ? loadingAcpSessions : loading}
+          >
             刷新
           </button>
         </div>
@@ -476,7 +532,84 @@ export function AdminPage() {
         </div>
       </section>
 
-      <div className="grid2" hidden={activeSection === "approvals" || activeSection === "settings"}>
+      <section className="card" style={{ marginBottom: 16 }} hidden={activeSection !== "acpSessions"}>
+        <h2 style={{ marginTop: 0 }}>ACP Sessions</h2>
+        <div className="muted">
+          列出当前项目下已建立的 ACP session（来自 Run.acpSessionId），可手动发送 <code>session/cancel</code> 关闭遗留会话。
+        </div>
+
+        {loadingAcpSessions ? (
+          <div className="muted" style={{ marginTop: 12 }}>
+            加载中…
+          </div>
+        ) : acpSessions.length ? (
+          <div className="tableScroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>sessionId</th>
+                  <th>Agent</th>
+                  <th>Run 状态</th>
+                  <th>Issue</th>
+                  <th>Run</th>
+                  <th>开始时间</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {acpSessions.map((s) => {
+                  const key = `${s.runId}:${s.sessionId}`;
+                  const busy = cancelingAcpSessionKey === key;
+                  return (
+                    <tr key={key}>
+                      <td>
+                        <code title={s.sessionId}>{s.sessionId}</code>
+                      </td>
+                      <td>
+                        {s.agent ? (
+                          <span className="row gap" style={{ alignItems: "center" }}>
+                            <span title={s.agent.proxyId}>{s.agent.name}</span>
+                            <StatusBadge status={s.agent.status} />
+                          </span>
+                        ) : (
+                          <span className="muted">未绑定</span>
+                        )}
+                      </td>
+                      <td>
+                        <StatusBadge status={s.runStatus} />
+                      </td>
+                      <td>
+                        <Link to={`/issues/${s.issueId}`}>{s.issueTitle || s.issueId}</Link>
+                      </td>
+                      <td>
+                        <code title={s.runId}>{s.runId.slice(0, 8)}…</code>
+                      </td>
+                      <td className="muted">{new Date(s.startedAt).toLocaleString()}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button
+                          type="button"
+                          className="buttonSecondary"
+                          onClick={() => onCancelAcpSession(s.runId, s.sessionId)}
+                          disabled={busy || !s.agent}
+                          title={!s.agent ? "该 Run 未绑定 Agent（无法下发 session/cancel）" : ""}
+                        >
+                          {busy ? "关闭中…" : "关闭"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="muted" style={{ marginTop: 12 }}>
+            暂无 ACP session
+          </div>
+        )}
+      </section>
+
+      <div className="grid2" hidden={activeSection === "approvals" || activeSection === "settings" || activeSection === "acpSessions"}>
         <section className="card" hidden={activeSection !== "projects"}>
           <h2 style={{ marginTop: 0 }}>当前 Project</h2>
 

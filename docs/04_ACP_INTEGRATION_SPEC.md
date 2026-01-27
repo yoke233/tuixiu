@@ -161,6 +161,7 @@ agent 的 `agent_message_chunk` 可能非常细。proxy 会按 session 维度缓
 | Server → Agent | `execute_task`   | 启动 Run（首轮执行） | `{run_id,prompt,cwd?}` |
 | Server → Agent | `prompt_run`     | 继续对话（同 Run）/断线重连恢复 | `{run_id,prompt,session_id?,context?,cwd?,resume?}` |
 | Server → Agent | `cancel_task`   | 取消 Run（ACP session/cancel） | `{run_id,session_id?}` |
+| Server → Agent | `session_cancel` | 手动暂停/关闭 ACP session（ACP session/cancel） | `{run_id,session_id?}` |
 | Agent → Server | `agent_update`   | 事件流转发           | `{run_id,content:any}` |
 
 服务器关键行为摘要：
@@ -172,6 +173,12 @@ agent 的 `agent_message_chunk` 可能非常细。proxy 会按 session 维度缓
   - 若 `content.type === "session_created"`：更新 `Run.acpSessionId`
   - 若 `content.type === "prompt_result"`：推进 `Run/Issue` 状态并回收 agent load
   - 推送给 Web UI（`ws/client`）
+
+补充：
+
+- `session_cancel` 目前用于两处：
+  - Run 详情页的“暂停 Agent”（`POST /api/runs/:id/pause`）
+  - 管理页 “ACP Sessions” 的手动清理（`GET /api/admin/acp-sessions` / `POST /api/admin/acp-sessions/cancel`）
 
 ---
 

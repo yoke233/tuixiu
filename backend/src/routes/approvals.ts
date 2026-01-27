@@ -78,8 +78,8 @@ export function makeApprovalRoutes(deps: {
           const summary = toApprovalSummary(a, a?.run);
           return summary;
         })
-        .filter((x): x is NonNullable<typeof x> => Boolean(x))
-        .filter((x) => (wanted ? x.status === wanted : true));
+        .filter((x: any): x is NonNullable<typeof x> => Boolean(x))
+        .filter((x: any) => (wanted ? x.status === wanted : true));
 
       return { success: true, data: { approvals } };
     });

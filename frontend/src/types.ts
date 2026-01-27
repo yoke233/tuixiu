@@ -63,6 +63,18 @@ export type Run = {
   artifacts?: Artifact[];
 };
 
+export type AcpSessionSummary = {
+  runId: string;
+  issueId: string;
+  issueTitle: string;
+  projectId: string;
+  runStatus: RunStatus;
+  sessionId: string;
+  startedAt: string;
+  completedAt: string | null;
+  agent: { id: string; name: string; proxyId: string; status: AgentStatus } | null;
+};
+
 export type TaskStatus = "pending" | "running" | "blocked" | "completed" | "failed" | "cancelled";
 
 export type StepStatus =
