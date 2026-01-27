@@ -20,7 +20,7 @@
 ### Task 1: 固化 A 形态运行方式（WSL2 网络 + 路径映射）
 
 **Files:**
-- Create: `docs/plans/2026-01-26-boxlite-acp-agent-runner-design.md`
+- Create: `docs/archive/plans/2026-01-26-boxlite-acp-agent-runner-design.md`
 - Modify: `docs/02_ENVIRONMENT_SETUP.md`
 
 **Step 1: 记录 A 形态的关键配置**

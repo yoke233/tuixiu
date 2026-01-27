@@ -170,8 +170,9 @@ export function AdminPage() {
 
   useEffect(() => {
     const fromUrl = getSectionFromSearch(location.search);
-    if (fromUrl && fromUrl !== activeSection) setActiveSection(fromUrl);
-  }, [activeSection, location.search]);
+    if (!fromUrl) return;
+    setActiveSection((prev) => (prev === fromUrl ? prev : fromUrl));
+  }, [location.search]);
 
   useEffect(() => {
     if (activeSection !== "issues") return;
@@ -720,7 +721,7 @@ export function AdminPage() {
           </div>
         ) : acpSessions.length ? (
           <div className="tableScroll">
-            <table className="table">
+            <table className="table tableWrap">
               <thead>
                 <tr>
                   <th>sessionId</th>
@@ -791,7 +792,14 @@ export function AdminPage() {
                         <StatusBadge status={s.runStatus} />
                       </td>
                       <td>
-                        <Link to={`/issues/${s.issueId}`}>{s.issueTitle || s.issueId}</Link>
+                        <div className="cellStack">
+                          <Link to={`/issues/${s.issueId}`}>{s.issueTitle || s.issueId}</Link>
+                          {s.issueTitle ? (
+                            <div className="cellSub">
+                              <code title={s.issueId}>{s.issueId}</code>
+                            </div>
+                          ) : null}
+                        </div>
                       </td>
                       <td>
                         <code title={s.runId}>{s.runId.slice(0, 8)}…</code>
@@ -1301,16 +1309,14 @@ export function AdminPage() {
 
               {archiveItems.length ? (
                 <div className="tableScroll">
-                  <table className="table">
+                  <table className="table tableWrap">
                     <thead>
                       <tr>
                         <th>标题</th>
                         <th>外部</th>
                         <th>状态</th>
                         <th>Run</th>
-                        <th>创建时间</th>
-                        <th>更新时间</th>
-                        <th>归档时间</th>
+                        <th>时间</th>
                         <th style={{ textAlign: "right" }}>操作</th>
                       </tr>
                     </thead>
@@ -1325,21 +1331,33 @@ export function AdminPage() {
                               : "";
                         return (
                           <tr key={i.id}>
-                            <td style={{ maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              <Link to={`/issues/${i.id}`} title={i.title}>
-                                {i.title}
-                              </Link>
+                            <td>
+                              <div className="cellStack">
+                                <Link to={`/issues/${i.id}`} title={i.title}>
+                                  {i.title}
+                                </Link>
+                                <div className="cellSub">
+                                  <code title={i.id}>{i.id}</code>
+                                </div>
+                              </div>
                             </td>
-                            <td className="muted" style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {i.externalUrl ? (
-                                <a href={i.externalUrl} target="_blank" rel="noreferrer" title={i.externalUrl}>
-                                  {extLabel || "外部链接"}
-                                </a>
-                              ) : extLabel ? (
-                                <span title={extLabel}>{extLabel}</span>
-                              ) : (
-                                <span className="muted">-</span>
-                              )}
+                            <td>
+                              <div className="cellStack">
+                                {i.externalUrl ? (
+                                  <a href={i.externalUrl} target="_blank" rel="noreferrer" title={i.externalUrl}>
+                                    {extLabel || "外部链接"}
+                                  </a>
+                                ) : extLabel ? (
+                                  <span title={extLabel}>{extLabel}</span>
+                                ) : (
+                                  <span className="muted">-</span>
+                                )}
+                                {i.externalUrl ? (
+                                  <div className="cellSub">
+                                    <span title={i.externalUrl}>{i.externalUrl}</span>
+                                  </div>
+                                ) : null}
+                              </div>
                             </td>
                             <td>
                               <StatusBadge status={i.status} />
@@ -1354,9 +1372,13 @@ export function AdminPage() {
                                 <span className="muted">-</span>
                               )}
                             </td>
-                            <td className="muted">{new Date(i.createdAt).toLocaleString()}</td>
-                            <td className="muted">{i.updatedAt ? new Date(i.updatedAt).toLocaleString() : "-"}</td>
-                            <td className="muted">{i.archivedAt ? new Date(i.archivedAt).toLocaleString() : "-"}</td>
+                            <td>
+                              <div className="cellStack">
+                                <div className="cellSub">创建：{new Date(i.createdAt).toLocaleString()}</div>
+                                <div className="cellSub">更新：{i.updatedAt ? new Date(i.updatedAt).toLocaleString() : "-"}</div>
+                                <div className="cellSub">归档：{i.archivedAt ? new Date(i.archivedAt).toLocaleString() : "-"}</div>
+                              </div>
+                            </td>
                             <td style={{ textAlign: "right" }}>
                               <button
                                 type="button"
