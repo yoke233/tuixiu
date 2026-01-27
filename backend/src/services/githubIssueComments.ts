@@ -2,6 +2,8 @@ import * as github from "../integrations/github.js";
 
 type CommentKind = "assigned" | "started";
 type ApprovalCommentKind = "merge_pr_requested" | "merge_pr_approved" | "merge_pr_rejected" | "merge_pr_executed" | "merge_pr_failed";
+type PrCommentProvider = "github" | "gitlab" | "unknown";
+type AutoReviewNextAction = "create_pr" | "wait_ci" | "request_merge_approval" | "manual_review" | "none";
 
 function formatRole(roleKey?: string | null): string {
   const raw = typeof roleKey === "string" ? roleKey.trim() : "";
@@ -238,6 +240,158 @@ export async function postGitHubApprovalCommentBestEffort(opts: {
     prUrl: opts.prUrl,
     reason: opts.reason,
     error: opts.error,
+  });
+
+  try {
+    await github.createIssueComment(auth, { issueNumber, body });
+  } catch {
+    // best-effort：评论失败不阻塞主流程
+  }
+}
+
+export function renderGitHubPrCreatedComment(opts: {
+  runId: string;
+  prUrl: string;
+  provider?: PrCommentProvider | null;
+  sourceBranch?: string | null;
+  targetBranch?: string | null;
+}): string {
+  const runId = String(opts.runId ?? "").trim() || "unknown";
+  const prUrl = String(opts.prUrl ?? "").trim();
+  const provider = String(opts.provider ?? "").trim().toLowerCase();
+  const providerLabel = provider === "github" ? "GitHub" : provider === "gitlab" ? "GitLab" : "SCM";
+  const sourceBranch = typeof opts.sourceBranch === "string" ? opts.sourceBranch.trim() : "";
+  const targetBranch = typeof opts.targetBranch === "string" ? opts.targetBranch.trim() : "";
+
+  return fmt(
+    [
+      "### 🔗 已创建 PR",
+      "",
+      "- 动作：创建 PR",
+      `- Run：\`${runId}\``,
+      prUrl ? `- PR：${prUrl}` : "",
+      `- 平台：${providerLabel}`,
+      sourceBranch && targetBranch ? `- 分支：\`${sourceBranch}\` → \`${targetBranch}\`` : "",
+      "",
+      "> 由 ACP 协作台创建（best-effort 回写）",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+export async function postGitHubPrCreatedCommentBestEffort(opts: {
+  repoUrl: string;
+  githubAccessToken: string;
+  issueNumber: number;
+  runId: string;
+  prUrl: string;
+  provider?: PrCommentProvider | null;
+  sourceBranch?: string | null;
+  targetBranch?: string | null;
+}): Promise<void> {
+  const repoUrl = String(opts.repoUrl ?? "").trim();
+  const token = String(opts.githubAccessToken ?? "").trim();
+  const issueNumber = opts.issueNumber;
+  if (!repoUrl || !token) return;
+  if (!Number.isFinite(issueNumber) || issueNumber <= 0) return;
+
+  const parsed = github.parseGitHubRepo(repoUrl);
+  if (!parsed) return;
+
+  const auth: github.GitHubAuth = {
+    apiBaseUrl: parsed.apiBaseUrl,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    accessToken: token,
+  };
+
+  const body = renderGitHubPrCreatedComment({
+    runId: opts.runId,
+    prUrl: opts.prUrl,
+    provider: opts.provider,
+    sourceBranch: opts.sourceBranch,
+    targetBranch: opts.targetBranch,
+  });
+
+  try {
+    await github.createIssueComment(auth, { issueNumber, body });
+  } catch {
+    // best-effort：评论失败不阻塞主流程
+  }
+}
+
+export function renderGitHubAutoReviewComment(opts: {
+  runId: string;
+  prUrl?: string | null;
+  changedFiles?: number | null;
+  ciPassed?: boolean | null;
+  sensitiveHits?: number | null;
+  nextAction?: AutoReviewNextAction | string | null;
+  reason?: string | null;
+}): string {
+  const runId = String(opts.runId ?? "").trim() || "unknown";
+  const prUrl = typeof opts.prUrl === "string" ? opts.prUrl.trim() : "";
+  const changedFiles = Number.isFinite(opts.changedFiles as any) ? Number(opts.changedFiles) : null;
+  const ciPassed = typeof opts.ciPassed === "boolean" ? opts.ciPassed : null;
+  const sensitiveHits = Number.isFinite(opts.sensitiveHits as any) ? Number(opts.sensitiveHits) : null;
+  const nextAction = typeof opts.nextAction === "string" ? String(opts.nextAction).trim() : "";
+  const reason = typeof opts.reason === "string" ? opts.reason.trim() : "";
+
+  return fmt(
+    [
+      "### 🧾 自动验收摘要",
+      "",
+      `- Run：\`${runId}\``,
+      prUrl ? `- PR：${prUrl}` : "",
+      changedFiles === null ? "" : `- 变更文件：${changedFiles}`,
+      ciPassed === null ? "- 测试：⏳ 未知/未运行" : `- 测试：${ciPassed ? "✅ 通过" : "❌ 失败"}`,
+      sensitiveHits === null ? "" : `- 敏感变更：${sensitiveHits > 0 ? `⚠️ 命中 ${sensitiveHits} 个文件` : "无"}`,
+      nextAction ? `- 建议下一步：\`${nextAction}\`${reason ? `（${reason}）` : ""}` : "",
+      "",
+      "> 由 ACP 协作台自动生成（best-effort 回写）",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+export async function postGitHubAutoReviewCommentBestEffort(opts: {
+  repoUrl: string;
+  githubAccessToken: string;
+  issueNumber: number;
+  runId: string;
+  prUrl?: string | null;
+  changedFiles?: number | null;
+  ciPassed?: boolean | null;
+  sensitiveHits?: number | null;
+  nextAction?: AutoReviewNextAction | string | null;
+  reason?: string | null;
+}): Promise<void> {
+  const repoUrl = String(opts.repoUrl ?? "").trim();
+  const token = String(opts.githubAccessToken ?? "").trim();
+  const issueNumber = opts.issueNumber;
+  if (!repoUrl || !token) return;
+  if (!Number.isFinite(issueNumber) || issueNumber <= 0) return;
+
+  const parsed = github.parseGitHubRepo(repoUrl);
+  if (!parsed) return;
+
+  const auth: github.GitHubAuth = {
+    apiBaseUrl: parsed.apiBaseUrl,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    accessToken: token,
+  };
+
+  const body = renderGitHubAutoReviewComment({
+    runId: opts.runId,
+    prUrl: opts.prUrl,
+    changedFiles: opts.changedFiles,
+    ciPassed: opts.ciPassed,
+    sensitiveHits: opts.sensitiveHits,
+    nextAction: opts.nextAction,
+    reason: opts.reason,
   });
 
   try {

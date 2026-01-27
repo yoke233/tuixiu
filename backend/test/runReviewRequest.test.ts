@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createReviewRequestForRun } from "../src/services/runReviewRequest.js";
 
@@ -61,6 +61,15 @@ function makeDeps(overrides: {
 }
 
 describe("createReviewRequestForRun", () => {
+  beforeEach(() => {
+    // PR 创建成功后会 best-effort 回写 GitHub Issue 评论；测试中禁用真实网络请求。
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 401 })));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("GitHub issue 来源：创建 PR 时自动追加 Closes #<number>", async () => {
     const { prisma, gitPush, parseRepo, createPullRequest } = makeDeps({});
 

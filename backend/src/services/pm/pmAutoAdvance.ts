@@ -92,7 +92,7 @@ async function runAutoAdvanceOnce(
       if (changes && "error" in changes) throw new Error(String((changes as any).error));
       return changes as any;
     };
-    await autoReviewRunForPm({ prisma: deps.prisma }, runId, { getChanges }).catch((err: unknown) => {
+    await autoReviewRunForPm({ prisma: deps.prisma }, runId, { getChanges, commentToGithub: trigger === "ci_completed" }).catch((err: unknown) => {
       log("pm auto-review failed", { runId, trigger, err: String(err) });
     });
   }
@@ -176,4 +176,3 @@ export function triggerPmAutoAdvance(deps: { prisma: PrismaDeps; log?: (msg: str
     }
   });
 }
-
