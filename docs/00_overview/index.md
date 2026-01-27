@@ -30,6 +30,10 @@ last_reviewed: "2026-01-27"
 - 工作流优化方案（BMAD-Lite）：`docs/05_process/workflow-optimization-bmad-lite.md`
 - 文档治理规范：`docs/_meta/docs-governance.md`
 
+## 可选指南
+
+- GitHub Webhook 公网入口（Cloudflare Tunnel）：`docs/03_guides/cloudflare-tunnel-github-webhook.md`
+
 ## ADR（设计决策记录）
 
 本仓库 ADR 约定目录：`docs/04_decisions/`（暂无或待补）。  

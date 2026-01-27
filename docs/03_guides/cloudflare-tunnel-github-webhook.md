@@ -1,3 +1,10 @@
+---
+title: "Cloudflare Tunnel 给 GitHub Webhook 提供公网 HTTPS URL（Windows / PowerShell）"
+owner: "@tuixiu-maintainers"
+status: "active"
+last_reviewed: "2026-01-27"
+---
+
 # Cloudflare Tunnel（cloudflared）给 GitHub Webhook 提供稳定公网 HTTPS URL（Windows / PowerShell）
 
 目标：把本机 `http://127.0.0.1:3000` 安全映射成 `https://webhook.yourdomain.com`，然后在 GitHub Webhook 里填：
