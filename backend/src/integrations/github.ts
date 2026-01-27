@@ -12,13 +12,22 @@ export type GitHubPullRequest = {
   body?: string | null;
   state: "open" | "closed" | string;
   html_url: string;
-  head: { ref: string };
+  head: { ref: string; sha?: string };
   base: { ref: string };
   merged_at?: string | null;
   mergeable?: boolean | null;
   mergeable_state?: string | null;
   draft?: boolean;
   updated_at?: string;
+};
+
+export type GitHubPullRequestFile = {
+  filename: string;
+  status?: string;
+  additions?: number;
+  deletions?: number;
+  changes?: number;
+  patch?: string;
 };
 
 export type GitHubIssue = {
@@ -240,5 +249,22 @@ export async function getPullRequest(
     path: `/repos/${encodeURIComponent(auth.owner)}/${encodeURIComponent(auth.repo)}/pulls/${encodeURIComponent(
       String(params.pullNumber)
     )}`
+  });
+}
+
+export async function listPullRequestFiles(
+  auth: GitHubAuth,
+  params: { pullNumber: number; page?: number; perPage?: number },
+): Promise<GitHubPullRequestFile[]> {
+  const page = Number.isFinite(params.page as any) && Number(params.page) > 0 ? Number(params.page) : 1;
+  const perPageRaw = Number.isFinite(params.perPage as any) ? Number(params.perPage) : 100;
+  const perPage = perPageRaw > 0 ? Math.min(perPageRaw, 100) : 100;
+  const qs = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+
+  return await githubRequest<GitHubPullRequestFile[]>(auth, {
+    method: "GET",
+    path: `/repos/${encodeURIComponent(auth.owner)}/${encodeURIComponent(auth.repo)}/pulls/${encodeURIComponent(
+      String(params.pullNumber),
+    )}/files?${qs.toString()}`,
   });
 }

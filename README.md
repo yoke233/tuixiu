@@ -116,8 +116,18 @@ pnpm -C frontend dev
    - Payload URL：`https://<你的可访问域名>/api/webhooks/github`
    - Content type：`application/json`
    - Secret：与 `GITHUB_WEBHOOK_SECRET` 一致
-   - Which events：至少勾选 **Issues**；如要 CI 回写，再勾选 **Workflow runs** / **Check runs** / **Check suites**
+   - Which events：
+     - 必选：**Issues**
+     - CI 回写：**Workflow runs** / **Check runs** / **Check suites**
+     - PR 流转（推荐）：**Pull requests**（用于同步 PR 状态/合并回写/打回重跑）
+     - PR 人工评审（可选）：**Pull request reviews**（用于 `CHANGES_REQUESTED` 打回）
 3. GitHub 访问不到 `localhost`，需要用 ngrok / Cloudflare Tunnel 等把 `3000` 端口暴露出去
+
+**PR 自动评审（可选）**
+
+- 在 `backend/.env` 配置：`GITHUB_PR_AUTO_REVIEW_ENABLED=1`
+- 同时配置 `PM_LLM_*` 或 `OPENAI_API_KEY`（用于生成评审内容）
+- Webhook 需要勾选 **Pull requests**（打开/更新时触发）；评审结果会以评论形式回写到 PR
 
 ### Codeup（云效）
 
