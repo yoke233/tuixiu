@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { z } from "zod";
+
 type StepKind = string;
 
 type ContextDoc = {
@@ -8,6 +10,25 @@ type ContextDoc = {
   title: string;
   maxChars: number;
 };
+
+const contextManifestSchema = z
+  .object({
+    version: z.literal(1).default(1),
+    docs: z
+      .record(
+        z.object({
+          path: z.string().min(1),
+          title: z.string().min(1).optional(),
+          maxChars: z.number().int().positive().optional(),
+        }),
+      )
+      .default({}),
+    defaults: z.array(z.string().min(1)).default([]),
+    stepKinds: z.record(z.array(z.string().min(1))).default({}),
+  })
+  .passthrough();
+
+type ContextManifest = z.infer<typeof contextManifestSchema>;
 
 function uniqueInOrder(items: string[]): string[] {
   const seen = new Set<string>();
@@ -26,23 +47,66 @@ function truncateHead(text: string, maxChars: number): { text: string; truncated
   return { text: `${src.slice(0, maxChars)}\n\n…（已截断，原始长度 ${src.length} 字符）`, truncated: true };
 }
 
-function resolveDocsForStep(kind: StepKind): ContextDoc[] {
-  const k = String(kind ?? "").trim();
+function defaultManifest(): ContextManifest {
+  return {
+    version: 1,
+    docs: {
+      projectContext: { path: "docs/project-context.md", title: "项目上下文（硬约束）", maxChars: 9000 },
+      dod: { path: "docs/dod.md", title: "DoD（完成定义）", maxChars: 9000 },
+    },
+    defaults: ["projectContext"],
+    stepKinds: {
+      "code.review": ["dod"],
+      "prd.review": ["dod"],
+      "pr.create": ["dod"],
+      "pr.merge": ["dod"],
+      "ci.gate": ["dod"],
+      "report.publish": ["dod"],
+    },
+  };
+}
+
+async function loadManifest(workspacePath: string): Promise<ContextManifest> {
+  const candidates = ["docs/context-manifest.json"];
+  for (const rel of candidates) {
+    const fullPath = path.join(workspacePath, rel);
+    let raw = "";
+    try {
+      raw = await fs.readFile(fullPath, "utf8");
+    } catch {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const validated = contextManifestSchema.safeParse(parsed);
+      if (validated.success) return validated.data;
+    } catch {
+      // ignore
+    }
+  }
+
+  return defaultManifest();
+}
+
+function resolveDocsForStep(kind: StepKind, manifest: ContextManifest): ContextDoc[] {
+  const stepKind = String(kind ?? "").trim();
+  const defaults = Array.isArray(manifest.defaults) ? manifest.defaults : [];
+  const extras = manifest.stepKinds && stepKind && Array.isArray(manifest.stepKinds[stepKind]) ? manifest.stepKinds[stepKind] : [];
+  const docKeys = uniqueInOrder([...defaults, ...extras].filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim()));
+
   const docs: ContextDoc[] = [];
+  for (const key of docKeys) {
+    const def = manifest.docs ? (manifest.docs as any)[key] : null;
+    if (!def || typeof def !== "object") continue;
 
-  // 通用：任何步骤都需要了解仓库硬约束
-  docs.push({ relPath: "docs/project-context.md", title: "项目上下文（硬约束）", maxChars: 9000 });
+    const relPath = typeof (def as any).path === "string" ? String((def as any).path).trim() : "";
+    if (!relPath) continue;
+    const title = typeof (def as any).title === "string" && String((def as any).title).trim() ? String((def as any).title).trim() : relPath;
+    const maxChars = typeof (def as any).maxChars === "number" && Number.isFinite((def as any).maxChars) ? Number((def as any).maxChars) : 9000;
 
-  // 评审/合并/交付相关：引入 DoD
-  const needsDod = [
-    "code.review",
-    "prd.review",
-    "pr.create",
-    "pr.merge",
-    "ci.gate",
-    "report.publish",
-  ].includes(k);
-  if (needsDod) docs.push({ relPath: "docs/dod.md", title: "DoD（完成定义）", maxChars: 9000 });
+    docs.push({ relPath, title, maxChars });
+  }
 
   return docs;
 }
@@ -55,7 +119,8 @@ export async function buildContextPackPrompt(opts: {
   const workspacePath = String(opts.workspacePath ?? "").trim();
   if (!workspacePath) return "";
 
-  const docs = resolveDocsForStep(opts.stepKind);
+  const manifest = await loadManifest(workspacePath);
+  const docs = resolveDocsForStep(opts.stepKind, manifest);
   const totalMaxChars = typeof opts.totalMaxChars === "number" && opts.totalMaxChars > 1000 ? opts.totalMaxChars : 14000;
 
   const blocks: string[] = [];
@@ -87,4 +152,3 @@ export async function buildContextPackPrompt(opts: {
 
   return uniqueBlocks.join("\n\n---\n\n");
 }
-

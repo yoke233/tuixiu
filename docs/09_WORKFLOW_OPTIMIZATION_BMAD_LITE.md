@@ -79,7 +79,7 @@ BMAD 的价值不在某个具体工具，而在一套面向多 agent/多人协�
 
 并新增一个“上下文清单”（manifest，建议 JSON/YAML，未来可放 DB）：
 
-- `docs/context-manifest.yaml`（建议）
+- `docs/context-manifest.json`（当前实现）
   - 针对 `step.kind` 声明需要加载的文档与片段
   - 例如：`dev.implement` 默认加载 `project-context.md` + 相关 ADR；`code.review` 加载 `dod.md`；`prd.generate` 加载产品约束/术语表
 
@@ -181,7 +181,7 @@ Human review 的价值是做最终裁决与风险兜底，因此建议：
 
 - 引入 `track` 字段或模板体系升级（quick/planning）
 - 增加 `gate.implementation_readiness` 与 `correct-course`（结合 Policy/Approval）
-- 引入 `context-manifest.yaml`（按 step.kind 自动拼上下文）
+- 引入 `context-manifest.json`（按 step.kind 自动拼上下文）
 - 文档 sharding（PRD/架构过长时拆分，减少 agent 上下文漂移）
 
 ### P2（工作流可配置化与生态）
