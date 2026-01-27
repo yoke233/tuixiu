@@ -25,6 +25,7 @@
 - [x] **Run 自动验收（auto-review）**：`POST /api/pm/runs/:id/auto-review` 生成 `report(kind=auto_review)`；Run 变更面板提供“一键自动验收”按钮
 - [x] **Run 自动推进（非 Task 流）**：Run 完成自动生成 auto-review；检测到变更时自动 `create-pr`；GitHub CI 通过后自动发起 `merge_pr` 审批（仍需人工批准/执行合并）；受 `PM_AUTOMATION_ENABLED` 与 `pmPolicy.automation.*` 控制
 - [x] **Task 自动推进（Task 流）**：Task 创建/回滚后自动启动首个 `ready` 且非 `human` 的 Step；Run/CI 完成后自动启动下一个 `ready` 且非 `human` 的 Step；遇到 `human` Step 自动停（`pr.create` 受 `pmPolicy.automation.autoCreatePr` 门禁）
+- [x] **BMAD-Lite P0**：Context Pack（docs + 注入）、next-action 读接口+前端提示、对抗式 `code.review`、`gate_decision` schema
 
 **来源（已合入 `main`）**
 - PR `#26`：PM automation v1（多来源 + 自动分析/分配/启动 + GitHub 评论 + 审批队列初版）
@@ -38,13 +39,11 @@
 - PR `#45`：Task 自动推进（Task/Step ready 自动启动非 human executor）
 - PR `#46`：GitHub Issue 回写增强（创建 PR 与 auto-review 摘要 best-effort 评论）
 - PR `#50`：动作级 gate（`create_pr`/`publish_artifact`）+ `sensitivePaths` 命中升级审批（Task system step 等待 `waiting_human`）
+- PR `#58`：BMAD-Lite P0（Context Pack + next-action + 对抗式 review + gate_decision schema）
 
 ### 已知缺口 ⚠️（当前主线未完成）
 
-- [ ] **BMAD-Lite 对齐（P0）**：缺少 `docs/project-context.md` / `docs/dod.md`，且 Task 流 agent prompt 还不能按 `step.kind` 自动注入共享上下文（Context Pack）
-- [ ] **“下一步做什么？”系统能力**：缺少统一的 next-action 读接口与 UI 提示（当前仅 `auto-review` 报告里有推荐动作，覆盖面有限）
-- [ ] **AI Review（对抗式默认）**：`code.review` 的提示词偏宽松；缺少 DoD 引用与 “0 findings” 的检查项说明
-- [ ] **Gate/DoD 聚合（预备）**：缺少 `gate_decision` 结构化产物约定与 gate step（`implementation_readiness/review/release`）的聚合能力
+- [ ] **Gate/DoD 聚合（预备）**：已具备 `gate_decision` schema，但仍缺 gate step（`implementation_readiness/review/release`）聚合能力与可视化
 - [ ] **Track（轨道选择）**：缺少显式 `track` 字段/模板体系（quick/planning/enterprise）；目前只能通过 `templateKey`/人工约定实现
 - [ ] **Policy/策略系统（扩展）**：已支持 Project policy 存取与 PM autoStart gate；已完成 `create_pr`/`publish_artifact` 动作级 gate 与敏感目录升级；仍缺更多动作（`ci/test/merge auto-exec` 等）的门禁聚合与策略化
 - [ ] **auto-review（回写增强）**：已支持手动触发与自动触发（含 GitHub Issue best-effort 摘要回写）；仍缺测试结果聚合增强（例如更完整的测试摘要、diff 摘要压缩与证据链接）
@@ -55,78 +54,15 @@
 - [ ] **worktree 生命周期**：完成/合并后自动清理/归档策略未实现
 - [ ] **PM × Task/Step 对齐**：把“分析/分配/启动/验收/交付”映射到 `TaskTemplate + Step`（避免仅靠散落的 Run/Artifact 做状态推断）
 
-## 1. 下一步执行计划（P0：BMAD-Lite 最少增量，立刻收益）
+## 1. 里程碑（BMAD-Lite P0 已完成）
 
 > 对齐文档：`docs/09_WORKFLOW_OPTIMIZATION_BMAD_LITE.md`（P0/P1/P2 路线图与定义）。
 
-### Task P0-1：Context Pack（共享上下文）文档资产
-
-**目标**
-- 用最小成本把“仓库硬约束”固化成可复用上下文，减少 agent/人协作时的误改与返工。
-
-**Done**
-- 新增 `docs/project-context.md`：目录结构、命名/格式、测试命令、禁改目录、常见坑等（手工维护即可）
-- 新增 `docs/dod.md`：DoD 清单（实现/测试/评审/文档/审计的最低标准）
-
-**验证**
-- 任意人/agent 打开 docs 即可作为统一约束；后续 Step 执行可引用 DoD 做验收
-
----
-
-### Task P0-2：Context Pack 自动注入（按 `step.kind`）
-
-**目标**
-- Task 流的 agent prompt 自动加载 Context Pack（按步骤类型选择），让不同 agent 执行一致。
-
-**Done**
-- 在后端实现基于 `step.kind` 的 context manifest（先用代码常量，后续再迁移到 `docs/context-manifest.yaml`）
-- `acpAgentExecutor` 拼 prompt 时：从 workspace 读取对应 docs，并做限长/截断（避免 prompt 过大）
-
-**验证**
-- 启动任意 `dev.implement` / `code.review` Step：ACP prompt 中可看到注入的 Context Pack 内容
-
----
-
-### Task P0-3：“Next Action” 读接口 + 前端提示
-
-**目标**
-- 把“下一步做什么”变成系统能力：给出阻塞原因、缺失产物与可执行动作（先读接口即可）。
-
-**Done**
-- 新增 `GET /api/pm/issues/:id/next-action`（可扩展到 taskId/runId）：根据 Task/Step 状态、审批队列、PR/CI/报告等聚合建议
-- 前端 Issue 详情页展示 next action（动作 + 原因 + 相关链接/按钮）
-
-**验证**
-- 对一个等待审批/等待 CI/Task blocked 的 Issue：能看到明确下一步与原因
-
----
-
-### Task P0-4：AI Review 默认“对抗式” + 引用 DoD
-
-**目标**
-- 提升 review 信噪比：必须给出问题清单；若 0 findings 必须解释并列出检查项；评审标准引用 DoD。
-
-**Done**
-- `code.review` 的 prompt 统一改为对抗式输出（结构化 JSON + Markdown）
-- 默认将 `docs/dod.md` 注入到 `code.review` 的上下文中
-
-**验证**
-- 运行一次 `code.review` Step：输出包含 findings；或 0 findings 时包含检查项与理由
-
----
-
-### Task P0-5：`gate_decision` 结构化产物约定（先不改 DB）
-
-**目标**
-- 把“能继续吗”显式化为结构化数据，为后续 gate step 聚合与审计打基础。
-
-**Done**
-- 新增 `gate_decision` JSON schema（Artifact(type=`report`) 的 `content.kind="gate_decision"` 约定）
-  - Schema 文件：`docs/gate_decision.schema.json`
-- 在后续 P1 引入 `gate.review` / `gate.implementation_readiness` 时直接复用该 schema（避免返工）
-
-**验证**
-- schema 可用于 LLM 输出校验/后端持久化；并能在 UI/导出中展示（后续实现）
+- [x] Context Pack 文档：`docs/project-context.md`、`docs/dod.md`
+- [x] Context Pack 注入：Task 流 agent prompt 按 `step.kind` 自动加载 docs（含限长/截断）
+- [x] Next Action：`GET /api/pm/issues/:id/next-action` + Issue 详情页 PM 面板提示
+- [x] 对抗式 Review：`code.review` 默认更严格，且上下文引用 DoD
+- [x] Gate schema：`docs/gate_decision.schema.json`（后端提供 Zod schema，供后续 gate step 聚合复用）
 
 ## 2. 后续执行计划（P1/P2）
 
