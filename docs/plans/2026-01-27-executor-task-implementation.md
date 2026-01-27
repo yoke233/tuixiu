@@ -11,6 +11,36 @@
 
 ---
 
+## 实现状态（截至 2026-01-27）
+
+> 已合并：PR #28（`b5bb23e5365c25ee0af418a0f3b94fa99fa482b5`）
+
+### 已完成
+
+- Task 1：数据模型与迁移（User/Task/Step/Run 扩展）
+- Task 2：任务引擎 + 内置模板（4A）+ API（tasks/steps）
+- Task 3：执行器抽象（agent/ci/human/system）与 Step prompt 规范（Agent 产物解析落库）
+- Task 5：交付物落盘与脱敏（publish API + system publish step）
+- Task 7：轻量登录与角色（JWT + bootstrap/login/me；前端接入）
+
+### 部分完成（有明确 TODO）
+
+- Task 4：WS 广播与前端实时刷新
+  - 已有：Run 级别 `event_added/artifact_added`；Run 结束会触发前端 refresh，从而刷新 Tasks/Steps
+  - TODO：补 Task/Step 级别事件（`task_updated/step_updated`），减少轮询与“只看当前 Run 才会刷新”的耦合
+- Task 6：CI/Webhook 闭环
+  - 已有：GitHub webhook 支持 `workflow_run/check_suite/check_run` → 写入 `ci_result` → 结束 `waiting_ci` Run 并推进 Step
+  - TODO：GitLab pipeline 事件回写；更稳的 run 关联（`head_sha/PR`）；CI 不可用/超时降级策略或 `sync-ci`
+- Task 8：兼容与收口
+  - 已有：旧 `Issue → Run` 流程仍可用；新 Task/Step 可并存
+  - TODO：决定是否把 `/api/issues/:id/start` 内部重定向为创建默认 Task 并启动首步（减少双逻辑）；UI 上明确 “Legacy Run” 与 “Task 流程” 的推荐路径
+
+### 明确不做（本阶段）
+
+- 工作流编辑器/可配置 DAG：仅保留数据结构预留位（`params/dependsOn`），暂不提供编辑器与持久化模板配置
+
+---
+
 ## Task 1: 数据模型与迁移（User + Task + Step + Run 扩展）
 
 **Files:**
