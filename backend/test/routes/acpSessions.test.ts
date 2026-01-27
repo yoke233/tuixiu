@@ -177,7 +177,7 @@ describe("ACP session admin routes", () => {
       data: { issueId, taskId, stepId, runId },
     });
 
-    expect(createTaskFromTemplate).toHaveBeenCalledWith({ prisma }, issueId, { templateKey: "template.admin.session" });
+    expect(createTaskFromTemplate).toHaveBeenCalledWith({ prisma }, issueId, { templateKey: "quick.admin.session" });
     expect(startStep).toHaveBeenCalledWith({ prisma }, stepId, { roleKey: undefined });
     expect(dispatchExecutionForRun).toHaveBeenCalledWith(
       expect.objectContaining({ prisma, sendToAgent, acp, createWorkspace }),

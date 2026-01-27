@@ -72,6 +72,7 @@ export function listTaskTemplates() {
     description: t.description ?? "",
     track: t.track ?? null,
     deprecated: Boolean(t.deprecated),
+    aliasOf: t.aliasOf ?? null,
     steps: t.steps.map((s) => ({ key: s.key, kind: s.kind, executorType: s.executorType })),
   }));
 }

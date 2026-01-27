@@ -142,7 +142,7 @@ export function makeAcpSessionRoutes(deps: {
         });
 
         try {
-          const task = await createTaskFromTemplate({ prisma: deps.prisma }, issue.id, { templateKey: "template.admin.session" });
+          const task = await createTaskFromTemplate({ prisma: deps.prisma }, issue.id, { templateKey: "quick.admin.session" });
           if (createdByUserId) {
             await deps.prisma.task
               .update({ where: { id: (task as any).id }, data: { createdByUserId } as any })

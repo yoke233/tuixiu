@@ -58,16 +58,16 @@ describe("Tasks routes", () => {
     const prisma = {
       issue: { findUnique: vi.fn().mockResolvedValue({ id: "i1", project: { defaultBranch: "main" } }) },
       task: {
-        create: vi.fn().mockResolvedValue({
+        create: vi.fn().mockImplementation(async (args: any) => ({
           id: "t1",
           issueId: "i1",
-          templateKey: "template.prd.only",
+          templateKey: args?.data?.templateKey ?? "unknown",
           status: "pending",
           steps: [
             { id: "s1", key: "prd.generate", order: 1, status: "ready" },
             { id: "s2", key: "prd.review", order: 2, status: "pending" },
           ],
-        }),
+        })),
       },
     } as any;
 
@@ -82,10 +82,11 @@ describe("Tasks routes", () => {
     const json = res.json();
     expect(json.success).toBe(true);
     expect(json.data.task.id).toBe("t1");
+    expect(json.data.task.templateKey).toBe("planning.prd.only");
 
     const call = prisma.task.create.mock.calls[0]?.[0] as any;
     expect(call.data.issueId).toBe("00000000-0000-0000-0000-000000000001");
-    expect(call.data.templateKey).toBe("template.prd.only");
+    expect(call.data.templateKey).toBe("planning.prd.only");
     expect(call.data.steps.create.length).toBeGreaterThan(0);
     expect(call.data.steps.create[0]).toEqual(
       expect.objectContaining({ key: "prd.generate", kind: "prd.generate", order: 1, status: "ready" }),

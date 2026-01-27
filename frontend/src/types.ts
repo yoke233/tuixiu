@@ -148,6 +148,7 @@ export type TaskTemplate = {
   description: string;
   track?: TaskTrack | null;
   deprecated?: boolean;
+  aliasOf?: string | null;
   steps: TaskTemplateStep[];
 };
 
