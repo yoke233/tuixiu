@@ -10,6 +10,15 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import type { Issue, IssueStatus, Project } from "../types";
 import { getShowArchivedIssues } from "../utils/settings";
 
+const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
+  pending: "To Do",
+  running: "In Progress",
+  reviewing: "In Review",
+  done: "Done",
+  failed: "Failed",
+  cancelled: "Cancelled"
+};
+
 export function IssueListPage() {
   const params = useParams();
   const selectedIssueId = params.id ?? "";
@@ -33,6 +42,7 @@ export function IssueListPage() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionIssueId, setActionIssueId] = useState<string>("");
 
   const onIssueUpdated = useCallback((issue: Issue) => {
     setIssues((prev) => {
@@ -93,6 +103,85 @@ export function IssueListPage() {
     }
     return map;
   }, [visibleIssues]);
+
+  const actionIssue = useMemo(() => {
+    if (!actionIssueId) return null;
+    return issues.find((i) => i.id === actionIssueId) ?? null;
+  }, [actionIssueId, issues]);
+
+  const actionIssueRunId = actionIssue?.runs?.[0]?.id ?? "";
+
+  type IssuePrimaryAction = { key: string; label: string; toStatus: IssueStatus; variant?: "danger" };
+  type IssueStatusAction = {
+    key: string;
+    label: string;
+    toStatus: Exclude<IssueStatus, "running">;
+    disabled?: boolean;
+  };
+
+  const issueActions = useMemo<{ primary: IssuePrimaryAction[]; statuses: IssueStatusAction[] }>(() => {
+    if (!actionIssue) {
+      return {
+        primary: [],
+        statuses: []
+      };
+    }
+
+    if (actionIssue.status === "running") {
+      return {
+        primary: [
+          { key: "to_reviewing", label: "完成 Run（进入 In Review）", toStatus: "reviewing" },
+          { key: "cancel_run", label: "取消 Run", toStatus: "cancelled", variant: "danger" }
+        ],
+        statuses: []
+      };
+    }
+
+    const startLabel = actionIssue.status === "done" || actionIssue.status === "failed" || actionIssue.status === "cancelled"
+      ? "重新启动 Run"
+      : "启动 Run";
+    const statuses: Array<Exclude<IssueStatus, "running">> = ["pending", "reviewing", "done", "failed", "cancelled"];
+    return {
+      primary: [{ key: "start_run", label: startLabel, toStatus: "running" }],
+      statuses: statuses.map((s) => ({
+        key: `to_${s}`,
+        label: `移到 ${ISSUE_STATUS_LABELS[s]}`,
+        toStatus: s,
+        disabled: s === actionIssue.status
+      }))
+    };
+  }, [actionIssue]);
+
+  function openIssueActions(issueId: string) {
+    setActionIssueId(issueId);
+  }
+
+  function closeIssueActions() {
+    setActionIssueId("");
+  }
+
+  useEffect(() => {
+    if (!actionIssueId) return;
+    if (actionIssue) return;
+    setActionIssueId("");
+  }, [actionIssue, actionIssueId]);
+
+  useEffect(() => {
+    if (!actionIssueId) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeIssueActions();
+    };
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [actionIssueId]);
 
   async function refresh() {
     setLoading(true);
@@ -175,6 +264,13 @@ export function IssueListPage() {
       setDragging(null);
       setDropStatus(null);
     }
+  }
+
+  async function runIssueAction(toStatus: IssueStatus) {
+    if (!actionIssue) return;
+    closeIssueActions();
+    const latestRun = actionIssue.runs?.[0];
+    await moveIssue({ issueId: actionIssue.id, fromStatus: actionIssue.status, runId: latestRun?.id }, toStatus);
   }
 
   useEffect(() => {
@@ -370,32 +466,46 @@ export function IssueListPage() {
                         const selected = selectedIssueId === i.id;
                         const isDragging = dragging?.issueId === i.id;
                         return (
-                          <Link
-                            key={i.id}
-                            to={`/issues/${i.id}`}
-                            draggable
-                            onDragStart={(e) => {
-                              const payload = { issueId: i.id, fromStatus: i.status, runId: latestRun?.id };
-                              setDragging(payload);
-                              e.dataTransfer.setData("application/json", JSON.stringify(payload));
-                              e.dataTransfer.effectAllowed = "move";
-                            }}
-                            onDragEnd={() => {
-                              setDragging(null);
-                              setDropStatus(null);
-                            }}
-                            className={`issueCard ${selected ? "selected" : ""} ${isDragging ? "dragging" : ""}`}
-                            aria-disabled={moving ? "true" : undefined}
-                          >
-                            <div className="row spaceBetween">
-                              <div className="issueTitle">{i.title}</div>
-                              <StatusBadge status={i.status} />
-                            </div>
-                            <div className="row spaceBetween issueMeta">
-                              <div className="muted">{new Date(i.createdAt).toLocaleDateString()}</div>
-                              {latestRun ? <StatusBadge status={latestRun.status} /> : <span className="muted">-</span>}
-                            </div>
-                          </Link>
+                          <div key={i.id} className="issueCardWrap">
+                            <Link
+                              to={`/issues/${i.id}`}
+                              draggable
+                              onDragStart={(e) => {
+                                const payload = { issueId: i.id, fromStatus: i.status, runId: latestRun?.id };
+                                setDragging(payload);
+                                e.dataTransfer.setData("application/json", JSON.stringify(payload));
+                                e.dataTransfer.effectAllowed = "move";
+                              }}
+                              onDragEnd={() => {
+                                setDragging(null);
+                                setDropStatus(null);
+                              }}
+                              className={`issueCard ${selected ? "selected" : ""} ${isDragging ? "dragging" : ""}`}
+                              aria-disabled={moving ? "true" : undefined}
+                            >
+                              <div className="row spaceBetween">
+                                <div className="issueTitle">{i.title}</div>
+                                <StatusBadge status={i.status} />
+                              </div>
+                              <div className="row spaceBetween issueMeta">
+                                <div className="muted">{new Date(i.createdAt).toLocaleDateString()}</div>
+                                {latestRun ? <StatusBadge status={latestRun.status} /> : <span className="muted">-</span>}
+                              </div>
+                            </Link>
+                            <button
+                              type="button"
+                              className="buttonSecondary issueCardAction"
+                              aria-label={`操作：${i.title}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openIssueActions(i.id);
+                              }}
+                              disabled={moving}
+                            >
+                              ⋯
+                            </button>
+                          </div>
                         );
                       })
                     ) : (
@@ -430,6 +540,89 @@ export function IssueListPage() {
           </>
         ) : null}
       </div>
+
+      {actionIssue ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Issue 操作" onClick={closeIssueActions}>
+          <div className="modalPanel card" onClick={(e) => e.stopPropagation()}>
+            <div className="row spaceBetween">
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800 }}>Issue 操作</div>
+                <div
+                  className="muted"
+                  style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  title={actionIssue.title}
+                >
+                  {actionIssue.title}
+                </div>
+              </div>
+              <button type="button" className="buttonSecondary" onClick={closeIssueActions}>
+                关闭
+              </button>
+            </div>
+
+            <div className="row gap" style={{ marginTop: 10 }}>
+              <StatusBadge status={actionIssue.status} />
+              {actionIssue.runs?.[0] ? <StatusBadge status={actionIssue.runs[0].status} /> : <span className="muted">-</span>}
+            </div>
+
+            {!auth.user ? (
+              <div style={{ marginTop: 12 }}>
+                <div className="muted" style={{ marginBottom: 10 }}>
+                  登录后可执行状态变更/启动 Run 等操作。
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeIssueActions();
+                    navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
+                  }}
+                >
+                  去登录
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{ marginTop: 14 }}>
+                  <div className="muted">运行</div>
+                  <div className="actionGrid">
+                    {issueActions.primary.map((a) => (
+                      <button
+                        key={a.key}
+                        type="button"
+                        className={a.variant === "danger" ? "buttonDanger" : undefined}
+                        onClick={() => void runIssueAction(a.toStatus)}
+                        disabled={moving || (actionIssue.status === "running" && !actionIssueRunId)}
+                        title={actionIssue.status === "running" && !actionIssueRunId ? "缺少 runId，无法操作" : undefined}
+                      >
+                        {a.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {issueActions.statuses.length ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="muted">状态</div>
+                    <div className="actionGrid">
+                      {issueActions.statuses.map((a) => (
+                        <button
+                          key={a.key}
+                          type="button"
+                          className="buttonSecondary"
+                          onClick={() => void runIssueAction(a.toStatus)}
+                          disabled={moving || a.disabled}
+                        >
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

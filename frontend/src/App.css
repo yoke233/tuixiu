@@ -700,12 +700,83 @@ a:hover {
   display: grid;
   gap: 8px;
   padding: 12px;
+  padding-right: 46px;
   border-radius: 12px;
   border: 1px solid var(--card-border);
   background: var(--card-bg);
   text-decoration: none;
   color: inherit;
   transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.issueCardWrap {
+  position: relative;
+}
+
+.issueCardAction {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 6px 10px;
+  border-radius: 10px;
+  line-height: 1;
+  min-width: 38px;
+  display: grid;
+  place-items: center;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.modalPanel {
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 640px) {
+  .modalOverlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modalPanel {
+    width: 100%;
+    border-radius: 16px 16px 0 0;
+    max-height: 85vh;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
+  }
+
+  .issueCard {
+    padding-right: 52px;
+  }
+
+  .issueCardAction {
+    padding: 8px 12px;
+    min-width: 42px;
+  }
+}
+
+.actionGrid {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.buttonDanger {
+  background: rgba(239, 68, 68, 0.9);
+  color: #fff;
 }
 
 .issueCard[draggable="true"] {
