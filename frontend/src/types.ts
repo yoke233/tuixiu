@@ -97,6 +97,8 @@ export type AcpSessionSummary = {
 
 export type TaskStatus = "pending" | "running" | "blocked" | "completed" | "failed" | "cancelled";
 
+export type TaskTrack = "quick" | "planning" | "enterprise";
+
 export type StepStatus =
   | "pending"
   | "ready"
@@ -126,6 +128,7 @@ export type Task = {
   id: string;
   issueId: string;
   templateKey: string;
+  track?: TaskTrack | null;
   status: TaskStatus;
   currentStepId?: string | null;
   workspaceType?: string | null;

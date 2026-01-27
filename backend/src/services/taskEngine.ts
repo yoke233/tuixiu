@@ -6,6 +6,7 @@ type ExecutorType = "agent" | "ci" | "human" | "system";
 
 export type CreateTaskBody = {
   templateKey: string;
+  track?: "quick" | "planning" | "enterprise";
 };
 
 export type StartStepBody = {
@@ -32,6 +33,27 @@ export class TaskEngineError extends Error {
 function normalizeExecutorType(value: unknown): ExecutorType | null {
   const v = String(value ?? "").trim().toLowerCase();
   if (v === "agent" || v === "ci" || v === "human" || v === "system") return v;
+  return null;
+}
+
+function normalizeTaskTrack(value: unknown): "quick" | "planning" | "enterprise" | null {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (v === "quick" || v === "planning" || v === "enterprise") return v;
+  return null;
+}
+
+function inferTaskTrackFromTemplateKey(templateKey: string): "quick" | "planning" | "enterprise" | null {
+  const k = String(templateKey ?? "").trim().toLowerCase();
+  if (!k) return null;
+  if (k.startsWith("quick.")) return "quick";
+  if (k.startsWith("planning.")) return "planning";
+  if (k.startsWith("enterprise.")) return "enterprise";
+
+  if (k === "template.prd.only") return "planning";
+  if (k === "template.dev.full") return "quick";
+  if (k === "template.test.only") return "quick";
+  if (k === "template.admin.session") return "quick";
+
   return null;
 }
 
@@ -62,6 +84,8 @@ export async function createTaskFromTemplate(
   if (!template) {
     throw new TaskEngineError("BAD_TEMPLATE", "未知的模板", templateKey);
   }
+
+  const track = normalizeTaskTrack((body as any).track) ?? inferTaskTrackFromTemplateKey(template.key);
 
   const issue = await deps.prisma.issue.findUnique({
     where: { id: issueId },
@@ -96,6 +120,7 @@ export async function createTaskFromTemplate(
       id: taskId,
       issueId,
       templateKey: template.key,
+      track: track ?? undefined,
       status: "pending",
       baseBranch,
       currentStepId: firstStepId,

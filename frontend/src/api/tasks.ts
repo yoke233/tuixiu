@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from "./client";
-import type { Task, TaskTemplate } from "../types";
+import type { Task, TaskTemplate, TaskTrack } from "../types";
 
 export async function listTaskTemplates(): Promise<TaskTemplate[]> {
   const data = await apiGet<{ templates: TaskTemplate[] }>("/task-templates");
@@ -11,7 +11,7 @@ export async function listIssueTasks(issueId: string): Promise<Task[]> {
   return data.tasks;
 }
 
-export async function createIssueTask(issueId: string, input: { templateKey: string }): Promise<Task> {
+export async function createIssueTask(issueId: string, input: { templateKey: string; track?: TaskTrack }): Promise<Task> {
   const data = await apiPost<{ task: Task }>(`/issues/${issueId}/tasks`, input);
   return data.task;
 }
