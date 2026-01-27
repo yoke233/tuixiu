@@ -1,6 +1,6 @@
 # 多执行器任务系统（Task/Step/Execution）+ 回滚重跑（4A 内置模板）实现计划
 
-> 对应 PRD：`docs/plans/2026-01-27-executor-task-prd.md`  
+> 对应 PRD：`docs/archive/plans/2026-01-27-executor-task-prd.md`  
 > 范围：MVP 先落地 **内置模板（4A）**，不做工作流编辑器；但在数据模型与服务层预留未来可配置 DAG 的扩展位。
 
 **Goal:** 把现有 “Issue → Run(ACP)” 升级为 “Issue → Task(工作流实例) → Steps(步骤) → Executions(尝试)”：同一 Issue 下可运行 PRD/实现/测试/评审/CI/人工审批等步骤；支持 **打回 → 回滚到任意 Step → 重跑（保留历史尝试）**；测试支持双模（workspace 快速反馈 + CI 权威门禁，CI 不可用自动降级）。
