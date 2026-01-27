@@ -10,10 +10,131 @@
   padding: 24px;
 }
 
+@media (max-width: 640px) {
+  .container {
+    padding: 16px;
+  }
+}
+
+.adminShell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  align-items: start;
+}
+
+.adminSidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: auto;
+  border-right: 1px solid var(--card-border);
+  padding: 18px 14px;
+  background: var(--bg);
+}
+
+.adminSidebarHeader {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.adminSidebarTitle {
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.adminSidebarProject {
+  margin-bottom: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.adminSidebar select {
+  width: 100%;
+}
+
+.adminSidebarProjectMeta {
+  display: grid;
+  gap: 8px;
+}
+
+.adminSidebarProjectRow {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.adminSidebarProjectRow code {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--pre-bg);
+  border-radius: 10px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.adminNav {
+  display: grid;
+  gap: 8px;
+}
+
+.adminNavItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.adminNavItem:hover {
+  background: color-mix(in oklab, var(--card-bg), transparent 40%);
+}
+
+.adminNavItem.active {
+  border-color: color-mix(in oklab, var(--accent), var(--card-border) 40%);
+  background: color-mix(in oklab, var(--accent), transparent 92%);
+  box-shadow: inset 3px 0 0 color-mix(in oklab, var(--accent), transparent 35%);
+}
+
+.adminMain {
+  min-width: 0;
+}
+
+@media (max-width: 920px) {
+  .adminShell {
+    grid-template-columns: 1fr;
+  }
+
+  .adminSidebar {
+    position: relative;
+    height: auto;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--card-border);
+  }
+
+  .adminNav {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
 .header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -39,10 +160,17 @@
   backdrop-filter: blur(8px);
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .card {
+    backdrop-filter: none;
+  }
+}
+
 .row {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .gap {
@@ -101,6 +229,14 @@ select {
   padding: 10px 12px;
 }
 
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 input[type="checkbox"] {
   width: 16px;
   height: 16px;
@@ -121,6 +257,7 @@ button {
   padding: 10px 12px;
   font-weight: 600;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .buttonSecondary {
@@ -155,6 +292,17 @@ a:hover {
   width: 100%;
   border-collapse: collapse;
   margin-top: 12px;
+}
+
+.tableScroll {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 640px) {
+  .tableScroll .table {
+    min-width: 520px;
+  }
 }
 
 .table th,
@@ -217,6 +365,7 @@ a:hover {
   border-radius: 12px;
   padding: 10px;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   font-size: 12px;
 }
 
@@ -225,8 +374,9 @@ a:hover {
   border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 12px;
-  height: 420px;
+  height: min(420px, 55vh);
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
     monospace;
   font-size: 13px;
@@ -255,12 +405,21 @@ a:hover {
 
 .consoleInput {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 12px;
 }
 
 .consoleInput input {
-  flex: 1;
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+
+@media (max-width: 520px) {
+  .consoleInput input {
+    flex-basis: 100%;
+    min-width: 0;
+  }
 }
 
 .srOnly {
@@ -290,12 +449,23 @@ a:hover {
   grid-template-rows: auto auto 1fr;
 }
 
+@media (max-width: 979px) {
+  .issuesShell.hasDetail .issuesTopBar {
+    display: none;
+  }
+
+  .issuesShell.hasDetail .issuesBoard {
+    display: none;
+  }
+}
+
 .issuesTopBar {
-  padding: 18px 18px 12px;
+  padding: calc(18px + env(safe-area-inset-top)) 18px 12px;
   border-bottom: 1px solid var(--card-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
 }
 
@@ -304,8 +474,43 @@ a:hover {
   font-size: 20px;
 }
 
+.issuesTopBar h1 + .muted {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .issuesTopBar {
+    padding: calc(14px + env(safe-area-inset-top)) 12px 10px;
+  }
+
+  .issuesTopBar h1 {
+    font-size: 18px;
+  }
+
+  .issuesBoard {
+    padding: 12px;
+  }
+}
+
+.issuesTopActions {
+  flex-wrap: wrap;
+}
+
 .issuesTopActions input {
-  min-width: 260px;
+  flex: 1 1 240px;
+  min-width: 180px;
+}
+
+@media (max-width: 520px) {
+  .issuesTopActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .issuesTopActions input {
+    flex-basis: 100%;
+    min-width: 0;
+  }
 }
 
 .issuesSplit {
@@ -336,6 +541,7 @@ a:hover {
   border-left: none;
   background: var(--bg);
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   min-width: 0;
   min-height: 0;
 }
@@ -394,6 +600,8 @@ a:hover {
   display: flex;
   gap: 12px;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
   padding-bottom: 16px;
   scrollbar-gutter: stable both-edges;
   height: 100%;
@@ -405,12 +613,21 @@ a:hover {
   min-width: 280px;
   max-width: 320px;
   flex: 0 0 280px;
+  scroll-snap-align: start;
   border: 1px solid var(--card-border);
   border-radius: 14px;
   background: var(--list-bg);
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 0;
+}
+
+@media (max-width: 540px) {
+  .kanbanCol {
+    flex: 0 0 88vw;
+    min-width: 88vw;
+    max-width: 88vw;
+  }
 }
 
 .kanbanCol.dropTarget {
@@ -435,6 +652,7 @@ a:hover {
 .kanbanColBody {
   padding: 12px;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   display: grid;
   gap: 10px;
   align-content: start;
@@ -497,18 +715,33 @@ a:hover {
   transform: translateY(-1px);
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .issueCard {
+    transition: none;
+  }
+
+  .issueCard[draggable="true"] {
+    cursor: default;
+  }
+
+  .issueCard:hover {
+    transform: none;
+  }
+}
+
 .issueCard.selected {
   border-color: color-mix(in oklab, var(--accent), var(--card-border) 50%);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 80%);
 }
 
 .issueTitle {
+  flex: 1;
+  min-width: 0;
   font-weight: 650;
   font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 210px;
 }
 
 .issueMeta {
@@ -548,7 +781,8 @@ a:hover {
   border-radius: 12px;
   background: var(--list-bg);
   overflow: auto;
-  max-height: 420px;
+  -webkit-overflow-scrolling: touch;
+  max-height: min(420px, 55vh);
 }
 
 .fileRow {
@@ -592,8 +826,9 @@ a:hover {
 }
 
 .changesDiff .pre {
-  height: 420px;
+  height: min(420px, 55vh);
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 860px) {
@@ -601,10 +836,10 @@ a:hover {
     grid-template-columns: 1fr;
   }
   .changesFiles {
-    max-height: 220px;
+    max-height: min(220px, 35vh);
   }
   .changesDiff .pre {
-    height: 320px;
+    height: min(320px, 45vh);
   }
 }
 
