@@ -47,7 +47,8 @@ function appendGitHubIssueLinkForPrBody(params: {
 export async function createReviewRequestForRun(
   deps: RunReviewDeps,
   runId: string,
-  body: { title?: string; description?: string; targetBranch?: string }
+  body: { title?: string; description?: string; targetBranch?: string },
+  opts?: { setRunWaitingCi?: boolean }
 ): Promise<{
   success: boolean;
   data?: { pr: unknown };
@@ -69,9 +70,20 @@ export async function createReviewRequestForRun(
     return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
   }
 
-  const existingPr = run.artifacts.find((a: any) => a.type === "pr");
-  if (existingPr) {
-    return { success: true, data: { pr: existingPr } };
+  const taskId = (run as any).taskId as string | null;
+  const existingPrInRun = run.artifacts.find((a: any) => a.type === "pr");
+  if (existingPrInRun) {
+    return { success: true, data: { pr: existingPrInRun } };
+  }
+
+  if (taskId) {
+    const existingPr = await deps.prisma.artifact.findFirst({
+      where: { type: "pr", run: { is: { taskId } } } as any,
+      orderBy: { createdAt: "desc" },
+    });
+    if (existingPr) {
+      return { success: true, data: { pr: existingPr } };
+    }
   }
 
   const project = run.issue.project;
@@ -143,7 +155,9 @@ export async function createReviewRequestForRun(
       }
     });
 
-    await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
+    if (opts?.setRunWaitingCi !== false) {
+      await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
+    }
     return { success: true, data: { pr: created } };
   }
 
@@ -197,7 +211,9 @@ export async function createReviewRequestForRun(
       }
     });
 
-    await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
+    if (opts?.setRunWaitingCi !== false) {
+      await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
+    }
     return { success: true, data: { pr: created } };
   }
 
@@ -234,7 +250,14 @@ export async function mergeReviewRequestForRun(
   const project = run.issue.project;
   const scm = String(project.scmType ?? "").toLowerCase();
 
-  const prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  const taskId = (run as any).taskId as string | null;
+  let prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  if (!prArtifact && taskId) {
+    prArtifact = await deps.prisma.artifact.findFirst({
+      where: { type: "pr", run: { is: { taskId } } } as any,
+      orderBy: { createdAt: "desc" },
+    });
+  }
   if (!prArtifact) {
     return { success: false, error: { code: "NO_PR", message: "Run 暂无 PR 产物" } };
   }
@@ -396,7 +419,14 @@ export async function syncReviewRequestForRun(
   const project = run.issue.project;
   const scm = String(project.scmType ?? "").toLowerCase();
 
-  const prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  const taskId = (run as any).taskId as string | null;
+  let prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  if (!prArtifact && taskId) {
+    prArtifact = await deps.prisma.artifact.findFirst({
+      where: { type: "pr", run: { is: { taskId } } } as any,
+      orderBy: { createdAt: "desc" },
+    });
+  }
   if (!prArtifact) {
     return { success: false, error: { code: "NO_PR", message: "Run 暂无 PR 产物" } };
   }

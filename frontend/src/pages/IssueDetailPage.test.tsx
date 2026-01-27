@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IssueDetailPage } from "./IssueDetailPage";
+import { AuthProvider } from "../auth/AuthProvider";
 import { ThemeProvider } from "../theme";
 
 function mockFetchJsonOnce(body: unknown) {
@@ -13,6 +14,8 @@ function mockFetchJsonOnce(body: unknown) {
 
 describe("IssueDetailPage", () => {
   beforeEach(() => {
+    localStorage.setItem("authToken", "test-token");
+    localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "dev", role: "dev" }));
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -21,7 +24,10 @@ describe("IssueDetailPage", () => {
   });
 
   it("renders run, events, artifacts and refreshes on WS message", async () => {
-    // initial refresh (3 calls)
+    // task templates
+    mockFetchJsonOnce({ success: true, data: { templates: [] } });
+
+    // issue detail
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -32,16 +38,23 @@ describe("IssueDetailPage", () => {
           description: "desc",
           status: "running",
           createdAt: "2026-01-25T00:00:00.000Z",
-          runs: [{ id: "r1", issueId: "i1", agentId: "a1", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }]
+          runs: [
+            { id: "r1", issueId: "i1", agentId: "a1", executorType: "agent", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }
+          ]
         }
       }
     });
 
-    // agents list (1 call)
+    // agents list
     mockFetchJsonOnce({
       success: true,
       data: { agents: [] }
     });
+
+    // tasks list
+    mockFetchJsonOnce({ success: true, data: { tasks: [] } });
+
+    // run
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -49,6 +62,7 @@ describe("IssueDetailPage", () => {
           id: "r1",
           issueId: "i1",
           agentId: "a1",
+          executorType: "agent",
           status: "running",
           startedAt: "2026-01-25T00:00:00.000Z",
           artifacts: [
@@ -63,6 +77,8 @@ describe("IssueDetailPage", () => {
         }
       }
     });
+
+    // events
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -101,16 +117,20 @@ describe("IssueDetailPage", () => {
         ]
       }
     });
+
+    // roles
     mockFetchJsonOnce({ success: true, data: { roles: [] } });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues/i1"]}>
-          <Routes>
-            <Route path="/issues/:id" element={<IssueDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues/i1"]}>
+            <Routes>
+              <Route path="/issues/:id" element={<IssueDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
@@ -138,7 +158,10 @@ describe("IssueDetailPage", () => {
   });
 
   it("cancels run and updates status", async () => {
-    // initial refresh (3 calls)
+    // task templates
+    mockFetchJsonOnce({ success: true, data: { templates: [] } });
+
+    // issue detail
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -148,16 +171,23 @@ describe("IssueDetailPage", () => {
           title: "Fix README",
           status: "running",
           createdAt: "2026-01-25T00:00:00.000Z",
-          runs: [{ id: "r1", issueId: "i1", agentId: "a1", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }]
+          runs: [
+            { id: "r1", issueId: "i1", agentId: "a1", executorType: "agent", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }
+          ]
         }
       }
     });
 
-    // agents list (1 call)
+    // agents list
     mockFetchJsonOnce({
       success: true,
       data: { agents: [] }
     });
+
+    // tasks list
+    mockFetchJsonOnce({ success: true, data: { tasks: [] } });
+
+    // run
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -165,13 +195,16 @@ describe("IssueDetailPage", () => {
           id: "r1",
           issueId: "i1",
           agentId: "a1",
+          executorType: "agent",
           status: "running",
           startedAt: "2026-01-25T00:00:00.000Z",
           artifacts: []
         }
       }
     });
+    // events
     mockFetchJsonOnce({ success: true, data: { events: [] } });
+    // roles
     mockFetchJsonOnce({ success: true, data: { roles: [] } });
 
     // cancel run (POST)
@@ -182,6 +215,7 @@ describe("IssueDetailPage", () => {
           id: "r1",
           issueId: "i1",
           agentId: "a1",
+          executorType: "agent",
           status: "cancelled",
           startedAt: "2026-01-25T00:00:00.000Z",
           artifacts: []
@@ -189,7 +223,7 @@ describe("IssueDetailPage", () => {
       }
     });
 
-    // refresh after cancel (3 calls)
+    // refresh after cancel
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -199,10 +233,14 @@ describe("IssueDetailPage", () => {
           title: "Fix README",
           status: "cancelled",
           createdAt: "2026-01-25T00:00:00.000Z",
-          runs: [{ id: "r1", issueId: "i1", agentId: "a1", status: "cancelled", startedAt: "2026-01-25T00:00:00.000Z" }]
+          runs: [
+            { id: "r1", issueId: "i1", agentId: "a1", executorType: "agent", status: "cancelled", startedAt: "2026-01-25T00:00:00.000Z" }
+          ]
         }
       }
     });
+    // tasks list after cancel
+    mockFetchJsonOnce({ success: true, data: { tasks: [] } });
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -210,6 +248,7 @@ describe("IssueDetailPage", () => {
           id: "r1",
           issueId: "i1",
           agentId: "a1",
+          executorType: "agent",
           status: "cancelled",
           startedAt: "2026-01-25T00:00:00.000Z",
           artifacts: []
@@ -219,13 +258,15 @@ describe("IssueDetailPage", () => {
     mockFetchJsonOnce({ success: true, data: { events: [] } });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues/i1"]}>
-          <Routes>
-            <Route path="/issues/:id" element={<IssueDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues/i1"]}>
+            <Routes>
+              <Route path="/issues/:id" element={<IssueDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
@@ -238,6 +279,9 @@ describe("IssueDetailPage", () => {
   });
 
   it("keeps start run enabled when /api/agents fails", async () => {
+    // task templates
+    mockFetchJsonOnce({ success: true, data: { templates: [] } });
+
     // issue detail (no run)
     mockFetchJsonOnce({
       success: true,
@@ -260,16 +304,21 @@ describe("IssueDetailPage", () => {
         headers: { "content-type": "application/json" }
       })
     );
+
+    // tasks list
+    mockFetchJsonOnce({ success: true, data: { tasks: [] } });
     mockFetchJsonOnce({ success: true, data: { roles: [] } });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues/i1"]}>
-          <Routes>
-            <Route path="/issues/:id" element={<IssueDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues/i1"]}>
+            <Routes>
+              <Route path="/issues/:id" element={<IssueDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     expect(await screen.findByText("Need agent")).toBeInTheDocument();
@@ -281,7 +330,10 @@ describe("IssueDetailPage", () => {
   });
 
   it("pauses agent via /api/runs/:id/pause when run is running", async () => {
-    // initial refresh (3 calls)
+    // task templates
+    mockFetchJsonOnce({ success: true, data: { templates: [] } });
+
+    // issue detail
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -291,15 +343,20 @@ describe("IssueDetailPage", () => {
           title: "Fix README",
           status: "running",
           createdAt: "2026-01-25T00:00:00.000Z",
-          runs: [{ id: "r1", issueId: "i1", agentId: "a1", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }]
+          runs: [
+            { id: "r1", issueId: "i1", agentId: "a1", executorType: "agent", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }
+          ]
         }
       }
     });
 
-    // agents list (1 call)
+    // agents list
     mockFetchJsonOnce({ success: true, data: { agents: [] } });
 
-    // run + events (2 calls)
+    // tasks list
+    mockFetchJsonOnce({ success: true, data: { tasks: [] } });
+
+    // run + events
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -307,6 +364,7 @@ describe("IssueDetailPage", () => {
           id: "r1",
           issueId: "i1",
           agentId: "a1",
+          executorType: "agent",
           status: "running",
           acpSessionId: "s1",
           startedAt: "2026-01-25T00:00:00.000Z",
@@ -318,13 +376,15 @@ describe("IssueDetailPage", () => {
     mockFetchJsonOnce({ success: true, data: { roles: [] } });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues/i1"]}>
-          <Routes>
-            <Route path="/issues/:id" element={<IssueDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues/i1"]}>
+            <Routes>
+              <Route path="/issues/:id" element={<IssueDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();

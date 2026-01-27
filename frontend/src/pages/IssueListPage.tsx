@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { listIssues, startIssue, updateIssue } from "../api/issues";
 import { listProjects } from "../api/projects";
 import { cancelRun, completeRun } from "../api/runs";
+import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type { Issue, IssueStatus, Project } from "../types";
@@ -14,6 +15,8 @@ export function IssueListPage() {
   const selectedIssueId = params.id ?? "";
   const hasDetail = !!selectedIssueId;
   const navigate = useNavigate();
+  const location = useLocation();
+  const auth = useAuth();
 
   const splitRef = useRef<HTMLDivElement | null>(null);
   const resizeStateRef = useRef<{ active: boolean; width: number }>({ active: false, width: 520 });
@@ -131,6 +134,11 @@ export function IssueListPage() {
   async function moveIssue(payload: NonNullable<typeof dragging>, toStatus: IssueStatus) {
     if (!payload.issueId) return;
     if (payload.fromStatus === toStatus) return;
+    if (!auth.user) {
+      const next = encodeURIComponent(`${location.pathname}${location.search}`);
+      navigate(`/login?next=${next}`);
+      return;
+    }
 
     setMoving(true);
     setError(null);
@@ -266,9 +274,29 @@ export function IssueListPage() {
             placeholder="搜索 Issue…"
           />
           <ThemeToggle />
-          <button type="button" className="buttonSecondary" onClick={() => navigate("/admin")}>
-            管理
-          </button>
+          {auth.user ? (
+            <div className="row gap" style={{ alignItems: "baseline" }}>
+              <span className="muted" title={auth.user.id}>
+                {auth.user.username} ({auth.user.role})
+              </span>
+              {auth.hasRole(["admin"]) ? (
+                <button type="button" className="buttonSecondary" onClick={() => navigate("/admin")}>
+                  管理
+                </button>
+              ) : null}
+              <button type="button" className="buttonSecondary" onClick={() => auth.logout()}>
+                退出
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="buttonSecondary"
+              onClick={() => navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`)}
+            >
+              登录
+            </button>
+          )}
           <button onClick={() => refresh()} disabled={loading}>
             刷新
           </button>

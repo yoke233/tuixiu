@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IssueListPage } from "./IssueListPage";
+import { AuthProvider } from "../auth/AuthProvider";
 import { ThemeProvider } from "../theme";
 
 function mockFetchJsonOnce(body: unknown) {
@@ -14,6 +15,8 @@ function mockFetchJsonOnce(body: unknown) {
 describe("IssueListPage", () => {
   beforeEach(() => {
     localStorage.removeItem("showArchivedIssues");
+    localStorage.setItem("authToken", "test-token");
+    localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "admin", role: "admin" }));
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -59,15 +62,17 @@ describe("IssueListPage", () => {
     });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues"]}>
-          <Routes>
-            <Route path="/issues" element={<IssueListPage />}>
-              <Route index element={<div>empty</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues"]}>
+            <Routes>
+              <Route path="/issues" element={<IssueListPage />}>
+                <Route index element={<div>empty</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
@@ -123,15 +128,17 @@ describe("IssueListPage", () => {
     });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues"]}>
-          <Routes>
-            <Route path="/issues" element={<IssueListPage />}>
-              <Route index element={<div>empty</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues"]}>
+            <Routes>
+              <Route path="/issues" element={<IssueListPage />}>
+                <Route index element={<div>empty</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     expect(await screen.findByText("Visible")).toBeInTheDocument();
@@ -188,15 +195,17 @@ describe("IssueListPage", () => {
     });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues"]}>
-          <Routes>
-            <Route path="/issues" element={<IssueListPage />}>
-              <Route index element={<div>empty</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues"]}>
+            <Routes>
+              <Route path="/issues" element={<IssueListPage />}>
+                <Route index element={<div>empty</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     expect(await screen.findByText("Archived")).toBeInTheDocument();

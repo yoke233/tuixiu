@@ -120,6 +120,10 @@ export function IssueRunCard(props: IssueRunCardProps) {
             <StatusBadge status={run.status} />
           </div>
           <div className="kvItem">
+            <div className="muted">executor</div>
+            <code>{run.executorType}</code>
+          </div>
+          <div className="kvItem">
             <div className="muted">branch</div>
             {run.branchName ? <code title={run.branchName}>{run.branchName}</code> : <span className="muted">未知</span>}
           </div>
@@ -133,7 +137,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
           </div>
           <div className="kvItem">
             <div className="muted">agentId</div>
-            <code title={run.agentId}>{run.agentId}</code>
+            {run.agentId ? <code title={run.agentId}>{run.agentId}</code> : <span className="muted">—</span>}
           </div>
           <div className="kvItem">
             <div className="muted">agent</div>

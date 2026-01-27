@@ -1,10 +1,13 @@
-import type { AgentStatus, IssueStatus, RunStatus } from "../types";
+import type { AgentStatus, IssueStatus, RunStatus, StepStatus, TaskStatus } from "../types";
 
-type Status = IssueStatus | RunStatus | AgentStatus;
+type Status = IssueStatus | RunStatus | AgentStatus | TaskStatus | StepStatus;
 
 const COLORS: Record<string, string> = {
   pending: "badge gray",
+  ready: "badge blue",
   running: "badge blue",
+  waiting_human: "badge purple",
+  blocked: "badge orange",
   reviewing: "badge purple",
   done: "badge green",
   completed: "badge green",
