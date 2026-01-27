@@ -645,9 +645,15 @@ export function createAcpTunnel(deps: {
   async function finalizeRunIfRunning(runId: string) {
     const run = await deps.prisma.run.findUnique({
       where: { id: runId },
-      select: { id: true, status: true, issueId: true, agentId: true, taskId: true, stepId: true },
+      select: { id: true, status: true, issueId: true, agentId: true, taskId: true, stepId: true, metadata: true },
     });
     if (!run || (run as any).status !== "running") return;
+
+    const meta = (run as any).metadata;
+    const metaObj = meta && typeof meta === "object" && !Array.isArray(meta) ? (meta as any) : null;
+    const flags = metaObj && metaObj.flags && typeof metaObj.flags === "object" && !Array.isArray(metaObj.flags) ? (metaObj.flags as any) : null;
+    const suppressIssueStatusUpdate = Boolean(metaObj?.suppressIssueStatusUpdate ?? flags?.suppressIssueStatusUpdate);
+    const suppressPmAutoAdvance = Boolean(metaObj?.suppressPmAutoAdvance ?? flags?.suppressPmAutoAdvance);
 
     await deps.prisma.run.update({ where: { id: runId }, data: { status: "completed", completedAt: new Date() } as any }).catch(() => {});
 
@@ -662,7 +668,7 @@ export function createAcpTunnel(deps: {
       });
     }
 
-    if (!advanced.handled) {
+    if (!advanced.handled && !suppressIssueStatusUpdate) {
       await deps.prisma.issue.updateMany({ where: { id: (run as any).issueId, status: "running" }, data: { status: "reviewing" } }).catch(() => {});
     }
 
@@ -670,7 +676,9 @@ export function createAcpTunnel(deps: {
       await deps.prisma.agent.update({ where: { id: (run as any).agentId }, data: { currentLoad: { decrement: 1 } } }).catch(() => {});
     }
 
-    triggerPmAutoAdvance({ prisma: deps.prisma }, { runId, issueId: (run as any).issueId, trigger: "run_completed" });
+    if (!suppressPmAutoAdvance) {
+      triggerPmAutoAdvance({ prisma: deps.prisma }, { runId, issueId: (run as any).issueId, trigger: "run_completed" });
+    }
   }
 
   async function promptRun(opts: {

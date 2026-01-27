@@ -34,7 +34,7 @@ describe("githubPrAutoReview", () => {
     } as any;
 
     const listPullRequestFiles = vi.fn().mockResolvedValue([{ filename: "a.ts", status: "modified", patch: "+1" }]);
-    const createIssueComment = vi.fn().mockResolvedValue({ id: 999 });
+    const createPullRequestReview = vi.fn().mockResolvedValue({ id: 999 });
     const callLlmJson = vi.fn().mockResolvedValue({
       ok: true,
       value: { verdict: "approve", findings: [], markdown: "LGTM" },
@@ -43,7 +43,7 @@ describe("githubPrAutoReview", () => {
     });
 
     await triggerGitHubPrAutoReview(
-      { prisma, listPullRequestFiles, createIssueComment, callLlmJson },
+      { prisma, listPullRequestFiles, createPullRequestReview, callLlmJson },
       { prArtifactId: "a1", prNumber: 123, headSha: "abcdef" },
     );
 
@@ -52,7 +52,7 @@ describe("githubPrAutoReview", () => {
       expect.objectContaining({ pullNumber: 123 }),
     );
     expect(callLlmJson).toHaveBeenCalled();
-    expect(createIssueComment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ issueNumber: 123 }));
+    expect(createPullRequestReview).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pullNumber: 123, event: "APPROVE" }));
     expect(prisma.artifact.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "a1" },
@@ -79,7 +79,7 @@ describe("githubPrAutoReview", () => {
 
     listPullRequestFiles.mockClear();
     await triggerGitHubPrAutoReview(
-      { prisma, listPullRequestFiles, createIssueComment, callLlmJson },
+      { prisma, listPullRequestFiles, createPullRequestReview, callLlmJson },
       { prArtifactId: "a1", prNumber: 123, headSha: "abcdef" },
     );
     expect(listPullRequestFiles).not.toHaveBeenCalled();

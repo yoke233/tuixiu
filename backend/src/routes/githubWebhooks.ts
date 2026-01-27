@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { PrismaDeps } from "../deps.js";
 import * as github from "../integrations/github.js";
 import { uuidv7 } from "../utils/uuid.js";
+import type { AcpTunnel } from "../services/acpTunnel.js";
 import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
 import { triggerGitHubPrAutoReview } from "../services/githubPrAutoReview.js";
 import { rollbackTaskToStep } from "../services/taskEngine.js";
@@ -55,6 +56,7 @@ function toRepoKey(parsed: github.ParsedGitHubRepo): string {
 
 export function makeGitHubWebhookRoutes(deps: {
   prisma: PrismaDeps;
+  acp?: AcpTunnel;
   webhookSecret?: string;
   parseRepo?: typeof github.parseGitHubRepo;
   onIssueUpserted?: (issueId: string, reason: string) => void;
@@ -241,6 +243,7 @@ export function makeGitHubWebhookRoutes(deps: {
                   base: z
                     .object({
                       ref: z.string().min(1),
+                      sha: z.string().min(1).optional(),
                     })
                     .passthrough(),
                 })
@@ -279,6 +282,8 @@ export function makeGitHubWebhookRoutes(deps: {
           const prNumber = payload.pull_request.number;
           const headRef = payload.pull_request.head.ref;
           const headSha = payload.pull_request.head.sha;
+          const baseRef = payload.pull_request.base.ref;
+          const baseSha = typeof (payload.pull_request.base as any).sha === "string" ? String((payload.pull_request.base as any).sha).trim() : "";
           const prUrl = payload.pull_request.html_url;
           const prState = typeof payload.pull_request.state === "string" ? payload.pull_request.state : "";
           const prTitle = typeof payload.pull_request.title === "string" ? payload.pull_request.title : "";
@@ -317,7 +322,9 @@ export function makeGitHubWebhookRoutes(deps: {
                   state: prState || content.state,
                   title: prTitle || content.title,
                   sourceBranch: headRef || content.sourceBranch,
+                  targetBranch: baseRef || content.targetBranch,
                   headSha,
+                  baseSha: baseSha || content.baseSha,
                   merged,
                   merged_at: payload.pull_request.merged_at ?? content.merged_at ?? null,
                   lastWebhookAt: new Date().toISOString(),
@@ -334,7 +341,7 @@ export function makeGitHubWebhookRoutes(deps: {
             (!isDraft || action === "ready_for_review");
           if (shouldAutoReview) {
             triggerGitHubPrAutoReview(
-              { prisma: deps.prisma },
+              { prisma: deps.prisma, acp: deps.acp },
               {
                 prArtifactId: String((prArtifact as any).id),
                 prNumber,
@@ -342,8 +349,9 @@ export function makeGitHubWebhookRoutes(deps: {
                 title: prTitle || null,
                 body: typeof payload.pull_request.body === "string" ? payload.pull_request.body : null,
                 headSha,
+                baseSha: baseSha || null,
                 sourceBranch: headRef,
-                targetBranch: payload.pull_request.base.ref,
+                targetBranch: baseRef,
               },
             );
           }

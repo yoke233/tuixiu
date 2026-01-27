@@ -151,6 +151,7 @@ server.register(makeGitHubIssueRoutes({ prisma, onIssueUpserted: pm.triggerAutoS
 server.register(
   makeGitHubWebhookRoutes({
     prisma,
+    acp: acpTunnel,
     webhookSecret: env.GITHUB_WEBHOOK_SECRET,
     onIssueUpserted: pm.triggerAutoStart,
     broadcastToClients: wsGateway.broadcastToClients,
