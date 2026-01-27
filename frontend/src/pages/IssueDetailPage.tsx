@@ -939,9 +939,9 @@ export function IssueDetailPage() {
                 <span className="muted">{tasksLoaded ? `共 ${tasks.length} 个` : "加载中…"}</span>
               </div>
             </summary>
-            <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+            <div className="row spaceBetween" style={{ alignItems: "center", flexWrap: "wrap" }}>
               <div>
-                <h2 style={{ margin: 0 }}>任务</h2>
+                <h2 className="srOnly">任务</h2>
                 <div className="muted">Task/Step（支持回滚重跑与多执行器）</div>
               </div>
               <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
@@ -1260,9 +1260,12 @@ export function IssueDetailPage() {
                 <span className="muted">{effectivePmAnalysis ? `风险：${effectivePmAnalysis.risk}` : "未分析"}</span>
               </div>
             </summary>
-            <div className="row spaceBetween">
-              <h2>PM</h2>
-              <div className="row gap">
+            <div className="row spaceBetween" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <h2 className="srOnly">PM</h2>
+                <div className="muted">分析/推荐（可分配并启动）</div>
+              </div>
+              <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button
                   type="button"
                   onClick={onPmAnalyze}
