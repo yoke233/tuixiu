@@ -5,13 +5,23 @@ import { approveApproval, listApprovals, rejectApproval } from "../api/approvals
 import { cancelAcpSession, listAcpSessions } from "../api/acpSessions";
 import { createIssue, listIssues, updateIssue } from "../api/issues";
 import { importGitHubIssue } from "../api/githubIssues";
+import { getPmPolicy, updatePmPolicy } from "../api/policies";
 import { createProject, listProjects } from "../api/projects";
 import { createRole } from "../api/roles";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { AcpSessionSummary, Approval, Issue, IssueStatus, Project } from "../types";
+import type { AcpSessionSummary, Approval, Issue, IssueStatus, PmPolicy, Project } from "../types";
 import { getShowArchivedIssues, setShowArchivedIssues } from "../utils/settings";
+
+const ADMIN_SECTION_KEYS = ["acpSessions", "approvals", "settings", "policy", "projects", "issues", "roles", "archive"] as const;
+type AdminSectionKey = (typeof ADMIN_SECTION_KEYS)[number];
+
+function getSectionFromSearch(search: string): AdminSectionKey | null {
+  const raw = new URLSearchParams(search).get("section");
+  if (!raw) return null;
+  return (ADMIN_SECTION_KEYS as readonly string[]).includes(raw) ? (raw as AdminSectionKey) : null;
+}
 
 function splitLines(s: string): string[] {
   return s
@@ -25,8 +35,6 @@ function isArchivableStatus(status: IssueStatus): boolean {
 }
 
 export function AdminPage() {
-  type AdminSectionKey = "projects" | "issues" | "roles" | "approvals" | "settings" | "archive" | "acpSessions";
-
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
@@ -36,7 +44,7 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvalBusyId, setApprovalBusyId] = useState<string>("");
-  const [activeSection, setActiveSection] = useState<AdminSectionKey>("projects");
+  const [activeSection, setActiveSection] = useState<AdminSectionKey>(() => getSectionFromSearch(location.search) ?? "projects");
 
   const [acpSessions, setAcpSessions] = useState<AcpSessionSummary[]>([]);
   const [loadingAcpSessions, setLoadingAcpSessions] = useState(false);
@@ -44,6 +52,10 @@ export function AdminPage() {
 
   const [showArchivedOnBoard, setShowArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [policyText, setPolicyText] = useState<string>("");
+  const [policySource, setPolicySource] = useState<"project" | "default" | "">("");
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policySaving, setPolicySaving] = useState(false);
 
   const [projectName, setProjectName] = useState("");
   const [projectRepoUrl, setProjectRepoUrl] = useState("");
@@ -128,6 +140,35 @@ export function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, effectiveProjectId]);
 
+    if (activeSection !== "policy") return;
+    if (!effectiveProjectId) return;
+
+    setPolicyLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const { policy, source } = await getPmPolicy(effectiveProjectId);
+        setPolicySource(source);
+        setPolicyText(JSON.stringify(policy, null, 2));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setPolicyLoading(false);
+      }
+    })();
+  }, [activeSection, effectiveProjectId]);
+
+  useEffect(() => {
+    const fromUrl = getSectionFromSearch(location.search);
+    if (fromUrl && fromUrl !== activeSection) setActiveSection(fromUrl);
+  }, [activeSection, location.search]);
+
+  function setActiveSectionWithUrl(next: AdminSectionKey) {
+    setActiveSection(next);
+    const params = new URLSearchParams(location.search);
+    params.set("section", next);
+    navigate(`${location.pathname}?${params.toString()}`);
+  }
   function requireAdmin(): boolean {
     if (!auth.user) {
       const next = encodeURIComponent(`${location.pathname}${location.search}`);
@@ -278,6 +319,7 @@ export function AdminPage() {
 
   async function onApproveApproval(id: string) {
     setError(null);
+    if (!requireAdmin()) return;
     setApprovalBusyId(id);
     try {
       await approveApproval(id, "admin");
@@ -291,6 +333,7 @@ export function AdminPage() {
 
   async function onRejectApproval(id: string) {
     setError(null);
+    if (!requireAdmin()) return;
     setApprovalBusyId(id);
     try {
       await rejectApproval(id, { actor: "admin", reason: "rejected by admin" });
@@ -328,6 +371,7 @@ export function AdminPage() {
     const meta: Record<AdminSectionKey, { title: string; desc: string }> = {
       approvals: { title: "审批队列", desc: "Pending approvals / 需要人工确认的动作" },
       settings: { title: "平台设置", desc: "影响看板展示与全局行为" },
+      policy: { title: "策略（Policy）", desc: "Project 级：自动化开关 / 审批门禁 / 敏感目录（JSON）" },
       projects: { title: "项目管理", desc: "创建/配置 Project（仓库、SCM、认证方式等）" },
       issues: { title: "Issue 管理", desc: "创建需求或导入外部 Issue" },
       roles: { title: "角色模板", desc: "创建 RoleTemplate（Prompt / initScript 等）" },
@@ -388,14 +432,14 @@ export function AdminPage() {
           <button
             type="button"
             className={`adminNavItem ${activeSection === "acpSessions" ? "active" : ""}`}
-            onClick={() => setActiveSection("acpSessions")}
+            onClick={() => setActiveSectionWithUrl("acpSessions")}
           >
             <span>ACP Sessions</span>
           </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "approvals" ? "active" : ""}`}
-            onClick={() => setActiveSection("approvals")}
+            onClick={() => setActiveSectionWithUrl("approvals")}
           >
             <span>审批队列</span>
             {approvals.length ? <span className="badge orange">{approvals.length}</span> : null}
@@ -403,35 +447,42 @@ export function AdminPage() {
           <button
             type="button"
             className={`adminNavItem ${activeSection === "settings" ? "active" : ""}`}
-            onClick={() => setActiveSection("settings")}
+            onClick={() => setActiveSectionWithUrl("settings")}
           >
             <span>平台设置</span>
           </button>
           <button
             type="button"
+            className={`adminNavItem ${activeSection === "policy" ? "active" : ""}`}
+            onClick={() => setActiveSectionWithUrl("policy")}
+          >
+            <span>策略</span>
+          </button>
+          <button
+            type="button"
             className={`adminNavItem ${activeSection === "projects" ? "active" : ""}`}
-            onClick={() => setActiveSection("projects")}
+            onClick={() => setActiveSectionWithUrl("projects")}
           >
             <span>项目管理</span>
           </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "issues" ? "active" : ""}`}
-            onClick={() => setActiveSection("issues")}
+            onClick={() => setActiveSectionWithUrl("issues")}
           >
             <span>Issue 管理</span>
           </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "roles" ? "active" : ""}`}
-            onClick={() => setActiveSection("roles")}
+            onClick={() => setActiveSectionWithUrl("roles")}
           >
             <span>角色模板</span>
           </button>
           <button
             type="button"
             className={`adminNavItem ${activeSection === "archive" ? "active" : ""}`}
-            onClick={() => setActiveSection("archive")}
+            onClick={() => setActiveSectionWithUrl("archive")}
           >
             <span>Issue 归档</span>
           </button>
@@ -609,7 +660,84 @@ export function AdminPage() {
         )}
       </section>
 
-      <div className="grid2" hidden={activeSection === "approvals" || activeSection === "settings" || activeSection === "acpSessions"}>
+      <section className="card" style={{ marginBottom: 16 }} hidden={activeSection !== "policy"}>
+        <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+          <div>
+            <h2 style={{ marginTop: 0, marginBottom: 4 }}>策略（Policy）</h2>
+            <div className="muted">
+              {effectiveProject ? (
+                <>
+                  Project: <code>{effectiveProject.name}</code>
+                  {policySource ? ` · source: ${policySource}` : ""}
+                </>
+              ) : (
+                "请先创建/选择 Project"
+              )}
+            </div>
+          </div>
+          <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="buttonSecondary"
+              onClick={() => setPolicyText(JSON.stringify({ version: 1, automation: { autoStartIssue: true }, approvals: { requireForActions: ["merge_pr"] }, sensitivePaths: [] } satisfies PmPolicy, null, 2))}
+              disabled={!effectiveProjectId || policyLoading || policySaving}
+            >
+              载入默认
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!effectiveProjectId) return;
+                if (!requireAdmin()) return;
+                setPolicySaving(true);
+                setError(null);
+                try {
+                  const parsed = JSON.parse(policyText || "{}") as PmPolicy;
+                  const res = await updatePmPolicy(effectiveProjectId, parsed);
+                  setPolicySource("project");
+                  setPolicyText(JSON.stringify(res.policy, null, 2));
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : String(e));
+                } finally {
+                  setPolicySaving(false);
+                }
+              }}
+              disabled={!effectiveProjectId || policyLoading || policySaving}
+            >
+              {policySaving ? "保存中…" : "保存"}
+            </button>
+          </div>
+        </div>
+
+        {policyLoading ? (
+          <div className="muted" style={{ marginTop: 10 }}>
+            加载中…
+          </div>
+        ) : (
+          <textarea
+            value={policyText}
+            onChange={(e) => setPolicyText(e.target.value)}
+            rows={14}
+            className="inputMono"
+            style={{ width: "100%", marginTop: 10 }}
+            placeholder='{"version":1,"automation":{"autoStartIssue":true},"approvals":{"requireForActions":["merge_pr"]},"sensitivePaths":[] }'
+          />
+        )}
+
+        <div className="muted" style={{ marginTop: 8 }}>
+          后端接口：<code>GET/PUT /api/policies?projectId=...</code>（存储在 <code>Project.branchProtection.pmPolicy</code>）。
+        </div>
+      </section>
+
+      <div
+        className="grid2"
+        hidden={
+          activeSection === "approvals" ||
+          activeSection === "settings" ||
+          activeSection === "acpSessions" ||
+          activeSection === "policy"
+        }
+      >
         <section className="card" hidden={activeSection !== "projects"}>
           <h2 style={{ marginTop: 0 }}>当前 Project</h2>
 

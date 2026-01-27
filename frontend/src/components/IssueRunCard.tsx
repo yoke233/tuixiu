@@ -16,6 +16,7 @@ type IssueRunCardProps = {
   onCompleteRun: () => void;
 
   canStartRun: boolean;
+  canManageRun: boolean;
 
   agents: Agent[];
   agentsLoaded: boolean;
@@ -53,6 +54,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
     onCancelRun,
     onCompleteRun,
     canStartRun,
+    canManageRun,
     agents,
     agentsLoaded,
     agentsError,
@@ -82,10 +84,10 @@ export function IssueRunCard(props: IssueRunCardProps) {
           <button onClick={onRefresh}>刷新</button>
           {currentRunId ? (
             <>
-              <button onClick={onCancelRun} disabled={!currentRunId}>
+              <button onClick={onCancelRun} disabled={!currentRunId || !canManageRun} title={!canManageRun ? "当前账号无权限操作 Run" : ""}>
                 取消 Run
               </button>
-              <button onClick={onCompleteRun} disabled={!currentRunId}>
+              <button onClick={onCompleteRun} disabled={!currentRunId || !canManageRun} title={!canManageRun ? "当前账号无权限操作 Run" : ""}>
                 完成 Run
               </button>
             </>
@@ -178,7 +180,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
         </div>
       ) : (
         <div className="row gap">
-          <label className="label" style={{ margin: 0, minWidth: 240 }}>
+          <label className="label" style={{ margin: 0, flex: "1 1 240px", minWidth: 0 }}>
             Worktree 名称（可选）
             <input
               value={worktreeName}

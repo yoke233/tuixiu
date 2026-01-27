@@ -112,5 +112,33 @@ describe("PM automation", () => {
       }),
     );
   });
-});
 
+  it("dispatch skips when policy disables autoStartIssue (non-manual reason)", async () => {
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "i1",
+          status: "pending",
+          archivedAt: null,
+          project: {
+            branchProtection: {
+              pmPolicy: {
+                version: 1,
+                automation: { autoStartIssue: false },
+                approvals: { requireForActions: ["merge_pr"] },
+                sensitivePaths: [],
+              },
+            },
+          },
+        }),
+      },
+    } as any;
+
+    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+    const pm = createPmAutomation({ prisma, sendToAgent });
+
+    const res = await pm.dispatch("i1", "ui_create");
+    expect(res).toEqual({ success: true, data: { skipped: true, reason: "POLICY_AUTO_START_DISABLED" } });
+    expect(sendToAgent).not.toHaveBeenCalled();
+  });
+});

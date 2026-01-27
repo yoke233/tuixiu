@@ -163,5 +163,25 @@ describe("AdminPage", () => {
 
     expect(await screen.findByRole("button", { name: "取消归档" })).toBeInTheDocument();
   });
+
+  it("syncs active section with url query", async () => {
+    mockFetchJsonOnce({ success: true, data: { projects: [] } });
+    mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
+    mockFetchJsonOnce({ success: true, data: { approvals: [] } });
+
+    render(
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/admin?section=archive"]}>
+            <Routes>
+              <Route path="/admin" element={<AdminPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Issue 归档" })).toBeInTheDocument();
+  });
 });
 

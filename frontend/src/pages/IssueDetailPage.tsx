@@ -18,6 +18,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { useWsClient, type WsMessage } from "../hooks/useWsClient";
 import type { Agent, Artifact, Event, Issue, PmAnalysis, PmAnalysisMeta, PmRisk, RoleTemplate, Run, Step, Task, TaskTemplate, UserRole } from "../types";
 import { getAgentEnvLabel, getAgentSandboxLabel } from "../utils/agentLabels";
+import { canManageTasks, canPauseAgent, canRunIssue, canUsePmTools } from "../utils/permissions";
 
 type IssuesOutletContext = {
   onIssueUpdated?: (issue: Issue) => void;
@@ -30,6 +31,11 @@ export function IssueDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
+  const userRole = auth.user?.role ?? null;
+  const allowRunActions = canRunIssue(userRole);
+  const allowTaskOps = canManageTasks(userRole);
+  const allowPause = canPauseAgent(userRole);
+  const allowPmTools = canUsePmTools(userRole);
 
   const [issue, setIssue] = useState<Issue | null>(null);
   const [run, setRun] = useState<Run | null>(null);
@@ -339,7 +345,10 @@ export function IssueDetailPage() {
     [agents],
   );
   const selectedAgentReady = selectedAgent ? selectedAgent.status === "online" && selectedAgent.currentLoad < selectedAgent.maxConcurrentRuns : false;
-  const canStartRun = Boolean(issueId) && (selectedAgentId ? selectedAgentReady : !agentsLoaded || !!agentsError || availableAgents.length > 0);
+  const canStartRun =
+    allowRunActions &&
+    Boolean(issueId) &&
+    (selectedAgentId ? selectedAgentReady : !agentsLoaded || !!agentsError || availableAgents.length > 0);
 
   function requireLogin(): boolean {
     if (auth.user) return true;
@@ -351,6 +360,10 @@ export function IssueDetailPage() {
   async function onStartRun() {
     if (!issueId) return;
     if (!requireLogin()) return;
+    if (!allowRunActions) {
+      setError("当前账号无权限操作 Run");
+      return;
+    }
     setError(null);
     setRefreshing(true);
     try {
@@ -372,6 +385,10 @@ export function IssueDetailPage() {
   async function onCancelRun() {
     if (!currentRunId) return;
     if (!requireLogin()) return;
+    if (!allowRunActions) {
+      setError("当前账号无权限操作 Run");
+      return;
+    }
     setError(null);
     try {
       const r = await cancelRun(currentRunId);
@@ -385,6 +402,10 @@ export function IssueDetailPage() {
   async function onCompleteRun() {
     if (!currentRunId) return;
     if (!requireLogin()) return;
+    if (!allowRunActions) {
+      setError("当前账号无权限操作 Run");
+      return;
+    }
     setError(null);
     try {
       const r = await completeRun(currentRunId);
@@ -398,6 +419,10 @@ export function IssueDetailPage() {
   async function onPauseRun() {
     if (!currentRunId) return;
     if (!requireLogin()) return;
+    if (!allowPause) {
+      setError("当前账号无权限暂停 Agent");
+      return;
+    }
     setError(null);
     setPausing(true);
     try {
@@ -418,6 +443,10 @@ export function IssueDetailPage() {
   async function onPmAnalyze() {
     if (!issueId) return;
     if (!requireLogin()) return;
+    if (!allowPmTools) {
+      setPmError("需要 PM 或管理员权限");
+      return;
+    }
     setPmError(null);
     setPmLoading(true);
     try {
@@ -434,6 +463,10 @@ export function IssueDetailPage() {
   async function onPmDispatch() {
     if (!issueId) return;
     if (!requireLogin()) return;
+    if (!allowPmTools) {
+      setPmError("需要 PM 或管理员权限");
+      return;
+    }
     setPmError(null);
     setPmDispatching(true);
     try {
@@ -459,6 +492,10 @@ export function IssueDetailPage() {
     e.preventDefault();
     if (!currentRunId) return;
     if (!requireLogin()) return;
+    if (!allowRunActions) {
+      setError("当前账号无权限与 Agent 对话");
+      return;
+    }
     if (run && run.executorType !== "agent") {
       setError("当前 Run 不是 Agent 执行器，无法对话");
       return;
@@ -535,6 +572,10 @@ export function IssueDetailPage() {
     if (!issueId) return;
     if (!selectedTemplateKey) return;
     if (!requireLogin()) return;
+    if (!allowTaskOps) {
+      setError("需要开发或管理员权限");
+      return;
+    }
 
     setCreatingTask(true);
     setError(null);
@@ -551,6 +592,10 @@ export function IssueDetailPage() {
 
   async function onStartStep(step: Step) {
     if (!requireLogin()) return;
+    if (!allowTaskOps) {
+      setError("需要开发或管理员权限");
+      return;
+    }
     setStartingStepId(step.id);
     setError(null);
     try {
@@ -571,6 +616,10 @@ export function IssueDetailPage() {
 
   async function onRollback(task: Task, step: Step) {
     if (!requireLogin()) return;
+    if (!allowTaskOps) {
+      setError("需要开发或管理员权限");
+      return;
+    }
     setRollingBackStepId(step.id);
     setError(null);
     try {
@@ -679,7 +728,12 @@ export function IssueDetailPage() {
                     </option>
                   ))}
                 </select>
-                <button type="button" onClick={onCreateTask} disabled={creatingTask || !selectedTemplateKey}>
+                <button
+                  type="button"
+                  onClick={onCreateTask}
+                  disabled={creatingTask || !selectedTemplateKey || !allowTaskOps}
+                  title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
+                >
                   {creatingTask ? "创建中…" : "创建任务"}
                 </button>
                 <button type="button" className="buttonSecondary" onClick={() => refresh()} disabled={refreshing}>
@@ -724,73 +778,75 @@ export function IssueDetailPage() {
                         taskId: <code title={t.id}>{t.id}</code>
                       </div>
 
-                      <table className="table" style={{ marginTop: 10 }}>
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Step</th>
-                            <th>执行器</th>
-                            <th>状态</th>
-                            <th>Run</th>
-                            <th>操作</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {t.steps.map((s) => {
-                            const latest = latestRunForStep(s.id);
-                            const viewing = latest?.id ? currentRunId === latest.id : false;
-                            const role = auth.user?.role ?? null;
-                            const canSubmit = roleAllowsHumanSubmit(s.kind, role);
-                            const form = latest?.id ? getHumanForm(latest.id) : null;
+                      <div className="tableScroll">
+                        <table className="table" style={{ marginTop: 10 }}>
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Step</th>
+                              <th>执行器</th>
+                              <th>状态</th>
+                              <th>Run</th>
+                              <th>操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {t.steps.map((s) => {
+                              const latest = latestRunForStep(s.id);
+                              const viewing = latest?.id ? currentRunId === latest.id : false;
+                              const role = auth.user?.role ?? null;
+                              const canSubmit = roleAllowsHumanSubmit(s.kind, role);
+                              const form = latest?.id ? getHumanForm(latest.id) : null;
 
-                            return (
-                              <Fragment key={s.id}>
-                                <tr>
-                                  <td>{s.order}</td>
-                                  <td>
-                                    <div>
-                                      <code title={s.key}>{s.key}</code>
-                                    </div>
-                                    <div className="muted" style={{ fontSize: 12 }}>
-                                      {s.kind}
-                                    </div>
-                                  </td>
-                                  <td>
-                                    <code>{s.executorType}</code>
-                                  </td>
-                                  <td>
-                                    <StatusBadge status={s.status} />
-                                  </td>
-                                  <td>
-                                    {latest ? (
-                                      <div style={{ display: "grid", gap: 4 }}>
-                                        <code title={latest.id}>{latest.id}</code>
-                                        <span className="muted" style={{ fontSize: 12 }}>
-                                          {latest.status}
-                                          {typeof latest.attempt === "number" ? ` · attempt ${latest.attempt}` : ""}
-                                        </span>
+                              return (
+                                <Fragment key={s.id}>
+                                  <tr>
+                                    <td>{s.order}</td>
+                                    <td>
+                                      <div>
+                                        <code title={s.key}>{s.key}</code>
                                       </div>
-                                    ) : (
-                                      <span className="muted">—</span>
-                                    )}
-                                  </td>
-                                  <td>
-                                    <div className="row gap" style={{ flexWrap: "wrap" }}>
-                                      {latest?.id ? (
-                                        <button
-                                          type="button"
-                                          className="buttonSecondary"
-                                          onClick={() => void onSelectRun(latest.id)}
-                                          disabled={viewing}
-                                        >
-                                          {viewing ? "查看中" : "查看"}
-                                        </button>
-                                      ) : null}
+                                      <div className="muted" style={{ fontSize: 12 }}>
+                                        {s.kind}
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <code>{s.executorType}</code>
+                                    </td>
+                                    <td>
+                                      <StatusBadge status={s.status} />
+                                    </td>
+                                    <td>
+                                      {latest ? (
+                                        <div style={{ display: "grid", gap: 4 }}>
+                                          <code title={latest.id}>{latest.id}</code>
+                                          <span className="muted" style={{ fontSize: 12 }}>
+                                            {latest.status}
+                                            {typeof latest.attempt === "number" ? ` · attempt ${latest.attempt}` : ""}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="muted">—</span>
+                                      )}
+                                    </td>
+                                    <td>
+                                      <div className="row gap" style={{ flexWrap: "wrap" }}>
+                                        {latest?.id ? (
+                                          <button
+                                            type="button"
+                                            className="buttonSecondary"
+                                            onClick={() => void onSelectRun(latest.id)}
+                                            disabled={viewing}
+                                          >
+                                            {viewing ? "查看中" : "查看"}
+                                          </button>
+                                        ) : null}
 
                                       <button
                                         type="button"
                                         onClick={() => void onStartStep(s)}
-                                        disabled={s.status !== "ready" || startingStepId === s.id}
+                                        disabled={!allowTaskOps || s.status !== "ready" || startingStepId === s.id}
+                                        title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
                                       >
                                         {startingStepId === s.id ? "启动中…" : "启动"}
                                       </button>
@@ -799,93 +855,97 @@ export function IssueDetailPage() {
                                         type="button"
                                         className="buttonSecondary"
                                         onClick={() => void onRollback(t, s)}
-                                        disabled={rollingBackStepId === s.id}
+                                        disabled={!allowTaskOps || rollingBackStepId === s.id}
+                                        title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
                                       >
                                         {rollingBackStepId === s.id ? "回滚中…" : "回滚到此步"}
                                       </button>
-                                    </div>
-                                  </td>
-                                </tr>
-
-                                {s.status === "waiting_human" && latest?.id && latest.executorType === "human" ? (
-                                  <tr>
-                                    <td colSpan={6}>
-                                      <div className="row gap" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
-                                        {s.kind === "pr.merge" ? (
-                                          <>
-                                            <label className="label" style={{ margin: 0 }}>
-                                              squash
-                                              <input
-                                                type="checkbox"
-                                                checked={Boolean(form?.squash)}
-                                                onChange={(e) => patchHumanForm(latest.id, { squash: e.target.checked })}
-                                                disabled={submittingRunId === latest.id}
-                                              />
-                                            </label>
-                                            <label className="label" style={{ margin: 0, minWidth: 320 }}>
-                                              merge message（可选）
-                                              <input
-                                                value={form?.mergeCommitMessage ?? ""}
-                                                onChange={(e) => patchHumanForm(latest.id, { mergeCommitMessage: e.target.value })}
-                                                disabled={submittingRunId === latest.id}
-                                                placeholder="留空使用默认"
-                                              />
-                                            </label>
-                                            <button
-                                              type="button"
-                                              onClick={() => void onSubmitHuman(s, latest.id)}
-                                              disabled={!canSubmit || submittingRunId === latest.id}
-                                            >
-                                              {submittingRunId === latest.id ? "合并中…" : "合并"}
-                                            </button>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <label className="label" style={{ margin: 0 }}>
-                                              verdict
-                                              <select
-                                                value={form?.verdict ?? "approve"}
-                                                onChange={(e) =>
-                                                  patchHumanForm(latest.id, {
-                                                    verdict: e.target.value as "approve" | "changes_requested",
-                                                  })
-                                                }
-                                                disabled={submittingRunId === latest.id}
-                                              >
-                                                <option value="approve">approve</option>
-                                                <option value="changes_requested">changes_requested</option>
-                                              </select>
-                                            </label>
-                                            <label className="label" style={{ margin: 0, minWidth: 360 }}>
-                                              comment（Markdown，可选）
-                                              <textarea
-                                                value={form?.comment ?? ""}
-                                                onChange={(e) => patchHumanForm(latest.id, { comment: e.target.value })}
-                                                disabled={submittingRunId === latest.id}
-                                                placeholder="写评审意见/修改建议…"
-                                              />
-                                            </label>
-                                            <button
-                                              type="button"
-                                              onClick={() => void onSubmitHuman(s, latest.id)}
-                                              disabled={!canSubmit || submittingRunId === latest.id}
-                                            >
-                                              {submittingRunId === latest.id ? "提交中…" : "提交"}
-                                            </button>
-                                          </>
-                                        )}
-                                        {!canSubmit ? (
-                                          <span className="muted">当前账号无权限提交该步骤</span>
-                                        ) : null}
                                       </div>
                                     </td>
                                   </tr>
-                                ) : null}
-                              </Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+
+                                  {s.status === "waiting_human" && latest?.id && latest.executorType === "human" ? (
+                                    <tr>
+                                      <td colSpan={6}>
+                                        <div className="row gap" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+                                          {s.kind === "pr.merge" ? (
+                                            <>
+                                              <label className="label" style={{ margin: 0 }}>
+                                                squash
+                                                <input
+                                                  type="checkbox"
+                                                  checked={Boolean(form?.squash)}
+                                                  onChange={(e) => patchHumanForm(latest.id, { squash: e.target.checked })}
+                                                  disabled={submittingRunId === latest.id}
+                                                />
+                                              </label>
+                                              <label className="label" style={{ margin: 0, flex: "1 1 320px", minWidth: 0 }}>
+                                                merge message（可选）
+                                                <input
+                                                  value={form?.mergeCommitMessage ?? ""}
+                                                  onChange={(e) =>
+                                                    patchHumanForm(latest.id, { mergeCommitMessage: e.target.value })
+                                                  }
+                                                  disabled={submittingRunId === latest.id}
+                                                  placeholder="留空使用默认"
+                                                />
+                                              </label>
+                                              <button
+                                                type="button"
+                                                onClick={() => void onSubmitHuman(s, latest.id)}
+                                                disabled={!canSubmit || submittingRunId === latest.id}
+                                              >
+                                                {submittingRunId === latest.id ? "合并中…" : "合并"}
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <label className="label" style={{ margin: 0 }}>
+                                                verdict
+                                                <select
+                                                  value={form?.verdict ?? "approve"}
+                                                  onChange={(e) =>
+                                                    patchHumanForm(latest.id, {
+                                                      verdict: e.target.value as "approve" | "changes_requested",
+                                                    })
+                                                  }
+                                                  disabled={submittingRunId === latest.id}
+                                                >
+                                                  <option value="approve">approve</option>
+                                                  <option value="changes_requested">changes_requested</option>
+                                                </select>
+                                              </label>
+                                              <label className="label" style={{ margin: 0, flex: "1 1 360px", minWidth: 0 }}>
+                                                comment（Markdown，可选）
+                                                <textarea
+                                                  value={form?.comment ?? ""}
+                                                  onChange={(e) => patchHumanForm(latest.id, { comment: e.target.value })}
+                                                  disabled={submittingRunId === latest.id}
+                                                  placeholder="写评审意见/修改建议…"
+                                                />
+                                              </label>
+                                              <button
+                                                type="button"
+                                                onClick={() => void onSubmitHuman(s, latest.id)}
+                                                disabled={!canSubmit || submittingRunId === latest.id}
+                                              >
+                                                {submittingRunId === latest.id ? "提交中…" : "提交"}
+                                              </button>
+                                            </>
+                                          )}
+                                          {!canSubmit ? (
+                                            <span className="muted">当前账号无权限提交该步骤</span>
+                                          ) : null}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ) : null}
+                                </Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </details>
                   );
                 })}
@@ -901,10 +961,20 @@ export function IssueDetailPage() {
             <div className="row spaceBetween">
               <h2>PM</h2>
               <div className="row gap">
-                <button type="button" onClick={onPmAnalyze} disabled={pmLoading || !issueId}>
+                <button
+                  type="button"
+                  onClick={onPmAnalyze}
+                  disabled={pmLoading || !issueId || !allowPmTools}
+                  title={!allowPmTools ? "需要 PM 或管理员权限" : undefined}
+                >
                   {pmLoading ? "分析中…" : "分析"}
                 </button>
-                <button type="button" onClick={onPmDispatch} disabled={!canPmDispatch || pmDispatching}>
+                <button
+                  type="button"
+                  onClick={onPmDispatch}
+                  disabled={!allowPmTools || !canPmDispatch || pmDispatching}
+                  title={!allowPmTools ? "需要 PM 或管理员权限" : undefined}
+                >
                   {pmDispatching ? "启动中…" : "PM 分配并启动"}
                 </button>
               </div>
@@ -969,7 +1039,7 @@ export function IssueDetailPage() {
                 {!currentRunId &&
                 (effectivePmAnalysis.recommendedRoleKey || effectivePmAnalysis.recommendedAgentId) ? (
                   <div className="row gap" style={{ marginTop: 10 }}>
-                    <button type="button" onClick={onPmApplyRecommendation} disabled={pmLoading || pmDispatching}>
+                    <button type="button" onClick={onPmApplyRecommendation} disabled={!allowPmTools || pmLoading || pmDispatching}>
                       应用推荐到下方手动选择
                     </button>
                     {pmFromArtifact?.createdAt ? (
@@ -990,22 +1060,23 @@ export function IssueDetailPage() {
             )}
           </section>
 
-          <IssueRunCard
-            run={run}
-            currentRunId={currentRunId}
-            sessionId={sessionId}
-            sessionKnown={sessionKnown}
+            <IssueRunCard
+              run={run}
+              currentRunId={currentRunId}
+              sessionId={sessionId}
+              sessionKnown={sessionKnown}
             onRefresh={() => {
               void refresh();
             }}
             onStartRun={onStartRun}
-            onCancelRun={onCancelRun}
-            onCompleteRun={onCompleteRun}
-            canStartRun={canStartRun}
-            agents={agents}
-            agentsLoaded={agentsLoaded}
-            agentsError={agentsError}
-            availableAgentsCount={availableAgents.length}
+              onCancelRun={onCancelRun}
+              onCompleteRun={onCompleteRun}
+              canStartRun={canStartRun}
+              canManageRun={allowRunActions}
+              agents={agents}
+              agentsLoaded={agentsLoaded}
+              agentsError={agentsError}
+              availableAgentsCount={availableAgents.length}
             currentAgent={currentAgent}
             currentAgentEnvLabel={currentAgentEnvLabel}
             currentAgentSandbox={currentAgentSandbox}
@@ -1029,8 +1100,8 @@ export function IssueDetailPage() {
               {run?.executorType === "agent" && run?.status === "running" ? (
                 <button
                   onClick={onPauseRun}
-                  disabled={!currentRunId || pausing || !sessionKnown || (currentAgent ? !agentOnline : false)}
-                  title={!sessionKnown ? "ACP sessionId 尚未建立/同步" : ""}
+                  disabled={!allowPause || !currentRunId || pausing || !sessionKnown || (currentAgent ? !agentOnline : false)}
+                  title={!allowPause ? "需要开发或管理员权限" : !sessionKnown ? "ACP sessionId 尚未建立/同步" : ""}
                 >
                   {pausing ? "暂停中…" : "暂停 Agent"}
                 </button>
@@ -1043,13 +1114,19 @@ export function IssueDetailPage() {
                 value={chatText}
                 onChange={(e) => setChatText(e.target.value)}
                 placeholder={
-                  !currentRunId
-                    ? "请先启动 Run"
-                    : run?.executorType !== "agent"
-                      ? "当前 Run 不是 Agent 执行器"
-                      : "像 CLI 一样继续对话…"
+                  !auth.user
+                    ? "登录后可继续对话…"
+                    : !allowRunActions
+                      ? "当前账号无权限与 Agent 对话"
+                      : !currentRunId
+                        ? "请先启动 Run"
+                        : run?.executorType !== "agent"
+                          ? "当前 Run 不是 Agent 执行器"
+                          : "像 CLI 一样继续对话…"
                 }
                 disabled={
+                  !auth.user ||
+                  !allowRunActions ||
                   !currentRunId ||
                   sending ||
                   run?.executorType !== "agent" ||
@@ -1059,6 +1136,8 @@ export function IssueDetailPage() {
               <button
                 type="submit"
                 disabled={
+                  !auth.user ||
+                  !allowRunActions ||
                   !currentRunId ||
                   sending ||
                   !chatText.trim() ||
