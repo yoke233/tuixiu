@@ -4,12 +4,45 @@ import { z } from "zod";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { createRunWorktree, suggestRunKey } from "../utils/gitWorkspace.js";
+import { parseEnvText } from "../utils/envText.js";
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_m, key) => {
     const v = vars[key];
     return typeof v === "string" ? v : "";
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function pickBoxliteWorkspaceMode(agent: any): "mount" | "git_clone" | null {
+  const caps = agent?.capabilities;
+  if (!isRecord(caps)) return null;
+  const sandbox = caps.sandbox;
+  if (!isRecord(sandbox)) return null;
+  if (sandbox.provider !== "boxlite_oci") return null;
+  const boxlite = sandbox.boxlite;
+  if (!isRecord(boxlite)) return "mount";
+  const mode = boxlite.workspaceMode;
+  return mode === "git_clone" ? "git_clone" : "mount";
+}
+
+function pickBoxliteWorkingDir(agent: any): string | null {
+  const caps = agent?.capabilities;
+  if (!isRecord(caps)) return null;
+  const sandbox = caps.sandbox;
+  if (!isRecord(sandbox)) return null;
+  if (sandbox.provider !== "boxlite_oci") return null;
+  const boxlite = sandbox.boxlite;
+  if (!isRecord(boxlite)) return null;
+  const wd = boxlite.workingDir;
+  return typeof wd === "string" && wd.trim() ? wd.trim() : null;
+}
+
+function pickRoleEnv(role: any): Record<string, string> {
+  return parseEnvText(role?.envText);
 }
 
 const issueStatusSchema = z.enum([
@@ -142,6 +175,8 @@ export function makeIssueRoutes(deps: {
         return { success: false, error: { code: "AGENT_BUSY", message: "该 Agent 正忙" } };
       }
 
+      const wantsBoxliteClone = pickBoxliteWorkspaceMode(selectedAgent) === "git_clone";
+
       const effectiveRoleKey = roleKey?.trim() ? roleKey.trim() : (issue.project as any)?.defaultRoleKey?.trim() ?? "";
       const role = effectiveRoleKey
         ? await deps.prisma.roleTemplate.findFirst({ where: { projectId: issue.projectId, key: effectiveRoleKey } })
@@ -175,40 +210,70 @@ export function makeIssueRoutes(deps: {
       try {
         const baseBranch = issue.project.defaultBranch || "main";
         const runNumber = (Array.isArray(issue.runs) ? issue.runs.length : 0) + 1;
-        const name =
+        const requestedName =
           typeof worktreeName === "string" && worktreeName.trim()
             ? worktreeName.trim()
-            : suggestRunKey({
-                title: issue.title,
-                externalProvider: (issue as any).externalProvider,
-                externalNumber: (issue as any).externalNumber,
-                runNumber
-              });
+            : "";
 
-        const ws = await (deps.createWorkspace ?? createRunWorktree)({ runId: run.id, baseBranch, name });
-        workspacePath = ws.workspacePath;
-        branchName = ws.branchName;
+        const defaultKey = suggestRunKey({
+          title: issue.title,
+          externalProvider: (issue as any).externalProvider,
+          externalNumber: (issue as any).externalNumber,
+          runNumber
+        });
 
-        await deps.prisma.run.update({
-          where: { id: run.id },
-          data: {
-            workspaceType: "worktree",
-            workspacePath,
-            branchName
-          }
-        });
-        await deps.prisma.artifact.create({
-          data: {
-            id: uuidv7(),
-            runId: run.id,
-            type: "branch",
-            content: { branch: branchName, baseBranch, workspacePath } as any
-          }
-        });
+        const runKeyForBranch = requestedName
+          ? suggestRunKey({ title: requestedName })
+          : defaultKey;
+
+        if (wantsBoxliteClone) {
+          workspacePath = pickBoxliteWorkingDir(selectedAgent) ?? "/workspace";
+          const suffix = run.id.slice(0, 8);
+          branchName = `run/${runKeyForBranch}-${suffix}`;
+
+          await deps.prisma.run.update({
+            where: { id: run.id },
+            data: {
+              workspaceType: "boxlite_clone",
+              workspacePath,
+              branchName
+            }
+          });
+          await deps.prisma.artifact.create({
+            data: {
+              id: uuidv7(),
+              runId: run.id,
+              type: "branch",
+              content: { branch: branchName, baseBranch, workspacePath, workspaceType: "boxlite_clone" } as any
+            }
+          });
+        } else {
+          const nameForWorktree = requestedName || defaultKey;
+          const ws = await (deps.createWorkspace ?? createRunWorktree)({ runId: run.id, baseBranch, name: nameForWorktree });
+          workspacePath = ws.workspacePath;
+          branchName = ws.branchName;
+
+          await deps.prisma.run.update({
+            where: { id: run.id },
+            data: {
+              workspaceType: "worktree",
+              workspacePath,
+              branchName
+            }
+          });
+          await deps.prisma.artifact.create({
+            data: {
+              id: uuidv7(),
+              runId: run.id,
+              type: "branch",
+              content: { branch: branchName, baseBranch, workspacePath } as any
+            }
+          });
+        }
       } catch (error) {
         await deps.prisma.run.update({
           where: { id: run.id },
-          data: { status: "failed", completedAt: new Date(), errorMessage: `创建 worktree 失败: ${String(error)}` }
+          data: { status: "failed", completedAt: new Date(), errorMessage: `创建 workspace 失败: ${String(error)}` }
         });
         await deps.prisma.issue.update({ where: { id: issue.id }, data: { status: "failed" } }).catch(() => {});
         await deps.prisma.agent
@@ -228,13 +293,25 @@ export function makeIssueRoutes(deps: {
 
       const promptParts: string[] = [];
       promptParts.push(
-        [
-          "你正在一个独立的 Git worktree 中执行任务：",
-          `- workspace: ${workspacePath}`,
-          `- branch: ${branchName}`,
-          "",
-          "请在该分支上进行修改，并在任务完成后将修改提交（git commit）到该分支。",
-        ].join("\n"),
+        wantsBoxliteClone
+          ? [
+              "你正在 BoxLite 沙箱内的独立 workspace（git_clone 模式）中执行任务：",
+              `- workspace(guest): ${workspacePath}`,
+              `- branch: ${branchName}`,
+              "",
+              "重要：该模式下后端不会替你 push。请在完成修改后执行：",
+              `- git commit -am "..."（或 git add/commit）`,
+              `- git push -u origin ${branchName}`,
+              "",
+              "后端会通过 fetch 该分支来展示 diff 并创建 PR。",
+            ].join("\n")
+          : [
+              "你正在一个独立的 Git worktree 中执行任务：",
+              `- workspace: ${workspacePath}`,
+              `- branch: ${branchName}`,
+              "",
+              "请在该分支上进行修改，并在任务完成后将修改提交（git commit）到该分支。",
+            ].join("\n"),
       );
 
       if (role?.promptTemplate?.trim()) {
@@ -260,40 +337,39 @@ export function makeIssueRoutes(deps: {
 
       const acceptance = Array.isArray(issue.acceptanceCriteria) ? issue.acceptanceCriteria : [];
       if (acceptance.length) {
-        promptParts.push(`验收标准:\n${acceptance.map((x) => `- ${String(x)}`).join("\n")}`);
+        promptParts.push(`验收标准:\n${acceptance.map((x: unknown) => `- ${String(x)}`).join("\n")}`);
       }
       const constraints = Array.isArray(issue.constraints) ? issue.constraints : [];
       if (constraints.length) {
-        promptParts.push(`约束条件:\n${constraints.map((x) => `- ${String(x)}`).join("\n")}`);
+        promptParts.push(`约束条件:\n${constraints.map((x: unknown) => `- ${String(x)}`).join("\n")}`);
       }
       if (issue.testRequirements) {
         promptParts.push(`测试要求:\n${issue.testRequirements}`);
       }
 
       try {
-        const init =
-          role?.initScript?.trim()
-            ? {
-                script: role.initScript,
-                timeout_seconds: role.initTimeoutSeconds,
-                env: {
-                  ...(issue.project.githubAccessToken
-                    ? {
-                        GH_TOKEN: issue.project.githubAccessToken,
-                        GITHUB_TOKEN: issue.project.githubAccessToken
-                      }
-                    : {}),
-                  TUIXIU_PROJECT_ID: issue.projectId,
-                  TUIXIU_PROJECT_NAME: String((issue.project as any).name ?? ""),
-                  TUIXIU_REPO_URL: String(issue.project.repoUrl ?? ""),
-                  TUIXIU_DEFAULT_BRANCH: String(issue.project.defaultBranch ?? ""),
-                  TUIXIU_ROLE_KEY: role.key,
-                  TUIXIU_RUN_ID: run.id,
-                  TUIXIU_WORKSPACE: workspacePath,
-                  TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${issue.projectId}`
-                }
-              }
-            : undefined;
+        const roleScript = role?.initScript?.trim() ? role.initScript : "";
+
+        const initEnv: Record<string, string> = {
+          ...pickRoleEnv(role),
+          TUIXIU_PROJECT_ID: issue.projectId,
+          TUIXIU_PROJECT_NAME: String((issue.project as any).name ?? ""),
+          TUIXIU_REPO_URL: String(issue.project.repoUrl ?? ""),
+          TUIXIU_DEFAULT_BRANCH: String(issue.project.defaultBranch ?? ""),
+          TUIXIU_RUN_BRANCH: branchName,
+          TUIXIU_RUN_ID: run.id,
+          TUIXIU_WORKSPACE: workspacePath,
+          TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${issue.projectId}`,
+          ...(role ? { TUIXIU_ROLE_KEY: role.key } : {})
+        };
+
+        const init = wantsBoxliteClone || roleScript
+          ? {
+              script: roleScript,
+              timeout_seconds: wantsBoxliteClone ? Math.max(role?.initTimeoutSeconds ?? 300, 900) : role?.initTimeoutSeconds,
+              env: initEnv
+            }
+          : undefined;
 
         await deps.sendToAgent(selectedAgent.proxyId, {
           type: "execute_task",

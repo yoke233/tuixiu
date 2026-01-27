@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { buildContextFromRun } from "../services/runContext.js";
+import { parseEnvText } from "../utils/envText.js";
 import {
   getRunChanges,
   getRunDiff,
@@ -20,6 +21,17 @@ import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
 
 const execFileAsync = promisify(execFile);
+
+function resolveBranch(run: any): string {
+  const branchArtifact = (run.artifacts ?? []).find((a: any) => a.type === "branch");
+  const branchFromArtifact = (branchArtifact?.content as any)?.branch;
+  const branch = run.branchName || (typeof branchFromArtifact === "string" ? branchFromArtifact : "");
+  return typeof branch === "string" ? branch : "";
+}
+
+function pickRoleEnv(role: any): Record<string, string> {
+  return parseEnvText(role?.envText);
+}
 
 export function makeRunRoutes(deps: {
   prisma: PrismaDeps;
@@ -232,7 +244,7 @@ export function makeRunRoutes(deps: {
         where: { id },
         include: {
           agent: true,
-          issue: true,
+          issue: { include: { project: true } },
           artifacts: { orderBy: { createdAt: "desc" } },
         },
       });
@@ -272,6 +284,44 @@ export function makeRunRoutes(deps: {
           events: recentEvents,
         });
 
+        const isBoxliteClone = String(run.workspaceType ?? "") === "boxlite_clone";
+        let init:
+          | {
+              script: string;
+              timeout_seconds?: number;
+              env?: Record<string, string>;
+            }
+          | undefined;
+
+        if (isBoxliteClone) {
+          const roleKey = typeof (run.metadata as any)?.roleKey === "string" ? String((run.metadata as any).roleKey) : "";
+          const role = roleKey
+            ? await deps.prisma.roleTemplate.findFirst({
+                where: { projectId: run.issue.projectId, key: roleKey },
+              })
+            : null;
+
+          const branch = resolveBranch(run);
+          const baseBranch = run.issue.project.defaultBranch || "main";
+
+          init = {
+            script: role?.initScript?.trim() ? role.initScript : "",
+            timeout_seconds: Math.max(role?.initTimeoutSeconds ?? 300, 900),
+            env: {
+              ...pickRoleEnv(role),
+              TUIXIU_PROJECT_ID: run.issue.projectId,
+              TUIXIU_PROJECT_NAME: String((run.issue.project as any).name ?? ""),
+              TUIXIU_REPO_URL: String(run.issue.project.repoUrl ?? ""),
+              TUIXIU_DEFAULT_BRANCH: String(baseBranch),
+              TUIXIU_RUN_BRANCH: String(branch),
+              TUIXIU_RUN_ID: run.id,
+              TUIXIU_WORKSPACE: String(run.workspacePath ?? "/workspace"),
+              TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${run.issue.projectId}`,
+              ...(roleKey ? { TUIXIU_ROLE_KEY: roleKey } : {}),
+            },
+          };
+        }
+
         await deps.sendToAgent(run.agent.proxyId, {
           type: "prompt_run",
           run_id: id,
@@ -279,6 +329,7 @@ export function makeRunRoutes(deps: {
           session_id: run.acpSessionId ?? undefined,
           context,
           cwd: run.workspacePath ?? undefined,
+          init,
         });
       } catch (error) {
         return {

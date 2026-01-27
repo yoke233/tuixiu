@@ -373,7 +373,8 @@ describe("Issues routes", () => {
           displayName: "后端开发",
           promptTemplate: "你是 {{role.name}}，请优先写单测。",
           initScript: "echo init",
-          initTimeoutSeconds: 120
+          initTimeoutSeconds: 120,
+          envText: "GH_TOKEN=ghp_role_xxx"
         })
       },
       agent: {
@@ -412,7 +413,7 @@ describe("Issues routes", () => {
         script: "echo init",
         timeout_seconds: 120,
         env: expect.objectContaining({
-          GH_TOKEN: "ghp_xxx",
+          GH_TOKEN: "ghp_role_xxx",
           TUIXIU_ROLE_KEY: "backend-dev",
           TUIXIU_RUN_ID: "r1"
         })

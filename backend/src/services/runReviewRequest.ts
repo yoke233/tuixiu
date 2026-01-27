@@ -86,7 +86,9 @@ export async function createReviewRequestForRun(
   const description = body.description ?? run.issue.description ?? "";
 
   try {
-    await deps.gitPush({ cwd: run.workspacePath ?? process.cwd(), branch });
+    if (String(run.workspaceType ?? "") !== "boxlite_clone") {
+      await deps.gitPush({ cwd: run.workspacePath ?? process.cwd(), branch });
+    }
   } catch (err) {
     return { success: false, error: { code: "GIT_PUSH_FAILED", message: "git push 失败", details: String(err) } };
   }

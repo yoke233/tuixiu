@@ -23,17 +23,26 @@ function truncateUnicode(input: string, maxChars: number): string {
   return chars.slice(0, maxChars).join("");
 }
 
+function stripAsciiControlChars(input: string): string {
+  const out: string[] = [];
+  for (const ch of input) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code <= 0x1f || code === 0x7f) continue;
+    out.push(ch);
+  }
+  return out.join("");
+}
+
 function normalizeRunKey(input: string): string {
   const raw = String(input ?? "").trim().toLowerCase();
   if (!raw) return "";
 
   // Windows 文件名不允许：<>:"/\|?*
   // Git 分支名不允许：空格、~ ^ : ? * [ \ 以及控制字符
-  const replaced = raw
-    .replaceAll(/[\/\\]/g, "-")
-    .replaceAll(/\s+/g, "-")
-    .replaceAll(/[\u0000-\u001F\u007F]/g, "")
-    .replaceAll(/[<>:"|?*~^\[\]]/g, "-");
+  const replaced = stripAsciiControlChars(raw.replaceAll(/[/\\]/g, "-").replaceAll(/\s+/g, "-")).replaceAll(
+    /[<>:"|?*~^[\]]/g,
+    "-",
+  );
 
   // 避免 git ref 禁止的片段：..、@{、.lock
   let s = replaced.replaceAll("..", "-").replaceAll("@{", "-").replaceAll(".lock", "-lock");
@@ -41,8 +50,8 @@ function normalizeRunKey(input: string): string {
   s = s
     .replaceAll(/-+/g, "-")
     .replaceAll(/\.+/g, ".")
-    .replaceAll(/^[\-.]+/g, "")
-    .replaceAll(/[\-.]+$/g, "")
+    .replaceAll(/^[-.]+/g, "")
+    .replaceAll(/[-.]+$/g, "")
     .trim();
 
   // 兼顾 Windows：末尾不能是空格/点

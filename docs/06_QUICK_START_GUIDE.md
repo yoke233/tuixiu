@@ -22,6 +22,17 @@ notepad config.json
 pnpm dev
 ```
 
+也可以用更明确的模板（推荐）：
+
+```powershell
+cd acp-proxy
+Copy-Item config.local.json.example config.json
+notepad config.json
+pnpm dev
+```
+
+> `config.local.json.example` 默认 `cwd: ".."`（从 `acp-proxy/` 指向仓库根目录），一般无需修改。
+
 ```powershell
 # 终端 3：frontend
 cd frontend
@@ -119,10 +130,11 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 最小配置项：
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
-- `cwd`: repo 根目录（运行中会覆盖为 worktree cwd）
+- `cwd`: 默认工作目录（`host_process`/`mount` 时通常是 repo/worktree；`git_clone` 时通常是 VM 内工作目录，如 `/workspace`）
 - `agent.max_concurrent`: 单个 Agent 的并发 Run 上限（ACP 支持多 `session`；>1 时可并行多个 Run，但更吃 CPU/内存）
 - `agent_command`: 默认 `["npx","--yes","@zed-industries/codex-acp"]`（可替换为任意 ACP 兼容 Agent）
 - `sandbox.provider`: 默认 `host_process`（`boxlite_oci` 仅 WSL2/Linux/macOS Apple Silicon 可用）
+- `sandbox.boxlite.workspaceMode`: `git_clone`（推荐，不挂载：VM 内 clone+push，后端 fetch 看 diff/PR）或 `mount`（挂载宿主机 worktree 到 VM）
 - `pathMapping`: 可选（仅当你在 WSL 内运行 proxy 且后端传入 Windows 路径时使用，把 `D:\\...` 转成 `/mnt/d/...`）
 
 示例：替换为其它 ACP agent 启动命令：
@@ -131,13 +143,30 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 { "agent_command": ["npx", "--yes", "<some-acp-agent>"] }
 ```
 
-示例：使用 BoxLite（`sandbox.provider=boxlite_oci`）在 OCI/micro-VM 里运行 ACP Agent：
+示例：使用 BoxLite（`sandbox.provider=boxlite_oci`）在 OCI/micro-VM 里运行 ACP Agent（推荐 `git_clone`：不挂载 repo/worktree）：
 
 ```json
 {
   "sandbox": {
     "provider": "boxlite_oci",
     "boxlite": {
+      "workspaceMode": "git_clone",
+      "image": "ghcr.io/<org>/codex-acp:latest",
+      "workingDir": "/workspace",
+      "env": { "OPENAI_API_KEY": "<key>" }
+    }
+  }
+}
+```
+
+可选：`mount`（挂载宿主机 worktree 到 VM）：
+
+```json
+{
+  "sandbox": {
+    "provider": "boxlite_oci",
+    "boxlite": {
+      "workspaceMode": "mount",
       "image": "ghcr.io/<org>/codex-acp:latest",
       "workingDir": "/workspace",
       "env": { "OPENAI_API_KEY": "<key>" },
@@ -152,10 +181,14 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 WSL2/Linux 最短链路（假设已准备好可拉取的镜像）：
 
 ```bash
-pnpm -C acp-proxy add @boxlite-ai/boxlite
-# 编辑 acp-proxy/config.json：按上面的 boxlite_oci 示例配置 image/volumes/pathMapping
+cp acp-proxy/config.boxlite.json.example acp-proxy/config.json
+# 编辑 acp-proxy/config.json：填写 sandbox.boxlite.image / sandbox.boxlite.env（git_clone 模式无需 volumes）
 pnpm -C acp-proxy dev
 ```
+
+> `config.boxlite.json.example` 默认是 `workspaceMode=git_clone`：至少需要替换 `sandbox.boxlite.image` 与 `sandbox.boxlite.env`；该模式下 Agent 需要 `git push -u origin <branch>`，后端会 fetch 该分支来展示 diff/创建 PR。
+>
+> 若使用 `workspaceMode=mount`：需要额外配置 `sandbox.boxlite.volumes`（把 worktree 挂到 `/workspace`），并在 “proxy 在 WSL2、后端在 Windows” 时按需配置 `pathMapping`。
 
 Windows 下如遇 `spawn npx ENOENT`，请先确认 `where.exe npx` 可用；proxy 已内置 `cmd.exe /c` shim（`acp-proxy/src/sandbox/hostProcessSandbox.ts`）。
 
@@ -174,4 +207,4 @@ pnpm test:coverage
 
 - 前端列表/详情不更新：确认 WS 已连接（页面顶部 `WS: connected`）以及 backend 端口正确
 - 无法继续对话：确认 Agent 在线（`GET /api/agents`）且 Run 已绑定 `acpSessionId`
-- PR 创建失败：检查 Project 的 token/权限、以及分支是否已 push（后端会在创建 PR 前 `git push`）
+- PR 创建失败：检查 Project 的 token/权限；`worktree/mount` 模式下后端会在创建 PR 前 `git push`，`boxlite_clone(git_clone)` 模式需 Agent 先 `git push -u origin <branch>`

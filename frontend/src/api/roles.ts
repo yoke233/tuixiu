@@ -8,6 +8,7 @@ export type CreateRoleTemplateInput = {
   promptTemplate?: string;
   initScript?: string;
   initTimeoutSeconds?: number;
+  envText?: string;
 };
 
 export async function listRoles(projectId: string): Promise<RoleTemplate[]> {

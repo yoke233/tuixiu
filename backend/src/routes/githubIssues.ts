@@ -151,7 +151,7 @@ export function makeGitHubIssueRoutes(deps: {
           externalNumber: external.number,
           externalUrl: external.html_url,
           externalState: String(external.state ?? ""),
-          externalLabels: external.labels ?? [],
+          externalLabels: (external.labels ?? []) as any,
           lastSyncedAt: new Date(),
           createdBy: "github_import",
         },

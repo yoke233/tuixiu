@@ -132,6 +132,8 @@ describe("IssueListPage", () => {
       }
     });
     mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
+    // load roles after project selected
+    mockFetchJsonOnce({ success: true, data: { roles: [] } });
 
     render(
       <ThemeProvider>
@@ -175,6 +177,8 @@ describe("IssueListPage", () => {
       }
     });
     mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
+    // load roles when opening tools
+    mockFetchJsonOnce({ success: true, data: { roles: [] } });
     // create issue
     mockFetchJsonOnce({
       success: true,

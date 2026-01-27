@@ -4,17 +4,45 @@ import { Link, Outlet, useParams } from "react-router-dom";
 import { createIssue, listIssues, startIssue, updateIssue } from "../api/issues";
 import { importGitHubIssue } from "../api/githubIssues";
 import { createProject, listProjects } from "../api/projects";
-import { createRole } from "../api/roles";
+import { createRole, listRoles } from "../api/roles";
 import { cancelRun, completeRun } from "../api/runs";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { Issue, IssueStatus, Project } from "../types";
+import type { Issue, IssueStatus, Project, RoleTemplate } from "../types";
 
 function splitLines(s: string): string[] {
   return s
     .split(/\r?\n/g)
     .map((x) => x.trim())
     .filter(Boolean);
+}
+
+function validateEnvText(text: string): string | null {
+  const errors: string[] = [];
+  const lines = text.split(/\r?\n/g);
+
+  for (let i = 0; i < lines.length; i += 1) {
+    let line = lines[i].trim();
+    if (!line) continue;
+    if (line.startsWith("#")) continue;
+    if (line.startsWith("export ")) line = line.slice("export ".length).trim();
+
+    const eq = line.indexOf("=");
+    if (eq <= 0) {
+      errors.push(`第${i + 1}行缺少 '='`);
+      continue;
+    }
+
+    const key = line.slice(0, eq).trim();
+    if (!key) {
+      errors.push(`第${i + 1}行 KEY 为空`);
+    }
+  }
+
+  if (!errors.length) return null;
+  const preview = errors.slice(0, 3).join("；");
+  const suffix = errors.length > 3 ? `；… 还有 ${errors.length - 3} 行` : "";
+  return `env 格式不正确（.env）：${preview}${suffix}`;
 }
 
 export function IssueListPage() {
@@ -60,6 +88,11 @@ export function IssueListPage() {
   const [projectGithubAccessToken, setProjectGithubAccessToken] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
 
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [roles, setRoles] = useState<RoleTemplate[]>([]);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
+  const [rolesError, setRolesError] = useState<string | null>(null);
+
   const [issueTitle, setIssueTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
   const [issueCriteria, setIssueCriteria] = useState("");
@@ -69,6 +102,7 @@ export function IssueListPage() {
   const [roleDisplayName, setRoleDisplayName] = useState("");
   const [rolePromptTemplate, setRolePromptTemplate] = useState("");
   const [roleInitScript, setRoleInitScript] = useState("");
+  const [roleEnvText, setRoleEnvText] = useState("");
   const [roleInitTimeoutSeconds, setRoleInitTimeoutSeconds] = useState("300");
   const [searchText, setSearchText] = useState("");
   const [detailWidth, setDetailWidth] = useState<number>(() => {
@@ -117,6 +151,23 @@ export function IssueListPage() {
     }
     return map;
   }, [visibleIssues]);
+
+  useEffect(() => {
+    if (!toolsOpen) return;
+    if (!effectiveProjectId) return;
+
+    setRolesLoaded(false);
+    setRolesError(null);
+    listRoles(effectiveProjectId)
+      .then((rs) => {
+        setRoles(rs);
+        setRolesLoaded(true);
+      })
+      .catch((err) => {
+        setRolesError(err instanceof Error ? err.message : String(err));
+        setRolesLoaded(true);
+      });
+  }, [toolsOpen, effectiveProjectId]);
 
   async function refresh() {
     setLoading(true);
@@ -303,21 +354,43 @@ export function IssueListPage() {
     if (!key || !name) return;
 
     try {
-      await createRole(effectiveProjectId, {
+      const envText = roleEnvText.trim();
+      if (envText) {
+        const errMsg = validateEnvText(envText);
+        if (errMsg) {
+          setError(errMsg);
+          return;
+        }
+      }
+
+      const created = await createRole(effectiveProjectId, {
         key,
         displayName: name,
         promptTemplate: rolePromptTemplate.trim() || undefined,
         initScript: roleInitScript.trim() || undefined,
-        initTimeoutSeconds: Number(roleInitTimeoutSeconds) || undefined
+        initTimeoutSeconds: Number(roleInitTimeoutSeconds) || undefined,
+        envText: envText || undefined,
       });
+      setRoles((prev) => [created, ...prev.filter((r) => r.id !== created.id)]);
+      setRolesLoaded(true);
       setRoleKey("");
       setRoleDisplayName("");
       setRolePromptTemplate("");
       setRoleInitScript("");
+      setRoleEnvText("");
       setRoleInitTimeoutSeconds("300");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  function onPrefillRoleForm(role: RoleTemplate) {
+    setRoleKey("");
+    setRoleDisplayName(role.displayName ?? "");
+    setRolePromptTemplate(role.promptTemplate?.trim() ? role.promptTemplate : "");
+    setRoleInitScript(role.initScript?.trim() ? role.initScript : "");
+    setRoleEnvText("");
+    setRoleInitTimeoutSeconds(String(role.initTimeoutSeconds || 300));
   }
 
   const columns = useMemo(
@@ -445,7 +518,10 @@ export function IssueListPage() {
               </div>
             </div>
 
-            <details className="boardTools">
+            <details
+              className="boardTools"
+              onToggle={(e) => setToolsOpen((e.currentTarget as HTMLDetailsElement).open)}
+            >
               <summary>创建 / 配置</summary>
               <div className="grid2">
                 <section className="card">
@@ -577,6 +653,53 @@ export function IssueListPage() {
 
                 <section className="card">
                   <h3>创建 RoleTemplate</h3>
+                  {effectiveProjectId ? (
+                    <div style={{ marginBottom: 10 }}>
+                      <div className="muted">当前 Project 的 Roles：</div>
+                      {!rolesLoaded && !rolesError ? (
+                        <div className="muted">加载中…</div>
+                      ) : rolesError ? (
+                        <div className="muted" title={rolesError}>
+                          Role 加载失败
+                        </div>
+                      ) : roles.length ? (
+                        <div className="kvGrid" style={{ marginTop: 8 }}>
+                          {roles.map((r) => {
+                            const envLabel = r.envKeys?.length ? r.envKeys.join(", ") : "无";
+                            return (
+                              <div className="kvItem" key={r.id}>
+                                <div className="row spaceBetween" style={{ gap: 10 }}>
+                                  <div style={{ minWidth: 0 }}>
+                                    <div>
+                                      <span className="muted">{r.displayName}</span>{" "}
+                                      <code title={r.key}>{r.key}</code>
+                                    </div>
+                                    <div className="muted" style={{ fontSize: 12 }}>
+                                      env: {envLabel}
+                                      {r.initScript?.trim() ? " · initScript" : ""}
+                                      {r.promptTemplate?.trim() ? " · promptTemplate" : ""}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => onPrefillRoleForm(r)}
+                                  >
+                                    复制到表单
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="muted">暂无 Role</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="muted" style={{ marginBottom: 10 }}>
+                      请先创建/选择 Project
+                    </div>
+                  )}
                   <form onSubmit={onCreateRole} className="form">
                     <label className="label">
                       Role Key *
@@ -604,6 +727,14 @@ export function IssueListPage() {
                         value={roleInitScript}
                         onChange={(e) => setRoleInitScript(e.target.value)}
                         placeholder={"# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init"}
+                      />
+                    </label>
+                    <label className="label">
+                      env（.env 格式，可选）
+                      <textarea
+                        value={roleEnvText}
+                        onChange={(e) => setRoleEnvText(e.target.value)}
+                        placeholder={"# 不会回显到前端，只会显示 key 列表\nGH_TOKEN=ghp_xxx\nGITLAB_TOKEN=glpat_xxx"}
                       />
                     </label>
                     <label className="label">

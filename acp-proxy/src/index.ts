@@ -124,12 +124,11 @@ async function main() {
       );
     }
 
-    // @ts-expect-error - optional dependency (only needed when sandbox.provider=boxlite_oci)
     await import("@boxlite-ai/boxlite").catch(async () => {
-      // @ts-expect-error - optional dependency (package name differs by release channel)
-      await import("boxlite").catch(() => {
+      const legacyPkgName: string = "boxlite";
+      await import(legacyPkgName).catch(() => {
         throw new Error(
-          "未安装 BoxLite Node SDK。请在 WSL2/Linux/macOS(Apple Silicon) 环境执行: pnpm -C acp-proxy add @boxlite-ai/boxlite（或 pnpm -C acp-proxy add boxlite）",
+          "未安装 BoxLite Node SDK。请先运行 pnpm install（或 pnpm -C acp-proxy install）；如仍缺失可手动安装：pnpm -C acp-proxy add @boxlite-ai/boxlite（或 pnpm -C acp-proxy add boxlite）",
         );
       });
     });
@@ -188,7 +187,22 @@ async function main() {
   const mapCwd = (cwd: string): string =>
     mapHostPathToBox(mapWindowsPathToWsl(cwd));
 
-  const defaultCwd = mapCwd(cfg.cwd);
+  const boxliteWorkspaceMode =
+    cfg.sandbox.provider === "boxlite_oci"
+      ? (cfg.sandbox.boxlite?.workspaceMode ?? "mount")
+      : "mount";
+
+  const isBoxliteCloneMode =
+    cfg.sandbox.provider === "boxlite_oci" && boxliteWorkspaceMode === "git_clone";
+
+  const boxliteWorkingDir =
+    cfg.sandbox.provider === "boxlite_oci"
+      ? (cfg.sandbox.boxlite?.workingDir?.trim()
+          ? cfg.sandbox.boxlite.workingDir.trim()
+          : "/workspace")
+      : "";
+
+  const defaultCwd = isBoxliteCloneMode ? boxliteWorkingDir : mapCwd(cfg.cwd);
 
   let ws: WebSocket | null = null;
 
@@ -249,49 +263,53 @@ async function main() {
     });
   };
 
-  const sandbox =
-    cfg.sandbox.provider === "boxlite_oci"
-      ? new BoxliteSandbox({
-          log,
-          config: {
-            image: cfg.sandbox.boxlite?.image ?? "",
-            workingDir: cfg.sandbox.boxlite?.workingDir,
-            volumes: cfg.sandbox.boxlite?.volumes,
-            env: cfg.sandbox.boxlite?.env,
-            cpus: cfg.sandbox.boxlite?.cpus,
-            memoryMib: cfg.sandbox.boxlite?.memoryMib,
-          },
-        })
-      : new HostProcessSandbox({ log });
+  let sharedBridge: AcpBridge | null = null;
 
-  const launcher = new DefaultAgentLauncher({
-    sandbox,
-    command: cfg.agent_command,
-  });
+  if (!isBoxliteCloneMode) {
+    const sandbox =
+      cfg.sandbox.provider === "boxlite_oci"
+        ? new BoxliteSandbox({
+            log,
+            config: {
+              image: cfg.sandbox.boxlite?.image ?? "",
+              workingDir: cfg.sandbox.boxlite?.workingDir,
+              volumes: cfg.sandbox.boxlite?.volumes,
+              env: cfg.sandbox.boxlite?.env,
+              cpus: cfg.sandbox.boxlite?.cpus,
+              memoryMib: cfg.sandbox.boxlite?.memoryMib,
+            },
+          })
+        : new HostProcessSandbox({ log });
 
-  const bridge = new AcpBridge({
-    launcher,
-    cwd: defaultCwd,
-    log,
-    onSessionUpdate: (sessionId, update) => {
-      const runId = sessionToRun.get(sessionId);
-      if (!runId) return;
+    const launcher = new DefaultAgentLauncher({
+      sandbox,
+      command: cfg.agent_command,
+    });
 
-      if (
-        update.sessionUpdate === "agent_message_chunk" &&
-        update.content?.type === "text"
-      ) {
-        const flushed = appendChunk(sessionId, update.content.text);
+    sharedBridge = new AcpBridge({
+      launcher,
+      cwd: defaultCwd,
+      log,
+      onSessionUpdate: (sessionId, update) => {
+        const runId = sessionToRun.get(sessionId);
+        if (!runId) return;
+
+        if (
+          update.sessionUpdate === "agent_message_chunk" &&
+          update.content?.type === "text"
+        ) {
+          const flushed = appendChunk(sessionId, update.content.text);
+          if (flushed) sendChunkUpdate(runId, sessionId, flushed);
+          return;
+        }
+
+        const flushed = flushChunks(sessionId);
         if (flushed) sendChunkUpdate(runId, sessionId, flushed);
-        return;
-      }
 
-      const flushed = flushChunks(sessionId);
-      if (flushed) sendChunkUpdate(runId, sessionId, flushed);
-
-      sendUpdate(runId, { type: "session_update", session: sessionId, update });
-    },
-  });
+        sendUpdate(runId, { type: "session_update", session: sessionId, update });
+      },
+    });
+  }
 
   const setRunSession = (runId: string, sessionId: string) => {
     runToSession.set(runId, sessionId);
@@ -305,6 +323,7 @@ async function main() {
   };
 
   const getRunCwd = (runId: string, incomingCwd?: string): string => {
+    if (isBoxliteCloneMode) return defaultCwd;
     if (typeof incomingCwd === "string" && incomingCwd.trim()) {
       setRunCwd(runId, incomingCwd);
       return runToCwd.get(runId) ?? defaultCwd;
@@ -343,6 +362,7 @@ async function main() {
         ...baseBoxlite,
         image: cfg.sandbox.boxlite?.image ?? null,
         workingDir: cfg.sandbox.boxlite?.workingDir ?? null,
+        workspaceMode: boxliteWorkspaceMode,
       };
     }
 
@@ -371,6 +391,261 @@ async function main() {
         // ignore
       }
     }
+  };
+
+  const boxliteCloneInitScript = [
+    "set -euo pipefail",
+    "",
+    'WORKSPACE="${TUIXIU_WORKSPACE:-/workspace}"',
+    'REPO_URL="${TUIXIU_REPO_URL:-}"',
+    'BASE_BRANCH="${TUIXIU_DEFAULT_BRANCH:-main}"',
+    'RUN_BRANCH="${TUIXIU_RUN_BRANCH:-}"',
+    "",
+    'if [ -z "$REPO_URL" ]; then',
+    '  echo "[tuixiu] missing TUIXIU_REPO_URL" >&2',
+    "  exit 2",
+    "fi",
+    'if [ -z "$RUN_BRANCH" ]; then',
+    '  RUN_BRANCH="run/${TUIXIU_RUN_ID:-run}"',
+    "fi",
+    "",
+    'mkdir -p "$WORKSPACE"',
+    'cd "$WORKSPACE"',
+    "",
+    "# Prepare GIT_ASKPASS so git clone/push can run non-interactively when token is provided.",
+    'ASKPASS_DIR="$WORKSPACE/.tuixiu"',
+    'ASKPASS="$ASKPASS_DIR/askpass.sh"',
+    'mkdir -p "$ASKPASS_DIR"',
+    'cat > "$ASKPASS" <<\'EOF\'',
+    "#!/bin/sh",
+    'prompt="$1"',
+    'token="${GH_TOKEN:-${GITHUB_TOKEN:-${GITLAB_TOKEN:-${GITLAB_ACCESS_TOKEN:-}}}}"',
+    'if [ -z "$token" ]; then',
+    "  exit 1",
+    "fi",
+    'case "${TUIXIU_REPO_URL:-}" in',
+    "  *github.com*) user=\"x-access-token\" ;;",
+    "  *) user=\"oauth2\" ;;",
+    "esac",
+    'case "$prompt" in',
+    '  *Username*) echo "$user" ;;',
+    '  *Password*) echo "$token" ;;',
+    "  *) echo \"\" ;;",
+    "esac",
+    "EOF",
+    'chmod +x "$ASKPASS"',
+    'export GIT_ASKPASS="$ASKPASS"',
+    'export GIT_TERMINAL_PROMPT=0',
+    "",
+    'if [ ! -d .git ]; then',
+    '  echo "[tuixiu] git clone $REPO_URL"',
+    '  git clone "$REPO_URL" .',
+    "else",
+    '  echo "[tuixiu] workspace already has .git; skipping clone"',
+    "fi",
+    "",
+    'git remote set-url origin "$REPO_URL" >/dev/null 2>&1 || true',
+    'git fetch origin --prune',
+    "",
+    "# Checkout run branch: prefer remote branch if it exists; otherwise create from base branch.",
+    'if git show-ref --verify --quiet "refs/remotes/origin/$RUN_BRANCH"; then',
+    '  git checkout -B "$RUN_BRANCH" "origin/$RUN_BRANCH"',
+    "else",
+    '  git checkout -B "$RUN_BRANCH" "origin/$BASE_BRANCH"',
+    "fi",
+    "",
+    'git config user.name "${TUIXIU_GIT_NAME:-tuixiu-bot}" >/dev/null 2>&1 || true',
+    'git config user.email "${TUIXIU_GIT_EMAIL:-tuixiu-bot@localhost}" >/dev/null 2>&1 || true',
+    "",
+    'echo "[tuixiu] ready: $(pwd) (branch=$(git rev-parse --abbrev-ref HEAD))"',
+  ].join("\n");
+
+  type CloneRunState = {
+    bridge: AcpBridge;
+    sandbox: BoxliteSandbox;
+    inited: boolean;
+  };
+
+  const cloneRuns = new Map<string, CloneRunState>();
+
+  const clearRunState = (runId: string) => {
+    const sessionId = runToSession.get(runId) ?? "";
+    runToSession.delete(runId);
+    runToCwd.delete(runId);
+    if (sessionId) {
+      sessionToRun.delete(sessionId);
+      chunkBySession.delete(sessionId);
+    }
+  };
+
+  const cleanupCloneRun = async (runId: string, reason: string) => {
+    const state = cloneRuns.get(runId);
+    cloneRuns.delete(runId);
+    clearRunState(runId);
+    if (!state) return;
+
+    try {
+      await state.sandbox.stopBox();
+    } catch (err) {
+      log(`[run:${runId}] stop box failed`, { err: String(err), reason });
+    }
+  };
+
+  const ensureCloneRun = (runId: string, initEnv: Record<string, string> | undefined): CloneRunState => {
+    const existing = cloneRuns.get(runId);
+    if (existing) return existing;
+
+    const askpassPath = `${boxliteWorkingDir.replace(/\/+$/, "")}/.tuixiu/askpass.sh`;
+    const envForAgent = {
+      ...(initEnv ?? {}),
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_ASKPASS: askpassPath,
+    };
+
+    const sandbox = new BoxliteSandbox({
+      log: (msg, extra) => log(`[run:${runId}] ${msg}`, extra),
+      config: {
+        image: cfg.sandbox.boxlite?.image ?? "",
+        workingDir: boxliteWorkingDir,
+        volumes: undefined,
+        env: cfg.sandbox.boxlite?.env,
+        cpus: cfg.sandbox.boxlite?.cpus,
+        memoryMib: cfg.sandbox.boxlite?.memoryMib,
+      },
+    });
+
+    const launcher = new DefaultAgentLauncher({
+      sandbox,
+      command: cfg.agent_command,
+      env: envForAgent,
+    });
+
+    const bridge = new AcpBridge({
+      launcher,
+      cwd: boxliteWorkingDir,
+      log: (msg, extra) => log(`[run:${runId}] ${msg}`, extra),
+      onSessionUpdate: (sessionId, update) => {
+        if (
+          update.sessionUpdate === "agent_message_chunk" &&
+          update.content?.type === "text"
+        ) {
+          const flushed = appendChunk(sessionId, update.content.text);
+          if (flushed) sendChunkUpdate(runId, sessionId, flushed);
+          return;
+        }
+
+        const flushed = flushChunks(sessionId);
+        if (flushed) sendChunkUpdate(runId, sessionId, flushed);
+
+        sendUpdate(runId, { type: "session_update", session: sessionId, update });
+      },
+    });
+
+    const created: CloneRunState = { bridge, sandbox, inited: false };
+    cloneRuns.set(runId, created);
+    return created;
+  };
+
+  const runInitScriptBoxlite = async (opts: {
+    runId: string;
+    cwd: string;
+    sandbox: BoxliteSandbox;
+    init?: {
+      script: string;
+      timeout_seconds?: number;
+      env?: Record<string, string>;
+    };
+  }): Promise<boolean> => {
+    const extra = opts.init?.script?.trim() ?? "";
+    const script = `${boxliteCloneInitScript}\n\n${extra}`.trim();
+    if (!script) return true;
+
+    const timeoutSecondsRaw = opts.init?.timeout_seconds ?? 900;
+    const timeoutSeconds = Number.isFinite(timeoutSecondsRaw)
+      ? Math.max(1, Math.min(3600, timeoutSecondsRaw))
+      : 900;
+
+    const env = opts.init?.env ?? {};
+    const secrets = pickSecretValues(opts.init?.env);
+
+    const redact = (line: string) => redactSecrets(line, secrets);
+
+    const readLines = async (
+      stream: ReadableStream<Uint8Array> | undefined,
+      label: "stdout" | "stderr",
+    ) => {
+      if (!stream) return;
+      const decoder = new TextDecoder();
+      const reader = stream.getReader();
+      let buf = "";
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split(/\r?\n/g);
+          buf = parts.pop() ?? "";
+          for (const line of parts) {
+            const text = redact(line);
+            if (!text.trim()) continue;
+            sendUpdate(opts.runId, { type: "text", text: `[init:${label}] ${text}` });
+          }
+        }
+      } finally {
+        const rest = redact(buf);
+        if (rest.trim()) sendUpdate(opts.runId, { type: "text", text: `[init:${label}] ${rest}` });
+      }
+    };
+
+    sendUpdate(opts.runId, {
+      type: "text",
+      text: `[init] start (boxlite, bash, timeout=${timeoutSeconds}s)`,
+    });
+
+    const proc = await opts.sandbox.execProcess({
+      command: ["bash", "-lc", script],
+      cwd: opts.cwd,
+      env,
+    });
+
+    const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+      proc.onExit?.((info) => resolve(info));
+    });
+
+    const outP = readLines(proc.stdout, "stdout");
+    const errP = readLines(proc.stderr, "stderr");
+
+    const raced = await Promise.race([
+      exitP.then((r) => ({ kind: "exit" as const, ...r })),
+      delay(timeoutSeconds * 1000).then(() => ({ kind: "timeout" as const })),
+    ]);
+
+    if (raced.kind === "timeout") {
+      sendUpdate(opts.runId, {
+        type: "text",
+        text: `[init] timeout after ${timeoutSeconds}s (stopping box)`,
+      });
+      await opts.sandbox.stopBox();
+      await Promise.allSettled([outP, errP]);
+      sendUpdate(opts.runId, { type: "init_result", ok: false, exitCode: null, error: "timeout" });
+      return false;
+    }
+
+    await Promise.allSettled([outP, errP]);
+
+    if (raced.code === 0) {
+      sendUpdate(opts.runId, { type: "text", text: "[init] done" });
+      sendUpdate(opts.runId, { type: "init_result", ok: true, exitCode: 0 });
+      return true;
+    }
+
+    sendUpdate(opts.runId, {
+      type: "init_result",
+      ok: false,
+      exitCode: raced.code,
+      error: `exitCode=${raced.code}`,
+    });
+    return false;
   };
 
   const runInitScript = async (opts: {
@@ -535,6 +810,56 @@ async function main() {
 
       const cwd = getRunCwd(msg.run_id, msg.cwd);
 
+      if (isBoxliteCloneMode) {
+        if (!msg.init?.env?.TUIXIU_REPO_URL?.trim()) {
+          sendUpdate(msg.run_id, {
+            type: "text",
+            text: "boxlite git_clone 模式缺少 init.env.TUIXIU_REPO_URL（后端需下发 repoUrl/token/branch 等 env）",
+          });
+          return;
+        }
+
+        const state = ensureCloneRun(msg.run_id, msg.init.env);
+
+        await state.bridge.ensureInitialized();
+
+        if (!state.inited) {
+          const initOk = await runInitScriptBoxlite({
+            runId: msg.run_id,
+            cwd,
+            sandbox: state.sandbox,
+            init: msg.init,
+          });
+          if (!initOk) {
+            await cleanupCloneRun(msg.run_id, "init_failed");
+            return;
+          }
+          state.inited = true;
+        }
+
+        let sessionId = runToSession.get(msg.run_id) ?? "";
+        if (!sessionId) {
+          const s = await state.bridge.newSession(cwd);
+          sessionId = s.sessionId;
+          setRunSession(msg.run_id, sessionId);
+
+          sendUpdate(msg.run_id, {
+            type: "session_created",
+            session_id: sessionId,
+          });
+        }
+
+        const res = await state.bridge.prompt(sessionId, msg.prompt);
+        const flushed = flushChunks(sessionId);
+        if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
+
+        sendUpdate(msg.run_id, {
+          type: "prompt_result",
+          stopReason: res.stopReason,
+        });
+        return;
+      }
+
       const initOk = await runInitScript({
         runId: msg.run_id,
         cwd,
@@ -542,11 +867,12 @@ async function main() {
       });
       if (!initOk) return;
 
-      await bridge.ensureInitialized();
+      if (!sharedBridge) throw new Error("ACP bridge not initialized");
+      await sharedBridge.ensureInitialized();
 
       let sessionId = runToSession.get(msg.run_id) ?? "";
       if (!sessionId) {
-        const s = await bridge.newSession(cwd);
+        const s = await sharedBridge.newSession(cwd);
         sessionId = s.sessionId;
         setRunSession(msg.run_id, sessionId);
 
@@ -556,7 +882,7 @@ async function main() {
         });
       }
 
-      const res = await bridge.prompt(sessionId, msg.prompt);
+      const res = await sharedBridge.prompt(sessionId, msg.prompt);
       const flushed = flushChunks(sessionId);
       if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
 
@@ -580,6 +906,11 @@ async function main() {
     session_id?: string;
     context?: string;
     cwd?: string;
+    init?: {
+      script: string;
+      timeout_seconds?: number;
+      env?: Record<string, string>;
+    };
   }) => {
     const release = await sem.acquire();
     try {
@@ -595,13 +926,104 @@ async function main() {
         return;
       }
 
-      await bridge.ensureInitialized();
-
       const cwd = getRunCwd(msg.run_id, msg.cwd);
+
+      if (isBoxliteCloneMode) {
+        if (!msg.init?.env?.TUIXIU_REPO_URL?.trim()) {
+          sendUpdate(msg.run_id, {
+            type: "text",
+            text: "boxlite git_clone 模式缺少 init.env.TUIXIU_REPO_URL（用于重建 workspace）",
+          });
+          return;
+        }
+
+        const state = ensureCloneRun(msg.run_id, msg.init.env);
+        await state.bridge.ensureInitialized();
+
+        if (!state.inited) {
+          const initOk = await runInitScriptBoxlite({
+            runId: msg.run_id,
+            cwd,
+            sandbox: state.sandbox,
+            init: msg.init,
+          });
+          if (!initOk) {
+            await cleanupCloneRun(msg.run_id, "init_failed");
+            return;
+          }
+          state.inited = true;
+        }
+
+        let sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
+        if (!sessionId) {
+          const s = await state.bridge.newSession(cwd);
+          sessionId = s.sessionId;
+          setRunSession(msg.run_id, sessionId);
+          sendUpdate(msg.run_id, {
+            type: "session_created",
+            session_id: sessionId,
+          });
+          msg = {
+            ...msg,
+            prompt: composePromptWithContext(msg.context, msg.prompt),
+          };
+        } else {
+          const sessionPreviouslySeen = sessionToRun.has(sessionId);
+          setRunSession(msg.run_id, sessionId);
+          if (!sessionPreviouslySeen) {
+            const ok = await state.bridge.loadSession(sessionId, cwd);
+            if (!ok) {
+              sendUpdate(msg.run_id, {
+                type: "text",
+                text: "ACP session 无法 load（可能不支持或已丢失），将尝试直接对话…",
+              });
+            }
+          }
+        }
+
+        let res: { stopReason: string };
+        try {
+          res = await state.bridge.prompt(sessionId, msg.prompt);
+        } catch (err) {
+          if (shouldRecreateSession(err)) {
+            sendUpdate(msg.run_id, {
+              type: "text",
+              text: "⚠️ ACP session 疑似已丢失：将创建新 session 并注入上下文继续…",
+            });
+            const s = await state.bridge.newSession(cwd);
+            sessionId = s.sessionId;
+            setRunSession(msg.run_id, sessionId);
+            sendUpdate(msg.run_id, {
+              type: "session_created",
+              session_id: sessionId,
+            });
+
+            const replay = composePromptWithContext(msg.context, msg.prompt);
+            res = await state.bridge.prompt(sessionId, replay);
+          } else {
+            sendUpdate(msg.run_id, {
+              type: "text",
+              text: `ACP prompt 失败：${String(err)}`,
+            });
+            return;
+          }
+        }
+
+        const flushed = flushChunks(sessionId);
+        if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
+        sendUpdate(msg.run_id, {
+          type: "prompt_result",
+          stopReason: res.stopReason,
+        });
+        return;
+      }
+
+      if (!sharedBridge) throw new Error("ACP bridge not initialized");
+      await sharedBridge.ensureInitialized();
 
       let sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
       if (!sessionId) {
-        const s = await bridge.newSession(cwd);
+        const s = await sharedBridge.newSession(cwd);
         sessionId = s.sessionId;
         setRunSession(msg.run_id, sessionId);
         sendUpdate(msg.run_id, {
@@ -619,7 +1041,7 @@ async function main() {
         // 仅当本进程没见过该 session 时，尝试 load 历史会话。
         // 若 load 失败（agent 不支持 / session 不存在），不自动新建 session，避免上下文丢失。
         if (!sessionPreviouslySeen) {
-          const ok = await bridge.loadSession(sessionId, cwd);
+          const ok = await sharedBridge.loadSession(sessionId, cwd);
           if (!ok) {
             sendUpdate(msg.run_id, {
               type: "text",
@@ -631,14 +1053,14 @@ async function main() {
 
       let res: { stopReason: string };
       try {
-        res = await bridge.prompt(sessionId, msg.prompt);
+        res = await sharedBridge.prompt(sessionId, msg.prompt);
       } catch (err) {
         if (shouldRecreateSession(err)) {
           sendUpdate(msg.run_id, {
             type: "text",
             text: "⚠️ ACP session 疑似已丢失：将创建新 session 并注入上下文继续…",
           });
-          const s = await bridge.newSession(cwd);
+          const s = await sharedBridge.newSession(cwd);
           sessionId = s.sessionId;
           setRunSession(msg.run_id, sessionId);
           sendUpdate(msg.run_id, {
@@ -647,7 +1069,7 @@ async function main() {
           });
 
           const replay = composePromptWithContext(msg.context, msg.prompt);
-          res = await bridge.prompt(sessionId, replay);
+          res = await sharedBridge.prompt(sessionId, replay);
         } else {
           sendUpdate(msg.run_id, {
             type: "text",
@@ -684,9 +1106,19 @@ async function main() {
       }
 
       const sessionId = msg.session_id || runToSession.get(msg.run_id) || "";
-      if (!sessionId) return;
 
-      await bridge.cancel(sessionId);
+      if (isBoxliteCloneMode) {
+        if (sessionId && runToSession.has(msg.run_id)) {
+          const state = cloneRuns.get(msg.run_id);
+          await state?.bridge.cancel(sessionId).catch(() => {});
+        }
+        await cleanupCloneRun(msg.run_id, "cancel_task");
+        return;
+      }
+
+      if (!sessionId) return;
+      if (!sharedBridge) throw new Error("ACP bridge not initialized");
+      await sharedBridge.cancel(sessionId);
     } catch (err) {
       sendUpdate(msg.run_id, {
         type: "text",
@@ -782,6 +1214,38 @@ async function main() {
                 typeof msg.run_id === "string" &&
                 typeof msg.prompt === "string"
               ) {
+                const initRaw = (msg as any).init;
+                let init:
+                  | {
+                      script: string;
+                      timeout_seconds?: number;
+                      env?: Record<string, string>;
+                    }
+                  | undefined;
+                if (isRecord(initRaw) && typeof initRaw.script === "string") {
+                  const envRaw = initRaw.env;
+                  const env = isRecord(envRaw)
+                    ? Object.fromEntries(
+                        Object.entries(envRaw).filter(
+                          (entry): entry is [string, string] =>
+                            typeof entry[1] === "string",
+                        ),
+                      )
+                    : undefined;
+                  const timeoutSeconds =
+                    typeof initRaw.timeout_seconds === "number"
+                      ? initRaw.timeout_seconds
+                      : typeof initRaw.timeout_seconds === "string"
+                        ? Number(initRaw.timeout_seconds)
+                        : undefined;
+                  init = {
+                    script: initRaw.script,
+                    timeout_seconds: Number.isFinite(timeoutSeconds as number)
+                      ? (timeoutSeconds as number)
+                      : undefined,
+                    env,
+                  };
+                }
                 void handlePromptRun({
                   run_id: msg.run_id,
                   prompt: msg.prompt,
@@ -792,6 +1256,7 @@ async function main() {
                   context:
                     typeof msg.context === "string" ? msg.context : undefined,
                   cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
+                  init,
                 });
               }
             } catch (err) {
@@ -812,6 +1277,9 @@ async function main() {
           // ignore
         }
         ws = null;
+        if (isBoxliteCloneMode) {
+          await Promise.allSettled(Array.from(cloneRuns.keys()).map((id) => cleanupCloneRun(id, "ws_disconnected")));
+        }
       }
 
       await delay(2000);
