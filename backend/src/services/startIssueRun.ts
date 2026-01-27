@@ -2,6 +2,7 @@ import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { toPublicProject } from "../utils/publicProject.js";
 import { createRunWorktree, suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
+import { parseEnvText } from "../utils/envText.js";
 import { postGitHubIssueCommentBestEffort } from "./githubIssueComments.js";
 import type { AcpTunnel } from "./acpTunnel.js";
 
@@ -264,13 +265,14 @@ export async function startIssueRun(opts: {
         ? {
             script: (role as any).initScript,
             timeout_seconds: (role as any).initTimeoutSeconds,
-            env: {
+          env: {
               ...(((issue as any).project as any).githubAccessToken
                 ? {
                     GH_TOKEN: ((issue as any).project as any).githubAccessToken,
                     GITHUB_TOKEN: ((issue as any).project as any).githubAccessToken,
                   }
                 : {}),
+              ...parseEnvText((role as any).envText),
               TUIXIU_PROJECT_ID: (issue as any).projectId,
               TUIXIU_PROJECT_NAME: String(((issue as any).project as any)?.name ?? ""),
               TUIXIU_REPO_URL: String(((issue as any).project as any).repoUrl ?? ""),
