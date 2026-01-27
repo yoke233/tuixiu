@@ -11,6 +11,7 @@ export function makeStepRoutes(deps: {
   sendToAgent?: SendToAgent;
   createWorkspace?: CreateWorkspace;
   autoDispatch?: boolean;
+  broadcastToClients?: (payload: unknown) => void;
 }): FastifyPluginAsync {
   return async (server) => {
     server.post("/steps/:id/start", async (request) => {
@@ -27,9 +28,21 @@ export function makeStepRoutes(deps: {
         const data = await startStep({ prisma: deps.prisma }, id, body);
         if (deps.autoDispatch) {
           await dispatchExecutionForRun(
-            { prisma: deps.prisma, sendToAgent: deps.sendToAgent, createWorkspace: deps.createWorkspace },
+            {
+              prisma: deps.prisma,
+              sendToAgent: deps.sendToAgent,
+              createWorkspace: deps.createWorkspace,
+              broadcastToClients: deps.broadcastToClients,
+            },
             data.run.id,
           );
+        }
+
+        const issueId = (data.task as any)?.issueId;
+        const taskId = (data.task as any)?.id;
+        const stepId = (data.step as any)?.id;
+        if (issueId && taskId) {
+          deps.broadcastToClients?.({ type: "task_updated", issue_id: issueId, task_id: taskId, step_id: stepId, run_id: data.run.id });
         }
         return { success: true, data };
       } catch (err) {
@@ -50,6 +63,12 @@ export function makeStepRoutes(deps: {
 
       try {
         const task = await rollbackTaskToStep({ prisma: deps.prisma }, id, body);
+        deps.broadcastToClients?.({
+          type: "task_updated",
+          issue_id: (task as any).issueId,
+          task_id: (task as any).id,
+          step_id: body.stepId,
+        });
         return { success: true, data: { task } };
       } catch (err) {
         if (err instanceof TaskEngineError) {

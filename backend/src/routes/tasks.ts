@@ -10,7 +10,10 @@ import {
   listTasksForIssue,
 } from "../services/taskEngine.js";
 
-export function makeTaskRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
+export function makeTaskRoutes(deps: {
+  prisma: PrismaDeps;
+  broadcastToClients?: (payload: unknown) => void;
+}): FastifyPluginAsync {
   return async (server) => {
     server.get("/task-templates", async () => {
       return { success: true, data: { templates: listTaskTemplates() } };
@@ -32,6 +35,7 @@ export function makeTaskRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync
 
       try {
         const task = await createTaskFromTemplate({ prisma: deps.prisma }, id, body);
+        deps.broadcastToClients?.({ type: "task_created", issue_id: id, task_id: (task as any).id });
         return { success: true, data: { task } };
       } catch (err) {
         if (err instanceof TaskEngineError) {

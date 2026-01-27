@@ -110,7 +110,10 @@ export async function createTaskFromTemplate(
 export async function listTasksForIssue(deps: { prisma: PrismaDeps }, issueId: string): Promise<any[]> {
   return await deps.prisma.task.findMany({
     where: { issueId },
-    include: { steps: { orderBy: { order: "asc" } } },
+    include: {
+      steps: { orderBy: { order: "asc" } },
+      runs: { orderBy: { startedAt: "desc" }, take: 200 },
+    },
     orderBy: { createdAt: "desc" },
   });
 }

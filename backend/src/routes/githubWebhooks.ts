@@ -54,6 +54,7 @@ export function makeGitHubWebhookRoutes(deps: {
   webhookSecret?: string;
   parseRepo?: typeof github.parseGitHubRepo;
   onIssueUpserted?: (issueId: string, reason: string) => void;
+  broadcastToClients?: (payload: unknown) => void;
 }): FastifyPluginAsync {
   return async (server) => {
     const parseRepo = deps.parseRepo ?? github.parseGitHubRepo;
@@ -187,6 +188,16 @@ export function makeGitHubWebhookRoutes(deps: {
             passed ? "completed" : "failed",
             passed ? undefined : { errorMessage: `ci_failed: ${String(conclusion ?? "unknown")}` },
           ).catch(() => {});
+
+          if ((run as any).taskId) {
+            deps.broadcastToClients?.({
+              type: "task_updated",
+              issue_id: (run as any).issueId,
+              task_id: (run as any).taskId,
+              step_id: (run as any).stepId,
+              run_id: run.id,
+            });
+          }
 
           return { success: true, data: { ok: true, handled: true, runId: run.id, passed } };
         }

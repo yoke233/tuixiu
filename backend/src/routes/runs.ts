@@ -13,6 +13,7 @@ import {
 } from "../services/runGitChanges.js";
 import {
   createReviewRequestForRun,
+  mergeReviewRequestForRun,
   syncReviewRequestForRun,
 } from "../services/runReviewRequest.js";
 import { requestMergePrApproval } from "../services/approvalRequests.js";
@@ -26,6 +27,7 @@ const execFileAsync = promisify(execFile);
 export function makeRunRoutes(deps: {
   prisma: PrismaDeps;
   sendToAgent?: SendToAgent;
+  broadcastToClients?: (payload: unknown) => void;
   gitPush?: (opts: { cwd: string; branch: string; project: any }) => Promise<void>;
   gitlab?: {
     inferBaseUrl?: typeof gitlab.inferGitlabBaseUrl;
@@ -407,6 +409,15 @@ export function makeRunRoutes(deps: {
 
         await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed", completedAt: new Date() } as any }).catch(() => {});
         await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(() => {});
+        if ((run as any).taskId) {
+          deps.broadcastToClients?.({
+            type: "task_updated",
+            issue_id: (run as any).issueId,
+            task_id: (run as any).taskId,
+            step_id: (run as any).stepId,
+            run_id: run.id,
+          });
+        }
         return { success: true, data: { ok: true } };
       }
 
@@ -423,10 +434,29 @@ export function makeRunRoutes(deps: {
           run.id,
           { code: "CHANGES_REQUESTED", message: comment || "changes requested" },
         ).catch(() => {});
+        if ((run as any).taskId) {
+          deps.broadcastToClients?.({
+            type: "task_updated",
+            issue_id: (run as any).issueId,
+            task_id: (run as any).taskId,
+            step_id: (run as any).stepId,
+            run_id: run.id,
+            reason: "changes_requested",
+          });
+        }
         return { success: true, data: { ok: true, blocked: true } };
       }
 
       await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(() => {});
+      if ((run as any).taskId) {
+        deps.broadcastToClients?.({
+          type: "task_updated",
+          issue_id: (run as any).issueId,
+          task_id: (run as any).taskId,
+          step_id: (run as any).stepId,
+          run_id: run.id,
+        });
+      }
       return { success: true, data: { ok: true } };
     });
 
