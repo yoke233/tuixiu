@@ -1,0 +1,52 @@
+name: "🐞 Bug Report"
+description: "Report a reproducible bug"
+title: "[Bug] "
+labels: ["type/bug", "status/triage"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - backend
+        - frontend
+        - acp-proxy
+        - infra
+        - docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria (optional)
+      placeholder: |
+        - [ ] Steps to reproduce no longer trigger the issue
+        - [ ] Add/update test cases
+    validations:
+      required: false

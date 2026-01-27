@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { approveApproval, rejectApproval } from "../api/approvals";
+import { autoReviewRun } from "../api/pm";
 import {
   createRunPr,
   getRun,
   getRunChanges,
   getRunDiff,
-  mergeRunPr,
   promptRun,
+  requestMergeRunPr,
   syncRunPr,
   type RunChanges,
 } from "../api/runs";
+import { useAuth } from "../auth/AuthContext";
 import type { Project, Run } from "../types";
 
 type Props = {
@@ -72,6 +76,9 @@ function buildCreatePrUrl(opts: { project?: Project; baseBranch: string; branch:
 }
 
 export function RunChangesPanel(props: Props) {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [changes, setChanges] = useState<RunChanges | null>(null);
@@ -79,10 +86,25 @@ export function RunChangesPanel(props: Props) {
   const [diff, setDiff] = useState<string>("");
   const [diffLoading, setDiffLoading] = useState(false);
   const [prLoading, setPrLoading] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const prArtifact = useMemo(() => {
     const arts = props.run?.artifacts ?? [];
     return arts.find((a) => a.type === "pr") ?? null;
+  }, [props.run]);
+
+  const mergeApproval = useMemo(() => {
+    const arts = props.run?.artifacts ?? [];
+    const reports = arts.filter((a) => a.type === "report");
+    const sorted = [...reports].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    for (const art of sorted) {
+      const content = art.content as any;
+      if (!content || typeof content !== "object") continue;
+      if (content.kind !== "approval_request") continue;
+      if (content.action !== "merge_pr") continue;
+      return { artifact: art, content };
+    }
+    return null;
   }, [props.run]);
 
   const prInfo = useMemo(() => {
@@ -111,6 +133,13 @@ export function RunChangesPanel(props: Props) {
   const provider = useMemo(() => (props.project?.scmType ?? "").toLowerCase(), [props.project]);
   const providerLabel = "PR";
   const canUseApi = provider === "gitlab" || provider === "github";
+
+  function requireLogin(): boolean {
+    if (auth.user) return true;
+    const next = encodeURIComponent(`${location.pathname}${location.search}`);
+    navigate(`/login?next=${next}`);
+    return false;
+  }
 
   async function refreshRun() {
     if (!props.runId) return;
@@ -163,6 +192,7 @@ export function RunChangesPanel(props: Props) {
 
   async function onCreatePr() {
     if (!props.runId) return;
+    if (!requireLogin()) return;
     setPrLoading(true);
     setError(null);
     try {
@@ -176,7 +206,56 @@ export function RunChangesPanel(props: Props) {
     }
   }
 
+  async function onAutoReview() {
+    if (!props.runId) return;
+    if (!requireLogin()) return;
+    setReviewLoading(true);
+    setError(null);
+    try {
+      await autoReviewRun(props.runId);
+      await refreshRun();
+      props.onAfterAction?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
   async function onMergePr() {
+    if (!props.runId) return;
+    if (!requireLogin()) return;
+    setPrLoading(true);
+    setError(null);
+    try {
+      const synced = await syncRunPr(props.runId);
+      const c = synced.content as any;
+      const mergeable = typeof c?.mergeable === "boolean" ? c.mergeable : null;
+      const mergeableState = typeof c?.mergeable_state === "string" ? c.mergeable_state : "";
+      if (mergeableState === "dirty") {
+        setError("GitHub 显示该 PR 存在合并冲突（mergeable_state=dirty），请先解决冲突再合并。");
+        await refreshRun();
+        return;
+      }
+      if (mergeable === false) {
+        const detail = mergeableState ? `（mergeable_state=${mergeableState}）` : "";
+        setError(`该 PR 当前不可合并${detail}，请先同步/修复阻塞项后再重试。`);
+        await refreshRun();
+        return;
+      }
+
+      await requestMergeRunPr(props.runId);
+      await refreshRun();
+      props.onAfterAction?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrLoading(false);
+    }
+  }
+
+  async function onApproveMerge() {
+    if (!mergeApproval?.artifact?.id) return;
     if (!props.runId) return;
     setPrLoading(true);
     setError(null);
@@ -197,7 +276,22 @@ export function RunChangesPanel(props: Props) {
         return;
       }
 
-      await mergeRunPr(props.runId);
+      await approveApproval(mergeApproval.artifact.id);
+      await refreshRun();
+      props.onAfterAction?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrLoading(false);
+    }
+  }
+
+  async function onRejectMerge() {
+    if (!mergeApproval?.artifact?.id) return;
+    setPrLoading(true);
+    setError(null);
+    try {
+      await rejectApproval(mergeApproval.artifact.id);
       await refreshRun();
       props.onAfterAction?.();
     } catch (e) {
@@ -209,6 +303,7 @@ export function RunChangesPanel(props: Props) {
 
   async function onSyncPr() {
     if (!props.runId) return;
+    if (!requireLogin()) return;
     setPrLoading(true);
     setError(null);
     try {
@@ -224,10 +319,15 @@ export function RunChangesPanel(props: Props) {
 
   async function onAskAgentToFixMerge() {
     if (!props.runId) return;
+    if (!requireLogin()) return;
     setPrLoading(true);
     setError(null);
     try {
       const run = props.run ?? (await getRun(props.runId));
+      if (run.executorType !== "agent") {
+        setError("当前 Run 不是 Agent 执行器，无法发送 prompt");
+        return;
+      }
       const base = prInfo?.targetBranch || changes?.baseBranch || props.project?.defaultBranch || "main";
       const head = prInfo?.sourceBranch || changes?.branch || run.branchName || "";
       const workspace = run.workspacePath || "";
@@ -253,11 +353,12 @@ export function RunChangesPanel(props: Props) {
         "建议步骤（在当前 worktree 执行）：",
         "1) git fetch origin",
         `2) git merge origin/${base}`,
-        "3) 解决冲突后：git add -A",
-        "4) git commit -m \"chore: resolve merge conflicts\"",
-        "5) git push",
+        "3) 解决冲突",
+        "4) 确保 tests/lint 通过（如项目有）",
+        "5) 提交修复说明",
+        "6) git push",
         "",
-        "要求：不引入无关改动；确保 tests/lint 通过（如项目有）。",
+        "要求：不引入无关改动。",
       ].filter(Boolean);
 
       await promptRun(props.runId, lines.join("\n"));
@@ -272,20 +373,22 @@ export function RunChangesPanel(props: Props) {
 
   if (!props.runId) {
     return (
-      <section className="card">
-        <h2>变更</h2>
-        <div className="muted">暂无 Run</div>
-      </section>
+      <div className="muted">暂无 Run</div>
     );
   }
 
   return (
-    <section className="card">
-      <div className="row spaceBetween">
-        <h2>变更</h2>
-        <div className="row gap">
+    <div>
+      <div className="row spaceBetween" style={{ alignItems: "center" }}>
+        <div className="muted" style={{ fontSize: 12 }}>
+          {changes ? `${changes.baseBranch} → ${changes.branch} · ${changes.files.length} files` : "变更与 diff"}
+        </div>
+        <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
           <button onClick={refresh} disabled={loading}>
             刷新
+          </button>
+          <button onClick={onAutoReview} disabled={reviewLoading}>
+            {reviewLoading ? "验收中…" : "自动验收"}
           </button>
           {canUseApi ? (
             prInfo ? (
@@ -302,12 +405,34 @@ export function RunChangesPanel(props: Props) {
                     让 Agent {prInfo.mergeableState === "dirty" ? "解决冲突" : "更新分支"}
                   </button>
                 ) : null}
-                <button
-                  onClick={onMergePr}
-                  disabled={prLoading || prInfo.mergeableState === "dirty" || prInfo.mergeable === false}
-                >
-                  合并 {providerLabel}
-                </button>
+                {mergeApproval?.content?.status === "pending" ? (
+                  <>
+                    <span className="muted" style={{ marginLeft: 4 }}>
+                      待审批
+                    </span>
+                    <button onClick={onApproveMerge} disabled={prLoading}>
+                      批准并合并
+                    </button>
+                    <button onClick={onRejectMerge} disabled={prLoading}>
+                      拒绝
+                    </button>
+                  </>
+                ) : mergeApproval?.content?.status === "executing" ? (
+                  <button disabled>
+                    正在合并…
+                  </button>
+                ) : mergeApproval?.content?.status === "executed" ? (
+                  <button disabled>
+                    已合并
+                  </button>
+                ) : (
+                  <button
+                    onClick={onMergePr}
+                    disabled={prLoading || prInfo.mergeableState === "dirty" || prInfo.mergeable === false}
+                  >
+                    发起合并审批
+                  </button>
+                )}
               </>
             ) : (
               <button onClick={onCreatePr} disabled={prLoading}>
@@ -348,10 +473,6 @@ export function RunChangesPanel(props: Props) {
         <div className="muted">加载变更中…</div>
       ) : changes ? (
         <>
-          <div className="muted" style={{ marginBottom: 10 }}>
-            {changes.baseBranch} → {changes.branch} · {changes.files.length} files
-          </div>
-
           <div className="changesGrid">
             <div className="changesFiles" role="list" aria-label="变更文件列表">
               {changes.files.length ? (
@@ -390,6 +511,6 @@ export function RunChangesPanel(props: Props) {
       ) : (
         <div className="muted">暂无变更信息（需要 branch 产物或已推送分支）</div>
       )}
-    </section>
+    </div>
   );
 }

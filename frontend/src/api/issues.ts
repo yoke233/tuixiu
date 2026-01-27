@@ -8,6 +8,16 @@ export type ListIssuesResult = {
   offset: number;
 };
 
+export type ListIssuesQuery = {
+  status?: IssueStatus;
+  statuses?: IssueStatus[];
+  projectId?: string;
+  archived?: boolean;
+  q?: string;
+  limit?: number;
+  offset?: number;
+};
+
 export type CreateIssueInput = {
   projectId?: string;
   title: string;
@@ -17,10 +27,22 @@ export type CreateIssueInput = {
   testRequirements?: string;
 };
 
-export async function listIssues(): Promise<ListIssuesResult> {
-  const data = await apiGet<{ issues: Issue[]; total: number; limit: number; offset: number }>(
-    "/issues"
-  );
+export async function listIssues(query?: ListIssuesQuery): Promise<ListIssuesResult> {
+  const params = new URLSearchParams();
+  const statuses = query?.statuses?.filter(Boolean) ?? [];
+  if (statuses.length) {
+    params.set("statuses", statuses.join(","));
+  } else if (query?.status) {
+    params.set("status", query.status);
+  }
+  if (query?.projectId) params.set("projectId", query.projectId);
+  if (typeof query?.archived === "boolean") params.set("archived", query.archived ? "true" : "false");
+  if (query?.q?.trim()) params.set("q", query.q.trim());
+  if (typeof query?.limit === "number") params.set("limit", String(query.limit));
+  if (typeof query?.offset === "number") params.set("offset", String(query.offset));
+
+  const qs = params.toString();
+  const data = await apiGet<{ issues: Issue[]; total: number; limit: number; offset: number }>(`/issues${qs ? `?${qs}` : ""}`);
   return data;
 }
 
@@ -42,7 +64,10 @@ export async function startIssue(
   return data;
 }
 
-export async function updateIssue(id: string, input: { status?: Exclude<IssueStatus, "running"> }): Promise<Issue> {
+export async function updateIssue(
+  id: string,
+  input: { status?: Exclude<IssueStatus, "running">; archived?: boolean }
+): Promise<Issue> {
   const data = await apiPatch<{ issue: Issue }>(`/issues/${id}`, input);
   return data.issue;
 }

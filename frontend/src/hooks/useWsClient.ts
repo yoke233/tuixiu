@@ -5,6 +5,9 @@ import type { Artifact, Event } from "../types";
 export type WsMessage = {
   type: string;
   run_id?: string;
+  issue_id?: string;
+  task_id?: string;
+  step_id?: string;
   event?: Event;
   artifact?: Artifact;
 };

@@ -1,9 +1,9 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IssueListPage } from "./IssueListPage";
+import { AuthProvider } from "../auth/AuthProvider";
 import { ThemeProvider } from "../theme";
 
 function mockFetchJsonOnce(body: unknown) {
@@ -14,6 +14,9 @@ function mockFetchJsonOnce(body: unknown) {
 
 describe("IssueListPage", () => {
   beforeEach(() => {
+    localStorage.removeItem("showArchivedIssues");
+    localStorage.setItem("authToken", "test-token");
+    localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "admin", role: "admin" }));
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -21,7 +24,7 @@ describe("IssueListPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders issues list after loading", async () => {
+  it("renders issues list after loading and shows admin quick actions", async () => {
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -32,6 +35,8 @@ describe("IssueListPage", () => {
             repoUrl: "https://example.com/repo.git",
             scmType: "gitlab",
             defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
             createdAt: "2026-01-25T00:00:00.000Z"
           }
         ]
@@ -57,65 +62,28 @@ describe("IssueListPage", () => {
     });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues"]}>
-          <Routes>
-            <Route path="/issues" element={<IssueListPage />}>
-              <Route index element={<div>empty</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues"]}>
+            <Routes>
+              <Route path="/issues" element={<IssueListPage />}>
+                <Route index element={<div>empty</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
     expect(screen.getByText("看板")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建 Issue" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GitHub 导入" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "管理" })).toBeInTheDocument();
   });
 
-  it("shows error when creating issue without project", async () => {
-    mockFetchJsonOnce({ success: true, data: { projects: [] } });
-    mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
-
-    render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues"]}>
-          <Routes>
-            <Route path="/issues" element={<IssueListPage />}>
-              <Route index element={<div>empty</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
-    );
-
-    await waitFor(() => expect(screen.getByText("请先创建 Project")).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText("创建 / 配置"));
-    await userEvent.type(screen.getByLabelText("Issue 标题"), "Test issue");
-    await userEvent.click(screen.getByRole("button", { name: "提交" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("请先创建 Project");
-  });
-
-  it("creates project then shows it in selector", async () => {
-    // initial refresh: projects=[], issues=[]
-    mockFetchJsonOnce({ success: true, data: { projects: [] } });
-    mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
-    // create project
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        project: {
-          id: "p1",
-          name: "Demo",
-          repoUrl: "https://example.com/repo.git",
-          scmType: "gitlab",
-          defaultBranch: "main",
-          createdAt: "2026-01-25T00:00:00.000Z"
-        }
-      }
-    });
-    // refresh after creation: projects=[p1], issues=[]
+  it("does not render issue actions menu button", async () => {
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -126,84 +94,8 @@ describe("IssueListPage", () => {
             repoUrl: "https://example.com/repo.git",
             scmType: "gitlab",
             defaultBranch: "main",
-            createdAt: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
-    });
-    mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
-    // load roles after project selected
-    mockFetchJsonOnce({ success: true, data: { roles: [] } });
-
-    render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues"]}>
-          <Routes>
-            <Route path="/issues" element={<IssueListPage />}>
-              <Route index element={<div>empty</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
-    );
-
-    await userEvent.click(screen.getByText("创建 / 配置"));
-
-    await userEvent.type(screen.getByLabelText("名称"), "Demo");
-    await userEvent.type(screen.getByLabelText("Repo URL"), "https://example.com/repo.git");
-    const projectsCard = screen.getByRole("heading", { name: "Projects" }).closest("section");
-    if (!projectsCard) throw new Error("Projects section not found");
-    await userEvent.click(within(projectsCard).getByRole("button", { name: "创建" }));
-
-    expect(await screen.findByLabelText("选择 Project")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Demo" })).toBeInTheDocument();
-  });
-
-  it("creates issue then shows it in list", async () => {
-    // initial refresh: projects=[p1], issues=[]
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        projects: [
-          {
-            id: "p1",
-            name: "Demo",
-            repoUrl: "https://example.com/repo.git",
-            scmType: "gitlab",
-            defaultBranch: "main",
-            createdAt: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
-    });
-    mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
-    // load roles when opening tools
-    mockFetchJsonOnce({ success: true, data: { roles: [] } });
-    // create issue
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        issue: {
-          id: "i1",
-          projectId: "p1",
-          title: "Fix README",
-          status: "pending",
-          createdAt: "2026-01-25T00:00:00.000Z",
-          runs: []
-        },
-      }
-    });
-    // refresh after creation
-    mockFetchJsonOnce({
-      success: true,
-      data: {
-        projects: [
-          {
-            id: "p1",
-            name: "Demo",
-            repoUrl: "https://example.com/repo.git",
-            scmType: "gitlab",
-            defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
             createdAt: "2026-01-25T00:00:00.000Z"
           }
         ]
@@ -229,22 +121,219 @@ describe("IssueListPage", () => {
     });
 
     render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={["/issues"]}>
-          <Routes>
-            <Route path="/issues" element={<IssueListPage />}>
-              <Route index element={<div>empty</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues"]}>
+            <Routes>
+              <Route path="/issues" element={<IssueListPage />}>
+                <Route index element={<div>empty</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
     );
 
-    await waitFor(() => expect(screen.getByLabelText("选择 Project")).toBeInTheDocument());
-    await userEvent.click(screen.getByText("创建 / 配置"));
-    await userEvent.type(screen.getByLabelText("Issue 标题"), "Fix README");
-    await userEvent.click(screen.getByRole("button", { name: "提交" }));
-
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /操作：/ })).not.toBeInTheDocument();
+  });
+
+  it("hides archived issues by default", async () => {
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        projects: [
+          {
+            id: "p1",
+            name: "Demo",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "gitlab",
+            defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
+            createdAt: "2026-01-25T00:00:00.000Z"
+          }
+        ]
+      }
+    });
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issues: [
+          {
+            id: "i1",
+            projectId: "p1",
+            title: "Visible",
+            status: "done",
+            archivedAt: null,
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          },
+          {
+            id: "i2",
+            projectId: "p1",
+            title: "Archived",
+            status: "done",
+            archivedAt: "2026-01-25T00:00:00.000Z",
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          }
+        ],
+        total: 2,
+        limit: 50,
+        offset: 0
+      }
+    });
+
+    render(
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues"]}>
+            <Routes>
+              <Route path="/issues" element={<IssueListPage />}>
+                <Route index element={<div>empty</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
+    );
+
+    expect(await screen.findByText("Visible")).toBeInTheDocument();
+    expect(screen.queryByText("Archived")).not.toBeInTheDocument();
+  });
+
+  it("shows archived issues when enabled", async () => {
+    localStorage.setItem("showArchivedIssues", "1");
+
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        projects: [
+          {
+            id: "p1",
+            name: "Demo",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "gitlab",
+            defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
+            createdAt: "2026-01-25T00:00:00.000Z"
+          }
+        ]
+      }
+    });
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issues: [
+          {
+            id: "i1",
+            projectId: "p1",
+            title: "Visible",
+            status: "done",
+            archivedAt: null,
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          },
+          {
+            id: "i2",
+            projectId: "p1",
+            title: "Archived",
+            status: "done",
+            archivedAt: "2026-01-25T00:00:00.000Z",
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          }
+        ],
+        total: 2,
+        limit: 50,
+        offset: 0
+      }
+    });
+
+    render(
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues"]}>
+            <Routes>
+              <Route path="/issues" element={<IssueListPage />}>
+                <Route index element={<div>empty</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
+    );
+
+    expect(await screen.findByText("Archived")).toBeInTheDocument();
+  });
+
+  it("hides session container issues even when showing archived", async () => {
+    localStorage.setItem("showArchivedIssues", "1");
+
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        projects: [
+          {
+            id: "p1",
+            name: "Demo",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "gitlab",
+            defaultBranch: "main",
+            workspaceMode: "worktree",
+            gitAuthMode: "https_pat",
+            createdAt: "2026-01-25T00:00:00.000Z"
+          }
+        ]
+      }
+    });
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issues: [
+          {
+            id: "s1",
+            projectId: "p1",
+            title: "Session Hidden",
+            status: "running",
+            archivedAt: "2026-01-25T00:00:00.000Z",
+            labels: ["_session"],
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          },
+          {
+            id: "i2",
+            projectId: "p1",
+            title: "Archived",
+            status: "done",
+            archivedAt: "2026-01-25T00:00:00.000Z",
+            createdAt: "2026-01-25T00:00:00.000Z",
+            runs: []
+          }
+        ],
+        total: 2,
+        limit: 50,
+        offset: 0
+      }
+    });
+
+    render(
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues"]}>
+            <Routes>
+              <Route path="/issues" element={<IssueListPage />}>
+                <Route index element={<div>empty</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
+    );
+
+    expect(await screen.findByText("Archived")).toBeInTheDocument();
+    expect(screen.queryByText("Session Hidden")).not.toBeInTheDocument();
   });
 });

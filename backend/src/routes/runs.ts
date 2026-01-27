@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { buildContextFromRun } from "../services/runContext.js";
-import { parseEnvText } from "../utils/envText.js";
+import type { AcpTunnel } from "../services/acpTunnel.js";
 import {
   getRunChanges,
   getRunDiff,
@@ -17,26 +17,23 @@ import {
   mergeReviewRequestForRun,
   syncReviewRequestForRun,
 } from "../services/runReviewRequest.js";
+import { requestCreatePrApproval, requestMergePrApproval } from "../services/approvalRequests.js";
+import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
+import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
+import { createGitProcessEnv } from "../utils/gitAuth.js";
+import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
+import { computeSensitiveHitFromFiles } from "../services/pm/pmSensitivePaths.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
 
 const execFileAsync = promisify(execFile);
 
-function resolveBranch(run: any): string {
-  const branchArtifact = (run.artifacts ?? []).find((a: any) => a.type === "branch");
-  const branchFromArtifact = (branchArtifact?.content as any)?.branch;
-  const branch = run.branchName || (typeof branchFromArtifact === "string" ? branchFromArtifact : "");
-  return typeof branch === "string" ? branch : "";
-}
-
-function pickRoleEnv(role: any): Record<string, string> {
-  return parseEnvText(role?.envText);
-}
-
 export function makeRunRoutes(deps: {
   prisma: PrismaDeps;
   sendToAgent?: SendToAgent;
-  gitPush?: (opts: { cwd: string; branch: string }) => Promise<void>;
+  acp?: AcpTunnel;
+  broadcastToClients?: (payload: unknown) => void;
+  gitPush?: (opts: { cwd: string; branch: string; project: any }) => Promise<void>;
   gitlab?: {
     inferBaseUrl?: typeof gitlab.inferGitlabBaseUrl;
     createMergeRequest?: typeof gitlab.createMergeRequest;
@@ -53,10 +50,16 @@ export function makeRunRoutes(deps: {
   return async (server) => {
     const gitPush =
       deps.gitPush ??
-      (async (opts: { cwd: string; branch: string }) => {
-        await execFileAsync("git", ["push", "-u", "origin", opts.branch], {
-          cwd: opts.cwd,
-        });
+      (async (opts: { cwd: string; branch: string; project: any }) => {
+        const { env, cleanup } = await createGitProcessEnv(opts.project);
+        try {
+          await execFileAsync("git", ["push", "-u", "origin", opts.branch], {
+            cwd: opts.cwd,
+            env,
+          });
+        } finally {
+          await cleanup();
+        }
       });
 
     server.get("/:id", async (request) => {
@@ -186,6 +189,61 @@ export function makeRunRoutes(deps: {
       const { id } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
 
+      const run = await deps.prisma.run.findUnique({
+        where: { id },
+        include: { issue: { include: { project: true } } } as any,
+      });
+      if (!run) return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+
+      const project = (run as any)?.issue?.project;
+      if (!project) return { success: false, error: { code: "BAD_RUN", message: "Run 缺少 project" } };
+
+      const { policy } = getPmPolicyFromBranchProtection(project.branchProtection);
+      const sensitivePatterns = Array.isArray(policy.sensitivePaths) ? policy.sensitivePaths : [];
+      const needSensitiveCheck =
+        sensitivePatterns.length > 0 && policy.approvals.escalateOnSensitivePaths.includes("create_pr");
+
+      let sensitive = null as ReturnType<typeof computeSensitiveHitFromFiles> | null;
+      let sensitiveCheckFailed = false;
+      if (needSensitiveCheck) {
+        try {
+          const changes = await getRunChanges({ prisma: deps.prisma, runId: id });
+          sensitive = computeSensitiveHitFromFiles(changes.files ?? [], sensitivePatterns);
+        } catch {
+          sensitiveCheckFailed = true;
+        }
+      }
+
+      const requireApproval =
+        policy.approvals.requireForActions.includes("create_pr") ||
+        (needSensitiveCheck && (sensitive !== null || sensitiveCheckFailed));
+
+      if (requireApproval) {
+        const req = await requestCreatePrApproval({
+          prisma: deps.prisma,
+          runId: id,
+          requestedBy: "api_create_pr",
+          payload: {
+            title: body.title,
+            description: body.description,
+            targetBranch: body.targetBranch,
+            sensitive: sensitive
+              ? { patterns: sensitive.patterns.slice(0, 20), matchedFiles: sensitive.matchedFiles.slice(0, 60) }
+              : undefined,
+          },
+        });
+        if (!req.success) return req;
+
+        return {
+          success: false,
+          error: {
+            code: "APPROVAL_REQUIRED",
+            message: "创建 PR 属于受控动作，需要审批。已创建审批请求，请在 /api/approvals 中批准后执行。",
+          },
+          data: req.data,
+        };
+      }
+
       return await createReviewRequestForRun(
         {
           prisma: deps.prisma,
@@ -201,22 +259,47 @@ export function makeRunRoutes(deps: {
     server.post("/:id/merge-pr", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({
+        requestedBy: z.string().min(1).max(100).optional(),
         squash: z.boolean().optional(),
         mergeCommitMessage: z.string().min(1).optional(),
       });
       const { id } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
 
-      return await mergeReviewRequestForRun(
-        {
-          prisma: deps.prisma,
-          gitPush,
-          gitlab: deps.gitlab,
-          github: deps.github,
+      const req = await requestMergePrApproval({
+        prisma: deps.prisma,
+        runId: id,
+        requestedBy: body.requestedBy ?? "api_merge_pr",
+        payload: { squash: body.squash, mergeCommitMessage: body.mergeCommitMessage },
+      });
+      if (!req.success) return req;
+
+      return {
+        success: false,
+        error: {
+          code: "APPROVAL_REQUIRED",
+          message: "合并 PR 属于高危动作，需要审批。已创建审批请求，请在 /api/approvals 中批准后执行合并。",
         },
-        id,
-        body,
-      );
+        data: req.data,
+      };
+    });
+
+    server.post("/:id/request-merge-pr", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const bodySchema = z.object({
+        requestedBy: z.string().min(1).max(100).optional(),
+        squash: z.boolean().optional(),
+        mergeCommitMessage: z.string().min(1).optional(),
+      });
+      const { id } = paramsSchema.parse(request.params);
+      const body = bodySchema.parse(request.body ?? {});
+
+      return await requestMergePrApproval({
+        prisma: deps.prisma,
+        runId: id,
+        requestedBy: body.requestedBy,
+        payload: { squash: body.squash, mergeCommitMessage: body.mergeCommitMessage },
+      });
     });
 
     server.post("/:id/sync-pr", async (request) => {
@@ -244,7 +327,7 @@ export function makeRunRoutes(deps: {
         where: { id },
         include: {
           agent: true,
-          issue: { include: { project: true } },
+          issue: true,
           artifacts: { orderBy: { createdAt: "desc" } },
         },
       });
@@ -255,81 +338,47 @@ export function makeRunRoutes(deps: {
         };
       }
 
-      await deps.prisma.event.create({
-        data: {
-          id: uuidv7(),
-          runId: id,
-          source: "user",
-          type: "user.message",
-          payload: { text } as any,
-        },
-      });
-
-      if (!deps.sendToAgent) {
+      if (!deps.acp) {
         return {
           success: false,
-          error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" },
+          error: { code: "NO_AGENT_GATEWAY", message: "ACP 隧道未配置" },
+        };
+      }
+      if (!run.agent) {
+        return {
+          success: false,
+          error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法发送 prompt" },
         };
       }
 
+      const recentEvents = await deps.prisma.event.findMany({
+        where: { runId: id },
+        orderBy: { timestamp: "desc" },
+        take: 200,
+      });
+      const context = buildContextFromRun({
+        run,
+        issue: run.issue,
+        events: recentEvents,
+      });
+
+      const cwd = run.workspacePath ?? "";
+      if (!cwd) {
+        return {
+          success: false,
+          error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法发送 prompt" },
+        };
+      }
+
+      const createdAt = new Date();
       try {
-        const recentEvents = await deps.prisma.event.findMany({
-          where: { runId: id },
-          orderBy: { timestamp: "desc" },
-          take: 200,
-        });
-        const context = buildContextFromRun({
-          run,
-          issue: run.issue,
-          events: recentEvents,
-        });
-
-        const isBoxliteClone = String(run.workspaceType ?? "") === "boxlite_clone";
-        let init:
-          | {
-              script: string;
-              timeout_seconds?: number;
-              env?: Record<string, string>;
-            }
-          | undefined;
-
-        if (isBoxliteClone) {
-          const roleKey = typeof (run.metadata as any)?.roleKey === "string" ? String((run.metadata as any).roleKey) : "";
-          const role = roleKey
-            ? await deps.prisma.roleTemplate.findFirst({
-                where: { projectId: run.issue.projectId, key: roleKey },
-              })
-            : null;
-
-          const branch = resolveBranch(run);
-          const baseBranch = run.issue.project.defaultBranch || "main";
-
-          init = {
-            script: role?.initScript?.trim() ? role.initScript : "",
-            timeout_seconds: Math.max(role?.initTimeoutSeconds ?? 300, 900),
-            env: {
-              ...pickRoleEnv(role),
-              TUIXIU_PROJECT_ID: run.issue.projectId,
-              TUIXIU_PROJECT_NAME: String((run.issue.project as any).name ?? ""),
-              TUIXIU_REPO_URL: String(run.issue.project.repoUrl ?? ""),
-              TUIXIU_DEFAULT_BRANCH: String(baseBranch),
-              TUIXIU_RUN_BRANCH: String(branch),
-              TUIXIU_RUN_ID: run.id,
-              TUIXIU_WORKSPACE: String(run.workspacePath ?? "/workspace"),
-              TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${run.issue.projectId}`,
-              ...(roleKey ? { TUIXIU_ROLE_KEY: roleKey } : {}),
-            },
-          };
-        }
-
-        await deps.sendToAgent(run.agent.proxyId, {
-          type: "prompt_run",
-          run_id: id,
-          prompt: text,
-          session_id: run.acpSessionId ?? undefined,
+        await deps.acp.promptRun({
+          proxyId: run.agent.proxyId,
+          runId: id,
+          cwd,
+          sessionId: run.acpSessionId ?? null,
           context,
-          cwd: run.workspacePath ?? undefined,
-          init,
+          prompt: text,
         });
       } catch (error) {
         return {
@@ -342,8 +391,222 @@ export function makeRunRoutes(deps: {
         };
       }
 
+      try {
+        await deps.prisma.event.create({
+          data: {
+            id: uuidv7(),
+            runId: id,
+            source: "user",
+            type: "user.message",
+            payload: { text } as any,
+            timestamp: createdAt,
+          },
+        });
+      } catch (error) {
+        server.log.warn({ err: error, runId: id }, "persist user.message failed after prompt sent");
+        return {
+          success: true,
+          data: { ok: true, warning: { code: "EVENT_PERSIST_FAILED", message: "消息已发送，但写入事件失败" } },
+        };
+      }
+
       return { success: true, data: { ok: true } };
     });
+
+    server.post("/:id/submit", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const bodySchema = z.object({
+        verdict: z.enum(["approve", "changes_requested"]),
+        comment: z.string().max(20_000).optional(),
+        squash: z.boolean().optional(),
+        mergeCommitMessage: z.string().min(1).max(2000).optional(),
+      });
+      const { id } = paramsSchema.parse(request.params);
+      const body = bodySchema.parse(request.body ?? {});
+
+      const run = await deps.prisma.run.findUnique({
+        where: { id },
+        include: {
+          step: true,
+          task: { include: { steps: { orderBy: { order: "asc" } } } },
+          issue: { include: { project: true } },
+          artifacts: { orderBy: { createdAt: "desc" } },
+        },
+      });
+      if (!run) {
+        return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+      }
+
+      if (run.executorType !== "human") {
+        return { success: false, error: { code: "BAD_EXECUTOR", message: "该 Run 不是 human executor" } };
+      }
+
+      const stepKind = typeof (run as any).step?.kind === "string" ? (run as any).step.kind : "";
+      const actorRole = String(((request as any).user as any)?.role ?? "");
+      if (actorRole) {
+        const allow =
+          stepKind === "code.review" || stepKind === "pr.merge"
+            ? ["reviewer", "admin"].includes(actorRole)
+            : stepKind === "prd.review"
+              ? ["pm", "admin"].includes(actorRole)
+              : ["dev", "pm", "reviewer", "admin"].includes(actorRole);
+        if (!allow) {
+          return { success: false, error: { code: "FORBIDDEN", message: "无权限提交该步骤" } };
+        }
+      }
+      const verdict = body.verdict;
+      const comment = typeof body.comment === "string" ? body.comment.trim() : "";
+
+      const reportKind =
+        stepKind === "code.review"
+          ? "review"
+          : stepKind === "prd.review"
+            ? "prd_review"
+            : stepKind === "pr.merge"
+              ? "merge"
+              : stepKind || "human";
+
+      await deps.prisma.artifact
+        .create({
+          data: {
+            id: uuidv7(),
+            runId: run.id,
+            type: "report",
+            content: { kind: reportKind, verdict, markdown: comment } as any,
+          },
+        })
+        .catch(() => {});
+
+      if (stepKind === "pr.merge") {
+        const mergeRes = await mergeReviewRequestForRun(
+          { prisma: deps.prisma, gitPush, gitlab: deps.gitlab, github: deps.github },
+          run.id,
+          { squash: body.squash, mergeCommitMessage: body.mergeCommitMessage },
+        );
+        if (!mergeRes.success) return mergeRes;
+
+        await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed", completedAt: new Date() } as any }).catch(() => {});
+        await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(() => {});
+        if ((run as any).taskId) {
+          deps.broadcastToClients?.({
+            type: "task_updated",
+            issue_id: (run as any).issueId,
+            task_id: (run as any).taskId,
+            step_id: (run as any).stepId,
+            run_id: run.id,
+          });
+          triggerTaskAutoAdvance(
+            { prisma: deps.prisma, sendToAgent: deps.sendToAgent, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
+            { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
+          );
+        }
+        return { success: true, data: { ok: true } };
+      }
+
+      await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed", completedAt: new Date() } as any }).catch(() => {});
+
+      if (verdict === "changes_requested") {
+        if ((run as any).stepId) {
+          await deps.prisma.step
+            .update({ where: { id: (run as any).stepId }, data: { status: "completed" } as any })
+            .catch(() => {});
+        }
+        await setTaskBlockedFromRun(
+          { prisma: deps.prisma },
+          run.id,
+          { code: "CHANGES_REQUESTED", message: comment || "changes requested" },
+        ).catch(() => {});
+        if ((run as any).taskId) {
+          deps.broadcastToClients?.({
+            type: "task_updated",
+            issue_id: (run as any).issueId,
+            task_id: (run as any).taskId,
+            step_id: (run as any).stepId,
+            run_id: run.id,
+            reason: "changes_requested",
+          });
+        }
+        return { success: true, data: { ok: true, blocked: true } };
+      }
+
+      await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(() => {});
+      if ((run as any).taskId) {
+        deps.broadcastToClients?.({
+          type: "task_updated",
+          issue_id: (run as any).issueId,
+          task_id: (run as any).taskId,
+          step_id: (run as any).stepId,
+          run_id: run.id,
+        });
+        triggerTaskAutoAdvance(
+          { prisma: deps.prisma, sendToAgent: deps.sendToAgent, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
+          { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
+        );
+      }
+      return { success: true, data: { ok: true } };
+    });
+
+    server.post("/:id/pause", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const { id } = paramsSchema.parse(request.params);
+
+      const run = await deps.prisma.run.findUnique({
+        where: { id },
+        include: { agent: true },
+      });
+      if (!run) {
+        return {
+          success: false,
+          error: { code: "NOT_FOUND", message: "Run 不存在" },
+        };
+      }
+
+      if (!deps.acp) {
+        return {
+          success: false,
+          error: { code: "NO_AGENT_GATEWAY", message: "ACP 隧道未配置" },
+        };
+      }
+      if (!run.agent) {
+        return {
+          success: false,
+          error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法暂停" },
+        };
+      }
+
+      if (!run.acpSessionId) {
+        return {
+          success: false,
+          error: { code: "NO_ACP_SESSION", message: "ACP session 尚未建立，无法暂停" },
+        };
+      }
+
+      const cwd = run.workspacePath ?? "";
+      if (!cwd) {
+        return { success: false, error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法暂停" } };
+      }
+
+      try {
+        await deps.acp.cancelSession({
+          proxyId: run.agent.proxyId,
+          runId: id,
+          cwd,
+          sessionId: run.acpSessionId,
+        });
+      } catch (error) {
+        return {
+          success: false,
+          error: {
+            code: "AGENT_SEND_FAILED",
+            message: "发送暂停到 Agent 失败",
+            details: String(error),
+          },
+        };
+      }
+
+      return { success: true, data: { ok: true } };
+    });
+
 
     server.post("/:id/cancel", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
@@ -355,23 +618,26 @@ export function makeRunRoutes(deps: {
         include: { agent: { select: { proxyId: true } } },
       });
 
-      if (deps.sendToAgent) {
-        await deps.sendToAgent(run.agent.proxyId, {
-          type: "cancel_task",
-          run_id: id,
-          session_id: run.acpSessionId ?? undefined,
-        }).catch(() => {});
+      if (deps.acp) {
+        const proxyId = run.agent?.proxyId ?? null;
+        const sessionId = run.acpSessionId ?? null;
+        const cwd = run.workspacePath ?? "";
+        if (proxyId && sessionId && cwd) {
+          await deps.acp.cancelSession({ proxyId, runId: id, cwd, sessionId }).catch(() => {});
+        }
       }
 
       await deps.prisma.issue
         .update({ where: { id: run.issueId }, data: { status: "cancelled" } })
         .catch(() => {});
-      await deps.prisma.agent
-        .update({
-          where: { id: run.agentId },
-          data: { currentLoad: { decrement: 1 } },
-        })
-        .catch(() => {});
+      if (run.agentId) {
+        await deps.prisma.agent
+          .update({
+            where: { id: run.agentId },
+            data: { currentLoad: { decrement: 1 } },
+          })
+          .catch(() => {});
+      }
 
       return { success: true, data: { run } };
     });
@@ -388,12 +654,14 @@ export function makeRunRoutes(deps: {
       await deps.prisma.issue
         .update({ where: { id: run.issueId }, data: { status: "reviewing" } })
         .catch(() => {});
-      await deps.prisma.agent
-        .update({
-          where: { id: run.agentId },
-          data: { currentLoad: { decrement: 1 } },
-        })
-        .catch(() => {});
+      if (run.agentId) {
+        await deps.prisma.agent
+          .update({
+            where: { id: run.agentId },
+            data: { currentLoad: { decrement: 1 } },
+          })
+          .catch(() => {});
+      }
 
       return { success: true, data: { run } };
     });

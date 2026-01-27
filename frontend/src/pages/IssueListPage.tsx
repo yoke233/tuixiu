@@ -1,57 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Link, Outlet, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { createIssue, listIssues, startIssue, updateIssue } from "../api/issues";
-import { importGitHubIssue } from "../api/githubIssues";
-import { createProject, listProjects } from "../api/projects";
-import { createRole, listRoles } from "../api/roles";
+import { listIssues, startIssue, updateIssue } from "../api/issues";
+import { listProjects } from "../api/projects";
 import { cancelRun, completeRun } from "../api/runs";
+import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { Issue, IssueStatus, Project, RoleTemplate } from "../types";
+import type { Issue, IssueStatus, Project } from "../types";
+import { canChangeIssueStatus, canRunIssue } from "../utils/permissions";
+import { getShowArchivedIssues } from "../utils/settings";
 
-function splitLines(s: string): string[] {
-  return s
-    .split(/\r?\n/g)
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
-function validateEnvText(text: string): string | null {
-  const errors: string[] = [];
-  const lines = text.split(/\r?\n/g);
-
-  for (let i = 0; i < lines.length; i += 1) {
-    let line = lines[i].trim();
-    if (!line) continue;
-    if (line.startsWith("#")) continue;
-    if (line.startsWith("export ")) line = line.slice("export ".length).trim();
-
-    const eq = line.indexOf("=");
-    if (eq <= 0) {
-      errors.push(`第${i + 1}行缺少 '='`);
-      continue;
-    }
-
-    const key = line.slice(0, eq).trim();
-    if (!key) {
-      errors.push(`第${i + 1}行 KEY 为空`);
-    }
-  }
-
-  if (!errors.length) return null;
-  const preview = errors.slice(0, 3).join("；");
-  const suffix = errors.length > 3 ? `；… 还有 ${errors.length - 3} 行` : "";
-  return `env 格式不正确（.env）：${preview}${suffix}`;
+function hasStringLabel(labels: unknown, needle: string): boolean {
+  if (!Array.isArray(labels)) return false;
+  const expected = needle.trim().toLowerCase();
+  return labels.some((x) => typeof x === "string" && x.trim().toLowerCase() === expected);
 }
 
 export function IssueListPage() {
   const params = useParams();
   const selectedIssueId = params.id ?? "";
   const hasDetail = !!selectedIssueId;
-
-  const splitRef = useRef<HTMLDivElement | null>(null);
-  const resizeStateRef = useRef<{ active: boolean; width: number }>({ active: false, width: 520 });
+  const navigate = useNavigate();
+  const location = useLocation();
+  const auth = useAuth();
+  const userRole = auth.user?.role ?? null;
+  const canRun = canRunIssue(userRole);
+  const canChangeStatus = canChangeIssueStatus(userRole);
 
   const [dragging, setDragging] = useState<{
     issueId: string;
@@ -78,61 +53,32 @@ export function IssueListPage() {
 
   const outletContext = useMemo(() => ({ onIssueUpdated }), [onIssueUpdated]);
 
-  const [projectName, setProjectName] = useState("");
-  const [projectRepoUrl, setProjectRepoUrl] = useState("");
-  const [projectScmType, setProjectScmType] = useState("gitlab");
-  const [projectDefaultBranch, setProjectDefaultBranch] = useState("main");
-  const [projectGitlabProjectId, setProjectGitlabProjectId] = useState("");
-  const [projectGitlabAccessToken, setProjectGitlabAccessToken] = useState("");
-  const [projectGitlabWebhookSecret, setProjectGitlabWebhookSecret] = useState("");
-  const [projectGithubAccessToken, setProjectGithubAccessToken] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
-
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [roles, setRoles] = useState<RoleTemplate[]>([]);
-  const [rolesLoaded, setRolesLoaded] = useState(false);
-  const [rolesError, setRolesError] = useState<string | null>(null);
-
-  const [issueTitle, setIssueTitle] = useState("");
-  const [issueDescription, setIssueDescription] = useState("");
-  const [issueCriteria, setIssueCriteria] = useState("");
-  const [githubImport, setGithubImport] = useState("");
-  const [importingGithub, setImportingGithub] = useState(false);
-  const [roleKey, setRoleKey] = useState("");
-  const [roleDisplayName, setRoleDisplayName] = useState("");
-  const [rolePromptTemplate, setRolePromptTemplate] = useState("");
-  const [roleInitScript, setRoleInitScript] = useState("");
-  const [roleEnvText, setRoleEnvText] = useState("");
-  const [roleInitTimeoutSeconds, setRoleInitTimeoutSeconds] = useState("300");
+  const [showArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [searchText, setSearchText] = useState("");
-  const [detailWidth, setDetailWidth] = useState<number>(() => {
-    try {
-      const raw = localStorage.getItem("detailWidth");
-      const parsed = raw ? Number(raw) : 520;
-      return Number.isFinite(parsed) ? parsed : 520;
-    } catch {
-      return 520;
-    }
-  });
+  const closeDetail = useCallback(() => {
+    navigate("/issues", { replace: true });
+  }, [navigate]);
 
   const effectiveProjectId = useMemo(() => {
     if (selectedProjectId) return selectedProjectId;
     return projects[0]?.id ?? "";
   }, [projects, selectedProjectId]);
 
-  const effectiveProject = useMemo(() => {
-    return effectiveProjectId ? projects.find((p) => p.id === effectiveProjectId) ?? null : null;
-  }, [effectiveProjectId, projects]);
-
   const visibleIssues = useMemo(() => {
     const needle = searchText.trim().toLowerCase();
-    const filtered = issues.filter((i) => i.projectId === effectiveProjectId);
+    const filtered = issues.filter(
+      (i) =>
+        i.projectId === effectiveProjectId &&
+        (showArchivedOnBoard || !i.archivedAt) &&
+        !hasStringLabel(i.labels, "_session")
+    );
     if (!needle) return filtered;
     return filtered.filter((i) => {
       const t = `${i.title ?? ""}\n${i.description ?? ""}`.toLowerCase();
       return t.includes(needle);
     });
-  }, [effectiveProjectId, issues, searchText]);
+  }, [effectiveProjectId, issues, searchText, showArchivedOnBoard]);
 
   const issuesByStatus = useMemo(() => {
     const map: Record<IssueStatus, Issue[]> = {
@@ -153,21 +99,21 @@ export function IssueListPage() {
   }, [visibleIssues]);
 
   useEffect(() => {
-    if (!toolsOpen) return;
-    if (!effectiveProjectId) return;
+    if (!hasDetail) return;
 
-    setRolesLoaded(false);
-    setRolesError(null);
-    listRoles(effectiveProjectId)
-      .then((rs) => {
-        setRoles(rs);
-        setRolesLoaded(true);
-      })
-      .catch((err) => {
-        setRolesError(err instanceof Error ? err.message : String(err));
-        setRolesLoaded(true);
-      });
-  }, [toolsOpen, effectiveProjectId]);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDetail();
+    };
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [closeDetail, hasDetail]);
 
   async function refresh() {
     setLoading(true);
@@ -209,6 +155,21 @@ export function IssueListPage() {
   async function moveIssue(payload: NonNullable<typeof dragging>, toStatus: IssueStatus) {
     if (!payload.issueId) return;
     if (payload.fromStatus === toStatus) return;
+    if (!auth.user) {
+      const next = encodeURIComponent(`${location.pathname}${location.search}`);
+      navigate(`/login?next=${next}`);
+      return;
+    }
+
+    const isRunAction = payload.fromStatus === "running" || toStatus === "running";
+    if (isRunAction && !canRun) {
+      setError("当前账号无权限操作 Run");
+      return;
+    }
+    if (!isRunAction && !canChangeStatus) {
+      setError("当前账号无权限变更 Issue 状态");
+      return;
+    }
 
     setMoving(true);
     setError(null);
@@ -247,152 +208,6 @@ export function IssueListPage() {
     }
   }
 
-  useEffect(() => {
-    resizeStateRef.current.width = detailWidth;
-    try {
-      localStorage.setItem("detailWidth", String(detailWidth));
-    } catch {
-      // ignore
-    }
-  }, [detailWidth]);
-
-  async function onCreateProject(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      const gitlabProjectIdRaw = projectGitlabProjectId.trim();
-      const gitlabProjectId = gitlabProjectIdRaw ? Number(gitlabProjectIdRaw) : undefined;
-
-      const p = await createProject({
-        name: projectName.trim(),
-        repoUrl: projectRepoUrl.trim(),
-        scmType: projectScmType.trim() || undefined,
-        defaultBranch: projectDefaultBranch.trim() || undefined,
-        gitlabProjectId: Number.isFinite(gitlabProjectId ?? NaN) ? gitlabProjectId : undefined,
-        gitlabAccessToken: projectGitlabAccessToken.trim() || undefined,
-        gitlabWebhookSecret: projectGitlabWebhookSecret.trim() || undefined,
-        githubAccessToken: projectGithubAccessToken.trim() || undefined
-      });
-      setProjectName("");
-      setProjectRepoUrl("");
-      setProjectScmType("gitlab");
-      setProjectDefaultBranch("main");
-      setProjectGitlabProjectId("");
-      setProjectGitlabAccessToken("");
-      setProjectGitlabWebhookSecret("");
-      setProjectGithubAccessToken("");
-      await refresh();
-      setSelectedProjectId(p.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function onCreateIssue(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      if (!issueTitle.trim()) {
-        setError("Issue 标题不能为空");
-        return;
-      }
-      if (!effectiveProjectId) {
-        setError("请先创建 Project");
-        return;
-      }
-
-      await createIssue({
-        projectId: effectiveProjectId,
-        title: issueTitle.trim(),
-        description: issueDescription.trim() ? issueDescription.trim() : undefined,
-        acceptanceCriteria: splitLines(issueCriteria),
-      });
-
-      setIssueTitle("");
-      setIssueDescription("");
-      setIssueCriteria("");
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function onImportGithubIssue(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!effectiveProjectId) {
-      setError("请先创建 Project");
-      return;
-    }
-    const raw = githubImport.trim();
-    if (!raw) return;
-
-    setImportingGithub(true);
-    try {
-      const num = Number(raw);
-      const input = Number.isFinite(num) && num > 0 ? { number: Math.floor(num) } : { url: raw };
-      await importGitHubIssue(effectiveProjectId, input);
-      setGithubImport("");
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setImportingGithub(false);
-    }
-  }
-
-  async function onCreateRole(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!effectiveProjectId) {
-      setError("请先创建 Project");
-      return;
-    }
-
-    const key = roleKey.trim();
-    const name = roleDisplayName.trim();
-    if (!key || !name) return;
-
-    try {
-      const envText = roleEnvText.trim();
-      if (envText) {
-        const errMsg = validateEnvText(envText);
-        if (errMsg) {
-          setError(errMsg);
-          return;
-        }
-      }
-
-      const created = await createRole(effectiveProjectId, {
-        key,
-        displayName: name,
-        promptTemplate: rolePromptTemplate.trim() || undefined,
-        initScript: roleInitScript.trim() || undefined,
-        initTimeoutSeconds: Number(roleInitTimeoutSeconds) || undefined,
-        envText: envText || undefined,
-      });
-      setRoles((prev) => [created, ...prev.filter((r) => r.id !== created.id)]);
-      setRolesLoaded(true);
-      setRoleKey("");
-      setRoleDisplayName("");
-      setRolePromptTemplate("");
-      setRoleInitScript("");
-      setRoleEnvText("");
-      setRoleInitTimeoutSeconds("300");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  function onPrefillRoleForm(role: RoleTemplate) {
-    setRoleKey("");
-    setRoleDisplayName(role.displayName ?? "");
-    setRolePromptTemplate(role.promptTemplate?.trim() ? role.promptTemplate : "");
-    setRoleInitScript(role.initScript?.trim() ? role.initScript : "");
-    setRoleEnvText("");
-    setRoleInitTimeoutSeconds(String(role.initTimeoutSeconds || 300));
-  }
-
   const columns = useMemo(
     () =>
       [
@@ -406,62 +221,8 @@ export function IssueListPage() {
     []
   );
 
-  const splitStyle = useMemo(() => {
-    const clamped = Math.max(360, Math.min(960, detailWidth));
-    const style: CSSProperties = {
-      ["--detail-width" as any]: `${clamped}px`
-    };
-    return style;
-  }, [detailWidth]);
-
-  function onSplitterPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    const container = splitRef.current;
-    if (!container) return;
-
-    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-    resizeStateRef.current.active = true;
-    container.classList.add("resizing");
-    document.body.style.userSelect = "none";
-  }
-
-  function onSplitterPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!resizeStateRef.current.active) return;
-    const container = splitRef.current;
-    if (!container) return;
-
-    const rect = container.getBoundingClientRect();
-    const raw = rect.right - e.clientX;
-    const max = Math.min(960, Math.max(360, rect.width - 360));
-    const next = Math.max(360, Math.min(max, Math.round(raw)));
-    setDetailWidth(next);
-  }
-
-  function onSplitterPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (!resizeStateRef.current.active) return;
-    resizeStateRef.current.active = false;
-    splitRef.current?.classList.remove("resizing");
-    document.body.style.userSelect = "";
-    (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
-  }
-
-  function onSplitterDoubleClick() {
-    setDetailWidth(520);
-  }
-
-  function onSplitterKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const step = e.shiftKey ? 80 : 20;
-    if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      setDetailWidth((w) => Math.max(360, w + step));
-    }
-    if (e.key === "ArrowRight") {
-      e.preventDefault();
-      setDetailWidth((w) => Math.max(360, w - step));
-    }
-  }
-
   return (
-    <div className="issuesShell">
+    <div className={`issuesShell${hasDetail ? " hasDetail" : ""}`}>
       <div className="issuesTopBar">
         <div className="row gap">
           <div>
@@ -481,19 +242,67 @@ export function IssueListPage() {
             placeholder="搜索 Issue…"
           />
           <ThemeToggle />
+          {auth.user ? (
+            <div className="row gap" style={{ alignItems: "baseline" }}>
+              <span className="muted" title={auth.user.id}>
+                {auth.user.username} ({auth.user.role})
+              </span>
+               {auth.hasRole(["admin"]) ? (
+                <>
+                  <button
+                    type="button"
+                    className="buttonSecondary"
+                    onClick={() => navigate("/admin?section=issues#issue-create")}
+                  >
+                    新建 Issue
+                  </button>
+                  <button
+                    type="button"
+                    className="buttonSecondary"
+                    onClick={() => navigate("/admin?section=issues#issue-github-import")}
+                  >
+                    GitHub 导入
+                  </button>
+                  <button
+                    type="button"
+                    className="buttonSecondary"
+                    onClick={() => navigate("/admin?section=acpSessions")}
+                  >
+                    Sessions
+                  </button>
+                  <button type="button" className="buttonSecondary" onClick={() => navigate("/admin")}>
+                    管理
+                  </button>
+                </>
+              ) : null}
+              <button type="button" className="buttonSecondary" onClick={() => auth.logout()}>
+                退出
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="buttonSecondary"
+              onClick={() => navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`)}
+            >
+              登录
+            </button>
+          )}
           <button onClick={() => refresh()} disabled={loading}>
             刷新
           </button>
         </div>
       </div>
 
-      {error ? (
-        <div role="alert" className="alert">
-          {error}
-        </div>
-      ) : null}
+      <div>
+        {error ? (
+          <div role="alert" className="alert">
+            {error}
+          </div>
+        ) : null}
+      </div>
 
-      <div ref={splitRef} className={`issuesSplit ${hasDetail ? "hasDetail" : ""}`} style={splitStyle}>
+      <div className={`issuesSplit ${hasDetail ? "hasDetail" : ""}`}>
         <main className="issuesBoard">
           <section className="card boardHeader">
             <div className="row spaceBetween">
@@ -517,244 +326,6 @@ export function IssueListPage() {
                 {loading ? "加载中…" : effectiveProjectId ? `共 ${visibleIssues.length} 个 Issue` : "请先创建 Project"}
               </div>
             </div>
-
-            <details
-              className="boardTools"
-              onToggle={(e) => setToolsOpen((e.currentTarget as HTMLDetailsElement).open)}
-            >
-              <summary>创建 / 配置</summary>
-              <div className="grid2">
-                <section className="card">
-                  <h3>Projects</h3>
-                  {loading ? (
-                    <div className="muted">加载中…</div>
-                  ) : projects.length ? (
-                    <div className="muted">当前共 {projects.length} 个</div>
-                  ) : (
-                    <div className="muted">暂无 Project，请先创建</div>
-                  )}
-
-                  <form onSubmit={onCreateProject} className="form">
-                    <label className="label">
-                      名称
-                      <input value={projectName} onChange={(e) => setProjectName(e.target.value)} />
-                    </label>
-                    <label className="label">
-                      Repo URL
-                      <input value={projectRepoUrl} onChange={(e) => setProjectRepoUrl(e.target.value)} />
-                    </label>
-                    <label className="label">
-                      SCM
-                      <select value={projectScmType} onChange={(e) => setProjectScmType(e.target.value)}>
-                        <option value="gitlab">gitlab</option>
-                        <option value="github">github</option>
-                        <option value="gitee">gitee</option>
-                      </select>
-                    </label>
-                    <label className="label">
-                      默认分支
-                      <input value={projectDefaultBranch} onChange={(e) => setProjectDefaultBranch(e.target.value)} />
-                    </label>
-                    {projectScmType === "gitlab" ? (
-                      <details>
-                        <summary>GitLab 配置（可选）</summary>
-                        <label className="label">
-                          GitLab Project ID
-                          <input
-                            value={projectGitlabProjectId}
-                            onChange={(e) => setProjectGitlabProjectId(e.target.value)}
-                            placeholder="12345"
-                          />
-                        </label>
-                        <label className="label">
-                          GitLab Access Token
-                          <input
-                            type="password"
-                            value={projectGitlabAccessToken}
-                            onChange={(e) => setProjectGitlabAccessToken(e.target.value)}
-                            placeholder="glpat-..."
-                          />
-                        </label>
-                        <label className="label">
-                          GitLab Webhook Secret（可选）
-                          <input
-                            type="password"
-                            value={projectGitlabWebhookSecret}
-                            onChange={(e) => setProjectGitlabWebhookSecret(e.target.value)}
-                          />
-                        </label>
-                      </details>
-                    ) : projectScmType === "github" ? (
-                      <details>
-                        <summary>GitHub 配置（可选）</summary>
-                        <label className="label">
-                          GitHub Access Token
-                          <input
-                            type="password"
-                            value={projectGithubAccessToken}
-                            onChange={(e) => setProjectGithubAccessToken(e.target.value)}
-                            placeholder="ghp_... / github_pat_..."
-                          />
-                        </label>
-                      </details>
-                    ) : null}
-                    <button type="submit" disabled={!projectName.trim() || !projectRepoUrl.trim()}>
-                      创建
-                    </button>
-                  </form>
-                </section>
-
-                <section className="card">
-                  <h3>创建 Issue（进入需求池）</h3>
-                  <form onSubmit={onCreateIssue} className="form">
-                    <label className="label">
-                      标题 *
-                      <input
-                        aria-label="Issue 标题"
-                        value={issueTitle}
-                        onChange={(e) => setIssueTitle(e.target.value)}
-                      />
-                    </label>
-                    <label className="label">
-                      描述
-                      <textarea
-                        value={issueDescription}
-                        onChange={(e) => setIssueDescription(e.target.value)}
-                      />
-                    </label>
-                    <label className="label">
-                      验收标准（每行一条）
-                      <textarea value={issueCriteria} onChange={(e) => setIssueCriteria(e.target.value)} />
-                    </label>
-                    <button type="submit">提交</button>
-                  </form>
-                </section>
-
-                <section className="card">
-                  <h3>导入 GitHub Issue</h3>
-                  {effectiveProject?.scmType?.toLowerCase() === "github" ? (
-                    <form onSubmit={onImportGithubIssue} className="form">
-                      <label className="label">
-                        Issue Number 或 URL
-                        <input
-                          value={githubImport}
-                          onChange={(e) => setGithubImport(e.target.value)}
-                          placeholder="123 或 https://github.com/o/r/issues/123"
-                        />
-                      </label>
-                      <button type="submit" disabled={!githubImport.trim() || importingGithub}>
-                        {importingGithub ? "导入中…" : "导入"}
-                      </button>
-                    </form>
-                  ) : (
-                    <div className="muted">当前 Project 不是 GitHub SCM</div>
-                  )}
-                </section>
-
-                <section className="card">
-                  <h3>创建 RoleTemplate</h3>
-                  {effectiveProjectId ? (
-                    <div style={{ marginBottom: 10 }}>
-                      <div className="muted">当前 Project 的 Roles：</div>
-                      {!rolesLoaded && !rolesError ? (
-                        <div className="muted">加载中…</div>
-                      ) : rolesError ? (
-                        <div className="muted" title={rolesError}>
-                          Role 加载失败
-                        </div>
-                      ) : roles.length ? (
-                        <div className="kvGrid" style={{ marginTop: 8 }}>
-                          {roles.map((r) => {
-                            const envLabel = r.envKeys?.length ? r.envKeys.join(", ") : "无";
-                            return (
-                              <div className="kvItem" key={r.id}>
-                                <div className="row spaceBetween" style={{ gap: 10 }}>
-                                  <div style={{ minWidth: 0 }}>
-                                    <div>
-                                      <span className="muted">{r.displayName}</span>{" "}
-                                      <code title={r.key}>{r.key}</code>
-                                    </div>
-                                    <div className="muted" style={{ fontSize: 12 }}>
-                                      env: {envLabel}
-                                      {r.initScript?.trim() ? " · initScript" : ""}
-                                      {r.promptTemplate?.trim() ? " · promptTemplate" : ""}
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => onPrefillRoleForm(r)}
-                                  >
-                                    复制到表单
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="muted">暂无 Role</div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="muted" style={{ marginBottom: 10 }}>
-                      请先创建/选择 Project
-                    </div>
-                  )}
-                  <form onSubmit={onCreateRole} className="form">
-                    <label className="label">
-                      Role Key *
-                      <input value={roleKey} onChange={(e) => setRoleKey(e.target.value)} placeholder="backend-dev" />
-                    </label>
-                    <label className="label">
-                      显示名称 *
-                      <input
-                        value={roleDisplayName}
-                        onChange={(e) => setRoleDisplayName(e.target.value)}
-                        placeholder="后端开发"
-                      />
-                    </label>
-                    <label className="label">
-                      Prompt Template（可选）
-                      <textarea
-                        value={rolePromptTemplate}
-                        onChange={(e) => setRolePromptTemplate(e.target.value)}
-                        placeholder="你是 {{role.name}}，请优先写单测。"
-                      />
-                    </label>
-                    <label className="label">
-                      initScript（bash，可选）
-                      <textarea
-                        value={roleInitScript}
-                        onChange={(e) => setRoleInitScript(e.target.value)}
-                        placeholder={"# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init"}
-                      />
-                    </label>
-                    <label className="label">
-                      env（.env 格式，可选）
-                      <textarea
-                        value={roleEnvText}
-                        onChange={(e) => setRoleEnvText(e.target.value)}
-                        placeholder={"# 不会回显到前端，只会显示 key 列表\nGH_TOKEN=ghp_xxx\nGITLAB_TOKEN=glpat_xxx"}
-                      />
-                    </label>
-                    <label className="label">
-                      init 超时秒数（可选）
-                      <input
-                        value={roleInitTimeoutSeconds}
-                        onChange={(e) => setRoleInitTimeoutSeconds(e.target.value)}
-                        placeholder="300"
-                      />
-                    </label>
-                    <button type="submit" disabled={!roleKey.trim() || !roleDisplayName.trim()}>
-                      创建
-                    </button>
-                  </form>
-                  <div className="muted" style={{ marginTop: 8 }}>
-                    initScript 默认在 workspace 执行；建议把持久内容写到 <code>$HOME/.tuixiu/projects/&lt;projectId&gt;</code>。
-                  </div>
-                </section>
-              </div>
-            </details>
           </section>
 
           <section className="kanban" aria-label="Issues 看板">
@@ -792,36 +363,49 @@ export function IssueListPage() {
                         const selected = selectedIssueId === i.id;
                         const isDragging = dragging?.issueId === i.id;
                         return (
-                          <Link
-                            key={i.id}
-                            to={`/issues/${i.id}`}
-                            draggable
-                            onDragStart={(e) => {
-                              const payload = { issueId: i.id, fromStatus: i.status, runId: latestRun?.id };
-                              setDragging(payload);
-                              e.dataTransfer.setData("application/json", JSON.stringify(payload));
-                              e.dataTransfer.effectAllowed = "move";
-                            }}
-                            onDragEnd={() => {
-                              setDragging(null);
-                              setDropStatus(null);
-                            }}
-                            className={`issueCard ${selected ? "selected" : ""} ${isDragging ? "dragging" : ""}`}
-                            aria-disabled={moving ? "true" : undefined}
-                          >
-                            <div className="row spaceBetween">
-                              <div className="issueTitle">{i.title}</div>
-                              <StatusBadge status={i.status} />
+                          <div key={i.id} className="issueCardWrap">
+                             <Link
+                               to={`/issues/${i.id}`}
+                               draggable={Boolean(auth.user) && (canRun || canChangeStatus)}
+                               onDragStart={(e) => {
+                                 if (!auth.user) return;
+                                 if (!canRun && !canChangeStatus) return;
+                                 const payload = { issueId: i.id, fromStatus: i.status, runId: latestRun?.id };
+                                 setDragging(payload);
+                                 e.dataTransfer.setData("application/json", JSON.stringify(payload));
+                                 e.dataTransfer.effectAllowed = "move";
+                               }}
+                              onDragEnd={() => {
+                                setDragging(null);
+                                setDropStatus(null);
+                              }}
+                              className={`issueCard ${selected ? "selected" : ""} ${isDragging ? "dragging" : ""}`}
+                              aria-disabled={moving ? "true" : undefined}
+                            >
+                              <div className="issueTitle" title={i.title}>
+                                {i.title}
+                              </div>
+                              <div className="row spaceBetween issueMeta">
+                                <div className="muted">{new Date(i.createdAt).toLocaleDateString()}</div>
+                                {latestRun ? (
+                                  <div className="row gap issueCardRun" title={`最新 Run：${latestRun.id}`}>
+                                    <span className="muted" style={{ fontSize: 12 }}>
+                                      Run
+                                    </span>
+                                    <StatusBadge status={latestRun.status} />
+                                  </div>
+                                ) : (
+                                  <span className="muted" style={{ fontSize: 12 }}>
+                                    Run —
+                                  </span>
+                                )}
+                              </div>
+                            </Link>
                             </div>
-                            <div className="row spaceBetween issueMeta">
-                              <div className="muted">{new Date(i.createdAt).toLocaleDateString()}</div>
-                              {latestRun ? <StatusBadge status={latestRun.status} /> : <span className="muted">-</span>}
-                            </div>
-                          </Link>
-                        );
-                      })
-                    ) : (
-                      <div className="muted kanbanEmpty">暂无</div>
+                          );
+                        })
+                      ) : (
+                       <div className="muted kanbanEmpty">暂无</div>
                     )}
                   </div>
                 </div>
@@ -829,29 +413,21 @@ export function IssueListPage() {
             })}
           </section>
         </main>
-
-        {hasDetail ? (
-          <>
-            <div
-              className="splitter"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="调整详情宽度"
-              tabIndex={0}
-              onPointerDown={onSplitterPointerDown}
-              onPointerMove={onSplitterPointerMove}
-              onPointerUp={onSplitterPointerUp}
-              onPointerCancel={onSplitterPointerUp}
-              onDoubleClick={onSplitterDoubleClick}
-              onKeyDown={onSplitterKeyDown}
-            />
-
-            <aside className="issuesDetail" aria-label="Issue 详情面板">
-              <Outlet context={outletContext} />
-            </aside>
-          </>
-        ) : null}
       </div>
+
+      {hasDetail ? (
+        <div
+          className="modalOverlay issueDetailOverlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Issue 详情"
+          onClick={closeDetail}
+        >
+          <div className="issueDetailDrawer" onClick={(e) => e.stopPropagation()}>
+            <Outlet context={outletContext} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

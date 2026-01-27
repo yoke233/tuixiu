@@ -42,11 +42,14 @@ describe("Projects routes", () => {
         repoUrl: "https://example.com/repo.git",
         scmType: "gitlab",
         defaultBranch: "main",
+        workspaceMode: "worktree",
+        gitAuthMode: "https_pat",
         defaultRoleKey: undefined,
         gitlabProjectId: undefined,
         gitlabAccessToken: undefined,
         gitlabWebhookSecret: undefined,
-        githubAccessToken: undefined
+        githubAccessToken: undefined,
+        githubPollingEnabled: false,
       }
     });
     await server.close();

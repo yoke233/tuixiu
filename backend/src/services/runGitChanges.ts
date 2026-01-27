@@ -5,16 +5,6 @@ import type { PrismaDeps } from "../deps.js";
 
 const execFileAsync = promisify(execFile);
 
-async function fetchOriginBranch(branch: string): Promise<void> {
-  const b = String(branch ?? "").trim();
-  if (!b) return;
-  await execFileAsync(
-    "git",
-    ["fetch", "--prune", "origin", `+refs/heads/${b}:refs/remotes/origin/${b}`],
-    { cwd: process.cwd() },
-  );
-}
-
 export type RunChangeFile = {
   path: string;
   status: string;
@@ -79,28 +69,16 @@ export async function getRunChanges(opts: { prisma: PrismaDeps; runId: string })
     throw new RunGitChangeError("Run 暂无 branch 信息", "NO_BRANCH");
   }
 
+  const cwd = typeof run.workspacePath === "string" && run.workspacePath.trim() ? run.workspacePath.trim() : process.cwd();
+
   try {
-    const workspaceType = String(run.workspaceType ?? "");
-
-    const args =
-      workspaceType === "boxlite_clone"
-        ? (await (async () => {
-            await fetchOriginBranch(baseBranch);
-            await fetchOriginBranch(branch);
-            return ["diff", "--name-status", `origin/${baseBranch}...origin/${branch}`];
-          })())
-        : ["diff", "--name-status", `${baseBranch}...${branch}`];
-
-    const { stdout } = await execFileAsync("git", args, { cwd: process.cwd() });
+    const { stdout } = await execFileAsync("git", ["diff", "--name-status", `${baseBranch}...${branch}`], {
+      cwd
+    });
     const files = parseNameStatus(stdout);
     return { baseBranch, branch, files };
   } catch (err) {
-    const workspaceType = String((run as any).workspaceType ?? "");
-    const hint =
-      workspaceType === "boxlite_clone"
-        ? "（boxlite_clone 模式：请确认 agent 已 git push -u origin <branch>，且后端可访问 origin）"
-        : "";
-    throw new RunGitChangeError(`获取变更失败${hint}`, "GIT_DIFF_FAILED", String(err));
+    throw new RunGitChangeError("获取变更失败", "GIT_DIFF_FAILED", String(err));
   }
 }
 
@@ -126,29 +104,15 @@ export async function getRunDiff(opts: {
     throw new RunGitChangeError("Run 暂无 branch 信息", "NO_BRANCH");
   }
 
+  const cwd = typeof run.workspacePath === "string" && run.workspacePath.trim() ? run.workspacePath.trim() : process.cwd();
+
   try {
-    const workspaceType = String(run.workspaceType ?? "");
-
-    const args =
-      workspaceType === "boxlite_clone"
-        ? (await (async () => {
-            await fetchOriginBranch(baseBranch);
-            await fetchOriginBranch(branch);
-            return ["diff", `origin/${baseBranch}...origin/${branch}`, "--", opts.path];
-          })())
-        : ["diff", `${baseBranch}...${branch}`, "--", opts.path];
-
-    const { stdout } = await execFileAsync("git", args, {
-      cwd: process.cwd(),
-      maxBuffer: 10 * 1024 * 1024,
+    const { stdout } = await execFileAsync("git", ["diff", `${baseBranch}...${branch}`, "--", opts.path], {
+      cwd,
+      maxBuffer: 10 * 1024 * 1024
     });
     return { baseBranch, branch, path: opts.path, diff: stdout };
   } catch (err) {
-    const workspaceType = String((run as any).workspaceType ?? "");
-    const hint =
-      workspaceType === "boxlite_clone"
-        ? "（boxlite_clone 模式：请确认 agent 已 git push -u origin <branch>，且后端可访问 origin）"
-        : "";
-    throw new RunGitChangeError(`获取 diff 失败${hint}`, "GIT_DIFF_FAILED", String(err));
+    throw new RunGitChangeError("获取 diff 失败", "GIT_DIFF_FAILED", String(err));
   }
 }

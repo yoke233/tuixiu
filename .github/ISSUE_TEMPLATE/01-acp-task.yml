@@ -1,0 +1,72 @@
+name: "🤖 ACP Task (Issue → Run → PR)"
+description: "Create an actionable task card following the tuixiu/ACP loop"
+title: "[ACP] "
+labels: ["type/task", "status/ready"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - backend
+        - frontend
+        - acp-proxy
+        - infra
+        - docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 (Must)
+        - P1 (Should)
+        - P2 (Optional)
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One sentence describing the deliverable
+      placeholder: "e.g. Add `yyy` field to the `xxx` API response and add tests"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Relevant files / current behavior / constraints (the more specific, the better)
+      placeholder: |
+        - Relevant paths/modules:
+        - Current behavior:
+        - Expected behavior:
+        - Constraints (minimal changes, compatibility, etc.):
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] Feature A works...
+        - [ ] Tests/regression coverage...
+        - [ ] CI passes (if applicable)
+    validations:
+      required: true
+
+  - type: textarea
+    id: runhint
+    attributes:
+      label: Execution hints for the agent (optional)
+      placeholder: |
+        - Prefer minimal changes
+        - Scope limits (e.g. only within the worktree)
+        - How to verify/regress locally
+    validations:
+      required: false

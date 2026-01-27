@@ -22,11 +22,24 @@ function parseIssueNumberFromUrl(url: string): number | null {
   }
 }
 
+function normalizeGitHubLabels(labels: unknown): string[] {
+  if (!Array.isArray(labels)) return [];
+  return labels
+    .map((label) => {
+      if (typeof label === "string") return label.trim();
+      if (!label || typeof label !== "object") return null;
+      const name = (label as any).name;
+      return typeof name === "string" ? name.trim() : null;
+    })
+    .filter((x): x is string => Boolean(x));
+}
+
 export function makeGitHubIssueRoutes(deps: {
   prisma: PrismaDeps;
   parseRepo?: typeof github.parseGitHubRepo;
   listIssues?: typeof github.listIssues;
   getIssue?: typeof github.getIssue;
+  onIssueUpserted?: (issueId: string, reason: string) => void;
 }): FastifyPluginAsync {
   return async (server) => {
     const parseRepo = deps.parseRepo ?? github.parseGitHubRepo;
@@ -136,6 +149,7 @@ export function makeGitHubIssueRoutes(deps: {
         include: { project: true, runs: { orderBy: { createdAt: "desc" } } },
       });
       if (existing) {
+        deps.onIssueUpserted?.((existing as any).id, "github_import");
         return { success: true, data: { issue: existing, imported: false } };
       }
 
@@ -151,13 +165,14 @@ export function makeGitHubIssueRoutes(deps: {
           externalNumber: external.number,
           externalUrl: external.html_url,
           externalState: String(external.state ?? ""),
-          externalLabels: (external.labels ?? []) as any,
+          externalLabels: normalizeGitHubLabels(external.labels),
           lastSyncedAt: new Date(),
           createdBy: "github_import",
         },
         include: { project: true, runs: { orderBy: { createdAt: "desc" } } },
       });
 
+      deps.onIssueUpserted?.((created as any).id, "github_import");
       return { success: true, data: { issue: created, imported: true } };
     });
   };

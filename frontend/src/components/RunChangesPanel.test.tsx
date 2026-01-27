@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RunChangesPanel } from "./RunChangesPanel";
+import { AuthProvider } from "../auth/AuthProvider";
 import type { Project, Run } from "../types";
 
 function mockFetchJsonOnce(body: unknown) {
@@ -12,6 +14,8 @@ function mockFetchJsonOnce(body: unknown) {
 
 describe("RunChangesPanel", () => {
   beforeEach(() => {
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("authUser");
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -20,6 +24,9 @@ describe("RunChangesPanel", () => {
   });
 
   it("shows conflict button and sends prompt to agent", async () => {
+    localStorage.setItem("authToken", "test-token");
+    localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "admin", role: "admin" }));
+
     const project: Project = {
       id: "p1",
       name: "demo",
@@ -33,6 +40,7 @@ describe("RunChangesPanel", () => {
       id: "r1",
       issueId: "i1",
       agentId: "a1",
+      executorType: "agent",
       status: "waiting_ci",
       startedAt: "2026-01-25T00:00:00.000Z",
       workspacePath: "D:\\repo\\.worktrees\\run-r1",
@@ -63,7 +71,13 @@ describe("RunChangesPanel", () => {
     // refresh run after prompt
     mockFetchJsonOnce({ success: true, data: { run } });
 
-    render(<RunChangesPanel runId="r1" project={project} run={run} />);
+    render(
+      <AuthProvider>
+        <MemoryRouter>
+          <RunChangesPanel runId="r1" project={project} run={run} />
+        </MemoryRouter>
+      </AuthProvider>
+    );
 
     const btn = await screen.findByRole("button", { name: "让 Agent 解决冲突" });
     btn.click();

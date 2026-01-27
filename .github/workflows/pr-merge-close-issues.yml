@@ -1,0 +1,51 @@
+name: Mark linked issues done on merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  mark_done:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find linked issues and label done
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            // GitHub recognizes "Fixes #123" / "Closes #123" in PR descriptions.
+            // Here we simply extract all #numbers from the PR body.
+            const body = pr.body || "";
+            const matches = [...body.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10));
+            const issueNumbers = [...new Set(matches)];
+
+            for (const issue_number of issueNumbers) {
+              // Add status/done and optionally remove other status labels.
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                labels: ["status/done"]
+              });
+
+              // Optional: remove running/reviewing/ready/triage/blocked (keep status unique).
+              const toRemove = ["status/triage","status/ready","status/running","status/reviewing","status/blocked"];
+              for (const name of toRemove) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number,
+                    name
+                  });
+                } catch (e) {
+                  // ignore if label not present
+                }
+              }
+            }

@@ -44,6 +44,22 @@ pnpm dev
 - Commits follow Conventional Commits seen in history: `feat:`, `fix:`, `docs:`, `refactor:` with optional scope (e.g., `feat(frontend): …`).
 - PRs should include: a clear description, linked Issue/Run ID, screenshots for UI changes, and passing `pnpm lint` + `pnpm test`.
 
+## Branching & Branch Name Guidelines
+
+- Default branch: `main`. Create new branches from the latest `main`.
+- Keep branches short-lived: open a PR early and merge small, focused changes.
+- Naming format:
+  - `<type>/<scope?>/<id?>-<short-desc>`
+  - Use lowercase `kebab-case` for `scope` and `short-desc` (ASCII only).
+  - Prefer an Issue/Run identifier for `id` (e.g., `gh-1234`, `run-20260127-01`).
+- Recommended `type` values: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, `revert`, `hotfix`, `release`.
+- Examples:
+  - `feat/frontend/gh-1234-run-console-filter`
+  - `fix/backend/run-20260127-01-ws-reconnect`
+  - `docs/gh-1200-branch-naming`
+  - `chore/deps/pnpm-upgrade`
+  - `release/1.8.0`
+
 ## Security & Configuration Tips
 
 - Copy `backend/.env.example` → `backend/.env` and `acp-proxy/config.json.example` → `acp-proxy/config.json`.

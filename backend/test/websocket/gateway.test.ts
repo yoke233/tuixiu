@@ -14,7 +14,9 @@ class FakeSocket extends EventEmitter {
 describe("WebSocketGateway", () => {
   it("register_agent upserts agent and acks; sendToAgent routes to socket", async () => {
     const prisma = {
-      agent: { upsert: vi.fn().mockResolvedValue({}) }
+      agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
+      run: { findMany: vi.fn().mockResolvedValue([]) },
+      event: { findMany: vi.fn().mockResolvedValue([]) },
     } as any;
 
     const gateway = createWebSocketGateway({ prisma });
@@ -37,6 +39,64 @@ describe("WebSocketGateway", () => {
 
     await gateway.sendToAgent("proxy-1", { hello: "world" });
     expect(socket.sent.some((s) => JSON.parse(s).hello === "world")).toBe(true);
+  });
+
+  it("register_agent resumes running runs via acpTunnel", async () => {
+    const prisma = {
+      agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
+      run: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "r1",
+            status: "running",
+            acpSessionId: "s1",
+            workspacePath: "C:/repo/.worktrees/run-1",
+            branchName: "run/1",
+            issue: { title: "Issue 1", description: "desc" },
+            artifacts: [],
+          },
+          {
+            id: "r2",
+            status: "running",
+            acpSessionId: null,
+            workspacePath: "C:/repo/.worktrees/run-2",
+            branchName: "run/2",
+            issue: { title: "Issue 2" },
+            artifacts: [],
+          },
+        ]),
+      },
+      event: { findMany: vi.fn().mockResolvedValue([]) },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const promptRun = vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" });
+    gateway.setAcpTunnel({ promptRun } as any);
+    const socket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(socket as any, vi.fn());
+
+    socket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "register_agent",
+          agent: { id: "proxy-1", name: "codex-1", max_concurrent: 2 },
+        }),
+      ),
+    );
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(promptRun).toHaveBeenCalledTimes(2);
+    expect(promptRun.mock.calls.map((c) => c[0].runId).sort()).toEqual(["r1", "r2"]);
+
+    const callR1 = promptRun.mock.calls.find((c) => c[0].runId === "r1")?.[0];
+    expect(callR1?.proxyId).toBe("proxy-1");
+    expect(callR1?.sessionId).toBe("s1");
+    expect(callR1?.cwd).toBe("C:/repo/.worktrees/run-1");
+
+    const callR2 = promptRun.mock.calls.find((c) => c[0].runId === "r2")?.[0];
+    expect(callR2?.sessionId).toBeNull();
   });
 
   it("logs error when receiving invalid JSON", async () => {
@@ -111,9 +171,9 @@ describe("WebSocketGateway", () => {
     await flushMicrotasks();
 
     expect(prisma.event.create).toHaveBeenCalled();
-    expect(prisma.run.findUnique).toHaveBeenCalledWith({
+    expect(prisma.run.findUnique).toHaveBeenNthCalledWith(1, {
       where: { id: "r1" },
-      select: { id: true, status: true, issueId: true, agentId: true }
+      select: { id: true, status: true, issueId: true, agentId: true, taskId: true, stepId: true }
     });
     expect(prisma.run.update).toHaveBeenCalled();
     expect(prisma.issue.updateMany).toHaveBeenCalledWith({
@@ -125,6 +185,94 @@ describe("WebSocketGateway", () => {
     expect(msg).toBeTruthy();
     expect(msg.run_id).toBe("r1");
     expect(msg.event).toBeTruthy();
+  });
+
+  it("coalesces agent_message_chunk session_update before persisting", async () => {
+    let n = 0;
+    const prisma = {
+      event: {
+        create: vi.fn().mockImplementation(async ({ data }: any) => {
+          n += 1;
+          return {
+            id: `e${n}`,
+            runId: data.runId,
+            source: data.source,
+            type: data.type,
+            payload: data.payload,
+            timestamp: new Date()
+          };
+        })
+      }
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    const clientSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+    gateway.__testing.handleClientConnection(clientSocket as any);
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: {
+            type: "session_update",
+            session: "s1",
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "hello " }
+            }
+          }
+        })
+      )
+    );
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: {
+            type: "session_update",
+            session: "s1",
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "world" }
+            }
+          }
+        })
+      )
+    );
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: { type: "text", text: "[done]" }
+        })
+      )
+    );
+
+    await flushMicrotasks();
+
+    expect(prisma.event.create).toHaveBeenCalledTimes(2);
+    const payload = prisma.event.create.mock.calls[0][0].data.payload;
+    expect(payload).toMatchObject({
+      type: "session_update",
+      session: "s1",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "hello world" }
+      }
+    });
+
+    const msg = clientSocket.sent.map((s) => JSON.parse(s)).filter((m) => m.type === "event_added");
+    expect(msg.length).toBe(2);
   });
 
   it("session_created updates run.acpSessionId", async () => {
@@ -150,6 +298,63 @@ describe("WebSocketGateway", () => {
       data: { acpSessionId: "s1" }
     });
     expect(clientSocket.sent.some((s) => JSON.parse(s).type === "event_added")).toBe(true);
+  });
+
+  it("session_state updates run.metadata.acpSessionState", async () => {
+    const prisma = {
+      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+      run: {
+        findUnique: vi.fn().mockResolvedValue({ metadata: { roleKey: "dev" } }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: {
+            type: "session_state",
+            session_id: "s1",
+            activity: "busy",
+            in_flight: 2,
+            updated_at: "2026-01-25T00:00:00.000Z",
+            current_mode_id: "m1",
+            current_model_id: "model1",
+            last_stop_reason: "end_turn",
+            note: "prompt_start",
+          },
+        }),
+      ),
+    );
+
+    await flushMicrotasks();
+
+    expect(prisma.run.findUnique).toHaveBeenCalledWith({ where: { id: "r1" }, select: { metadata: true } });
+    expect(prisma.run.update).toHaveBeenCalledWith({
+      where: { id: "r1" },
+      data: {
+        metadata: {
+          roleKey: "dev",
+          acpSessionState: {
+            sessionId: "s1",
+            activity: "busy",
+            inFlight: 2,
+            updatedAt: "2026-01-25T00:00:00.000Z",
+            currentModeId: "m1",
+            currentModelId: "model1",
+            lastStopReason: "end_turn",
+            note: "prompt_start",
+          },
+        },
+      },
+    });
   });
 
   it("init_result(ok=false) marks run/issue failed and decrements agent load", async () => {
@@ -275,7 +480,9 @@ describe("WebSocketGateway", () => {
       agent: {
         upsert: vi.fn().mockResolvedValue({}),
         update: vi.fn().mockResolvedValue({})
-      }
+      },
+      run: { findMany: vi.fn().mockResolvedValue([]) },
+      event: { findMany: vi.fn().mockResolvedValue([]) },
     } as any;
 
     const gateway = createWebSocketGateway({ prisma });

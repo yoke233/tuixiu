@@ -1,0 +1,56 @@
+name: Issue auto label
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto label by template fields / keywords
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = (issue.title || "").toLowerCase();
+            const body  = (issue.body  || "").toLowerCase();
+
+            // helper: add labels (avoid duplicates)
+            async function addLabels(labels) {
+              if (!labels.length) return;
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels
+              });
+            }
+
+            // 1) Fallback when templates don't set labels: detect type/status by title prefix.
+            //    Template titles are usually [ACP] / [Bug] / [Feature].
+            if (title.startsWith("[acp]")) {
+              await addLabels(["type/task", "status/ready"]);
+            } else if (title.startsWith("[bug]")) {
+              await addLabels(["type/bug", "status/triage"]);
+            } else if (title.startsWith("[feature]")) {
+              await addLabels(["type/feature", "status/triage"]);
+            }
+
+            // 2) Auto-detect area (from keywords in the issue body).
+            //    If the issue form includes an "Area" dropdown, the submitted body often contains something like:
+            //    "Area\n\nbackend"
+            function detectArea() {
+              if (body.includes("acp-proxy") || body.includes("acp proxy")) return "area/acp-proxy";
+              if (body.includes("backend")) return "area/backend";
+              if (body.includes("frontend")) return "area/frontend";
+              if (body.includes("infra")) return "area/infra";
+              if (body.includes("docs")) return "area/docs";
+              return null;
+            }
+
+            const area = detectArea();
+            if (area) await addLabels([area]);

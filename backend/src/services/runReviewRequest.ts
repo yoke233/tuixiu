@@ -2,8 +2,10 @@ import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import * as gitlab from "../integrations/gitlab.js";
 import * as github from "../integrations/github.js";
+import type { GitAuthProject } from "../utils/gitAuth.js";
+import { postGitHubPrCreatedCommentBestEffort } from "./githubIssueComments.js";
 
-export type GitPush = (opts: { cwd: string; branch: string }) => Promise<void>;
+export type GitPush = (opts: { cwd: string; branch: string; project: GitAuthProject }) => Promise<void>;
 
 export type RunReviewDeps = {
   prisma: PrismaDeps;
@@ -30,7 +32,9 @@ function appendGitHubIssueLinkForPrBody(params: {
   if (provider !== "github") return params.body;
 
   const externalNumber = params.issue.externalNumber;
-  if (typeof externalNumber !== "number" || !Number.isFinite(externalNumber) || externalNumber <= 0) return params.body;
+  if (typeof externalNumber !== "number" || !Number.isFinite(externalNumber) || externalNumber <= 0) {
+    return params.body;
+  }
 
   const externalUrl = params.issue.externalUrl?.trim();
   const issueRefRegex = new RegExp(`#${externalNumber}(?!\\d)`);
@@ -44,7 +48,8 @@ function appendGitHubIssueLinkForPrBody(params: {
 export async function createReviewRequestForRun(
   deps: RunReviewDeps,
   runId: string,
-  body: { title?: string; description?: string; targetBranch?: string }
+  body: { title?: string; description?: string; targetBranch?: string },
+  opts?: { setRunWaitingCi?: boolean }
 ): Promise<{
   success: boolean;
   data?: { pr: unknown };
@@ -66,9 +71,20 @@ export async function createReviewRequestForRun(
     return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
   }
 
-  const existingPr = run.artifacts.find((a: any) => a.type === "pr");
-  if (existingPr) {
-    return { success: true, data: { pr: existingPr } };
+  const taskId = (run as any).taskId as string | null;
+  const existingPrInRun = run.artifacts.find((a: any) => a.type === "pr");
+  if (existingPrInRun) {
+    return { success: true, data: { pr: existingPrInRun } };
+  }
+
+  if (taskId) {
+    const existingPr = await deps.prisma.artifact.findFirst({
+      where: { type: "pr", run: { is: { taskId } } } as any,
+      orderBy: { createdAt: "desc" },
+    });
+    if (existingPr) {
+      return { success: true, data: { pr: existingPr } };
+    }
   }
 
   const project = run.issue.project;
@@ -86,24 +102,22 @@ export async function createReviewRequestForRun(
   const description = body.description ?? run.issue.description ?? "";
 
   try {
-    if (String(run.workspaceType ?? "") !== "boxlite_clone") {
-      await deps.gitPush({ cwd: run.workspacePath ?? process.cwd(), branch });
-    }
+    await deps.gitPush({ cwd: run.workspacePath ?? process.cwd(), branch, project });
   } catch (err) {
     return { success: false, error: { code: "GIT_PUSH_FAILED", message: "git push 失败", details: String(err) } };
   }
 
-  if (scm === "gitlab") {
+  if (scm === "gitlab" || scm === "codeup") {
     if (!project.gitlabProjectId || !project.gitlabAccessToken) {
       return {
         success: false,
-        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab projectId/token" }
+        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab/Codeup projectId/token" }
       };
     }
 
     const baseUrl = inferGitlabBaseUrl(project.repoUrl);
     if (!baseUrl) {
-      return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 repoUrl 推导 GitLab baseUrl" } };
+      return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 repoUrl 推导 GitLab/Codeup baseUrl" } };
     }
 
     const auth: gitlab.GitLabAuth = {
@@ -118,7 +132,7 @@ export async function createReviewRequestForRun(
     } catch (err) {
       return {
         success: false,
-        error: { code: "GITLAB_PR_FAILED", message: "创建 GitLab PR 失败", details: String(err) }
+        error: { code: "GITLAB_PR_FAILED", message: "创建 GitLab/Codeup PR 失败", details: String(err) }
       };
     }
 
@@ -142,7 +156,26 @@ export async function createReviewRequestForRun(
       }
     });
 
-    await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
+    if (opts?.setRunWaitingCi !== false) {
+      await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
+    }
+
+    const issueIsGitHub = String((run as any)?.issue?.externalProvider ?? "").toLowerCase() === "github";
+    const issueNumber = Number((run as any)?.issue?.externalNumber ?? 0);
+    const repoUrlForIssue = String((run as any)?.issue?.externalUrl ?? project.repoUrl ?? "").trim();
+    const githubTokenForComment = String(project.githubAccessToken ?? "").trim();
+    if (issueIsGitHub && githubTokenForComment) {
+      await postGitHubPrCreatedCommentBestEffort({
+        repoUrl: repoUrlForIssue,
+        githubAccessToken: githubTokenForComment,
+        issueNumber,
+        runId: run.id,
+        prUrl: mergeRequest.web_url,
+        provider: "gitlab",
+        sourceBranch: mergeRequest.source_branch,
+        targetBranch: mergeRequest.target_branch,
+      });
+    }
     return { success: true, data: { pr: created } };
   }
 
@@ -196,11 +229,29 @@ export async function createReviewRequestForRun(
       }
     });
 
-    await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
+    if (opts?.setRunWaitingCi !== false) {
+      await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
+    }
+
+    const issueIsGitHub = String((run as any)?.issue?.externalProvider ?? "").toLowerCase() === "github";
+    const issueNumber = Number((run as any)?.issue?.externalNumber ?? 0);
+    const repoUrlForIssue = String((run as any)?.issue?.externalUrl ?? project.repoUrl ?? "").trim();
+    if (issueIsGitHub && token) {
+      await postGitHubPrCreatedCommentBestEffort({
+        repoUrl: repoUrlForIssue,
+        githubAccessToken: token,
+        issueNumber,
+        runId: run.id,
+        prUrl: pr.html_url,
+        provider: "github",
+        sourceBranch: pr.head.ref,
+        targetBranch: pr.base.ref,
+      });
+    }
     return { success: true, data: { pr: created } };
   }
 
-  return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub" } };
+  return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub/Codeup" } };
 }
 
 export async function mergeReviewRequestForRun(
@@ -233,23 +284,30 @@ export async function mergeReviewRequestForRun(
   const project = run.issue.project;
   const scm = String(project.scmType ?? "").toLowerCase();
 
-  const prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  const taskId = (run as any).taskId as string | null;
+  let prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  if (!prArtifact && taskId) {
+    prArtifact = await deps.prisma.artifact.findFirst({
+      where: { type: "pr", run: { is: { taskId } } } as any,
+      orderBy: { createdAt: "desc" },
+    });
+  }
   if (!prArtifact) {
     return { success: false, error: { code: "NO_PR", message: "Run 暂无 PR 产物" } };
   }
 
   const content = (prArtifact.content ?? {}) as any;
-  if (scm === "gitlab") {
+  if (scm === "gitlab" || scm === "codeup") {
     if (!project.gitlabProjectId || !project.gitlabAccessToken) {
       return {
         success: false,
-        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab projectId/token" }
+        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab/Codeup projectId/token" }
       };
     }
 
     const baseUrl = inferGitlabBaseUrl(project.repoUrl);
     if (!baseUrl) {
-      return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 repoUrl 推导 GitLab baseUrl" } };
+      return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 repoUrl 推导 GitLab/Codeup baseUrl" } };
     }
 
     const iid = Number(content.iid);
@@ -365,7 +423,7 @@ export async function mergeReviewRequestForRun(
     return { success: true, data: { pr: updated } };
   }
 
-  return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub" } };
+  return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub/Codeup" } };
 }
 
 export async function syncReviewRequestForRun(
@@ -395,23 +453,30 @@ export async function syncReviewRequestForRun(
   const project = run.issue.project;
   const scm = String(project.scmType ?? "").toLowerCase();
 
-  const prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  const taskId = (run as any).taskId as string | null;
+  let prArtifact = run.artifacts.find((a: any) => a.type === "pr") as any;
+  if (!prArtifact && taskId) {
+    prArtifact = await deps.prisma.artifact.findFirst({
+      where: { type: "pr", run: { is: { taskId } } } as any,
+      orderBy: { createdAt: "desc" },
+    });
+  }
   if (!prArtifact) {
     return { success: false, error: { code: "NO_PR", message: "Run 暂无 PR 产物" } };
   }
 
   const content = (prArtifact.content ?? {}) as any;
-  if (scm === "gitlab") {
+  if (scm === "gitlab" || scm === "codeup") {
     if (!project.gitlabProjectId || !project.gitlabAccessToken) {
       return {
         success: false,
-        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab projectId/token" },
+        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab/Codeup projectId/token" },
       };
     }
 
     const baseUrl = inferGitlabBaseUrl(project.repoUrl);
     if (!baseUrl) {
-      return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 repoUrl 推导 GitLab baseUrl" } };
+      return { success: false, error: { code: "BAD_REPO_URL", message: "无法从 repoUrl 推导 GitLab/Codeup baseUrl" } };
     }
 
     const iid = Number(content.iid);
@@ -429,7 +494,7 @@ export async function syncReviewRequestForRun(
     try {
       mergeRequest = await getMergeRequest(auth, { iid });
     } catch (err) {
-      return { success: false, error: { code: "GITLAB_API_FAILED", message: "获取 GitLab PR 失败", details: String(err) } };
+      return { success: false, error: { code: "GITLAB_API_FAILED", message: "获取 GitLab/Codeup PR 失败", details: String(err) } };
     }
 
     const updated = await deps.prisma.artifact.update({
@@ -511,5 +576,5 @@ export async function syncReviewRequestForRun(
     return { success: true, data: { pr: updated } };
   }
 
-  return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub" } };
+  return { success: false, error: { code: "UNSUPPORTED_SCM", message: "当前仅支持 GitLab/GitHub/Codeup" } };
 }

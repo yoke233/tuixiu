@@ -14,11 +14,9 @@ export type HeartbeatMessage = {
   timestamp?: string;
 };
 
-export type ExecuteTaskMessage = {
-  type: "execute_task";
+export type AcpOpenMessage = {
+  type: "acp_open";
   run_id: string;
-  session_id?: string;
-  prompt: string;
   cwd?: string;
   init?: {
     script: string;
@@ -27,19 +25,15 @@ export type ExecuteTaskMessage = {
   };
 };
 
-export type PromptRunMessage = {
-  type: "prompt_run";
+export type AcpCloseMessage = {
+  type: "acp_close";
   run_id: string;
-  session_id?: string;
-  prompt: string;
-  context?: string;
-  cwd?: string;
 };
 
-export type CancelTaskMessage = {
-  type: "cancel_task";
+export type AcpMessageMessage = {
+  type: "acp_message";
   run_id: string;
-  session_id?: string;
+  message: unknown;
 };
 
 export type AgentUpdateMessage = {
@@ -49,7 +43,7 @@ export type AgentUpdateMessage = {
 };
 
 export type IncomingMessage =
-  | ExecuteTaskMessage
-  | PromptRunMessage
-  | CancelTaskMessage
+  | AcpOpenMessage
+  | AcpCloseMessage
+  | AcpMessageMessage
   | { type: string; [k: string]: unknown };

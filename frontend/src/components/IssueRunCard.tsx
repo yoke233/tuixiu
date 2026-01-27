@@ -10,12 +10,17 @@ type IssueRunCardProps = {
   sessionId: string | null;
   sessionKnown: boolean;
 
+  refreshing: boolean;
+  cancellingRun: boolean;
+  completingRun: boolean;
+
   onRefresh: () => void;
   onStartRun: () => void;
   onCancelRun: () => void;
   onCompleteRun: () => void;
 
   canStartRun: boolean;
+  canManageRun: boolean;
 
   agents: Agent[];
   agentsLoaded: boolean;
@@ -48,11 +53,15 @@ export function IssueRunCard(props: IssueRunCardProps) {
     currentRunId,
     sessionId,
     sessionKnown,
+    refreshing,
+    cancellingRun,
+    completingRun,
     onRefresh,
     onStartRun,
     onCancelRun,
     onCompleteRun,
     canStartRun,
+    canManageRun,
     agents,
     agentsLoaded,
     agentsError,
@@ -74,69 +83,88 @@ export function IssueRunCard(props: IssueRunCardProps) {
     onWorktreeNameChange
   } = props;
 
+  const runStatus = run?.status ?? null;
+  const canOperateRunningRun = runStatus === "pending" || runStatus === "running" || runStatus === "waiting_ci";
+  const canStartNewRun = !run || runStatus === "completed" || runStatus === "failed" || runStatus === "cancelled";
+
   return (
     <section className="card">
       <div className="row spaceBetween">
         <h2>Run</h2>
         <div className="row gap">
-          <button onClick={onRefresh}>刷新</button>
-          {currentRunId ? (
+          <button onClick={onRefresh} disabled={refreshing}>
+            {refreshing ? "刷新中…" : "刷新"}
+          </button>
+
+          {canStartNewRun ? (
+            <button
+              onClick={onStartRun}
+              disabled={!canStartRun || refreshing}
+              title={!canStartRun ? "当前账号无权限启动 Run，或当前无可用 Agent" : ""}
+            >
+              {run ? "启动新 Run" : "启动 Run"}
+            </button>
+          ) : canOperateRunningRun ? (
             <>
-              <button onClick={onCancelRun} disabled={!currentRunId}>
-                取消 Run
+              <button
+                onClick={onCancelRun}
+                disabled={!currentRunId || !canManageRun || cancellingRun || completingRun}
+                title={!canManageRun ? "当前账号无权限操作 Run" : ""}
+              >
+                {cancellingRun ? "取消中…" : "取消 Run"}
               </button>
-              <button onClick={onCompleteRun} disabled={!currentRunId}>
-                完成 Run
+              <button
+                onClick={onCompleteRun}
+                disabled={!currentRunId || !canManageRun || cancellingRun || completingRun}
+                title={!canManageRun ? "当前账号无权限操作 Run" : ""}
+              >
+                {completingRun ? "完成中…" : "完成 Run"}
               </button>
             </>
-          ) : (
-            <button onClick={onStartRun} disabled={!canStartRun}>
-              启动 Run
-            </button>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {!run && agentsLoaded && !agentsError && availableAgentsCount === 0 ? (
+      {canStartNewRun && agentsLoaded && !agentsError && availableAgentsCount === 0 ? (
         <div className="muted" style={{ marginTop: 8 }}>
           当前没有可用的在线 Agent：请先启动 `acp-proxy`（或等待 Agent 空闲）。
         </div>
       ) : null}
 
-      {!run && agentsError ? (
+      {canStartNewRun && agentsError ? (
         <div className="muted" style={{ marginTop: 8 }} title={agentsError}>
           无法获取 Agent 列表：仍可尝试启动 Run（将由后端自动分配；如无 Agent 会返回错误）。
         </div>
       ) : null}
 
       {run ? (
-        <div className="kvGrid">
-          <div className="kvItem">
-            <div className="muted">runId</div>
+        <dl className="kvTable">
+          <dt>runId</dt>
+          <dd>
             <code title={run.id}>{run.id}</code>
-          </div>
-          <div className="kvItem">
-            <div className="muted">status</div>
+          </dd>
+
+          <dt>status</dt>
+          <dd>
             <StatusBadge status={run.status} />
-          </div>
-          <div className="kvItem">
-            <div className="muted">branch</div>
-            {run.branchName ? <code title={run.branchName}>{run.branchName}</code> : <span className="muted">未知</span>}
-          </div>
-          <div className="kvItem">
-            <div className="muted">worktree</div>
-            {run.workspacePath ? (
-              <code title={run.workspacePath}>{run.workspacePath}</code>
-            ) : (
-              <span className="muted">未知</span>
-            )}
-          </div>
-          <div className="kvItem">
-            <div className="muted">agentId</div>
-            <code title={run.agentId}>{run.agentId}</code>
-          </div>
-          <div className="kvItem">
-            <div className="muted">agent</div>
+          </dd>
+
+          <dt>executor</dt>
+          <dd>
+            <code>{run.executorType}</code>
+          </dd>
+
+          <dt>branch</dt>
+          <dd>{run.branchName ? <code title={run.branchName}>{run.branchName}</code> : <span className="muted">未知</span>}</dd>
+
+          <dt>worktree</dt>
+          <dd>{run.workspacePath ? <code title={run.workspacePath}>{run.workspacePath}</code> : <span className="muted">未知</span>}</dd>
+
+          <dt>agentId</dt>
+          <dd>{run.agentId ? <code title={run.agentId}>{run.agentId}</code> : <span className="muted">—</span>}</dd>
+
+          <dt>agent</dt>
+          <dd>
             <span className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
               {currentAgent ? (
                 <>
@@ -152,13 +180,15 @@ export function IssueRunCard(props: IssueRunCardProps) {
                 </span>
               ) : null}
             </span>
-          </div>
-          <div className="kvItem">
-            <div className="muted">环境</div>
+          </dd>
+
+          <dt>环境</dt>
+          <dd>
             <span className="muted">{currentAgentEnvLabel ?? "未知"}</span>
-          </div>
-          <div className="kvItem">
-            <div className="muted">sandbox</div>
+          </dd>
+
+          <dt>sandbox</dt>
+          <dd>
             {currentAgentSandbox ? (
               <span className="muted" title={currentAgentSandbox.details ?? ""}>
                 {currentAgentSandbox.label}
@@ -166,20 +196,22 @@ export function IssueRunCard(props: IssueRunCardProps) {
             ) : (
               <span className="muted">未知</span>
             )}
-          </div>
-          <div className="kvItem">
-            <div className="muted">session</div>
-            {sessionKnown ? <code title={sessionId ?? ""}>{sessionId}</code> : <span className="muted">未建立</span>}
-          </div>
-        </div>
-      ) : (
+          </dd>
+
+          <dt>session</dt>
+          <dd>{sessionKnown ? <code title={sessionId ?? ""}>{sessionId}</code> : <span className="muted">未建立</span>}</dd>
+        </dl>
+      ) : null}
+
+      {canStartNewRun ? (
         <div className="row gap">
-          <label className="label" style={{ margin: 0, minWidth: 240 }}>
+          <label className="label" style={{ margin: 0, flex: "1 1 240px", minWidth: 0 }}>
             Worktree 名称（可选）
             <input
               value={worktreeName}
               onChange={(e) => onWorktreeNameChange(e.target.value)}
               placeholder="留空则自动生成（如 gh-123-fix-login-r1）"
+              disabled={refreshing}
             />
             <div className="muted" style={{ fontSize: 12 }}>
               将用于：分支 `run/&lt;name&gt;`，目录 `.worktrees/run-&lt;name&gt;`
@@ -190,7 +222,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
             <select
               value={selectedRoleKey}
               onChange={(e) => onSelectedRoleKeyChange(e.target.value)}
-              disabled={!rolesLoaded && !rolesError}
+              disabled={(!rolesLoaded && !rolesError) || refreshing}
             >
               <option value="">项目默认</option>
               {roles.map((r) => (
@@ -202,7 +234,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
           </label>
           <label className="label" style={{ margin: 0 }}>
             选择 Agent（可选）
-            <select value={selectedAgentId} onChange={(e) => onSelectedAgentIdChange(e.target.value)}>
+            <select value={selectedAgentId} onChange={(e) => onSelectedAgentIdChange(e.target.value)} disabled={refreshing}>
               <option value="">自动分配</option>
               {agents.map((a) => {
                 const sandbox = getAgentSandboxLabel(a);
@@ -217,7 +249,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
             </select>
           </label>
           <div className="muted">
-            暂无 Run
+            {run ? "可启动新 Run" : "暂无 Run"}
             {selectedAgent ? (
               <span>
                 {" · "}
@@ -228,7 +260,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
             {rolesError ? <span>{" · "}Role 加载失败</span> : null}
           </div>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

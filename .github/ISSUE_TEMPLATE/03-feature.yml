@@ -1,0 +1,55 @@
+name: "✨ Feature Request"
+description: "Request a new feature or enhancement"
+title: "[Feature] "
+labels: ["type/feature", "status/triage"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - backend
+        - frontend
+        - acp-proxy
+        - infra
+        - docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 (Must)
+        - P1 (Should)
+        - P2 (Optional)
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: Background & goal
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      placeholder: |
+        - In scope:
+        - Out of scope:
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true

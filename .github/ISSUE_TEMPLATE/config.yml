@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "How to use: Issue → Run → PR"
+    url: https://github.com/yoke233/tuixiu/blob/main/README.md
+    about: "Read the tuixiu workflow guide (replace with your README/docs link)"
