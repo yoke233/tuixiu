@@ -99,6 +99,39 @@ describe("ACP session admin routes", () => {
     await server.close();
   });
 
+  it("GET /api/admin/acp-sessions filters archived issues", async () => {
+    const server = createHttpServer();
+    const projectId = "00000000-0000-0000-0000-000000000010";
+    const prisma = {
+      run: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    } as any;
+    const auth = {
+      requireRoles: vi.fn().mockReturnValue(async () => {}),
+    } as any;
+
+    await server.register(makeAcpSessionRoutes({ prisma, auth }), { prefix: "/api/admin" });
+
+    const res = await server.inject({
+      method: "GET",
+      url: `/api/admin/acp-sessions?projectId=${projectId}&limit=10`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prisma.run.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          executorType: "agent",
+          acpSessionId: { not: null },
+          issue: { projectId, archivedAt: null },
+        },
+      }),
+    );
+
+    await server.close();
+  });
+
   it("POST /api/admin/acp-sessions/start creates hidden issue and dispatches run", async () => {
     const server = createHttpServer();
     const projectId = "00000000-0000-0000-0000-000000000001";

@@ -590,13 +590,6 @@ a:hover {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  --detail-width: 520px;
-}
-
-@media (min-width: 980px) {
-  .issuesSplit.hasDetail {
-    grid-template-columns: 1fr 8px var(--detail-width);
-  }
 }
 
 .issuesBoard {
@@ -609,53 +602,41 @@ a:hover {
   min-width: 0;
 }
 
-.issuesDetail {
-  border-left: none;
+.modalOverlay.issueDetailOverlay {
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
+}
+
+.issueDetailDrawer {
+  height: 100%;
+  width: clamp(360px, 44vw, 720px);
+  max-width: 720px;
   background: var(--bg);
+  border-left: 1px solid var(--card-border);
+  border-radius: 18px 0 0 18px;
+  box-shadow: -18px 0 36px rgba(0, 0, 0, 0.25);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
-  min-width: 0;
-  min-height: 0;
 }
 
-.splitter {
-  display: none;
-}
-
-@media (min-width: 980px) {
-  .splitter {
-    display: block;
-    cursor: col-resize;
-    background: transparent;
-    position: relative;
-    outline: none;
-  }
-
-  .splitter::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-left: 1px solid var(--card-border);
-    border-right: 1px solid var(--card-border);
-    opacity: 0.5;
-  }
-
-  .splitter:hover::before,
-  .issuesSplit.resizing .splitter::before,
-  .splitter:focus-visible::before {
-    opacity: 1;
-    background: color-mix(in oklab, var(--accent), transparent 92%);
-  }
-}
-
-.issuesDetail .container {
+.issueDetailDrawer .container {
   max-width: none;
   padding: 18px;
   padding-bottom: calc(18px + env(safe-area-inset-bottom));
 }
 
+@media (max-width: 979px) {
+  .issueDetailDrawer {
+    width: 100%;
+    max-width: 100%;
+    border-left: none;
+    border-radius: 0;
+  }
+}
+
 @media (max-width: 640px) {
-  .issuesDetail .container {
+  .issueDetailDrawer .container {
     padding: 12px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
@@ -757,7 +738,7 @@ a:hover {
 
 .kanban {
   display: flex;
-  gap: 12px;
+  gap: 16px;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x proximity;
@@ -769,9 +750,9 @@ a:hover {
 }
 
 .kanbanCol {
-  min-width: 280px;
-  max-width: 320px;
-  flex: 0 0 280px;
+  min-width: 320px;
+  max-width: 380px;
+  flex: 0 0 340px;
   scroll-snap-align: start;
   border: 1px solid var(--card-border);
   border-radius: 14px;
@@ -809,11 +790,11 @@ a:hover {
 }
 
 .kanbanColBody {
-  padding: 12px;
+  padding: 14px;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   display: grid;
-  gap: 10px;
+  gap: 12px;
   align-content: start;
   min-width: 0;
 }
@@ -856,8 +837,8 @@ a:hover {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding: 12px;
-  padding-right: 46px;
+  padding: 14px;
+  padding-right: 52px;
   border-radius: 12px;
   border: 1px solid var(--card-border);
   background: var(--card-bg);
