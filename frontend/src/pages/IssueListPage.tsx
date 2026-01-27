@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { listIssues, startIssue, updateIssue } from "../api/issues";
@@ -38,9 +38,6 @@ export function IssueListPage() {
   const canChangeStatus = canChangeIssueStatus(userRole);
   const showIssueActionsButton = !auth.user || canRun || canChangeStatus;
 
-  const splitRef = useRef<HTMLDivElement | null>(null);
-  const resizeStateRef = useRef<{ active: boolean; width: number }>({ active: false, width: 520 });
-
   const [dragging, setDragging] = useState<{
     issueId: string;
     fromStatus: IssueStatus;
@@ -70,15 +67,9 @@ export function IssueListPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [showArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [searchText, setSearchText] = useState("");
-  const [detailWidth, setDetailWidth] = useState<number>(() => {
-    try {
-      const raw = localStorage.getItem("detailWidth");
-      const parsed = raw ? Number(raw) : 520;
-      return Number.isFinite(parsed) ? parsed : 520;
-    } catch {
-      return 520;
-    }
-  });
+  const closeDetail = useCallback(() => {
+    navigate("/issues", { replace: true });
+  }, [navigate]);
 
   const effectiveProjectId = useMemo(() => {
     if (selectedProjectId) return selectedProjectId;
@@ -201,6 +192,23 @@ export function IssueListPage() {
     };
   }, [actionIssueId]);
 
+  useEffect(() => {
+    if (!hasDetail) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDetail();
+    };
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [closeDetail, hasDetail]);
+
   async function refresh() {
     setLoading(true);
     setError(null);
@@ -301,15 +309,6 @@ export function IssueListPage() {
     await moveIssue({ issueId: actionIssue.id, fromStatus: actionIssue.status, runId: latestRun?.id }, toStatus);
   }
 
-  useEffect(() => {
-    resizeStateRef.current.width = detailWidth;
-    try {
-      localStorage.setItem("detailWidth", String(detailWidth));
-    } catch {
-      // ignore
-    }
-  }, [detailWidth]);
-
   const columns = useMemo(
     () =>
       [
@@ -322,60 +321,6 @@ export function IssueListPage() {
       ] as const,
     []
   );
-
-  const splitStyle = useMemo(() => {
-    const clamped = Math.max(360, Math.min(960, detailWidth));
-    const style: CSSProperties = {
-      ["--detail-width" as any]: `${clamped}px`
-    };
-    return style;
-  }, [detailWidth]);
-
-  function onSplitterPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    const container = splitRef.current;
-    if (!container) return;
-
-    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-    resizeStateRef.current.active = true;
-    container.classList.add("resizing");
-    document.body.style.userSelect = "none";
-  }
-
-  function onSplitterPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!resizeStateRef.current.active) return;
-    const container = splitRef.current;
-    if (!container) return;
-
-    const rect = container.getBoundingClientRect();
-    const raw = rect.right - e.clientX;
-    const max = Math.min(960, Math.max(360, rect.width - 360));
-    const next = Math.max(360, Math.min(max, Math.round(raw)));
-    setDetailWidth(next);
-  }
-
-  function onSplitterPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (!resizeStateRef.current.active) return;
-    resizeStateRef.current.active = false;
-    splitRef.current?.classList.remove("resizing");
-    document.body.style.userSelect = "";
-    (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
-  }
-
-  function onSplitterDoubleClick() {
-    setDetailWidth(520);
-  }
-
-  function onSplitterKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const step = e.shiftKey ? 80 : 20;
-    if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      setDetailWidth((w) => Math.max(360, w + step));
-    }
-    if (e.key === "ArrowRight") {
-      e.preventDefault();
-      setDetailWidth((w) => Math.max(360, w - step));
-    }
-  }
 
   return (
     <div className={`issuesShell${hasDetail ? " hasDetail" : ""}`}>
@@ -458,7 +403,7 @@ export function IssueListPage() {
         ) : null}
       </div>
 
-      <div ref={splitRef} className={`issuesSplit ${hasDetail ? "hasDetail" : ""}`} style={splitStyle}>
+      <div className={`issuesSplit ${hasDetail ? "hasDetail" : ""}`}>
         <main className="issuesBoard">
           <section className="card boardHeader">
             <div className="row spaceBetween">
@@ -574,29 +519,21 @@ export function IssueListPage() {
             })}
           </section>
         </main>
-
-        {hasDetail ? (
-          <>
-            <div
-              className="splitter"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="调整详情宽度"
-              tabIndex={0}
-              onPointerDown={onSplitterPointerDown}
-              onPointerMove={onSplitterPointerMove}
-              onPointerUp={onSplitterPointerUp}
-              onPointerCancel={onSplitterPointerUp}
-              onDoubleClick={onSplitterDoubleClick}
-              onKeyDown={onSplitterKeyDown}
-            />
-
-            <aside className="issuesDetail" aria-label="Issue 详情面板">
-              <Outlet context={outletContext} />
-            </aside>
-          </>
-        ) : null}
       </div>
+
+      {hasDetail ? (
+        <div
+          className="modalOverlay issueDetailOverlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Issue 详情"
+          onClick={closeDetail}
+        >
+          <div className="issueDetailDrawer" onClick={(e) => e.stopPropagation()}>
+            <Outlet context={outletContext} />
+          </div>
+        </div>
+      ) : null}
 
       {actionIssue ? (
         <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Issue 操作" onClick={closeIssueActions}>
