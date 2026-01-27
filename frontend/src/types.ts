@@ -206,6 +206,9 @@ export type PmPolicy = {
   version: 1;
   automation: {
     autoStartIssue: boolean;
+    autoReview: boolean;
+    autoCreatePr: boolean;
+    autoRequestMergeApproval: boolean;
   };
   approvals: {
     requireForActions: ApprovalAction[];

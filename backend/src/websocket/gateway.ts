@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 
 import type { PrismaDeps } from "../deps.js";
 import { buildContextFromRun } from "../services/runContext.js";
+import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
 import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
 import { uuidv7 } from "../utils/uuid.js";
 
@@ -321,6 +322,11 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                     .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
                     .catch(() => {});
                 }
+
+                triggerPmAutoAdvance(
+                  { prisma: deps.prisma },
+                  { runId: run.id, issueId: run.issueId, trigger: "run_completed" },
+                );
               }
             }
 
