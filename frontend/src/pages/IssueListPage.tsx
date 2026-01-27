@@ -254,7 +254,7 @@ export function IssueListPage() {
   }
 
   return (
-    <div className="issuesShell">
+    <div className={`issuesShell${hasDetail ? " hasDetail" : ""}`}>
       <div className="issuesTopBar">
         <div className="row gap">
           <div>

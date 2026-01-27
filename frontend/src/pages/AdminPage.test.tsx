@@ -42,6 +42,8 @@ describe("AdminPage", () => {
       </AuthProvider>
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "平台设置" }));
+
     const checkbox = await screen.findByRole("checkbox", { name: "主界面显示已归档 Issue" });
     expect(checkbox).not.toBeChecked();
 
@@ -152,6 +154,8 @@ describe("AdminPage", () => {
         </ThemeProvider>
       </AuthProvider>
     );
+
+    await userEvent.click(screen.getByRole("button", { name: "Issue 归档" }));
 
     expect(await screen.findByText("Done issue")).toBeInTheDocument();
 

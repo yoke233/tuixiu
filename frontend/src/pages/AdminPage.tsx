@@ -23,6 +23,8 @@ function isArchivableStatus(status: IssueStatus): boolean {
 }
 
 export function AdminPage() {
+  type AdminSectionKey = "projects" | "issues" | "roles" | "approvals" | "settings" | "archive";
+
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
@@ -32,6 +34,7 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvalBusyId, setApprovalBusyId] = useState<string>("");
+  const [activeSection, setActiveSection] = useState<AdminSectionKey>("projects");
 
   const [showArchivedOnBoard, setShowArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -276,12 +279,118 @@ export function AdminPage() {
     setShowArchivedIssues(next);
   }
 
+  const activeSectionMeta = useMemo(() => {
+    const meta: Record<AdminSectionKey, { title: string; desc: string }> = {
+      approvals: { title: "审批队列", desc: "Pending approvals / 需要人工确认的动作" },
+      settings: { title: "平台设置", desc: "影响看板展示与全局行为" },
+      projects: { title: "项目管理", desc: "创建/配置 Project（仓库、SCM、认证方式等）" },
+      issues: { title: "Issue 管理", desc: "创建需求或导入外部 Issue" },
+      roles: { title: "角色模板", desc: "创建 RoleTemplate（Prompt / initScript 等）" },
+      archive: { title: "Issue 归档", desc: "管理已完成/失败/取消的 Issue 归档状态" }
+    };
+    return meta[activeSection];
+  }, [activeSection]);
+
   return (
-    <div className="container">
-      <div className="header">
-        <div>
-          <h1>管理</h1>
+    <div className="adminShell">
+      <aside className="adminSidebar">
+        <div className="adminSidebarHeader">
+          <div className="adminSidebarTitle">管理</div>
           <div className="muted">平台设置 / 项目配置 / 归档</div>
+        </div>
+
+        <div className="adminSidebarProject">
+          <div className="muted" style={{ marginBottom: 6 }}>
+            当前 Project
+          </div>
+          {loading ? (
+            <div className="muted">加载中…</div>
+          ) : projects.length ? (
+            <select
+              aria-label="选择 Project"
+              value={effectiveProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="muted">暂无 Project，请先创建</div>
+          )}
+          {effectiveProject ? (
+            <div className="adminSidebarProjectMeta">
+              <div className="adminSidebarProjectRow">
+                <div className="muted">Repo</div>
+                <code>{effectiveProject.repoUrl}</code>
+              </div>
+              <div className="adminSidebarProjectRow">
+                <div className="muted">SCM</div>
+                <code>{effectiveProject.scmType}</code>
+              </div>
+              <div className="adminSidebarProjectRow">
+                <div className="muted">默认分支</div>
+                <code>{effectiveProject.defaultBranch}</code>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <nav className="adminNav" aria-label="管理菜单">
+          <button
+            type="button"
+            className={`adminNavItem ${activeSection === "approvals" ? "active" : ""}`}
+            onClick={() => setActiveSection("approvals")}
+          >
+            <span>审批队列</span>
+            {approvals.length ? <span className="badge orange">{approvals.length}</span> : null}
+          </button>
+          <button
+            type="button"
+            className={`adminNavItem ${activeSection === "settings" ? "active" : ""}`}
+            onClick={() => setActiveSection("settings")}
+          >
+            <span>平台设置</span>
+          </button>
+          <button
+            type="button"
+            className={`adminNavItem ${activeSection === "projects" ? "active" : ""}`}
+            onClick={() => setActiveSection("projects")}
+          >
+            <span>项目管理</span>
+          </button>
+          <button
+            type="button"
+            className={`adminNavItem ${activeSection === "issues" ? "active" : ""}`}
+            onClick={() => setActiveSection("issues")}
+          >
+            <span>Issue 管理</span>
+          </button>
+          <button
+            type="button"
+            className={`adminNavItem ${activeSection === "roles" ? "active" : ""}`}
+            onClick={() => setActiveSection("roles")}
+          >
+            <span>角色模板</span>
+          </button>
+          <button
+            type="button"
+            className={`adminNavItem ${activeSection === "archive" ? "active" : ""}`}
+            onClick={() => setActiveSection("archive")}
+          >
+            <span>Issue 归档</span>
+          </button>
+        </nav>
+      </aside>
+
+      <main className="adminMain">
+        <div className="container">
+          <div className="header">
+        <div>
+          <h1>{activeSectionMeta.title}</h1>
+          <div className="muted">{activeSectionMeta.desc}</div>
         </div>
         <div className="row gap">
           <Link to="/issues">← 返回看板</Link>
@@ -316,7 +425,7 @@ export function AdminPage() {
         </div>
       ) : null}
 
-      <section className="card" style={{ marginBottom: 16 }}>
+      <section className="card" style={{ marginBottom: 16 }} hidden={activeSection !== "approvals"}>
         <h2 style={{ marginTop: 0 }}>审批队列</h2>
         {approvals.length ? (
           <ul className="list">
@@ -352,7 +461,7 @@ export function AdminPage() {
         )}
       </section>
 
-      <section className="card" style={{ marginBottom: 16 }}>
+      <section className="card" style={{ marginBottom: 16 }} hidden={activeSection !== "settings"}>
         <h2 style={{ marginTop: 0 }}>平台设置</h2>
         <label className="row gap">
           <input
@@ -367,24 +476,9 @@ export function AdminPage() {
         </div>
       </section>
 
-      <div className="grid2">
-        <section className="card">
-          <div className="row spaceBetween">
-            <h2 style={{ margin: 0 }}>当前 Project</h2>
-            {projects.length ? (
-              <select
-                aria-label="选择 Project"
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-          </div>
+      <div className="grid2" hidden={activeSection === "approvals" || activeSection === "settings"}>
+        <section className="card" hidden={activeSection !== "projects"}>
+          <h2 style={{ marginTop: 0 }}>当前 Project</h2>
 
           {loading ? (
             <div className="muted">加载中…</div>
@@ -408,7 +502,7 @@ export function AdminPage() {
           )}
         </section>
 
-        <section className="card">
+        <section className="card" hidden={activeSection !== "projects"}>
           <h2 style={{ marginTop: 0 }}>Projects</h2>
           {loading ? (
             <div className="muted">加载中…</div>
@@ -508,7 +602,7 @@ export function AdminPage() {
           </form>
         </section>
 
-        <section className="card">
+        <section className="card" hidden={activeSection !== "issues"}>
           <h2 style={{ marginTop: 0 }}>创建 Issue（进入需求池）</h2>
           <form onSubmit={onCreateIssue} className="form">
             <label className="label">
@@ -534,7 +628,7 @@ export function AdminPage() {
           {!effectiveProjectId ? <div className="muted">请先创建 Project</div> : null}
         </section>
 
-        <section className="card">
+        <section className="card" hidden={activeSection !== "issues"}>
           <h2 style={{ marginTop: 0 }}>导入 GitHub Issue</h2>
           {effectiveProject?.scmType?.toLowerCase() === "github" ? (
             <form onSubmit={onImportGithubIssue} className="form">
@@ -555,7 +649,7 @@ export function AdminPage() {
           )}
         </section>
 
-        <section className="card">
+        <section className="card" hidden={activeSection !== "roles"}>
           <h2 style={{ marginTop: 0 }}>创建 RoleTemplate</h2>
           <form onSubmit={onCreateRole} className="form">
             <label className="label">
@@ -604,46 +698,46 @@ export function AdminPage() {
           </div>
         </section>
 
-        <section className="card">
+        <section className="card" hidden={activeSection !== "archive"}>
           <h2 style={{ marginTop: 0 }}>归档（已完成/失败/取消）</h2>
           {!effectiveProjectId ? (
             <div className="muted">请先创建 Project</div>
           ) : archivableIssues.length ? (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>标题</th>
-                  <th>状态</th>
-                  <th>归档</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {archivableIssues.map((i) => (
-                  <tr key={i.id}>
-                    <td style={{ maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {i.title}
-                    </td>
-                    <td className="muted">{i.status}</td>
-                    <td className="muted">{i.archivedAt ? "已归档" : "-"}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        type="button"
-                        className="buttonSecondary"
-                        onClick={() => onToggleArchived(i)}
-                      >
-                        {i.archivedAt ? "取消归档" : "归档"}
-                      </button>
-                    </td>
+            <div className="tableScroll">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>标题</th>
+                    <th>状态</th>
+                    <th>归档</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {archivableIssues.map((i) => (
+                    <tr key={i.id}>
+                      <td style={{ maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {i.title}
+                      </td>
+                      <td className="muted">{i.status}</td>
+                      <td className="muted">{i.archivedAt ? "已归档" : "-"}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button type="button" className="buttonSecondary" onClick={() => onToggleArchived(i)}>
+                          {i.archivedAt ? "取消归档" : "归档"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="muted">当前 Project 暂无可归档 Issue</div>
           )}
         </section>
       </div>
+        </div>
+      </main>
     </div>
   );
 }
