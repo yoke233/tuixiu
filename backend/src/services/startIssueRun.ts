@@ -265,7 +265,7 @@ export async function startIssueRun(opts: {
         ? {
             script: (role as any).initScript,
             timeout_seconds: (role as any).initTimeoutSeconds,
-          env: {
+            env: {
               ...(((issue as any).project as any).githubAccessToken
                 ? {
                     GH_TOKEN: ((issue as any).project as any).githubAccessToken,

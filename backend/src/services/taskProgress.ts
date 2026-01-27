@@ -1,29 +1,9 @@
 import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 
+import { extractAgentTextFromEvents, extractTaggedCodeBlock } from "./agentOutput.js";
+
 type TerminalOutcome = "completed" | "failed" | "cancelled";
-
-function extractAgentText(events: any[]): string {
-  const ordered = [...events].sort((a, b) => String(a.timestamp ?? "").localeCompare(String(b.timestamp ?? "")));
-  let text = "";
-  for (const e of ordered) {
-    if (String(e.source ?? "") !== "acp") continue;
-    const payload = e.payload as any;
-    if (payload?.type !== "session_update") continue;
-    const upd = payload.update as any;
-    if (upd?.sessionUpdate !== "agent_message_chunk") continue;
-    if (upd?.content?.type !== "text") continue;
-    const t = upd?.content?.text;
-    if (typeof t === "string") text += t;
-  }
-  return text;
-}
-
-function extractTaggedCodeBlock(text: string, tag: string): string {
-  const re = new RegExp("```" + tag + "\\s*\\n([\\s\\S]*?)\\n```", "m");
-  const m = text.match(re);
-  return m ? String(m[1] ?? "").trim() : "";
-}
 
 async function ensureArtifactOnce(opts: {
   prisma: PrismaDeps;
@@ -57,7 +37,7 @@ async function maybeCreateAgentArtifacts(deps: { prisma: PrismaDeps }, run: any,
   const events = await deps.prisma.event
     .findMany({ where: { runId: run.id }, orderBy: { timestamp: "asc" }, take: 5000 })
     .catch(() => []);
-  const agentText = extractAgentText(events as any[]);
+  const agentText = extractAgentTextFromEvents(events as any[]);
   if (!agentText.trim()) return;
 
   if (kind === "test.run") {

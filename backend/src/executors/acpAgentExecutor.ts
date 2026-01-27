@@ -1,6 +1,7 @@
 import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
+import { parseEnvText } from "../utils/envText.js";
 import type { AcpTunnel } from "../services/acpTunnel.js";
 import { buildContextPackPrompt } from "../services/contextPack.js";
 
@@ -333,6 +334,7 @@ export async function startAcpAgentExecution(deps: {
     promptParts.push(`测试要求:\n${issue.testRequirements}`);
   }
 
+  const roleEnv = role?.envText ? parseEnvText(String(role.envText)) : {};
   const init =
     role?.initScript?.trim()
       ? {
@@ -342,6 +344,7 @@ export async function startAcpAgentExecution(deps: {
             ...(project.githubAccessToken
               ? { GH_TOKEN: project.githubAccessToken, GITHUB_TOKEN: project.githubAccessToken }
               : {}),
+            ...roleEnv,
             TUIXIU_PROJECT_ID: issue.projectId,
             TUIXIU_PROJECT_NAME: String(project.name ?? ""),
             TUIXIU_REPO_URL: String(project.repoUrl ?? ""),

@@ -55,6 +55,13 @@ export type GitHubIssueComment = {
   created_at?: string;
 };
 
+export type GitHubPullRequestReview = {
+  id: number;
+  html_url?: string;
+  state?: string;
+  body?: string | null;
+};
+
 export type ParsedGitHubRepo = {
   host: string;
   owner: string;
@@ -299,5 +306,27 @@ export async function listPullRequestFiles(
     path: `/repos/${encodeURIComponent(auth.owner)}/${encodeURIComponent(auth.repo)}/pulls/${encodeURIComponent(
       String(params.pullNumber),
     )}/files?${qs.toString()}`,
+  });
+}
+
+export async function createPullRequestReview(
+  auth: GitHubAuth,
+  params: {
+    pullNumber: number;
+    body: string;
+    event?: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+    commitId?: string;
+  },
+): Promise<GitHubPullRequestReview> {
+  return await githubRequest<GitHubPullRequestReview>(auth, {
+    method: "POST",
+    path: `/repos/${encodeURIComponent(auth.owner)}/${encodeURIComponent(auth.repo)}/pulls/${encodeURIComponent(
+      String(params.pullNumber),
+    )}/reviews`,
+    body: {
+      body: params.body,
+      event: params.event ?? "COMMENT",
+      ...(params.commitId ? { commit_id: params.commitId } : null),
+    },
   });
 }
