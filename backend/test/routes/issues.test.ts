@@ -64,6 +64,51 @@ describe("Issues routes", () => {
     await server.close();
   });
 
+  it("GET /api/issues supports statuses filter (comma separated)", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      issue: {
+        count: vi.fn().mockResolvedValue(0),
+        findMany: vi.fn().mockResolvedValue([])
+      }
+    } as any;
+
+    await server.register(makeIssueRoutes({ prisma, sendToAgent: vi.fn() }), { prefix: "/api/issues" });
+
+    const res = await server.inject({
+      method: "GET",
+      url: "/api/issues?limit=10&offset=0&statuses=done,failed"
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prisma.issue.count).toHaveBeenCalledWith({ where: { status: { in: ["done", "failed"] } } });
+    expect(prisma.issue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: { in: ["done", "failed"] } } })
+    );
+
+    await server.close();
+  });
+
+  it("GET /api/issues supports archived filter", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      issue: {
+        count: vi.fn().mockResolvedValue(0),
+        findMany: vi.fn().mockResolvedValue([])
+      }
+    } as any;
+
+    await server.register(makeIssueRoutes({ prisma, sendToAgent: vi.fn() }), { prefix: "/api/issues" });
+
+    const res = await server.inject({
+      method: "GET",
+      url: "/api/issues?limit=10&offset=0&archived=true"
+    });
+    expect(res.statusCode).toBe(200);
+    expect(prisma.issue.count).toHaveBeenCalledWith({ where: { archivedAt: { not: null } } });
+
+    await server.close();
+  });
+
   it("GET /api/issues/:id returns NOT_FOUND when missing", async () => {
     const server = createHttpServer();
     const prisma = {

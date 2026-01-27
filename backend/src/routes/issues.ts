@@ -25,6 +25,15 @@ const issueStatusSchema = z.enum([
 
 const mutableIssueStatusSchema = z.enum(["pending", "reviewing", "done", "failed", "cancelled"]);
 
+const archivedQuerySchema = z.preprocess((v) => {
+  if (typeof v === "string") {
+    const raw = v.trim().toLowerCase();
+    if (raw === "true" || raw === "1") return true;
+    if (raw === "false" || raw === "0") return false;
+  }
+  return v;
+}, z.boolean().optional());
+
 const createIssueBodySchema = z.object({
   projectId: z.string().uuid().optional(),
   title: z.string().min(1),
@@ -48,12 +57,30 @@ export function makeIssueRoutes(deps: {
     server.get("/", async (request) => {
       const querySchema = z.object({
         status: issueStatusSchema.optional(),
+        statuses: z.string().optional(),
+        archived: archivedQuerySchema,
+        projectId: z.string().uuid().optional(),
+        q: z.string().trim().min(1).max(200).optional(),
         limit: z.coerce.number().int().positive().max(200).default(50),
         offset: z.coerce.number().int().nonnegative().default(0)
       });
-      const { status, limit, offset } = querySchema.parse(request.query);
+      const { status, statuses, archived, projectId, q, limit, offset } = querySchema.parse(request.query);
 
-      const where = status ? { status } : {};
+      let statusList: Array<z.infer<typeof issueStatusSchema>> | null = null;
+      if (typeof statuses === "string") {
+        const parts = statuses
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean);
+        if (parts.length) statusList = z.array(issueStatusSchema).parse(parts);
+      }
+
+      const where: any = {};
+      if (projectId) where.projectId = projectId;
+      if (statusList) where.status = { in: statusList };
+      else if (status) where.status = status;
+      if (typeof archived === "boolean") where.archivedAt = archived ? { not: null } : null;
+      if (q) where.title = { contains: q, mode: "insensitive" };
       const [total, issues] = await Promise.all([
         deps.prisma.issue.count({ where }),
         deps.prisma.issue.findMany({

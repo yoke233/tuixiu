@@ -39,6 +39,11 @@ export type Issue = {
   status: IssueStatus;
   archivedAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
+  externalProvider?: string | null;
+  externalId?: string | null;
+  externalNumber?: number | null;
+  externalUrl?: string | null;
   runs: Run[];
 };
 

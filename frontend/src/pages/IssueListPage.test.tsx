@@ -25,7 +25,7 @@ describe("IssueListPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders issues list after loading and shows 管理 button", async () => {
+  it("renders issues list after loading and shows admin quick actions", async () => {
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -78,6 +78,8 @@ describe("IssueListPage", () => {
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
     expect(screen.getByText("看板")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建 Issue" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GitHub 导入" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "管理" })).toBeInTheDocument();
   });
 
