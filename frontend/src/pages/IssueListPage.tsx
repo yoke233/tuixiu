@@ -8,6 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type { Issue, IssueStatus, Project } from "../types";
+import { canChangeIssueStatus, canRunIssue } from "../utils/permissions";
 import { getShowArchivedIssues } from "../utils/settings";
 
 const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
@@ -26,6 +27,10 @@ export function IssueListPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
+  const userRole = auth.user?.role ?? null;
+  const canRun = canRunIssue(userRole);
+  const canChangeStatus = canChangeIssueStatus(userRole);
+  const showIssueActionsButton = !auth.user || canRun || canChangeStatus;
 
   const splitRef = useRef<HTMLDivElement | null>(null);
   const resizeStateRef = useRef<{ active: boolean; width: number }>({ active: false, width: 520 });
@@ -129,10 +134,12 @@ export function IssueListPage() {
 
     if (actionIssue.status === "running") {
       return {
-        primary: [
-          { key: "to_reviewing", label: "完成 Run（进入 In Review）", toStatus: "reviewing" },
-          { key: "cancel_run", label: "取消 Run", toStatus: "cancelled", variant: "danger" }
-        ],
+        primary: canRun
+          ? [
+              { key: "to_reviewing", label: "完成 Run（进入 In Review）", toStatus: "reviewing" },
+              { key: "cancel_run", label: "取消 Run", toStatus: "cancelled", variant: "danger" }
+            ]
+          : [],
         statuses: []
       };
     }
@@ -142,15 +149,17 @@ export function IssueListPage() {
       : "启动 Run";
     const statuses: Array<Exclude<IssueStatus, "running">> = ["pending", "reviewing", "done", "failed", "cancelled"];
     return {
-      primary: [{ key: "start_run", label: startLabel, toStatus: "running" }],
-      statuses: statuses.map((s) => ({
-        key: `to_${s}`,
-        label: `移到 ${ISSUE_STATUS_LABELS[s]}`,
-        toStatus: s,
-        disabled: s === actionIssue.status
-      }))
+      primary: canRun ? [{ key: "start_run", label: startLabel, toStatus: "running" }] : [],
+      statuses: canChangeStatus
+        ? statuses.map((s) => ({
+            key: `to_${s}`,
+            label: `移到 ${ISSUE_STATUS_LABELS[s]}`,
+            toStatus: s,
+            disabled: s === actionIssue.status
+          }))
+        : []
     };
-  }, [actionIssue]);
+  }, [actionIssue, canChangeStatus, canRun]);
 
   function openIssueActions(issueId: string) {
     setActionIssueId(issueId);
@@ -226,6 +235,16 @@ export function IssueListPage() {
     if (!auth.user) {
       const next = encodeURIComponent(`${location.pathname}${location.search}`);
       navigate(`/login?next=${next}`);
+      return;
+    }
+
+    const isRunAction = payload.fromStatus === "running" || toStatus === "running";
+    if (isRunAction && !canRun) {
+      setError("当前账号无权限操作 Run");
+      return;
+    }
+    if (!isRunAction && !canChangeStatus) {
+      setError("当前账号无权限变更 Issue 状态");
       return;
     }
 
@@ -467,15 +486,17 @@ export function IssueListPage() {
                         const isDragging = dragging?.issueId === i.id;
                         return (
                           <div key={i.id} className="issueCardWrap">
-                            <Link
-                              to={`/issues/${i.id}`}
-                              draggable
-                              onDragStart={(e) => {
-                                const payload = { issueId: i.id, fromStatus: i.status, runId: latestRun?.id };
-                                setDragging(payload);
-                                e.dataTransfer.setData("application/json", JSON.stringify(payload));
-                                e.dataTransfer.effectAllowed = "move";
-                              }}
+                             <Link
+                               to={`/issues/${i.id}`}
+                               draggable={Boolean(auth.user) && (canRun || canChangeStatus)}
+                               onDragStart={(e) => {
+                                 if (!auth.user) return;
+                                 if (!canRun && !canChangeStatus) return;
+                                 const payload = { issueId: i.id, fromStatus: i.status, runId: latestRun?.id };
+                                 setDragging(payload);
+                                 e.dataTransfer.setData("application/json", JSON.stringify(payload));
+                                 e.dataTransfer.effectAllowed = "move";
+                               }}
                               onDragEnd={() => {
                                 setDragging(null);
                                 setDropStatus(null);
@@ -487,28 +508,30 @@ export function IssueListPage() {
                                 <div className="issueTitle">{i.title}</div>
                                 <StatusBadge status={i.status} />
                               </div>
-                              <div className="row spaceBetween issueMeta">
-                                <div className="muted">{new Date(i.createdAt).toLocaleDateString()}</div>
-                                {latestRun ? <StatusBadge status={latestRun.status} /> : <span className="muted">-</span>}
-                              </div>
-                            </Link>
-                            <button
-                              type="button"
-                              className="buttonSecondary issueCardAction"
-                              aria-label={`操作：${i.title}`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                openIssueActions(i.id);
-                              }}
-                              disabled={moving}
-                            >
-                              ⋯
-                            </button>
-                          </div>
-                        );
-                      })
-                    ) : (
+                               <div className="row spaceBetween issueMeta">
+                                 <div className="muted">{new Date(i.createdAt).toLocaleDateString()}</div>
+                                 {latestRun ? <StatusBadge status={latestRun.status} /> : <span className="muted">-</span>}
+                               </div>
+                             </Link>
+                             {showIssueActionsButton ? (
+                               <button
+                                 type="button"
+                                 className="buttonSecondary issueCardAction"
+                                 aria-label={`操作：${i.title}`}
+                                 onClick={(e) => {
+                                   e.preventDefault();
+                                   e.stopPropagation();
+                                   openIssueActions(i.id);
+                                 }}
+                                 disabled={moving}
+                               >
+                                 ⋯
+                               </button>
+                             ) : null}
+                           </div>
+                         );
+                       })
+                     ) : (
                       <div className="muted kanbanEmpty">暂无</div>
                     )}
                   </div>
@@ -580,25 +603,27 @@ export function IssueListPage() {
                   去登录
                 </button>
               </div>
-            ) : (
+            ) : issueActions.primary.length || issueActions.statuses.length ? (
               <>
-                <div style={{ marginTop: 14 }}>
-                  <div className="muted">运行</div>
-                  <div className="actionGrid">
-                    {issueActions.primary.map((a) => (
-                      <button
-                        key={a.key}
-                        type="button"
-                        className={a.variant === "danger" ? "buttonDanger" : undefined}
-                        onClick={() => void runIssueAction(a.toStatus)}
-                        disabled={moving || (actionIssue.status === "running" && !actionIssueRunId)}
-                        title={actionIssue.status === "running" && !actionIssueRunId ? "缺少 runId，无法操作" : undefined}
-                      >
-                        {a.label}
-                      </button>
-                    ))}
+                {issueActions.primary.length ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="muted">运行</div>
+                    <div className="actionGrid">
+                      {issueActions.primary.map((a) => (
+                        <button
+                          key={a.key}
+                          type="button"
+                          className={a.variant === "danger" ? "buttonDanger" : undefined}
+                          onClick={() => void runIssueAction(a.toStatus)}
+                          disabled={moving || (actionIssue.status === "running" && !actionIssueRunId)}
+                          title={actionIssue.status === "running" && !actionIssueRunId ? "缺少 runId，无法操作" : undefined}
+                        >
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 {issueActions.statuses.length ? (
                   <div style={{ marginTop: 14 }}>
@@ -619,6 +644,10 @@ export function IssueListPage() {
                   </div>
                 ) : null}
               </>
+            ) : (
+              <div className="muted" style={{ marginTop: 12 }}>
+                当前账号暂无可用操作。
+              </div>
             )}
           </div>
         </div>

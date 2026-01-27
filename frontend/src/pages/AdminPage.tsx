@@ -293,6 +293,7 @@ export function AdminPage() {
 
   async function onApproveApproval(id: string) {
     setError(null);
+    if (!requireAdmin()) return;
     setApprovalBusyId(id);
     try {
       await approveApproval(id, "admin");
@@ -306,6 +307,7 @@ export function AdminPage() {
 
   async function onRejectApproval(id: string) {
     setError(null);
+    if (!requireAdmin()) return;
     setApprovalBusyId(id);
     try {
       await rejectApproval(id, { actor: "admin", reason: "rejected by admin" });
