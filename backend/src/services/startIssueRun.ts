@@ -280,7 +280,7 @@ export async function startIssueRun(opts: {
                     GITHUB_TOKEN: ((issue as any).project as any).githubAccessToken,
                   }
                 : {}),
-              ...parseEnvText((role as any).envText),
+              ...roleEnv,
               TUIXIU_PROJECT_ID: (issue as any).projectId,
               TUIXIU_PROJECT_NAME: String(((issue as any).project as any)?.name ?? ""),
               TUIXIU_REPO_URL: String(((issue as any).project as any).repoUrl ?? ""),
@@ -289,7 +289,6 @@ export async function startIssueRun(opts: {
               TUIXIU_RUN_ID: (run as any).id,
               TUIXIU_WORKSPACE: workspacePath,
               TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${(issue as any).projectId}`,
-              ...roleEnv,
             },
           }
         : undefined;
