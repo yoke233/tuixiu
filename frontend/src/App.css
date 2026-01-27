@@ -833,12 +833,12 @@ a:hover {
 
 .issueCard {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding: 14px;
-  padding-right: 52px;
+  padding: 16px;
+  min-height: 104px;
   border-radius: 12px;
   border: 1px solid var(--card-border);
   background: var(--card-bg);
@@ -848,22 +848,7 @@ a:hover {
 }
 
 .issueCardWrap {
-  position: relative;
   min-width: 0;
-}
-
-.issueCardAction {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
-  padding: 6px 10px;
-  border-radius: 10px;
-  line-height: 1;
-  min-width: 38px;
-  display: grid;
-  place-items: center;
-  background: color-mix(in oklab, var(--card-bg), transparent 35%);
 }
 
 .modalOverlay {
@@ -895,15 +880,6 @@ a:hover {
     border-radius: 16px 16px 0 0;
     max-height: 85vh;
     padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
-  }
-
-  .issueCard {
-    padding-right: 52px;
-  }
-
-  .issueCardAction {
-    padding: 8px 12px;
-    min-width: 42px;
   }
 }
 
@@ -957,8 +933,10 @@ a:hover {
   font-weight: 650;
   font-size: 14px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
 }
 
 .issueMeta {
