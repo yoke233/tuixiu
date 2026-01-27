@@ -20,6 +20,8 @@
 - [x] **交付物发布**：支持把 `report/ci_result` 发布到 workspace 并提交 commit（带脱敏与敏感信息拦截）
 - [x] **轻量登录与角色（JWT）**：新增 `/api/auth/bootstrap|login|me`；默认对非 GET API 做登录校验，关键配置（Project/Role）限制 admin
 - [x] **GitHub CI 结果回写（基础）**：GitHub webhook 兼容 `workflow_run/check_suite/check_run`，可驱动 `waiting_ci` Run 结束并写入 `ci_result`
+- [x] **Policy MVP（Project 级）**：`GET/PUT /api/policies?projectId=...`（存储于 `Project.branchProtection.pmPolicy`）；Admin 页提供 JSON 配置入口；PM 自动化会尊重 `automation.autoStartIssue`
+- [x] **Run 自动验收（auto-review）**：`POST /api/pm/runs/:id/auto-review` 生成 `report(kind=auto_review)`；Run 变更面板提供“一键自动验收”按钮
 
 **来源（已合入 `main`）**
 - PR `#26`：PM automation v1（多来源 + 自动分析/分配/启动 + GitHub 评论 + 审批队列初版）
@@ -27,11 +29,13 @@
 - PR `#28`：多执行器 `Task/Step` 引擎（含 JWT 登录、交付物发布、GitHub CI 基础回写）
 - PR `#29`：Roadmap/Task 状态更新（docs）
 - PR `#30`：PM Agent 执行计划与 Roadmap 补齐（docs）
+- PR `#34`：Policy MVP（后端策略 API + Admin 配置入口 + PM autoStart gate）
+- PR `#35`：auto-review（后端端点 + 前端一键触发）
 
 ### 已知缺口 ⚠️（当前主线未完成）
 
-- [ ] **Policy/策略系统**：目前除 `merge_pr` 外缺少统一的“可自动执行/必须审批”规则（无法按 Project/标签/风险等级做门禁）
-- [ ] **auto-review 验收报告**：`POST /api/pm/runs/:id/auto-review` 未实现；Run 完成后缺少自动汇总（diff/测试/风险/建议）
+- [ ] **Policy/策略系统（扩展）**：已支持 Project policy 存取与 PM autoStart gate；仍缺动作级 gate（create_pr/publish/ci/merge 等）与敏感目录门禁自动升级/进入审批
+- [ ] **auto-review（自动触发/回写）**：已支持手动触发并生成 `report(kind=auto_review)`；仍缺 Run 完成自动触发、测试结果聚合增强、GitHub Issue 评论回写
 - [ ] **自动推进到 PR**：Run 完成后自动 `create-pr` 未实现（目前需要人工点击）
 - [ ] **CI/Webhook 闭环（增强）**：GitHub 已基础接入；仍缺 GitLab pipeline 回写、CI Run 关联增强（`head_sha/PR`）、CI 不可用时的 workspace test 降级策略
 - [ ] **Review Gate 聚合**：Task 级打回/回滚已具备，但缺少 “AI review / 人 review / 合并审批” 的统一门禁聚合与可视化
