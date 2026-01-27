@@ -110,14 +110,19 @@ server.register(
     prefix: "/api/issues"
   },
 );
-server.register(makeRunRoutes({ prisma, sendToAgent: wsGateway.sendToAgent }), { prefix: "/api/runs" });
+server.register(makeRunRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, broadcastToClients: wsGateway.broadcastToClients }), { prefix: "/api/runs" });
 server.register(makeApprovalRoutes({ prisma }), { prefix: "/api/approvals" });
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeGitHubIssueRoutes({ prisma, onIssueUpserted: pm.triggerAutoStart }), { prefix: "/api/projects" });
 server.register(
-  makeGitHubWebhookRoutes({ prisma, webhookSecret: env.GITHUB_WEBHOOK_SECRET, onIssueUpserted: pm.triggerAutoStart }),
+  makeGitHubWebhookRoutes({
+    prisma,
+    webhookSecret: env.GITHUB_WEBHOOK_SECRET,
+    onIssueUpserted: pm.triggerAutoStart,
+    broadcastToClients: wsGateway.broadcastToClients,
+  }),
   { prefix: "/api/webhooks" },
 );
 server.register(
@@ -129,8 +134,11 @@ server.register(
   { prefix: "/api/integrations" },
 );
 server.register(makePmRoutes({ prisma, pm }), { prefix: "/api/pm" });
-server.register(makeTaskRoutes({ prisma }), { prefix: "/api" });
-server.register(makeStepRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, createWorkspace, autoDispatch: true }), { prefix: "/api" });
+server.register(makeTaskRoutes({ prisma, broadcastToClients: wsGateway.broadcastToClients }), { prefix: "/api" });
+server.register(
+  makeStepRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, createWorkspace, autoDispatch: true, broadcastToClients: wsGateway.broadcastToClients }),
+  { prefix: "/api" },
+);
 server.register(makeArtifactRoutes({ prisma }), { prefix: "/api" });
 
 startWorkspaceCleanupLoop({

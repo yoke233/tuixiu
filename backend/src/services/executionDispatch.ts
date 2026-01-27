@@ -7,12 +7,17 @@ import { startSystemExecution } from "../executors/systemExecutor.js";
 import { advanceTaskFromRunTerminal } from "./taskProgress.js";
 
 export async function dispatchExecutionForRun(
-  deps: { prisma: PrismaDeps; sendToAgent?: SendToAgent; createWorkspace?: CreateWorkspace },
+  deps: {
+    prisma: PrismaDeps;
+    sendToAgent?: SendToAgent;
+    createWorkspace?: CreateWorkspace;
+    broadcastToClients?: (payload: unknown) => void;
+  },
   runId: string,
 ): Promise<{ success: boolean; error?: string }> {
   const run = await deps.prisma.run.findUnique({
     where: { id: runId },
-    select: { id: true, executorType: true, agentId: true },
+    select: { id: true, issueId: true, taskId: true, stepId: true, executorType: true, agentId: true },
   });
   if (!run) return { success: false, error: "Run 不存在" };
 
@@ -32,6 +37,15 @@ export async function dispatchExecutionForRun(
     }
     if (executorType === "system") {
       await startSystemExecution({ prisma: deps.prisma }, runId);
+      if ((run as any).taskId) {
+        deps.broadcastToClients?.({
+          type: "task_updated",
+          issue_id: (run as any).issueId,
+          task_id: (run as any).taskId,
+          step_id: (run as any).stepId,
+          run_id: (run as any).id,
+        });
+      }
       return { success: true };
     }
 
@@ -51,7 +65,19 @@ export async function dispatchExecutionForRun(
       })
       .catch(() => {});
 
-    await advanceTaskFromRunTerminal({ prisma: deps.prisma }, runId, "failed", { errorMessage }).catch(() => {});
+    const advanced = await advanceTaskFromRunTerminal({ prisma: deps.prisma }, runId, "failed", { errorMessage }).catch(
+      () => ({ handled: false }),
+    );
+    if (advanced.handled && (run as any).taskId) {
+      deps.broadcastToClients?.({
+        type: "task_updated",
+        issue_id: (run as any).issueId,
+        task_id: (run as any).taskId,
+        step_id: (run as any).stepId,
+        run_id: (run as any).id,
+        reason: "executor_failed",
+      });
+    }
 
     const latest = await deps.prisma.run.findUnique({ where: { id: runId }, select: { agentId: true } }).catch(() => null);
     const agentId = latest ? ((latest as any).agentId as string | null) : null;

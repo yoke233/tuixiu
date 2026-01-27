@@ -269,8 +269,29 @@ export function IssueDetailPage() {
     if (typeof def === "string" && def.trim()) setSelectedRoleKey(def.trim());
   }, [issue, selectedRoleKey]);
 
+  const refreshTasksOnly = useCallback(async () => {
+    if (!issueId) return;
+    try {
+      const ts = await listIssueTasks(issueId);
+      setTasks(ts);
+      setTasksError(null);
+      setTasksLoaded(true);
+    } catch (err) {
+      setTasks([]);
+      setTasksError(err instanceof Error ? err.message : String(err));
+      setTasksLoaded(true);
+    }
+  }, [issueId]);
+
   const onWs = useCallback(
     (msg: WsMessage) => {
+      if (msg.type === "task_created" || msg.type === "task_updated" || msg.type === "step_updated") {
+        if (msg.issue_id && msg.issue_id === issueId) {
+          void refreshTasksOnly();
+        }
+        return;
+      }
+
       if (!currentRunId) return;
       if (msg.run_id !== currentRunId) return;
       if (msg.type === "event_added" && msg.event) {
@@ -309,7 +330,7 @@ export function IssueDetailPage() {
         return;
       }
     },
-    [currentRunId, refresh]
+    [currentRunId, issueId, refresh, refreshTasksOnly]
   );
   const ws = useWsClient(onWs);
 
@@ -471,14 +492,21 @@ export function IssueDetailPage() {
 
   const runsByStepId = useMemo(() => {
     const map: Record<string, Run[]> = {};
-    for (const r of issue?.runs ?? []) {
+    const taskRuns: Run[] = [];
+    for (const t of tasks) {
+      const rs = t.runs ?? [];
+      for (const r of rs) taskRuns.push(r);
+    }
+
+    const source = taskRuns.length ? taskRuns : (issue?.runs ?? []);
+    for (const r of source) {
       const sid = r.stepId ?? "";
       if (!sid) continue;
       if (!map[sid]) map[sid] = [];
       map[sid].push(r);
     }
     return map;
-  }, [issue?.runs]);
+  }, [issue?.runs, tasks]);
 
   function latestRunForStep(stepId: string): Run | null {
     const list = runsByStepId[stepId];

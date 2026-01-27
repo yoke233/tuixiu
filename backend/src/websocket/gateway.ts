@@ -297,6 +297,16 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                   () => ({ handled: false }),
                 );
 
+                if (advanced.handled && run.taskId) {
+                  broadcastToClients({
+                    type: "task_updated",
+                    issue_id: run.issueId,
+                    task_id: run.taskId,
+                    step_id: run.stepId ?? undefined,
+                    run_id: run.id,
+                  });
+                }
+
                 if (!advanced.handled) {
                   await deps.prisma.issue
                     .updateMany({
@@ -328,7 +338,7 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
 
                 const run = await deps.prisma.run.findUnique({
                   where: { id: message.run_id },
-                  select: { id: true, status: true, issueId: true, agentId: true }
+                  select: { id: true, status: true, issueId: true, agentId: true, taskId: true, stepId: true }
                 });
 
                 if (run && run.status === "running") {
@@ -350,6 +360,16 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                     "failed",
                     { errorMessage: `initScript 失败: ${details}` },
                   ).catch(() => ({ handled: false }));
+
+                  if (advanced.handled && (run as any).taskId) {
+                    broadcastToClients({
+                      type: "task_updated",
+                      issue_id: (run as any).issueId,
+                      task_id: (run as any).taskId,
+                      step_id: (run as any).stepId ?? undefined,
+                      run_id: (run as any).id,
+                    });
+                  }
 
                   if (!advanced.handled) {
                     await deps.prisma.issue
