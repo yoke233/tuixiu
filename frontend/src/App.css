@@ -606,6 +606,7 @@ a:hover {
   align-items: stretch;
   justify-content: flex-end;
   padding: 0;
+  background: transparent;
 }
 
 .issueDetailDrawer {

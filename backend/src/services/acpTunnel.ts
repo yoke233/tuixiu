@@ -204,9 +204,8 @@ export function createAcpTunnel(deps: {
   }
 
   async function bufferChunkSegment(runId: string, seg: BufferedChunkSegment): Promise<void> {
-    const existing = chunkBuffersByRun.get(runId);
     const buf: RunChunkBuffer =
-      existing ??
+      chunkBuffersByRun.get(runId) ??
       {
         segments: [],
         totalChars: 0,
@@ -216,12 +215,18 @@ export function createAcpTunnel(deps: {
     const maxSegmentChars = CHUNK_MAX_BUFFER_CHARS;
     const text = seg.text.length > maxSegmentChars ? seg.text.slice(0, maxSegmentChars) : seg.text;
 
-    buf.segments.push({ ...seg, text });
+    const last = buf.segments.length ? buf.segments[buf.segments.length - 1] : null;
+    if (last && last.session === seg.session && last.sessionUpdate === seg.sessionUpdate) {
+      last.text += text;
+    } else {
+      buf.segments.push({ ...seg, text });
+    }
     buf.totalChars += text.length;
+    chunkBuffersByRun.set(runId, buf);
 
-    while (buf.totalChars > CHUNK_MAX_BUFFER_CHARS && buf.segments.length > 1) {
-      const first = buf.segments.shift();
-      if (first) buf.totalChars -= first.text.length;
+    if (buf.totalChars >= CHUNK_MAX_BUFFER_CHARS) {
+      await flushRunChunkBuffer(runId);
+      return;
     }
 
     if (!buf.timer) {
@@ -232,8 +237,6 @@ export function createAcpTunnel(deps: {
       }, CHUNK_FLUSH_INTERVAL_MS);
       buf.timer.unref?.();
     }
-
-    if (!existing) chunkBuffersByRun.set(runId, buf);
   }
 
   async function persistSessionUpdate(runId: string, sessionId: string, update: acp.SessionNotification["update"]) {
@@ -828,6 +831,10 @@ export function createAcpTunnel(deps: {
     setSessionModel,
     __testing: {
       runStates,
+      chunkBuffersByRun,
+      bufferChunkSegment,
+      flushRunChunkBuffer,
+      persistSessionUpdate,
     },
     gatewayHandlers: {
       handleAcpOpened,

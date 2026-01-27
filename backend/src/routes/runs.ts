@@ -338,16 +338,6 @@ export function makeRunRoutes(deps: {
         };
       }
 
-      await deps.prisma.event.create({
-        data: {
-          id: uuidv7(),
-          runId: id,
-          source: "user",
-          type: "user.message",
-          payload: { text } as any,
-        },
-      });
-
       if (!deps.acp) {
         return {
           success: false,
@@ -361,26 +351,27 @@ export function makeRunRoutes(deps: {
         };
       }
 
+      const recentEvents = await deps.prisma.event.findMany({
+        where: { runId: id },
+        orderBy: { timestamp: "desc" },
+        take: 200,
+      });
+      const context = buildContextFromRun({
+        run,
+        issue: run.issue,
+        events: recentEvents,
+      });
+
+      const cwd = run.workspacePath ?? "";
+      if (!cwd) {
+        return {
+          success: false,
+          error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法发送 prompt" },
+        };
+      }
+
+      const createdAt = new Date();
       try {
-        const recentEvents = await deps.prisma.event.findMany({
-          where: { runId: id },
-          orderBy: { timestamp: "desc" },
-          take: 200,
-        });
-        const context = buildContextFromRun({
-          run,
-          issue: run.issue,
-          events: recentEvents,
-        });
-
-        const cwd = run.workspacePath ?? "";
-        if (!cwd) {
-          return {
-            success: false,
-            error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法发送 prompt" },
-          };
-        }
-
         await deps.acp.promptRun({
           proxyId: run.agent.proxyId,
           runId: id,
@@ -397,6 +388,25 @@ export function makeRunRoutes(deps: {
             message: "发送消息到 Agent 失败",
             details: String(error),
           },
+        };
+      }
+
+      try {
+        await deps.prisma.event.create({
+          data: {
+            id: uuidv7(),
+            runId: id,
+            source: "user",
+            type: "user.message",
+            payload: { text } as any,
+            timestamp: createdAt,
+          },
+        });
+      } catch (error) {
+        server.log.warn({ err: error, runId: id }, "persist user.message failed after prompt sent");
+        return {
+          success: true,
+          data: { ok: true, warning: { code: "EVENT_PERSIST_FAILED", message: "消息已发送，但写入事件失败" } },
         };
       }
 

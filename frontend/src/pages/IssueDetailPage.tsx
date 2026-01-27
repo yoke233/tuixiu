@@ -623,6 +623,13 @@ export function IssueDetailPage() {
     return groups;
   }, [visibleTaskTemplates]);
 
+  const hasNonTerminalTask = useMemo(() => {
+    if (!tasksLoaded || tasksError) return false;
+    return tasks.some((t) => t.status !== "completed" && t.status !== "failed" && t.status !== "cancelled");
+  }, [tasks, tasksError, tasksLoaded]);
+
+  const canCreateAnotherTask = tasksLoaded && !tasksError && !hasNonTerminalTask;
+
   useEffect(() => {
     if (!taskTemplatesLoaded) return;
     setSelectedTemplateKey((prev) =>
@@ -923,69 +930,81 @@ export function IssueDetailPage() {
                 <div className="muted">Task/Step（支持回滚重跑与多执行器）</div>
               </div>
               <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <select
-                  aria-label="选择任务模板"
-                  value={selectedTemplateKey}
-                  onChange={(e) => setSelectedTemplateKey(e.target.value)}
-                  disabled={!taskTemplatesLoaded && !taskTemplatesError}
-                >
-                  <option value="">选择模板…</option>
-                  {visibleTaskTemplatesByTrack.quick.length ? (
-                    <optgroup label="Track：quick">
-                      {visibleTaskTemplatesByTrack.quick.map((t) => (
-                        <option key={t.key} value={t.key}>
-                          {t.displayName}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  {visibleTaskTemplatesByTrack.planning.length ? (
-                    <optgroup label="Track：planning">
-                      {visibleTaskTemplatesByTrack.planning.map((t) => (
-                        <option key={t.key} value={t.key}>
-                          {t.displayName}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  {visibleTaskTemplatesByTrack.enterprise.length ? (
-                    <optgroup label="Track：enterprise">
-                      {visibleTaskTemplatesByTrack.enterprise.map((t) => (
-                        <option key={t.key} value={t.key}>
-                          {t.displayName}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  {visibleTaskTemplatesByTrack.other.length ? (
-                    <optgroup label="其他">
-                      {visibleTaskTemplatesByTrack.other.map((t) => (
-                        <option key={t.key} value={t.key}>
-                          {t.displayName}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                </select>
-                <select
-                  aria-label="选择 Track"
-                  value={selectedTaskTrack}
-                  onChange={(e) => setSelectedTaskTrack(e.target.value as TaskTrack | "")}
-                  disabled={creatingTask}
-                >
-                  <option value="">Track：自动</option>
-                  <option value="quick">Track：quick</option>
-                  <option value="planning">Track：planning</option>
-                  <option value="enterprise">Track：enterprise</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={onCreateTask}
-                  disabled={creatingTask || !selectedTemplateKey || !allowTaskOps}
-                  title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
-                >
-                  {creatingTask ? "创建中…" : "创建任务"}
-                </button>
+                {canCreateAnotherTask ? (
+                  <>
+                    <select
+                      aria-label="选择任务模板"
+                      value={selectedTemplateKey}
+                      onChange={(e) => setSelectedTemplateKey(e.target.value)}
+                      disabled={!taskTemplatesLoaded && !taskTemplatesError}
+                    >
+                      <option value="">选择模板…</option>
+                      {visibleTaskTemplatesByTrack.quick.length ? (
+                        <optgroup label="Track：quick">
+                          {visibleTaskTemplatesByTrack.quick.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.displayName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {visibleTaskTemplatesByTrack.planning.length ? (
+                        <optgroup label="Track：planning">
+                          {visibleTaskTemplatesByTrack.planning.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.displayName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {visibleTaskTemplatesByTrack.enterprise.length ? (
+                        <optgroup label="Track：enterprise">
+                          {visibleTaskTemplatesByTrack.enterprise.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.displayName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {visibleTaskTemplatesByTrack.other.length ? (
+                        <optgroup label="其他">
+                          {visibleTaskTemplatesByTrack.other.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.displayName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                    </select>
+                    <select
+                      aria-label="选择 Track"
+                      value={selectedTaskTrack}
+                      onChange={(e) => setSelectedTaskTrack(e.target.value as TaskTrack | "")}
+                      disabled={creatingTask}
+                    >
+                      <option value="">Track：自动</option>
+                      <option value="quick">Track：quick</option>
+                      <option value="planning">Track：planning</option>
+                      <option value="enterprise">Track：enterprise</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={onCreateTask}
+                      disabled={creatingTask || !selectedTemplateKey || !allowTaskOps}
+                      title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
+                    >
+                      {creatingTask ? "创建中…" : "创建任务"}
+                    </button>
+                  </>
+                ) : (
+                  <span className="muted">
+                    {!tasksLoaded
+                      ? "Task 加载中：暂不可创建"
+                      : tasksError
+                        ? "Task 加载失败：暂不可创建"
+                        : "已有进行中的 Task：请在下方继续执行/回滚重跑"}
+                  </span>
+                )}
                 <button type="button" className="buttonSecondary" onClick={() => refresh()} disabled={refreshing}>
                   同步
                 </button>
