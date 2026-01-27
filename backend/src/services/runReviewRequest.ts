@@ -3,6 +3,7 @@ import { uuidv7 } from "../utils/uuid.js";
 import * as gitlab from "../integrations/gitlab.js";
 import * as github from "../integrations/github.js";
 import type { GitAuthProject } from "../utils/gitAuth.js";
+import { postGitHubPrCreatedCommentBestEffort } from "./githubIssueComments.js";
 
 export type GitPush = (opts: { cwd: string; branch: string; project: GitAuthProject }) => Promise<void>;
 
@@ -158,6 +159,23 @@ export async function createReviewRequestForRun(
     if (opts?.setRunWaitingCi !== false) {
       await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
     }
+
+    const issueIsGitHub = String((run as any)?.issue?.externalProvider ?? "").toLowerCase() === "github";
+    const issueNumber = Number((run as any)?.issue?.externalNumber ?? 0);
+    const repoUrlForIssue = String((run as any)?.issue?.externalUrl ?? project.repoUrl ?? "").trim();
+    const githubTokenForComment = String(project.githubAccessToken ?? "").trim();
+    if (issueIsGitHub && githubTokenForComment) {
+      await postGitHubPrCreatedCommentBestEffort({
+        repoUrl: repoUrlForIssue,
+        githubAccessToken: githubTokenForComment,
+        issueNumber,
+        runId: run.id,
+        prUrl: mergeRequest.web_url,
+        provider: "gitlab",
+        sourceBranch: mergeRequest.source_branch,
+        targetBranch: mergeRequest.target_branch,
+      });
+    }
     return { success: true, data: { pr: created } };
   }
 
@@ -213,6 +231,22 @@ export async function createReviewRequestForRun(
 
     if (opts?.setRunWaitingCi !== false) {
       await deps.prisma.run.update({ where: { id: run.id }, data: { status: "waiting_ci" } }).catch(() => {});
+    }
+
+    const issueIsGitHub = String((run as any)?.issue?.externalProvider ?? "").toLowerCase() === "github";
+    const issueNumber = Number((run as any)?.issue?.externalNumber ?? 0);
+    const repoUrlForIssue = String((run as any)?.issue?.externalUrl ?? project.repoUrl ?? "").trim();
+    if (issueIsGitHub && token) {
+      await postGitHubPrCreatedCommentBestEffort({
+        repoUrl: repoUrlForIssue,
+        githubAccessToken: token,
+        issueNumber,
+        runId: run.id,
+        prUrl: pr.html_url,
+        provider: "github",
+        sourceBranch: pr.head.ref,
+        targetBranch: pr.base.ref,
+      });
     }
     return { success: true, data: { pr: created } };
   }

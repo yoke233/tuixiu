@@ -1,6 +1,6 @@
-import type { AgentStatus, IssueStatus, RunStatus, StepStatus, TaskStatus } from "../types";
+import type { AcpSessionActivity, AgentStatus, IssueStatus, RunStatus, StepStatus, TaskStatus } from "../types";
 
-type Status = IssueStatus | RunStatus | AgentStatus | TaskStatus | StepStatus;
+type Status = IssueStatus | RunStatus | AgentStatus | TaskStatus | StepStatus | AcpSessionActivity;
 
 const COLORS: Record<string, string> = {
   pending: "badge gray",
@@ -17,7 +17,13 @@ const COLORS: Record<string, string> = {
   online: "badge green",
   offline: "badge gray",
   degraded: "badge orange",
-  suspended: "badge red"
+  suspended: "badge red",
+  unknown: "badge gray",
+  idle: "badge gray",
+  busy: "badge blue",
+  loading: "badge purple",
+  cancel_requested: "badge orange",
+  closed: "badge gray"
 };
 
 export function StatusBadge(props: { status: Status }) {

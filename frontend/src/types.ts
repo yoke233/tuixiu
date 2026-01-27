@@ -68,6 +68,19 @@ export type Run = {
   artifacts?: Artifact[];
 };
 
+export type AcpSessionActivity = "unknown" | "idle" | "busy" | "loading" | "cancel_requested" | "closed";
+
+export type AcpSessionState = {
+  sessionId: string;
+  activity: AcpSessionActivity;
+  inFlight: number;
+  updatedAt: string;
+  currentModeId: string | null;
+  currentModelId: string | null;
+  lastStopReason: string | null;
+  note: string | null;
+};
+
 export type AcpSessionSummary = {
   runId: string;
   issueId: string;
@@ -75,6 +88,7 @@ export type AcpSessionSummary = {
   projectId: string;
   runStatus: RunStatus;
   sessionId: string;
+  sessionState: AcpSessionState | null;
   startedAt: string;
   completedAt: string | null;
   agent: { id: string; name: string; proxyId: string; status: AgentStatus } | null;

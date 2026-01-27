@@ -1,6 +1,7 @@
 import type { PrismaDeps } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { getRunChanges, type RunChangeFile } from "../runGitChanges.js";
+import { postGitHubAutoReviewCommentBestEffort } from "../githubIssueComments.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
 
 type NextAction = "create_pr" | "wait_ci" | "request_merge_approval" | "manual_review" | "none";
@@ -113,7 +114,7 @@ function buildMarkdown(opts: {
 export async function autoReviewRunForPm(
   deps: { prisma: PrismaDeps },
   runId: string,
-  opts?: { now?: () => Date; getChanges?: typeof getRunChanges },
+  opts?: { now?: () => Date; getChanges?: typeof getRunChanges; commentToGithub?: boolean },
 ): Promise<
   | { success: true; data: { runId: string; artifactId: string; report: any } }
   | { success: false; error: { code: string; message: string; details?: string } }
@@ -241,6 +242,46 @@ export async function autoReviewRunForPm(
     } as any,
     select: { id: true } as any,
   });
+
+  const shouldComment = opts?.commentToGithub === true;
+  if (shouldComment) {
+    const already = await deps.prisma.event
+      .findFirst({ where: { runId, type: "pm.auto_review.github_comment" }, orderBy: { timestamp: "desc" } })
+      .catch(() => null);
+    if (!already) {
+      await deps.prisma.event
+        .create({
+          data: {
+            id: uuidv7(),
+            runId,
+            source: "system",
+            type: "pm.auto_review.github_comment",
+            payload: { trigger: "auto_review" } as any,
+          } as any,
+        })
+        .catch(() => {});
+
+      const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
+      const issueNumber = Number(issue?.externalNumber ?? 0);
+      const token = String(project?.githubAccessToken ?? "").trim();
+      const repoUrlForIssue = String(issue?.externalUrl ?? project?.repoUrl ?? "").trim();
+
+      if (issueIsGitHub && token) {
+        await postGitHubAutoReviewCommentBestEffort({
+          repoUrl: repoUrlForIssue,
+          githubAccessToken: token,
+          issueNumber,
+          runId,
+          prUrl: prInfo?.webUrl ?? null,
+          changedFiles: files.length,
+          ciPassed: ciInfo?.passed ?? null,
+          sensitiveHits: sensitive?.matchedFiles?.length ?? 0,
+          nextAction: (report as any)?.recommendation?.nextAction ?? null,
+          reason: (report as any)?.recommendation?.reason ?? null,
+        });
+      }
+    }
+  }
 
   return { success: true, data: { runId, artifactId: (artifact as any).id, report } };
 }

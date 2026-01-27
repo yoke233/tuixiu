@@ -49,6 +49,7 @@ describe("ACP session admin routes", () => {
             projectId,
             runStatus: "running",
             sessionId: "s1",
+            sessionState: null,
             startedAt: "2026-01-25T00:00:00.000Z",
             completedAt: null,
             agent: { id: agentId, name: "proxy", proxyId: "proxy-1", status: "online" },

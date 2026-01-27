@@ -84,6 +84,8 @@ async function main() {
 
   const sem = new Semaphore(cfg.agent.max_concurrent);
 
+  type SessionActivity = "unknown" | "idle" | "busy" | "loading" | "cancel_requested" | "closed";
+
   type RunState = {
     cwd: string;
     bridge: AcpBridge;
@@ -92,6 +94,9 @@ async function main() {
     loadingSessionId: string | null;
     lastUsedAt: number;
     inFlight: number;
+    currentModeId: string | null;
+    currentModelId: string | null;
+    lastStopReason: string | null;
   };
 
   const runStates = new Map<string, RunState>();
@@ -220,6 +225,27 @@ async function main() {
     }
   };
 
+  const sendSessionState = (
+    runId: string,
+    state: RunState,
+    patch: { activity: SessionActivity; sessionId?: string; note?: string },
+  ) => {
+    const sessionId = patch.sessionId ?? state.sessionId;
+    if (!sessionId) return;
+
+    sendUpdate(runId, {
+      type: "session_state",
+      session_id: sessionId,
+      activity: patch.activity,
+      in_flight: state.inFlight,
+      updated_at: new Date().toISOString(),
+      current_mode_id: state.currentModeId,
+      current_model_id: state.currentModelId,
+      last_stop_reason: state.lastStopReason,
+      note: patch.note ?? null,
+    });
+  };
+
   const streamKey = (runId: string, sessionId: string) => `${runId}:${sessionId}`;
 
   const flushChunks = (runId: string, sessionId: string): string => {
@@ -294,15 +320,24 @@ async function main() {
       loadingSessionId: null,
       lastUsedAt: Date.now(),
       inFlight: 0,
+      currentModeId: null,
+      currentModelId: null,
+      lastStopReason: null,
     };
 
     state.bridge = new AcpBridge({
       launcher,
+      sandbox,
       cwd,
       log,
       onSessionUpdate: (sessionId, update) => {
         if (state.loadingSessionId === sessionId) return;
         state.lastUsedAt = Date.now();
+
+        if (update.sessionUpdate === "current_mode_update") {
+          state.currentModeId = update.currentModeId;
+          sendSessionState(runId, state, { activity: state.inFlight > 0 ? "busy" : "idle", sessionId });
+        }
 
         if (
           update.sessionUpdate === "agent_message_chunk" &&
@@ -613,14 +648,19 @@ async function main() {
           sessionId = s.sessionId;
           state.sessionId = sessionId;
           state.seenSessionIds.add(sessionId);
+          state.currentModeId = s.modes?.currentModeId ?? state.currentModeId;
+          state.currentModelId = s.models?.currentModelId ?? state.currentModelId;
 
           sendUpdate(msg.run_id, {
             type: "session_created",
             session_id: sessionId,
           });
+          sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "session_created" });
         }
 
+        sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "prompt_start" });
         const res = await state.bridge.prompt(sessionId, msg.prompt);
+        state.lastStopReason = res.stopReason;
         const flushed = flushChunks(msg.run_id, sessionId);
         if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
 
@@ -630,6 +670,13 @@ async function main() {
         });
       } finally {
         state.inFlight = Math.max(0, state.inFlight - 1);
+        if (state.sessionId) {
+          sendSessionState(msg.run_id, state, {
+            activity: state.inFlight > 0 ? "busy" : "idle",
+            sessionId: state.sessionId,
+            note: "prompt_end",
+          });
+        }
       }
     } catch (err) {
       sendUpdate(msg.run_id, {
@@ -675,10 +722,13 @@ async function main() {
           sessionId = s.sessionId;
           state.sessionId = sessionId;
           state.seenSessionIds.add(sessionId);
+          state.currentModeId = s.modes?.currentModeId ?? state.currentModeId;
+          state.currentModelId = s.models?.currentModelId ?? state.currentModelId;
           sendUpdate(msg.run_id, {
             type: "session_created",
             session_id: sessionId,
           });
+          sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "session_created" });
           msg = {
             ...msg,
             prompt: composePromptWithContext(msg.context, msg.prompt),
@@ -690,25 +740,32 @@ async function main() {
           // 仅当本进程没见过该 session 时，尝试 load 历史会话。
           // 若 load 失败（agent 不支持 / session 不存在），不自动新建 session，避免上下文丢失。
           if (!sessionPreviouslySeen) {
-            let ok = false;
+            let loaded: Awaited<ReturnType<typeof state.bridge.loadSession>> = null;
             try {
               state.loadingSessionId = sessionId;
-              ok = await state.bridge.loadSession(sessionId, cwd);
+              sendSessionState(msg.run_id, state, { activity: "loading", sessionId, note: "load_start" });
+              loaded = await state.bridge.loadSession(sessionId, cwd);
             } finally {
               state.loadingSessionId = null;
             }
             state.seenSessionIds.add(sessionId);
-            if (!ok) {
+            if (!loaded) {
               sendUpdate(msg.run_id, {
                 type: "text",
                 text: "ACP session 无法 load（可能不支持或已丢失），将尝试直接对话…",
               });
+              sendSessionState(msg.run_id, state, { activity: "unknown", sessionId, note: "load_failed" });
+            } else {
+              state.currentModeId = loaded.modes?.currentModeId ?? state.currentModeId;
+              state.currentModelId = loaded.models?.currentModelId ?? state.currentModelId;
+              sendSessionState(msg.run_id, state, { activity: "idle", sessionId, note: "load_ok" });
             }
           }
         }
 
         let res: { stopReason: string };
         try {
+          sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "prompt_start" });
           res = await state.bridge.prompt(sessionId, msg.prompt);
         } catch (err) {
           if (shouldRecreateSession(err)) {
@@ -720,10 +777,13 @@ async function main() {
             sessionId = s.sessionId;
             state.sessionId = sessionId;
             state.seenSessionIds.add(sessionId);
+            state.currentModeId = s.modes?.currentModeId ?? state.currentModeId;
+            state.currentModelId = s.models?.currentModelId ?? state.currentModelId;
             sendUpdate(msg.run_id, {
               type: "session_created",
               session_id: sessionId,
             });
+            sendSessionState(msg.run_id, state, { activity: "busy", sessionId, note: "session_recreated" });
 
             const replay = composePromptWithContext(msg.context, msg.prompt);
             res = await state.bridge.prompt(sessionId, replay);
@@ -736,6 +796,7 @@ async function main() {
           }
         }
 
+        state.lastStopReason = res.stopReason;
         const flushed = flushChunks(msg.run_id, sessionId);
         if (flushed) sendChunkUpdate(msg.run_id, sessionId, flushed);
         sendUpdate(msg.run_id, {
@@ -744,6 +805,13 @@ async function main() {
         });
       } finally {
         state.inFlight = Math.max(0, state.inFlight - 1);
+        if (state.sessionId) {
+          sendSessionState(msg.run_id, state, {
+            activity: state.inFlight > 0 ? "busy" : "idle",
+            sessionId: state.sessionId,
+            note: "prompt_end",
+          });
+        }
       }
     } catch (err) {
       sendUpdate(msg.run_id, {
@@ -772,6 +840,7 @@ async function main() {
 
       state.inFlight += 1;
       try {
+        sendSessionState(msg.run_id, state, { activity: "cancel_requested", sessionId, note: "cancel_task" });
         await state.bridge.cancel(sessionId);
       } finally {
         state.inFlight = Math.max(0, state.inFlight - 1);
@@ -812,6 +881,7 @@ async function main() {
 
       state.inFlight += 1;
       try {
+        sendSessionState(msg.run_id, state, { activity: "cancel_requested", sessionId, note: "session_cancel" });
         await state.bridge.cancel(sessionId);
       } finally {
         state.inFlight = Math.max(0, state.inFlight - 1);
