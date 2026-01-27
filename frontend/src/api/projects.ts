@@ -8,6 +8,7 @@ export type CreateProjectInput = {
   defaultBranch?: string;
   workspaceMode?: "worktree" | "clone";
   gitAuthMode?: "https_pat" | "ssh";
+  agentWorkspaceNoticeTemplate?: string;
   gitlabProjectId?: number;
   gitlabAccessToken?: string;
   gitlabWebhookSecret?: string;
@@ -25,11 +26,20 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   return data.project;
 }
 
-export type UpdateProjectInput = Partial<CreateProjectInput> & {
+export type UpdateProjectInput = {
   name?: string;
   repoUrl?: string;
   scmType?: string;
   defaultBranch?: string;
+  workspaceMode?: "worktree" | "clone" | null;
+  gitAuthMode?: "https_pat" | "ssh" | null;
+  defaultRoleKey?: string | null;
+  agentWorkspaceNoticeTemplate?: string | null;
+  gitlabProjectId?: number | null;
+  gitlabAccessToken?: string | null;
+  gitlabWebhookSecret?: string | null;
+  githubAccessToken?: string | null;
+  githubPollingEnabled?: boolean;
 };
 
 export async function updateProject(projectId: string, input: UpdateProjectInput): Promise<Project> {

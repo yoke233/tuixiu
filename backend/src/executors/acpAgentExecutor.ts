@@ -292,7 +292,11 @@ export async function startAcpAgentExecution(deps: {
     defaultBranch: String(project.defaultBranch ?? ""),
     baseBranch: baseBranchForPrompt,
   };
-  const noticeTemplate = process.env.AGENT_WORKSPACE_NOTICE_TEMPLATE;
+  const projectNoticeTemplate = (project as any)?.agentWorkspaceNoticeTemplate;
+  const noticeTemplate =
+    projectNoticeTemplate !== undefined && projectNoticeTemplate !== null
+      ? String(projectNoticeTemplate)
+      : process.env.AGENT_WORKSPACE_NOTICE_TEMPLATE;
   const workspaceNoticeDefault =
     "请在该工作区中进行修改。若该工作区是 Git 仓库，请在任务完成后将修改提交（git commit）到该分支；否则无需执行 git commit。";
   const workspaceNotice =
