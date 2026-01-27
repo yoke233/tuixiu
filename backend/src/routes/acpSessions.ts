@@ -4,6 +4,10 @@ import { z } from "zod";
 import type { AuthHelpers } from "../auth.js";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
 export function makeAcpSessionRoutes(deps: {
   prisma: PrismaDeps;
   sendToAgent?: SendToAgent;
@@ -44,6 +48,12 @@ export function makeAcpSessionRoutes(deps: {
           projectId: run.issue?.projectId ?? "",
           runStatus: run.status,
           sessionId: run.acpSessionId,
+          sessionState:
+            isRecord(run.metadata) &&
+            isRecord((run.metadata as any).acpSessionState) &&
+            (run.metadata as any).acpSessionState.sessionId === run.acpSessionId
+              ? (run.metadata as any).acpSessionState
+              : null,
           startedAt: run.startedAt,
           completedAt: run.completedAt ?? null,
           agent: run.agent
@@ -106,4 +116,3 @@ export function makeAcpSessionRoutes(deps: {
     );
   };
 }
-

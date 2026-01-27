@@ -670,6 +670,7 @@ export function AdminPage() {
                 <tr>
                   <th>sessionId</th>
                   <th>Agent</th>
+                  <th>Session 状态</th>
                   <th>Run 状态</th>
                   <th>Issue</th>
                   <th>Run</th>
@@ -694,6 +695,31 @@ export function AdminPage() {
                           </span>
                         ) : (
                           <span className="muted">未绑定</span>
+                        )}
+                      </td>
+                      <td>
+                        {s.sessionState ? (
+                          <div>
+                            <span className="row gap" style={{ alignItems: "center" }}>
+                              <StatusBadge status={s.sessionState.activity} />
+                              {s.sessionState.inFlight ? (
+                                <span className="muted">inFlight={s.sessionState.inFlight}</span>
+                              ) : null}
+                            </span>
+                            <div className="muted" style={{ marginTop: 4 }}>
+                              {s.sessionState.currentModeId ? (
+                                <>
+                                  mode: <code>{s.sessionState.currentModeId}</code>
+                                </>
+                              ) : (
+                                "mode: -"
+                              )}
+                              {s.sessionState.lastStopReason ? ` · stop: ${s.sessionState.lastStopReason}` : ""}
+                              {s.sessionState.updatedAt ? ` · ${new Date(s.sessionState.updatedAt).toLocaleString()}` : ""}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="muted">-</span>
                         )}
                       </td>
                       <td>
