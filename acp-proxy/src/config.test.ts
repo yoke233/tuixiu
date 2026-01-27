@@ -29,4 +29,24 @@ describe("loadConfig", () => {
     expect(cfg.sandbox.provider).toBe("host_process");
     expect(cfg.pathMapping).toBeUndefined();
   });
+
+  it("parses sandbox.boxlite.workspaceMode", async () => {
+    const p = path.join(tmpdir(), `acp-proxy-config-${Date.now()}-${Math.random()}.json`);
+    await writeFile(
+      p,
+      JSON.stringify({
+        orchestrator_url: "ws://localhost:3000/ws/agent",
+        heartbeat_seconds: 30,
+        mock_mode: true,
+        agent_command: ["node", "--version"],
+        agent: { id: "codex-local-1", max_concurrent: 2 },
+        sandbox: { provider: "boxlite_oci", boxlite: { image: "alpine:latest", workspaceMode: "git_clone" } },
+      }),
+      "utf8",
+    );
+
+    const cfg = await loadConfig(p);
+    expect(cfg.sandbox.provider).toBe("boxlite_oci");
+    expect(cfg.sandbox.boxlite?.workspaceMode).toBe("git_clone");
+  });
 });

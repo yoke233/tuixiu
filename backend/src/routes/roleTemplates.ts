@@ -3,6 +3,21 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { listEnvKeys } from "../utils/envText.js";
+
+function normalizeEnvText(raw: unknown): string | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (typeof raw !== "string") throw new Error("envText 必须是字符串（.env 格式）");
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return trimmed;
+}
+
+function toPublicRole(role: any): any {
+  const { envText, ...rest } = role ?? {};
+  return { ...rest, envKeys: listEnvKeys(envText) };
+}
 
 export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
   return async (server) => {
@@ -15,7 +30,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         orderBy: { createdAt: "desc" },
       });
 
-      return { success: true, data: { roles } };
+      return { success: true, data: { roles: roles.map(toPublicRole) } };
     });
 
     server.post("/:projectId/roles", async (request) => {
@@ -27,10 +42,12 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         promptTemplate: z.string().optional(),
         initScript: z.string().optional(),
         initTimeoutSeconds: z.coerce.number().int().positive().max(3600).default(300),
+        envText: z.string().max(20000).optional(),
       });
 
       const { projectId } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
+      const envText = normalizeEnvText(body.envText);
 
       const project = await deps.prisma.project.findUnique({ where: { id: projectId } });
       if (!project) {
@@ -47,10 +64,11 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
           promptTemplate: body.promptTemplate,
           initScript: body.initScript,
           initTimeoutSeconds: body.initTimeoutSeconds,
+          ...(envText !== undefined ? { envText } : {}),
         },
       });
 
-      return { success: true, data: { role } };
+      return { success: true, data: { role: toPublicRole(role) } };
     });
 
     server.patch("/:projectId/roles/:roleId", async (request) => {
@@ -61,10 +79,12 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         promptTemplate: z.string().optional(),
         initScript: z.string().optional(),
         initTimeoutSeconds: z.coerce.number().int().positive().max(3600).optional(),
+        envText: z.string().max(20000).nullable().optional(),
       });
 
       const { projectId, roleId } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
+      const envText = normalizeEnvText(body.envText);
 
       const existing = await deps.prisma.roleTemplate.findFirst({ where: { id: roleId, projectId } });
       if (!existing) {
@@ -79,10 +99,11 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
           promptTemplate: body.promptTemplate,
           initScript: body.initScript,
           initTimeoutSeconds: body.initTimeoutSeconds,
+          ...(envText !== undefined ? { envText } : {}),
         },
       });
 
-      return { success: true, data: { role } };
+      return { success: true, data: { role: toPublicRole(role) } };
     });
 
     server.delete("/:projectId/roles/:roleId", async (request) => {

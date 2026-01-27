@@ -123,6 +123,17 @@ notepad config.json
 pnpm dev
 ```
 
+也可以用更明确的模板（推荐）：
+
+```powershell
+cd acp-proxy
+Copy-Item config.local.json.example config.json
+notepad config.json
+pnpm dev
+```
+
+> `config.local.json.example` 默认 `cwd: ".."`（从 `acp-proxy/` 指向仓库根目录），一般无需修改。
+
 `config.json` 最关键字段：
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
@@ -152,15 +163,14 @@ BoxLite 用于把 ACP Agent 放入 micro-VM/OCI 沙箱运行：
 - Linux：需要 `/dev/kvm` 可用。
 - macOS：仅支持 Apple Silicon(arm64) 且 macOS 12+；Intel Mac 暂不支持。
 
-安装 BoxLite Node SDK（仅在 WSL2/Linux/macOS 环境执行）：
-
-```bash
-pnpm -C acp-proxy add @boxlite-ai/boxlite
-# 或
-pnpm -C acp-proxy add boxlite
-```
+BoxLite Node SDK 已作为 `acp-proxy` 依赖（`pnpm install` 后即可）。若你使用了裁剪安装/旧 lock，确保已安装：`pnpm -C acp-proxy install`。
 
 注意：Codex 类 Agent 通常需要 API Key（例如 `OPENAI_API_KEY`）；建议通过 `sandbox.boxlite.env` 注入（不要提交到仓库）。
+
+BoxLite 支持两种工作区模式（`sandbox.boxlite.workspaceMode`）：
+
+- `git_clone`（推荐，不挂载）：VM 内 `git clone` + 在运行分支上修改并 `git push`；后端通过 `git fetch` 拉取该分支来展示 diff/创建 PR。
+- `mount`（挂载）：通过 `sandbox.boxlite.volumes` 把宿主机 worktree 挂到 VM（例如 `/workspace`），Agent 的文件改动直接落到宿主机，后端从本地 worktree 读取 diff/提交并创建 PR。
 
 准备一个可运行的 ACP Agent 镜像（推荐）：
 
@@ -172,6 +182,13 @@ pnpm -C acp-proxy add boxlite
 ```bash
 docker build -t ghcr.io/<org>/codex-acp:latest -f docs/03_guides/agent-images/codex-acp/Dockerfile docs/03_guides/agent-images/codex-acp
 docker push ghcr.io/<org>/codex-acp:latest
+```
+
+然后可用模板快速起步（在 WSL2/Linux/macOS 环境操作）：
+
+```bash
+cp acp-proxy/config.boxlite.json.example acp-proxy/config.json
+# 编辑 config.json：填写 sandbox.boxlite.image / sandbox.boxlite.env（`git_clone` 模式无需 volumes；`mount` 模式再配置 volumes/pathMapping）
 ```
 
 ### 5.3 启动前端

@@ -13,6 +13,9 @@ importers:
       '@agentclientprotocol/sdk':
         specifier: ^0.5.1
         version: 0.5.1
+      '@boxlite-ai/boxlite':
+        specifier: ^0.2.4
+        version: 0.2.4
       ws:
         specifier: ^8.18.1
         version: 8.19.0
@@ -284,6 +287,10 @@ packages:
   '@bcoe/v8-coverage@1.0.2':
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
+
+  '@boxlite-ai/boxlite@0.2.4':
+    resolution: {integrity: sha512-Id45w703zUScTK6nFHzO18gfSr82Oi916zoI0YYygk/jzvel80UvxmcKbUG0WgxFc39Tt4GqC6vwVSdTzlpmPw==}
+    engines: {node: '>=18.0.0'}
 
   '@csstools/color-helpers@5.1.0':
     resolution: {integrity: sha512-S11EXWJyy0Mz5SYvRmY8nJYTFFd1LCNV+7cXyAgQtOOuzb4EsgfqDufL+9esx72/eLhsRdGZwaldu/h+E4t4BA==}
@@ -2322,6 +2329,8 @@ snapshots:
       '@babel/helper-validator-identifier': 7.28.5
 
   '@bcoe/v8-coverage@1.0.2': {}
+
+  '@boxlite-ai/boxlite@0.2.4': {}
 
   '@csstools/color-helpers@5.1.0': {}
 
