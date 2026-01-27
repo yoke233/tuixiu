@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { approveApproval, listApprovals, rejectApproval } from "../api/approvals";
@@ -80,11 +80,13 @@ export function AdminPage() {
   const [githubImport, setGithubImport] = useState("");
   const [importingGithub, setImportingGithub] = useState(false);
 
+  const roleCreateKeyRef = useRef<HTMLInputElement>(null);
   const [roleKey, setRoleKey] = useState("");
   const [roleDisplayName, setRoleDisplayName] = useState("");
   const [rolePromptTemplate, setRolePromptTemplate] = useState("");
   const [roleInitScript, setRoleInitScript] = useState("");
   const [roleInitTimeoutSeconds, setRoleInitTimeoutSeconds] = useState("300");
+  const [roleEnvText, setRoleEnvText] = useState("");
   const [roles, setRoles] = useState<RoleTemplate[]>([]);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [rolesError, setRolesError] = useState<string | null>(null);
@@ -94,6 +96,8 @@ export function AdminPage() {
   const [roleEditPromptTemplate, setRoleEditPromptTemplate] = useState("");
   const [roleEditInitScript, setRoleEditInitScript] = useState("");
   const [roleEditInitTimeoutSeconds, setRoleEditInitTimeoutSeconds] = useState("");
+  const [roleEditEnvTextEnabled, setRoleEditEnvTextEnabled] = useState(false);
+  const [roleEditEnvText, setRoleEditEnvText] = useState("");
   const [roleSavingId, setRoleSavingId] = useState("");
   const [roleDeletingId, setRoleDeletingId] = useState("");
 
@@ -423,6 +427,7 @@ export function AdminPage() {
         displayName: name,
         promptTemplate: rolePromptTemplate.trim() || undefined,
         initScript: roleInitScript.trim() || undefined,
+        envText: roleEnvText.trim() || undefined,
         initTimeoutSeconds: Number(roleInitTimeoutSeconds) || undefined
       });
       setRoleKey("");
@@ -430,6 +435,7 @@ export function AdminPage() {
       setRolePromptTemplate("");
       setRoleInitScript("");
       setRoleInitTimeoutSeconds("300");
+      setRoleEnvText("");
       await refreshRoles();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -443,6 +449,8 @@ export function AdminPage() {
     setRoleEditPromptTemplate("");
     setRoleEditInitScript("");
     setRoleEditInitTimeoutSeconds("");
+    setRoleEditEnvTextEnabled(false);
+    setRoleEditEnvText("");
   }
 
   function startRoleEdit(role: RoleTemplate) {
@@ -452,6 +460,18 @@ export function AdminPage() {
     setRoleEditPromptTemplate(role.promptTemplate ?? "");
     setRoleEditInitScript(role.initScript ?? "");
     setRoleEditInitTimeoutSeconds(String(role.initTimeoutSeconds ?? 300));
+    setRoleEditEnvTextEnabled(false);
+    setRoleEditEnvText(role.envText ?? "");
+  }
+
+  function copyRoleToCreate(role: RoleTemplate) {
+    setRoleKey("");
+    setRoleDisplayName(role.displayName ?? "");
+    setRolePromptTemplate(role.promptTemplate ?? "");
+    setRoleInitScript(role.initScript ?? "");
+    setRoleInitTimeoutSeconds(String(role.initTimeoutSeconds ?? 300));
+    setRoleEnvText(role.envText ?? "");
+    queueMicrotask(() => roleCreateKeyRef.current?.focus());
   }
 
   async function onUpdateRole(e: React.FormEvent) {
@@ -488,6 +508,7 @@ export function AdminPage() {
         description: roleEditDescription.trim(),
         promptTemplate: roleEditPromptTemplate.trim(),
         initScript: roleEditInitScript.trim(),
+        ...(roleEditEnvTextEnabled ? { envText: roleEditEnvText } : {}),
         initTimeoutSeconds: timeoutSeconds
       });
       resetRoleEdit();
@@ -1379,7 +1400,12 @@ export function AdminPage() {
           <form onSubmit={onCreateRole} className="form">
             <label className="label">
               Role Key *
-              <input value={roleKey} onChange={(e) => setRoleKey(e.target.value)} placeholder="backend-dev" />
+              <input
+                ref={roleCreateKeyRef}
+                value={roleKey}
+                onChange={(e) => setRoleKey(e.target.value)}
+                placeholder="backend-dev"
+              />
             </label>
             <label className="label">
               显示名称 *
@@ -1413,6 +1439,15 @@ export function AdminPage() {
                 placeholder="300"
               />
             </label>
+            <label className="label">
+              envText（.env，可选）
+              <textarea
+                value={roleEnvText}
+                onChange={(e) => setRoleEnvText(e.target.value)}
+                rows={4}
+                placeholder={"FOO=bar\nexport TOKEN=xxx"}
+              />
+            </label>
             <button type="submit" disabled={!roleKey.trim() || !roleDisplayName.trim() || !effectiveProjectId}>
               创建
             </button>
@@ -1420,6 +1455,8 @@ export function AdminPage() {
           {!effectiveProjectId ? <div className="muted">请先创建 Project</div> : null}
           <div className="muted" style={{ marginTop: 8 }}>
             initScript 默认在 workspace 执行；建议把持久内容写到 <code>$HOME/.tuixiu/projects/&lt;projectId&gt;</code>。
+            <br />
+            envText 仅在携带 admin 凭证时返回；请避免在其中存放不必要的敏感信息。
           </div>
         </section>
 
@@ -1474,12 +1511,22 @@ export function AdminPage() {
                           <div className="cellStack">
                             <div>{role.displayName}</div>
                             {role.description ? <div className="cellSub">{role.description}</div> : null}
+                            {role.envKeys?.length ? <div className="cellSub">env: {role.envKeys.join(", ")}</div> : null}
                           </div>
                         </td>
                         <td>{role.initTimeoutSeconds}s</td>
                         <td>{new Date(role.updatedAt).toLocaleString()}</td>
                         <td style={{ textAlign: "right" }}>
                           <div className="row gap" style={{ justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              className="buttonSecondary"
+                              onClick={() => copyRoleToCreate(role)}
+                              disabled={rolesLoading || busy}
+                              title="复制到上方创建表单（不填 key）"
+                            >
+                              复制
+                            </button>
                             <button
                               type="button"
                               className="buttonSecondary"
@@ -1541,6 +1588,27 @@ export function AdminPage() {
                 <input
                   value={roleEditInitTimeoutSeconds}
                   onChange={(e) => setRoleEditInitTimeoutSeconds(e.target.value)}
+                />
+              </label>
+              <label className="label">
+                envText（.env，可选）
+                <div className="row gap" style={{ alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={roleEditEnvTextEnabled}
+                    onChange={(e) => setRoleEditEnvTextEnabled(e.target.checked)}
+                  />
+                  <div className="muted">
+                    勾选后允许编辑并保存（留空=清空）。
+                    {editingRole.envKeys?.length ? ` 当前 keys: ${editingRole.envKeys.join(", ")}` : ""}
+                  </div>
+                </div>
+                <textarea
+                  value={roleEditEnvText}
+                  onChange={(e) => setRoleEditEnvText(e.target.value)}
+                  rows={4}
+                  readOnly={!roleEditEnvTextEnabled}
+                  placeholder={"FOO=bar\nexport TOKEN=xxx"}
                 />
               </label>
               <div className="row gap" style={{ marginTop: 10 }}>

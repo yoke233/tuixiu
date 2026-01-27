@@ -14,9 +14,27 @@ function normalizeEnvText(raw: unknown): string | null | undefined {
   return trimmed;
 }
 
-function toPublicRole(role: any): any {
+async function isAdminRequest(request: any): Promise<boolean> {
+  const auth = String(request?.headers?.authorization ?? "").trim();
+  if (!auth) return false;
+
+  const jwtVerify = (request as any)?.jwtVerify;
+  if (typeof jwtVerify !== "function") return false;
+
+  try {
+    await jwtVerify.call(request);
+  } catch {
+    return false;
+  }
+
+  const role = String(((request as any).user as any)?.role ?? "");
+  return role === "admin";
+}
+
+function toRoleDto(role: any, opts?: { includeEnvText?: boolean }): any {
   const { envText, ...rest } = role ?? {};
-  return { ...rest, envKeys: listEnvKeys(envText) };
+  const base = { ...rest, envKeys: listEnvKeys(envText) };
+  return opts?.includeEnvText ? { ...base, envText: envText ?? null } : base;
 }
 
 export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
@@ -25,12 +43,13 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const paramsSchema = z.object({ projectId: z.string().uuid() });
       const { projectId } = paramsSchema.parse(request.params);
 
+      const includeEnvText = await isAdminRequest(request);
       const roles = await deps.prisma.roleTemplate.findMany({
         where: { projectId },
         orderBy: { createdAt: "desc" },
       });
 
-      return { success: true, data: { roles: roles.map(toPublicRole) } };
+      return { success: true, data: { roles: roles.map((r: unknown) => toRoleDto(r, { includeEnvText })) } };
     });
 
     server.post("/:projectId/roles", async (request) => {
@@ -68,7 +87,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         },
       });
 
-      return { success: true, data: { role: toPublicRole(role) } };
+      return { success: true, data: { role: toRoleDto(role, { includeEnvText: true }) } };
     });
 
     server.patch("/:projectId/roles/:roleId", async (request) => {
@@ -103,7 +122,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         },
       });
 
-      return { success: true, data: { role: toPublicRole(role) } };
+      return { success: true, data: { role: toRoleDto(role, { includeEnvText: true }) } };
     });
 
     server.delete("/:projectId/roles/:roleId", async (request) => {
