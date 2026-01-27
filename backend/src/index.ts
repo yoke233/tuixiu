@@ -159,7 +159,12 @@ server.register(
   { prefix: "/api/webhooks" },
 );
 server.register(
-  makeGitLabWebhookRoutes({ prisma, webhookSecret: env.GITLAB_WEBHOOK_SECRET, onIssueUpserted: pm.triggerAutoStart }),
+  makeGitLabWebhookRoutes({
+    prisma,
+    webhookSecret: env.GITLAB_WEBHOOK_SECRET,
+    onIssueUpserted: pm.triggerAutoStart,
+    broadcastToClients: wsGateway.broadcastToClients,
+  }),
   { prefix: "/api/webhooks" },
 );
 server.register(

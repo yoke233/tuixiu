@@ -65,7 +65,7 @@ last_reviewed: "2026-01-27"
 - [ ] **Policy/策略系统（扩展）**：已支持 Project policy 存取与 PM autoStart gate；已完成 `create_pr`/`publish_artifact` 动作级 gate 与敏感目录升级；仍缺更多动作（`ci/test/merge auto-exec` 等）的门禁聚合与策略化
 - [ ] **auto-review（回写增强）**：已支持手动触发与自动触发（含 GitHub Issue best-effort 摘要回写）；仍缺测试结果聚合增强（例如更完整的测试摘要、diff 摘要压缩与证据链接）
 - [ ] **自动推进到 PR（Task 流）门禁完善**：已支持 Task 的 `ready` Step 自动推进；已为 `pr.create`/`report.publish` 接入 gate + `sensitivePaths` 升级；仍缺对更多 Step(kind)（test/ci 等）的动作级门禁与策略聚合
-- [ ] **CI/Webhook 闭环（增强）**：GitHub 已基础接入；仍缺 GitLab pipeline 回写、CI Run 关联增强（`head_sha/PR`）、CI 不可用时的 workspace test 降级策略
+- [ ] **CI/Webhook 闭环（增强）**：已补 GitLab pipeline 回写与 GitHub CI run 关联增强（`head_sha/PR`）；仍缺 CI 不可用/超时时的 workspace test 降级策略（或手动 `sync-ci`）
 - [ ] **Review Gate 聚合**：Task 级打回/回滚已具备，但缺少 “AI review / 人 review / 合并审批” 的统一门禁聚合与可视化
 - [ ] **安全/可靠性增强**：webhook secret 强制、幂等 eventId、限流；token 加密存储与脱敏审计；覆盖率门槛与 CI 对齐（若启用 `test:coverage`）
 - [ ] **worktree 生命周期**：完成/合并后自动清理/归档策略未实现
@@ -92,7 +92,7 @@ last_reviewed: "2026-01-27"
 - [ ] PM 自动推荐 track（增强-进阶）：结合敏感目录命中/变更规模（diff）等信号（需结合 Run changes）
 - [x] 引入 `docs/context-manifest.json`（按 `step.kind` 自动注入上下文；支持片段/截断策略）
 - [ ] 增加 `gate.implementation_readiness` 与 `correct-course`（重规划）并与 Policy/Approval 对齐
-- [ ] 接入 GitLab `pipeline` webhook：写 `Artifact(type=ci_result)` 并驱动 `Run.status=waiting_ci → completed/failed`（同时增强 CI 关联：`head_sha/PR` 等）
+- [x] 接入 GitLab `pipeline` webhook：写 `Artifact(type=ci_result)` 并驱动 `Run.status=waiting_ci → completed/failed`（同时增强 CI 关联：`head_sha/PR`）
 - [ ] 自动/半自动合并 gate：CI 全绿 + Policy 允许 → auto merge，否则进入审批
 - [ ] Review Gate 聚合：把 “AI review / 人 review / 合并审批” 做统一门禁与状态机（对 Task/Run/PR 一致）
 

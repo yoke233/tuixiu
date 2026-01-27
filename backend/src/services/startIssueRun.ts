@@ -260,7 +260,6 @@ export async function startIssueRun(opts: {
   }
 
   try {
-    const roleEnv = role?.envText ? parseEnvText(String(role.envText)) : {};
     const init =
       role?.initScript?.trim()
         ? {
@@ -273,7 +272,7 @@ export async function startIssueRun(opts: {
                     GITHUB_TOKEN: ((issue as any).project as any).githubAccessToken,
                   }
                 : {}),
-              ...roleEnv,
+              ...parseEnvText((role as any).envText),
               TUIXIU_PROJECT_ID: (issue as any).projectId,
               TUIXIU_PROJECT_NAME: String(((issue as any).project as any)?.name ?? ""),
               TUIXIU_REPO_URL: String(((issue as any).project as any).repoUrl ?? ""),

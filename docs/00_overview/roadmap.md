@@ -35,7 +35,7 @@ last_reviewed: "2026-01-27"
 
 ### P1 下一步优先级（按顺序）
 
-1. **CI/Webhook 闭环增强**：补齐 GitLab pipeline 回写；CI 关联增强（`head_sha/PR` 优先）；“双模测试”降级策略落地
+1. **CI/Webhook 闭环增强**：已补 GitLab pipeline 回写 + GitHub CI 关联增强（`head_sha/PR`）；下一步：“双模测试”降级策略落地（或手动 `sync-ci`）
 2. **Review Gate 聚合**：把 “AI review / 人 review / 合并审批” 聚合成统一 gate（含 DoD/证据），并在 UI 可视化
 3. **Gate 实施就绪 + correct-course**：落地 `gate.implementation_readiness` 与重规划能力，并与 Policy/Approval 对齐
 4. **Policy/Approval 扩展**：补齐 `ci/test/auto-merge` 等动作级门禁与聚合策略（含敏感目录联动与可审计决策）

@@ -129,7 +129,7 @@ export function makeGitHubWebhookRoutes(deps: {
             };
           }
 
-          const branch =
+          let branch =
             event === "workflow_run"
               ? String((request.body as any)?.workflow_run?.head_branch ?? "")
               : event === "check_suite"
@@ -150,19 +150,105 @@ export function makeGitHubWebhookRoutes(deps: {
                 ? (request.body as any)?.check_suite?.conclusion
                 : (request.body as any)?.check_run?.conclusion;
 
+          const headSha =
+            event === "workflow_run"
+              ? String((request.body as any)?.workflow_run?.head_sha ?? "")
+              : event === "check_suite"
+                ? String((request.body as any)?.check_suite?.head_sha ?? "")
+                : String((request.body as any)?.check_run?.head_sha ?? (request.body as any)?.check_run?.check_suite?.head_sha ?? "");
+
+          const pullRequests =
+            event === "workflow_run"
+              ? (request.body as any)?.workflow_run?.pull_requests
+              : event === "check_suite"
+                ? (request.body as any)?.check_suite?.pull_requests
+                : (request.body as any)?.check_run?.check_suite?.pull_requests ?? (request.body as any)?.check_run?.pull_requests;
+
+          const prNumbers = Array.isArray(pullRequests)
+            ? pullRequests
+                .map((pr: any) => Number(pr?.number ?? 0))
+                .filter((n: number) => Number.isInteger(n) && n > 0)
+            : [];
+
           const completed = String(status).toLowerCase() === "completed" || String((request.body as any)?.action ?? "") === "completed";
-          if (!branch || !completed) {
+          if (!completed) {
             return { success: true, data: { ok: true, ignored: true, reason: "NOT_COMPLETED", event, branch } };
           }
 
-          const run = await deps.prisma.run.findFirst({
-            where: { status: "waiting_ci", branchName: branch, issue: { projectId: project.id } } as any,
-            orderBy: { startedAt: "desc" },
-            select: { id: true, issueId: true, taskId: true, stepId: true },
-          });
+          let run =
+            branch
+              ? await deps.prisma.run.findFirst({
+                  where: { status: "waiting_ci", branchName: branch, issue: { projectId: project.id } } as any,
+                  orderBy: { startedAt: "desc" },
+                  select: { id: true, issueId: true, taskId: true, stepId: true },
+                })
+              : null;
 
           if (!run) {
-            return { success: true, data: { ok: true, ignored: true, reason: "NO_RUN", branch } };
+            let prArtifact: any = null;
+
+            if (prNumbers.length > 0) {
+              prArtifact = await deps.prisma.artifact
+                .findFirst({
+                  where: {
+                    type: "pr",
+                    run: { is: { issue: { is: { projectId: project.id } } } } as any,
+                    AND: [
+                      { content: { path: ["provider"], equals: "github" } as any },
+                      {
+                        OR: prNumbers.map((n) => ({ content: { path: ["number"], equals: n } as any })) as any,
+                      },
+                    ] as any,
+                  } as any,
+                  orderBy: { createdAt: "desc" },
+                })
+                .catch(() => null);
+            }
+
+            if (!prArtifact && headSha) {
+              prArtifact = await deps.prisma.artifact
+                .findFirst({
+                  where: {
+                    type: "pr",
+                    run: { is: { issue: { is: { projectId: project.id } } } } as any,
+                    AND: [
+                      { content: { path: ["provider"], equals: "github" } as any },
+                      { content: { path: ["headSha"], equals: headSha } as any },
+                    ] as any,
+                  } as any,
+                  orderBy: { createdAt: "desc" },
+                })
+                .catch(() => null);
+            }
+
+            if (prArtifact) {
+              const branchFromPr = String(((prArtifact as any).content ?? {})?.sourceBranch ?? "").trim();
+              if (!branch && branchFromPr) branch = branchFromPr;
+
+              const prRun = await deps.prisma.run
+                .findUnique({
+                  where: { id: String((prArtifact as any).runId) },
+                  select: { id: true, issueId: true, taskId: true, stepId: true, status: true, branchName: true } as any,
+                })
+                .catch(() => null);
+
+              if (prRun && String((prRun as any).status ?? "") === "waiting_ci") {
+                run = prRun as any;
+                if (!branch) branch = String((prRun as any).branchName ?? "").trim();
+              } else if (branch) {
+                run = await deps.prisma.run
+                  .findFirst({
+                    where: { status: "waiting_ci", branchName: branch, issue: { projectId: project.id } } as any,
+                    orderBy: { startedAt: "desc" },
+                    select: { id: true, issueId: true, taskId: true, stepId: true },
+                  })
+                  .catch(() => null);
+              }
+            }
+          }
+
+          if (!run) {
+            return { success: true, data: { ok: true, ignored: true, reason: "NO_RUN", branch, headSha, prNumbers } };
           }
 
           const passed = String(conclusion ?? "").toLowerCase() === "success";
@@ -173,7 +259,7 @@ export function makeGitHubWebhookRoutes(deps: {
                 id: uuidv7(),
                 runId: run.id,
                 type: "ci_result",
-                content: { provider: "github", event, branch, status, conclusion, passed } as any,
+                content: { provider: "github", event, branch, status, conclusion, passed, headSha: headSha || undefined, prNumbers } as any,
               },
             })
             .catch(() => {});

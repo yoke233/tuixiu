@@ -87,6 +87,50 @@ describe("GitLab webhook routes", () => {
     await server.close();
   });
 
+  it("POST /api/webhooks/gitlab handles pipeline success and updates waiting_ci run", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      project: { findFirst: vi.fn().mockResolvedValue({ id: "p1", gitlabProjectId: 123 }) },
+      run: {
+        findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: null, stepId: null }),
+        update: vi.fn().mockResolvedValue({})
+      },
+      artifact: { create: vi.fn().mockResolvedValue({ id: "a1" }) },
+    } as any;
+
+    await server.register(makeGitLabWebhookRoutes({ prisma, webhookSecret: "s3cret" }), { prefix: "/api/webhooks" });
+
+    const payload = {
+      object_kind: "pipeline",
+      project: { id: 123, web_url: "https://gitlab.example.com/group/repo" },
+      object_attributes: { id: 999, ref: "run/xyz", sha: "abc", status: "success" },
+    };
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/webhooks/gitlab",
+      headers: { "x-gitlab-token": "s3cret", "x-gitlab-event": "Pipeline Hook" },
+      payload,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { ok: true, handled: true, runId: "r1", passed: true } });
+
+    expect(prisma.artifact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ runId: "r1", type: "ci_result" }),
+      }),
+    );
+    expect(prisma.run.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({ status: "completed" }),
+      }),
+    );
+
+    await server.close();
+  });
+
   it("POST /api/webhooks/gitlab rejects when token mismatch", async () => {
     const server = createHttpServer();
     const prisma = {
@@ -114,4 +158,3 @@ describe("GitLab webhook routes", () => {
     await server.close();
   });
 });
-
