@@ -1,3 +1,10 @@
+---
+title: "GitHub SCM 最小状态（无 Artifact）实施计划"
+owner: "@yoke233"
+status: "draft"
+last_reviewed: "2026-01-28"
+---
+
 # GitHub SCM 最小状态（无 Artifact）Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
