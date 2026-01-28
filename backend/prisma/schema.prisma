@@ -66,6 +66,14 @@ enum TaskTrack {
   enterprise
 }
 
+enum SandboxStatus {
+  creating
+  running
+  stopped
+  missing
+  error
+}
+
 enum StepStatus {
   pending
   ready
@@ -215,6 +223,12 @@ model Run {
   workspacePath  String?   @db.VarChar(500)
   branchName     String?   @db.VarChar(200)
 
+  sandboxInstanceName String? @db.VarChar(200)
+  keepaliveTtlSeconds Int?
+  sandboxStatus       SandboxStatus?
+  sandboxLastSeenAt   DateTime?
+  sandboxLastError    String? @db.Text
+
   status         RunStatus @default(pending)
 
   startedAt      DateTime  @default(now())
@@ -231,6 +245,7 @@ model Run {
 
   events         Event[]
   artifacts      Artifact[]
+  sandboxInstances SandboxInstance[]
 
   @@index([issueId])
   @@index([agentId, status])
@@ -238,6 +253,28 @@ model Run {
   @@index([stepId, startedAt])
   @@index([acpSessionId])
   @@index([status])
+}
+
+model SandboxInstance {
+  id           String   @id @default(uuid()) @db.Uuid
+  proxyId      String   @db.VarChar(100)
+  instanceName String   @db.VarChar(200)
+
+  runId        String?  @db.Uuid
+  run          Run?     @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  provider     String?  @db.VarChar(50)
+  runtime      String?  @db.VarChar(50)
+  status       SandboxStatus?
+  createdAt    DateTime?
+  lastSeenAt   DateTime @default(now())
+  lastError    String?  @db.Text
+
+  @@unique([proxyId, instanceName])
+  @@index([proxyId])
+  @@index([runId])
+  @@index([status])
+  @@index([lastSeenAt])
 }
 
 model Event {

@@ -8,6 +8,7 @@ import * as acp from "@agentclientprotocol/sdk";
 
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS, deriveSandboxInstanceName } from "../utils/sandbox.js";
 import { advanceTaskFromRunTerminal } from "./taskProgress.js";
 import { triggerPmAutoAdvance } from "./pm/pmAutoAdvance.js";
 
@@ -173,6 +174,39 @@ export function createAcpTunnel(deps: {
       });
     runQueue.set(runId, next);
     return next;
+  }
+
+  async function resolveSandboxOpenParams(runId: string): Promise<{ instanceName: string; keepaliveTtlSeconds: number }> {
+    const run = await deps.prisma.run
+      .findUnique({
+        where: { id: runId },
+        select: { sandboxInstanceName: true, keepaliveTtlSeconds: true },
+      } as any)
+      .catch(() => null);
+
+    const instanceNameRaw = run && typeof (run as any).sandboxInstanceName === "string" ? String((run as any).sandboxInstanceName) : "";
+    const instanceName = instanceNameRaw.trim() ? instanceNameRaw.trim() : deriveSandboxInstanceName(runId);
+
+    const ttlRaw = run && typeof (run as any).keepaliveTtlSeconds === "number" ? Number((run as any).keepaliveTtlSeconds) : NaN;
+    const keepaliveTtlSeconds = Number.isFinite(ttlRaw)
+      ? Math.min(86_400, Math.max(60, Math.trunc(ttlRaw)))
+      : DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS;
+
+    if (
+      run &&
+      (instanceNameRaw.trim() !== instanceName ||
+        !Number.isFinite(ttlRaw) ||
+        Math.trunc(ttlRaw) !== keepaliveTtlSeconds)
+    ) {
+      await deps.prisma.run
+        .update({
+          where: { id: runId },
+          data: { sandboxInstanceName: instanceName, keepaliveTtlSeconds } as any,
+        } as any)
+        .catch(() => {});
+    }
+
+    return { instanceName, keepaliveTtlSeconds };
   }
 
   async function flushRunChunkBuffer(runId: string) {
@@ -507,10 +541,18 @@ export function createAcpTunnel(deps: {
     }
 
     const p = (async () => {
+      const sandbox = await resolveSandboxOpenParams(opts.runId);
       await new Promise<void>((resolve, reject) => {
         state.openDeferred = { resolve, reject };
         void deps
-          .sendToAgent(opts.proxyId, { type: "acp_open", run_id: opts.runId, cwd: opts.cwd, init: opts.init })
+          .sendToAgent(opts.proxyId, {
+            type: "acp_open",
+            run_id: opts.runId,
+            cwd: opts.cwd,
+            init: opts.init,
+            instance_name: sandbox.instanceName,
+            keepalive_ttl_seconds: sandbox.keepaliveTtlSeconds,
+          })
           .catch((err) => reject(err instanceof Error ? err : new Error(String(err))));
       });
       state.opened = true;

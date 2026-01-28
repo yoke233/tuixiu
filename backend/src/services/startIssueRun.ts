@@ -3,6 +3,11 @@ import { uuidv7 } from "../utils/uuid.js";
 import { toPublicProject } from "../utils/publicProject.js";
 import { createRunWorktree, suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
 import { parseEnvText } from "../utils/envText.js";
+import {
+  DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS,
+  deriveSandboxInstanceName,
+  normalizeKeepaliveTtlSeconds,
+} from "../utils/sandbox.js";
 import { postGitHubIssueCommentBestEffort } from "./githubIssueComments.js";
 import type { AcpTunnel } from "./acpTunnel.js";
 
@@ -45,6 +50,7 @@ export async function startIssueRun(opts: {
   agentId?: string;
   roleKey?: string;
   worktreeName?: string;
+  keepaliveTtlSeconds?: number;
   extraPromptParts?: string[];
 }): Promise<StartIssueRunResult> {
   const { issueId, agentId, roleKey, worktreeName } = opts;
@@ -87,12 +93,20 @@ export async function startIssueRun(opts: {
     return { success: false, error: { code: "NO_ROLE", message: "RoleTemplate 不存在" } };
   }
 
+  const requestedTtl = normalizeKeepaliveTtlSeconds(opts.keepaliveTtlSeconds);
+  const keepaliveTtlSeconds =
+    requestedTtl === null ? DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS : Math.min(86_400, Math.max(60, requestedTtl));
+
+  const runId = uuidv7();
   const run = await opts.prisma.run.create({
     data: {
-      id: uuidv7(),
+      id: runId,
       issueId: (issue as any).id,
       agentId: (selectedAgent as any).id,
       status: "running",
+      sandboxInstanceName: deriveSandboxInstanceName(runId),
+      keepaliveTtlSeconds,
+      sandboxStatus: "creating",
       metadata: role ? ({ roleKey: (role as any).key } as any) : undefined,
     },
   });

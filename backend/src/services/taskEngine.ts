@@ -1,5 +1,6 @@
 import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS, deriveSandboxInstanceName } from "../utils/sandbox.js";
 import { getTaskTemplate, TASK_TEMPLATES } from "./taskTemplates.js";
 
 type ExecutorType = "agent" | "ci" | "human" | "system";
@@ -257,9 +258,19 @@ export async function startStep(
     executorType === "ci" ? "waiting_ci" : executorType === "human" ? "waiting_human" : "running";
   const runStatus = executorType === "ci" ? "waiting_ci" : "running";
 
+  const runId = uuidv7();
+  const sandboxData =
+    executorType === "agent"
+      ? {
+          sandboxInstanceName: deriveSandboxInstanceName(runId),
+          keepaliveTtlSeconds: DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS,
+          sandboxStatus: "creating",
+        }
+      : {};
+
   const run = await deps.prisma.run.create({
     data: {
-      id: uuidv7(),
+      id: runId,
       issueId: task.issueId,
       agentId: null,
       executorType,
@@ -270,6 +281,7 @@ export async function startStep(
       workspaceType: task.workspaceType ?? null,
       workspacePath: task.workspacePath ?? null,
       branchName: task.branchName ?? null,
+      ...(sandboxData as any),
       metadata: {
         step: { key: (step as any).key, kind: (step as any).kind, executorType, roleKey, params },
       } as any,
