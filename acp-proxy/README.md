@@ -1,6 +1,6 @@
 # acp-proxy
 
-`acp-proxy` 是一个 Node 服务，用于把后端 Orchestrator 的 WebSocket 指令转发到本机启动的 ACP（Agent Client Protocol）进程，并把 ACP 的输出再回传到后端。
+`acp-proxy` 是一个 Node 服务，作为 **ACP 执行面（Agent Host）**：管理 Run 级沙箱实例，在沙箱内启动 ACP agent，并在本机实现 ACP Client 方法（`fs/*`、`terminal/*`、`session/request_permission`），再将 ACP 消息与结构化状态/清单回传后端 Orchestrator。
 
 本仓库版本已收敛为 “沙箱启动 Agent”：不再支持 host_process / bwrap 等本地直跑模式。
 
@@ -13,9 +13,9 @@
 1. 在一台机器上启动 `acp-proxy`
 2. `acp-proxy` 作为 WebSocket client 连接后端 `orchestrator_url`
 3. 连接成功后发送 `register_agent` 上报 `agent.id/name/max_concurrent/capabilities`
-4. 后端把 run/消息通过该 WebSocket 转发给这台机器
-5. `acp-proxy` 收到 run 后，用 sandbox 启动 ACP agent（`agent_command`），并将 run 的工作目录挂载到 guest 的 `/workspace`
-6. ACP 的输出通过 `acp-proxy` 回传后端
+4. 后端把 run/消息通过该 WebSocket 转发给这台机器：`acp_open` / `acp_message` / `acp_close` / `sandbox_control`
+5. `acp-proxy` 收到 `acp_open` 后：创建/复用该 run 的沙箱实例（`instance_name`，默认 `tuixiu-run-<run_id>`），容器内 workspace 固定为 `/workspace`，可选执行 `init.script`（例如 `git clone`），再通过 exec 启动 ACP agent（`agent_command`）
+6. ACP agent 的输出通过 `acp-proxy` 回传后端；同时 agent 反向调用的 `fs/*`/`terminal/*`/`session/request_permission` 由 `acp-proxy` 本机实现
 
 ## 运行前提
 
@@ -60,10 +60,11 @@
 
 - `ACP_PROXY_ORCHESTRATOR_URL`
 - `ACP_PROXY_AUTH_TOKEN`
-- `ACP_PROXY_CWD`
 - `ACP_PROXY_TERMINAL_ENABLED`（`1`/`true` 为开启）
-- `ACP_PROXY_BOXLITE_IMAGE`
-- `ACP_PROXY_BOXLITE_WORKING_DIR`
+- `ACP_PROXY_SANDBOX_PROVIDER`（`boxlite_oci`/`container_oci`）
+- `ACP_PROXY_SANDBOX_IMAGE`
+- `ACP_PROXY_SANDBOX_WORKING_DIR`
+- `ACP_PROXY_CONTAINER_RUNTIME`
 
 ## 开发
 

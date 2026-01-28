@@ -58,18 +58,9 @@ const sandboxSchema = z
     }
   });
 
-const pathMappingSchema = z
-  .object({
-    type: z.literal("windows_to_wsl"),
-    wslMountRoot: z.string().min(1).default("/mnt"),
-  })
-  .optional();
-
 const configCoreSchema = z.object({
   orchestrator_url: z.string().min(1),
   auth_token: z.string().optional(),
-  cwd: z.string().min(1).optional(),
-  pathMapping: pathMappingSchema,
   heartbeat_seconds: z.coerce.number().int().positive().default(30),
   mock_mode: z.boolean().default(false),
   sandbox: sandboxSchema,
@@ -82,8 +73,6 @@ const configCoreSchema = z.object({
 const configOverrideSchema = z.object({
   orchestrator_url: z.string().min(1).optional(),
   auth_token: z.string().optional(),
-  cwd: z.string().min(1).optional(),
-  pathMapping: pathMappingSchema.optional(),
   heartbeat_seconds: z.coerce.number().int().positive().optional(),
   mock_mode: z.boolean().optional(),
   sandbox: z
@@ -111,8 +100,7 @@ const configSchema = configCoreSchema.extend({
 
 export type ProxyConfig = z.infer<typeof configSchema>;
 
-export type LoadedProxyConfig = Omit<ProxyConfig, "cwd" | "agent"> & {
-  cwd: string;
+export type LoadedProxyConfig = Omit<ProxyConfig, "agent"> & {
   agent: Omit<ProxyConfig["agent"], "name" | "capabilities"> & {
     name: string;
     capabilities: unknown;
@@ -165,9 +153,6 @@ export async function loadConfig(
   if (process.env.ACP_PROXY_AUTH_TOKEN?.trim()) {
     envOverride.auth_token = process.env.ACP_PROXY_AUTH_TOKEN.trim();
   }
-  if (process.env.ACP_PROXY_CWD?.trim()) {
-    envOverride.cwd = process.env.ACP_PROXY_CWD.trim();
-  }
   const terminalEnabledRaw = process.env.ACP_PROXY_TERMINAL_ENABLED?.trim();
   if (terminalEnabledRaw) {
     const enabled =
@@ -198,10 +183,8 @@ export async function loadConfig(
       ? mergeConfig(merged, envOverride as any)
       : merged,
   );
-  const cwd = effective.cwd?.trim() ? effective.cwd.trim() : process.cwd();
   return {
     ...effective,
-    cwd,
     agent: {
       ...effective.agent,
       name: effective.agent.name?.trim()

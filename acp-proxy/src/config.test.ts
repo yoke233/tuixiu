@@ -34,12 +34,10 @@ describe("loadConfig", () => {
     );
 
     const cfg = await loadConfig(p);
-    expect(cfg.cwd).toBe(process.cwd());
     expect(cfg.agent.name).toBe("codex-local-1");
     expect(cfg.agent.max_concurrent).toBe(2);
     expect(cfg.agent.capabilities).toEqual({ tools: ["git"] });
     expect(cfg.sandbox.terminalEnabled).toBe(false);
-    expect(cfg.pathMapping).toBeUndefined();
   });
 
   it("parses sandbox.workspaceMode", async () => {

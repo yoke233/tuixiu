@@ -18,6 +18,8 @@ export type AcpOpenMessage = {
   type: "acp_open";
   run_id: string;
   cwd?: string;
+  instance_name?: string;
+  keepalive_ttl_seconds?: number;
   init?: {
     script: string;
     timeout_seconds?: number;
@@ -42,8 +44,16 @@ export type AgentUpdateMessage = {
   content: unknown;
 };
 
+export type SandboxControlMessage = {
+  type: "sandbox_control";
+  run_id: string;
+  instance_name: string;
+  action: "inspect" | "ensure_running" | "stop" | "remove" | "report_inventory";
+};
+
 export type IncomingMessage =
   | AcpOpenMessage
   | AcpCloseMessage
   | AcpMessageMessage
+  | SandboxControlMessage
   | { type: string; [k: string]: unknown };

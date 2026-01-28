@@ -40,7 +40,7 @@ async function main() {
         agent: { id: `acp-proxy-smoke-boxlite-${Date.now()}`, max_concurrent: 1 },
         heartbeat_seconds: 1,
         mock_mode: false,
-        agent_command: ["sh", "-lc", "printf '{\"jsonrpc\":\"2.0\",\"method\":\"ready\"}\\n'; sleep 120"],
+        agent_command: ["sh", "-c", "printf '{\"jsonrpc\":\"2.0\",\"method\":\"ready\"}\\n'; sleep 120"],
       },
       null,
       2,
