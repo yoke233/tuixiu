@@ -196,14 +196,6 @@ export async function startIssueRun(opts: {
         metadata: role ? ({ roleKey: (role as any).key, snapshot } as any) : ({ snapshot } as any),
       },
     });
-    await opts.prisma.artifact.create({
-      data: {
-        id: uuidv7(),
-        runId: (run as any).id,
-        type: "branch",
-        content: { branch: branchName, baseBranch: resolvedBaseBranch, workspacePath, workspaceMode } as any,
-      },
-    });
   } catch (error) {
     await opts.prisma.run.update({
       where: { id: (run as any).id },

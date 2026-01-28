@@ -7,6 +7,7 @@ import { uuidv7 } from "../utils/uuid.js";
 import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
 import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
 import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
+import { buildRunScmStateUpdate } from "../services/scm/runScmState.js";
 
 function getHeader(headers: Record<string, unknown>, name: string): string | undefined {
   const key = name.toLowerCase();
@@ -158,16 +159,15 @@ export function makeGitLabWebhookRoutes(deps: {
         }
 
         const passed = status === "success";
+        const now = new Date();
 
         await deps.prisma.run
           .update({
             where: { id: (run as any).id },
-            data: {
-              scmProvider: "gitlab",
-              scmHeadSha: sha || null,
-              scmCiStatus: passed ? "passed" : "failed",
-              scmUpdatedAt: new Date(),
-            } as any,
+            data: buildRunScmStateUpdate(
+              { scmProvider: "gitlab", scmHeadSha: sha || null, scmCiStatus: passed ? "passed" : "failed" },
+              { now },
+            ) as any,
           })
           .catch(() => {});
 
@@ -176,7 +176,7 @@ export function makeGitLabWebhookRoutes(deps: {
             where: { id: (run as any).id },
             data: {
               status: passed ? "completed" : "failed",
-              completedAt: new Date(),
+              completedAt: now,
               ...(passed ? null : { failureReason: "ci_failed", errorMessage: `ci_failed: ${status || "unknown"}` }),
             } as any,
           })
