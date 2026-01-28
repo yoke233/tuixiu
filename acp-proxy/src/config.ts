@@ -38,6 +38,7 @@ const volumeSchema = z.preprocess(
 const sandboxSchema = z
   .object({
     terminalEnabled: z.boolean().default(false),
+    agentMode: z.enum(["exec", "entrypoint"]).default("exec"),
     provider: z.enum(["boxlite_oci", "container_oci"]),
     image: z.string().min(1),
     workingDir: z.string().min(1).optional(),
@@ -78,6 +79,7 @@ const configOverrideSchema = z.object({
   sandbox: z
     .object({
       terminalEnabled: z.boolean().optional(),
+      agentMode: z.enum(["exec", "entrypoint"]).optional(),
       provider: z.enum(["boxlite_oci", "container_oci"]).optional(),
       image: z.string().min(1).optional(),
       workingDir: z.string().min(1).optional(),

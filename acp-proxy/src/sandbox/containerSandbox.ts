@@ -216,6 +216,199 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
     return await this.inspectInstance(instanceName);
   }
 
+  async getInstanceLabels(instanceName: string): Promise<Record<string, string>> {
+    const name = instanceName.trim();
+    if (!name) throw new Error("instanceName 为空");
+
+    const runtime = this.runtime;
+    const res = await spawnCapture(runtime, ["inspect", name]);
+    if (res.code !== 0) {
+      const text = `${res.stdout}\n${res.stderr}`;
+      if (isNoSuchContainer(text)) return {};
+      throw new Error(`container inspect 失败：${text.trim()}`);
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(res.stdout);
+    } catch (err) {
+      throw new Error(`container inspect 输出无法解析为 JSON：${String(err)}`);
+    }
+
+    const info = Array.isArray(parsed) ? parsed[0] : parsed;
+    const labelsRaw = info?.Config?.Labels ?? null;
+    if (!labelsRaw || typeof labelsRaw !== "object") return {};
+
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(labelsRaw)) {
+      if (typeof k !== "string" || !k.trim()) continue;
+      out[k] = typeof v === "string" ? v : String(v ?? "");
+    }
+    return out;
+  }
+
+  async ensureInstanceRunningWithCommand(
+    opts: EnsureInstanceRunningOpts & { command: string[]; openStdin?: boolean },
+  ): Promise<SandboxInstanceInfo> {
+    const cfg = this.opts.config;
+    const runtime = this.runtime;
+
+    const instanceName = opts.instanceName.trim();
+    if (!instanceName) throw new Error("instanceName 为空");
+    if (!cfg.image.trim()) throw new Error("Container 配置缺失：sandbox.image");
+    if (!opts.command.length) throw new Error("command 为空");
+
+    const existing = await this.inspectInstance(instanceName);
+    if (existing.status === "running") return existing;
+
+    if (existing.status === "stopped") {
+      this.opts.log("container start", { runtime, name: instanceName });
+      const started = await spawnCapture(runtime, ["start", instanceName]);
+      if (started.code !== 0) {
+        throw new Error(
+          `container start 失败：${`${started.stdout}\n${started.stderr}`.trim()}`,
+        );
+      }
+      return await this.inspectInstance(instanceName);
+    }
+
+    const workingDir = cfg.workingDir?.trim()
+      ? cfg.workingDir.trim()
+      : opts.workspaceGuestPath.trim()
+        ? opts.workspaceGuestPath.trim()
+        : "/workspace";
+
+    const envForContainer = { ...cfg.env, ...opts.env };
+    const volumes: ContainerVolume[] = [...(cfg.volumes ?? [])];
+
+    const args: string[] = ["run", "-d"];
+    if (opts.openStdin !== false) args.push("-i");
+    args.push("--name", instanceName, "-w", workingDir);
+    args.push("--label", "acp-proxy.managed=1");
+    if (opts.runId.trim())
+      args.push("--label", `acp-proxy.run_id=${opts.runId.trim()}`);
+
+    args.push(...(cfg.extraRunArgs ?? []));
+    if (typeof cfg.cpus === "number") args.push("--cpus", String(cfg.cpus));
+    if (typeof cfg.memoryMib === "number")
+      args.push("--memory", `${cfg.memoryMib}m`);
+
+    args.push(...toEnvArgs(envForContainer));
+    args.push(...toVolumeArgs(volumes));
+
+    args.push(cfg.image, ...opts.command);
+
+    this.opts.log("container ensure running (create)", {
+      runtime,
+      image: cfg.image,
+      name: instanceName,
+      workingDir,
+    });
+
+    const created = await spawnCapture(runtime, args);
+    if (created.code !== 0) {
+      throw new Error(
+        `container run 失败：${`${created.stdout}\n${created.stderr}`.trim()}`,
+      );
+    }
+
+    return await this.inspectInstance(instanceName);
+  }
+
+  async createInstance(
+    opts: EnsureInstanceRunningOpts & { command: string[]; openStdin?: boolean },
+  ): Promise<void> {
+    const cfg = this.opts.config;
+    const runtime = this.runtime;
+
+    const instanceName = opts.instanceName.trim();
+    if (!instanceName) throw new Error("instanceName 为空");
+    if (!cfg.image.trim()) throw new Error("Container 配置缺失：sandbox.image");
+    if (!opts.command.length) throw new Error("command 为空");
+
+    const workingDir = cfg.workingDir?.trim()
+      ? cfg.workingDir.trim()
+      : opts.workspaceGuestPath.trim()
+        ? opts.workspaceGuestPath.trim()
+        : "/workspace";
+
+    const envForContainer = { ...cfg.env, ...opts.env };
+    const volumes: ContainerVolume[] = [...(cfg.volumes ?? [])];
+
+    const args: string[] = ["create"];
+    if (opts.openStdin !== false) args.push("-i");
+    args.push("--name", instanceName, "-w", workingDir);
+    args.push("--label", "acp-proxy.managed=1");
+    args.push("--label", "acp-proxy.agent_mode=entrypoint");
+    if (opts.runId.trim())
+      args.push("--label", `acp-proxy.run_id=${opts.runId.trim()}`);
+
+    args.push(...(cfg.extraRunArgs ?? []));
+    if (typeof cfg.cpus === "number") args.push("--cpus", String(cfg.cpus));
+    if (typeof cfg.memoryMib === "number")
+      args.push("--memory", `${cfg.memoryMib}m`);
+
+    args.push(...toEnvArgs(envForContainer));
+    args.push(...toVolumeArgs(volumes));
+    args.push(cfg.image, ...opts.command);
+
+    this.opts.log("container create", {
+      runtime,
+      image: cfg.image,
+      name: instanceName,
+      workingDir,
+    });
+
+    const created = await spawnCapture(runtime, args);
+    if (created.code !== 0) {
+      throw new Error(
+        `container create 失败：${`${created.stdout}\n${created.stderr}`.trim()}`,
+      );
+    }
+  }
+
+  async startInstance(instanceName: string): Promise<void> {
+    const name = instanceName.trim();
+    if (!name) throw new Error("instanceName 为空");
+
+    const runtime = this.runtime;
+    this.opts.log("container start", { runtime, name });
+    const started = await spawnCapture(runtime, ["start", name]);
+    if (started.code !== 0) {
+      throw new Error(
+        `container start 失败：${`${started.stdout}\n${started.stderr}`.trim()}`,
+      );
+    }
+  }
+
+  async copyToInstance(opts: {
+    instanceName: string;
+    hostPath: string;
+    guestPath: string;
+  }): Promise<void> {
+    const instanceName = opts.instanceName.trim();
+    if (!instanceName) throw new Error("instanceName 为空");
+    const hostPath = opts.hostPath.trim();
+    if (!hostPath) throw new Error("hostPath 为空");
+    const guestPath = opts.guestPath.trim();
+    if (!guestPath) throw new Error("guestPath 为空");
+
+    const runtime = this.runtime;
+    this.opts.log("container cp", {
+      runtime,
+      name: instanceName,
+      guestPath,
+    });
+    const res = await spawnCapture(runtime, [
+      "cp",
+      hostPath,
+      `${instanceName}:${guestPath}`,
+    ]);
+    if (res.code !== 0) {
+      throw new Error(`container cp 失败：${`${res.stdout}\n${res.stderr}`.trim()}`);
+    }
+  }
+
   async stopInstance(instanceName: string): Promise<void> {
     const name = instanceName.trim();
     if (!name) return;
@@ -501,6 +694,128 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
               });
             } catch {}
           }
+          proc.kill();
+        } catch {}
+      },
+      onExit: (cb) => {
+        exitListeners.add(cb);
+      },
+    };
+  }
+
+  async attachInstance(instanceName: string): Promise<ProcessHandle> {
+    const name = instanceName.trim();
+    if (!name) throw new Error("instanceName 为空");
+
+    const runtime = this.runtime;
+    const proc = spawn(runtime, ["attach", name], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      proc.once("spawn", () => resolve());
+      proc.once("error", (err) => {
+        const msg =
+          (err as any)?.code === "ENOENT"
+            ? `未找到容器运行时命令：${runtime}`
+            : `${runtime} attach 失败：${String(err)}`;
+        reject(new Error(msg));
+      });
+    });
+
+    const exitListeners = new Set<
+      (info: { code: number | null; signal: string | null }) => void
+    >();
+    const notifyExit = (info: {
+      code: number | null;
+      signal: string | null;
+    }) => {
+      for (const cb of exitListeners) cb(info);
+    };
+
+    proc.on("exit", (code, signal) => {
+      notifyExit({ code: code ?? null, signal: signal ?? null });
+    });
+
+    if (!proc.stdin || !proc.stdout) {
+      proc.kill();
+      throw new Error("container attach stdio 不可用");
+    }
+
+    const stdin = Writable.toWeb(proc.stdin) as WritableStream<Uint8Array>;
+    const stdout = Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>;
+    const stderr = proc.stderr
+      ? (Readable.toWeb(proc.stderr) as ReadableStream<Uint8Array>)
+      : undefined;
+
+    return {
+      stdin,
+      stdout,
+      stderr,
+      close: async () => {
+        try {
+          proc.kill();
+        } catch {}
+      },
+      onExit: (cb) => {
+        exitListeners.add(cb);
+      },
+    };
+  }
+
+  async startAndAttachInstance(instanceName: string): Promise<ProcessHandle> {
+    const name = instanceName.trim();
+    if (!name) throw new Error("instanceName 为空");
+
+    const runtime = this.runtime;
+    const proc = spawn(runtime, ["start", "-a", "-i", name], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      proc.once("spawn", () => resolve());
+      proc.once("error", (err) => {
+        const msg =
+          (err as any)?.code === "ENOENT"
+            ? `未找到容器运行时命令：${runtime}`
+            : `${runtime} start -a 失败：${String(err)}`;
+        reject(new Error(msg));
+      });
+    });
+
+    const exitListeners = new Set<
+      (info: { code: number | null; signal: string | null }) => void
+    >();
+    const notifyExit = (info: {
+      code: number | null;
+      signal: string | null;
+    }) => {
+      for (const cb of exitListeners) cb(info);
+    };
+
+    proc.on("exit", (code, signal) => {
+      notifyExit({ code: code ?? null, signal: signal ?? null });
+    });
+
+    if (!proc.stdin || !proc.stdout) {
+      proc.kill();
+      throw new Error("container start -a stdio 不可用");
+    }
+
+    const stdin = Writable.toWeb(proc.stdin) as WritableStream<Uint8Array>;
+    const stdout = Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>;
+    const stderr = proc.stderr
+      ? (Readable.toWeb(proc.stderr) as ReadableStream<Uint8Array>)
+      : undefined;
+
+    return {
+      stdin,
+      stdout,
+      stderr,
+      close: async () => {
+        try {
           proc.kill();
         } catch {}
       },

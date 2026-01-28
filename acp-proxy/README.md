@@ -14,7 +14,9 @@
 2. `acp-proxy` 作为 WebSocket client 连接后端 `orchestrator_url`
 3. 连接成功后发送 `register_agent` 上报 `agent.id/name/max_concurrent/capabilities`
 4. 后端把 run/消息通过该 WebSocket 转发给这台机器：`acp_open` / `acp_message` / `acp_close` / `sandbox_control`
-5. `acp-proxy` 收到 `acp_open` 后：创建/复用该 run 的沙箱实例（`instance_name`，默认 `tuixiu-run-<run_id>`），容器内 workspace 固定为 `/workspace`，可选执行 `init.script`（例如 `git clone`），再通过 exec 启动 ACP agent（`agent_command`）
+5. `acp-proxy` 收到 `acp_open` 后：创建/复用该 run 的沙箱实例（`instance_name`，默认 `tuixiu-run-<run_id>`），容器内 workspace 固定为 `/workspace`，可选执行 `init.script`（例如 `git clone`），再启动 ACP agent（`agent_command`）
+   - `sandbox.agentMode=exec`：通过 `docker exec` 在已运行容器内启动 agent（历史默认）
+   - `sandbox.agentMode=entrypoint`：容器主进程为 agent（PID1），acp-proxy 通过 stdio 与其通讯；如提供 `init.script`，会在 agent 启动前执行
 6. ACP agent 的输出通过 `acp-proxy` 回传后端；同时 agent 反向调用的 `fs/*`/`terminal/*`/`session/request_permission` 由 `acp-proxy` 本机实现
 
 ## 运行前提
@@ -40,6 +42,7 @@
 - `orchestrator_url`：后端 WebSocket 地址，例如 `wss://backend.example.com/ws/agent`
 - `agent.id`：这台机器上报到后端的 agent 标识（建议全局唯一）
 - `sandbox.terminalEnabled`：是否允许执行终端类指令（建议只在沙盒可信时开启）
+- `sandbox.agentMode`：ACP agent 启动模式（`exec`/`entrypoint`）
 - `sandbox.provider`：`boxlite_oci` 或 `container_oci`
 - `sandbox.image`：用于运行 ACP 的镜像（必填）
 - `agent_command`：在 guest 内执行的 ACP 启动命令

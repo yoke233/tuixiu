@@ -82,7 +82,7 @@ last_reviewed: "2026-01-27"
 
 实现参考：
 
-- `acp-proxy/src/index.ts`
+- `acp-proxy/src/proxyCli.ts`
 - `backend/src/websocket/gateway.ts`
 - `frontend/src/components/RunConsole.tsx`
 

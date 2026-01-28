@@ -129,6 +129,7 @@ pnpm dev
 - `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（Linux/WSL2/macOS Apple Silicon）
 - `sandbox.image`: `tuixiu-codex-acp:local`
 - `sandbox.runtime`: `docker`/`podman`/`nerdctl`（仅 `provider=container_oci` 需要）
+- `sandbox.agentMode`: `exec`（默认，通过 `docker exec` 启动 agent）或 `entrypoint`（容器主进程为 agent；如提供 `acp_open.init.script` 会在 agent 启动前执行）
 - `pathMapping`: 可选（仅当你在 WSL 内运行 proxy 且后端传入 Windows 路径时使用）
 - `agent_command`: 默认 `["codex-acp"]`
 
