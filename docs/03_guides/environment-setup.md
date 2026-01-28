@@ -118,29 +118,19 @@ curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/projects
 
 ```powershell
 cd acp-proxy
-Copy-Item config.json.example config.json
-notepad config.json
+Copy-Item config.toml.example config.toml
+notepad config.toml
 pnpm dev
 ```
 
-也可以用更明确的模板（推荐）：
-
-```powershell
-cd acp-proxy
-Copy-Item config.local.json.example config.json
-notepad config.json
-pnpm dev
-```
-
-> `config.local.json.example` 默认 `cwd: ".."`（从 `acp-proxy/` 指向仓库根目录），一般无需修改。
-
-`config.json` 最关键字段：
+`config.toml` 最关键字段：
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
-- `cwd`: repo 根目录（运行中会被 Run 的 `workspacePath` 覆盖）
-- `sandbox.provider`: 默认 `host_process`（`boxlite_oci` 仅 WSL2/Linux/macOS Apple Silicon 可用）
+- `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（Linux/WSL2/macOS Apple Silicon）
+- `sandbox.image`: `tuixiu-codex-acp:local`
+- `sandbox.runtime`: `docker`/`podman`/`nerdctl`（仅 `provider=container_oci` 需要）
 - `pathMapping`: 可选（仅当你在 WSL 内运行 proxy 且后端传入 Windows 路径时使用）
-- `agent_command`: 默认 `["npx","--yes","@zed-industries/codex-acp"]`
+- `agent_command`: 默认 `["codex-acp"]`
 
 #### 5.2.1 WSL2 运行 proxy（A 形态）
 
@@ -159,13 +149,14 @@ ip route | awk '/default/ {print $3}'
 
 BoxLite 用于把 ACP Agent 放入 micro-VM/OCI 沙箱运行：
 
-- Windows：不支持原生运行（请用 WSL2 或改用 `host_process`）。
+- Windows：请使用 `sandbox.provider=container_oci`
 - Linux：需要 `/dev/kvm` 可用。
 - macOS：仅支持 Apple Silicon(arm64) 且 macOS 12+；Intel Mac 暂不支持。
 
 BoxLite Node SDK 已作为 `acp-proxy` 依赖（`pnpm install` 后即可）。若你使用了裁剪安装/旧 lock，确保已安装：`pnpm -C acp-proxy install`。
 
 注意：Codex 类 Agent 通常需要 API Key（例如 `OPENAI_API_KEY`）；建议通过 `sandbox.boxlite.env` 注入（不要提交到仓库）。
+注意：配置字段已统一为 `sandbox.env`（与 provider 无关）。
 
 BoxLite 支持两种工作区模式（`sandbox.boxlite.workspaceMode`）：
 
@@ -187,8 +178,8 @@ docker push ghcr.io/<org>/codex-acp:latest
 然后可用模板快速起步（在 WSL2/Linux/macOS 环境操作）：
 
 ```bash
-cp acp-proxy/config.boxlite.json.example acp-proxy/config.json
-# 编辑 config.json：填写 sandbox.boxlite.image / sandbox.boxlite.env（`git_clone` 模式无需 volumes；`mount` 模式再配置 volumes/pathMapping）
+cp acp-proxy/config.toml.example acp-proxy/config.toml
+# 编辑 config.toml：填写 sandbox.provider/sandbox.image/sandbox.env（container_oci 需要 sandbox.runtime）
 ```
 
 ### 5.3 启动前端
@@ -264,7 +255,7 @@ curl.exe --noproxy 127.0.0.1 http://localhost:3000/api/projects
 
 - `where.exe npx` 能找到路径
 - Node/npm 安装完整
-- `acp-proxy/config.json` 的 `agent_command` 可执行
+- `acp-proxy/config.toml` 的 `agent_command` 可执行
 
 proxy 已内置 Windows `cmd.exe /c` shim 来兼容 `npx/pnpm`（见 `acp-proxy/src/sandbox/hostProcessSandbox.ts`）。
 

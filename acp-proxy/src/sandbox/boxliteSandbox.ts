@@ -2,11 +2,19 @@ import { access } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { Buffer } from "node:buffer";
 
-import type { ProcessHandle, RunProcessOpts, SandboxProvider } from "./types.js";
+import type {
+  ProcessHandle,
+  RunProcessOpts,
+  SandboxProvider,
+} from "./types.js";
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
 
-type BoxliteVolume = { hostPath: string; guestPath: string; readOnly?: boolean };
+type BoxliteVolume = {
+  hostPath: string;
+  guestPath: string;
+  readOnly?: boolean;
+};
 
 export type BoxliteSandboxConfig = {
   image: string;
@@ -19,12 +27,16 @@ export type BoxliteSandboxConfig = {
 
 async function assertBoxliteSupportedPlatform(): Promise<void> {
   if (process.platform === "win32") {
-    throw new Error("BoxLite 不支持 Windows 原生运行，请在 WSL2/Linux 或 macOS(Apple Silicon) 上使用 boxlite_oci");
+    throw new Error(
+      "BoxLite Node SDK 不支持 Windows 原生运行（无 win32 架构产物）。请在 WSL2/Linux 或 macOS(Apple Silicon) 上运行 acp-proxy，再由 BoxLite 启动 ACP",
+    );
   }
 
   if (process.platform === "darwin") {
     if (process.arch !== "arm64") {
-      throw new Error("BoxLite 仅支持 macOS Apple Silicon(arm64)。Intel Mac 请使用 sandbox.provider=host_process 或在 Linux/WSL2 上运行");
+      throw new Error(
+        "BoxLite 仅支持 macOS Apple Silicon(arm64)。Intel Mac 请使用 sandbox.provider=host_process 或在 Linux/WSL2 上运行",
+      );
     }
     return;
   }
@@ -33,7 +45,9 @@ async function assertBoxliteSupportedPlatform(): Promise<void> {
     try {
       await access("/dev/kvm", fsConstants.R_OK | fsConstants.W_OK);
     } catch {
-      throw new Error("BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm");
+      throw new Error(
+        "BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm",
+      );
     }
     return;
   }
@@ -56,53 +70,62 @@ async function importBoxliteModule(): Promise<any> {
   }
 }
 
-function toEnvArray(env: Record<string, string> | undefined): Array<[string, string]> | undefined {
+async function importSimpleBoxClass(): Promise<any> {
+  const mod = await importBoxliteModule();
+  const SimpleBox = mod.SimpleBox ?? mod.default?.SimpleBox ?? null;
+  if (!SimpleBox) {
+    throw new Error("BoxLite SDK API 不匹配：未找到 SimpleBox 导出");
+  }
+  return SimpleBox;
+}
+
+function toEnvArray(
+  env: Record<string, string> | undefined,
+): Array<[string, string]> | undefined {
   if (!env) return undefined;
   const entries = Object.entries(env).filter(([k]) => k.trim());
   if (!entries.length) return undefined;
   return entries;
 }
 
+async function ensureNativeBox(boxLike: any): Promise<any> {
+  if (boxLike && typeof boxLike._ensureBox === "function") {
+    return await boxLike._ensureBox();
+  }
+  return boxLike;
+}
+
 export class BoxliteSandbox implements SandboxProvider {
   private box: any | null = null;
   private boxMeta: { image: string; workingDir: string } | null = null;
 
-  constructor(private readonly opts: { log: Logger; config: BoxliteSandboxConfig }) {}
+  constructor(
+    private readonly opts: { log: Logger; config: BoxliteSandboxConfig },
+  ) {}
 
   private async ensureBox(opts: { cwd: string; envForProc: Record<string, string> }): Promise<any> {
     await assertBoxliteSupportedPlatform();
 
     const cfg = this.opts.config;
-    if (!cfg.image.trim()) throw new Error("BoxLite 配置缺失：sandbox.boxlite.image");
+    if (!cfg.image.trim())
+      throw new Error("BoxLite 配置缺失：sandbox.boxlite.image");
 
-    const workingDir = opts.cwd.trim() ? opts.cwd.trim() : (cfg.workingDir?.trim() ? cfg.workingDir.trim() : opts.cwd);
+    const SimpleBox = await importSimpleBoxClass();
 
-    const shouldReuse =
-      this.box &&
-      this.boxMeta &&
-      this.boxMeta.image === cfg.image &&
-      this.boxMeta.workingDir === workingDir;
+    const envForProc = { ...cfg.env, ...opts.env };
 
-    if (shouldReuse) return this.box;
-
-    if (this.box) {
-      try {
-        await this.box.stop();
-      } catch (err) {
-        this.opts.log("boxlite stop previous box failed", { err: String(err) });
-      } finally {
-        this.box = null;
-        this.boxMeta = null;
-      }
+    if (cfg.volumes?.length) {
+      this.opts.log("boxlite extra volumes ignored", {
+        count: cfg.volumes.length,
+      });
     }
 
-    const mod = await importBoxliteModule();
-    const JsBoxlite = mod.JsBoxlite ?? mod.Boxlite ?? mod.default?.JsBoxlite ?? null;
-    if (!JsBoxlite || typeof JsBoxlite.withDefaultConfig !== "function") {
-      throw new Error("BoxLite SDK API 不匹配：未找到 JsBoxlite.withDefaultConfig()");
+    const workingDir = cfg.workingDir?.trim()
+      ? cfg.workingDir.trim()
+      : "/workspace";
+    if (workingDir !== "/workspace" && !workingDir.startsWith("/workspace/")) {
+      throw new Error("sandbox.boxlite.workingDir 必须位于 /workspace 下");
     }
-
-    const runtime = JsBoxlite.withDefaultConfig();
 
     const boxOpts = {
       image: cfg.image,
@@ -110,13 +133,27 @@ export class BoxliteSandbox implements SandboxProvider {
       memoryMib: cfg.memoryMib,
       autoRemove: true,
       workingDir,
-      env: Object.entries(opts.envForProc).map(([key, value]) => ({ key, value })),
-      volumes: cfg.volumes,
+      env: envForProc,
+      volumes: [
+        { hostPath: opts.cwd, guestPath: "/workspace", readOnly: false },
+      ],
     };
 
-    this.opts.log("boxlite create", { image: cfg.image, workingDir: boxOpts.workingDir });
+    this.opts.log("boxlite create", {
+      image: cfg.image,
+      workingDir: boxOpts.workingDir,
+    });
+    if (this.box) {
+      try {
+        await this.box.stop();
+      } catch (err) {
+        this.opts.log("boxlite stop previous box failed", { err: String(err) });
+      } finally {
+        this.box = null;
+      }
+    }
 
-    const box = await runtime.create(boxOpts, null);
+    const box = new SimpleBox(boxOpts);
     this.box = box;
     this.boxMeta = { image: cfg.image, workingDir };
     return box;
@@ -130,16 +167,26 @@ export class BoxliteSandbox implements SandboxProvider {
     if (!opts.command.length) throw new Error("agent_command 为空");
     const [cmd, ...args] = opts.command;
 
-    this.opts.log("boxlite exec acp agent", { cmd, args, cwd: (this.boxMeta?.workingDir ?? opts.cwd) });
+    this.opts.log("boxlite exec acp agent", {
+      cmd,
+      args,
+      cwd: boxOpts.workingDir,
+    });
 
-    const exec = await box.exec(cmd, args, toEnvArray(envForProc), false);
+    const nativeBox = await ensureNativeBox(box);
+    const exec = await nativeBox.exec(cmd, args, toEnvArray(envForProc), false);
 
     const stdinHandle = await exec.stdin();
     const stdoutHandle = await exec.stdout();
     const stderrHandle = await exec.stderr().catch(() => null);
 
-    const exitListeners = new Set<(info: { code: number | null; signal: string | null }) => void>();
-    const notifyExit = (info: { code: number | null; signal: string | null }) => {
+    const exitListeners = new Set<
+      (info: { code: number | null; signal: string | null }) => void
+    >();
+    const notifyExit = (info: {
+      code: number | null;
+      signal: string | null;
+    }) => {
       for (const cb of exitListeners) cb(info);
     };
 
@@ -162,7 +209,7 @@ export class BoxliteSandbox implements SandboxProvider {
             controller.close();
             return;
           }
-          controller.enqueue(encoder.encode(`${line}\n`));
+          controller.enqueue(encoder.encode(line));
         },
       });
 
@@ -194,6 +241,9 @@ export class BoxliteSandbox implements SandboxProvider {
 
   async execProcess(opts: RunProcessOpts): Promise<ProcessHandle> {
     await assertBoxliteSupportedPlatform();
+    const box = this.box;
+    if (!box)
+      throw new Error("BoxLite box 尚未创建，无法 exec。请先启动 ACP agent");
 
     const cfg = this.opts.config;
     const envForProc = { ...cfg.env, ...opts.env };
@@ -204,14 +254,20 @@ export class BoxliteSandbox implements SandboxProvider {
 
     this.opts.log("boxlite exec", { cmd, args });
 
-    const exec = await box.exec(cmd, args, toEnvArray(envForProc), false);
+    const nativeBox = await ensureNativeBox(box);
+    const exec = await nativeBox.exec(cmd, args, toEnvArray(envForProc), false);
 
     const stdinHandle = await exec.stdin();
     const stdoutHandle = await exec.stdout();
     const stderrHandle = await exec.stderr().catch(() => null);
 
-    const exitListeners = new Set<(info: { code: number | null; signal: string | null }) => void>();
-    const notifyExit = (info: { code: number | null; signal: string | null }) => {
+    const exitListeners = new Set<
+      (info: { code: number | null; signal: string | null }) => void
+    >();
+    const notifyExit = (info: {
+      code: number | null;
+      signal: string | null;
+    }) => {
       for (const cb of exitListeners) cb(info);
     };
 
@@ -234,7 +290,7 @@ export class BoxliteSandbox implements SandboxProvider {
             controller.close();
             return;
           }
-          controller.enqueue(encoder.encode(`${line}\n`));
+          controller.enqueue(encoder.encode(line));
         },
       });
 

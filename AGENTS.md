@@ -3,7 +3,7 @@
 ## Project Structure
 
 - `backend/`: Fastify orchestrator (REST API + WebSocket gateway). Prisma schema/migrations live in `backend/prisma/`. Backend unit tests live in `backend/test/`.
-- `acp-proxy/`: WebSocket ↔ ACP bridge and agent launcher. Runtime config is `acp-proxy/config.json` (copy from `config.json.example`).
+- `acp-proxy/`: WebSocket ↔ ACP bridge and agent launcher. Runtime config is `acp-proxy/config.toml` (copy from `config.toml.example`).
 - `frontend/`: Vite + React UI. Pages in `frontend/src/pages/`, reusable UI in `frontend/src/components/`, test setup in `frontend/src/test/`.
 - `docs/`: architecture, PRD, and implementation notes.
 - `.worktrees/`: generated git worktrees for Runs. Don’t edit manually and never commit it.
@@ -62,5 +62,5 @@ pnpm dev
 
 ## Security & Configuration Tips
 
-- Copy `backend/.env.example` → `backend/.env` and `acp-proxy/config.json.example` → `acp-proxy/config.json`.
+- Copy `backend/.env.example` → `backend/.env` and `acp-proxy/config.toml.example` → `acp-proxy/config.toml`.
 - Treat PATs/API keys as secrets (e.g., `OPENAI_API_KEY`, GitHub tokens). Never commit them or paste into logs/issues.

@@ -1,7 +1,7 @@
 import type { SandboxProvider } from "../sandbox/types.js";
 import type { AcpTransport, AgentLauncher, LaunchOpts } from "./types.js";
 
-export class DefaultAgentLauncher implements AgentLauncher {
+export class SandboxAgentLauncher implements AgentLauncher {
   constructor(
     private readonly opts: { sandbox: SandboxProvider; command: string[]; env?: Record<string, string> },
   ) {}

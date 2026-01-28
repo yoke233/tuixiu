@@ -1,0 +1,100 @@
+# acp-proxy
+
+`acp-proxy` 是一个 Node 服务，用于把后端 Orchestrator 的 WebSocket 指令转发到本机启动的 ACP（Agent Client Protocol）进程，并把 ACP 的输出再回传到后端。
+
+本仓库版本已收敛为 “沙箱启动 Agent”：不再支持 host_process / bwrap 等本地直跑模式。
+
+- Linux（含 WSL2）+ `/dev/kvm`：使用 BoxLite 启动容器/VM 并运行 ACP Agent
+- macOS Apple Silicon（arm64）：使用 BoxLite
+- Windows 原生 + macOS Intel（x64）：使用容器运行时（`docker`/`podman`/`nerdctl`）启动 ACP Agent 容器（默认 `docker`，可配置）
+
+## 架构与流程
+
+1. 在一台机器上启动 `acp-proxy`
+2. `acp-proxy` 作为 WebSocket client 连接后端 `orchestrator_url`
+3. 连接成功后发送 `register_agent` 上报 `agent.id/name/max_concurrent/capabilities`
+4. 后端把 run/消息通过该 WebSocket 转发给这台机器
+5. `acp-proxy` 收到 run 后，用 sandbox 启动 ACP agent（`agent_command`），并将 run 的工作目录挂载到 guest 的 `/workspace`
+6. ACP 的输出通过 `acp-proxy` 回传后端
+
+## 运行前提
+
+- 需要能够访问后端 WebSocket：`orchestrator_url`（建议使用 `wss://`）
+- sandbox 运行环境：
+  - BoxLite：Linux/WSL2 需要 `/dev/kvm`；macOS 仅支持 Apple Silicon（arm64）
+  - Container：Windows/macOS Intel 需要可用的容器运行时（默认 `docker`，也可用 `podman/nerdctl`）
+- 必须配置 `sandbox.provider` 与 `sandbox.image`
+  - BoxLite：`sandbox.provider=boxlite_oci`
+  - Container：`sandbox.provider=container_oci`，并配置 `sandbox.runtime`（例如 `podman`）
+
+## 配置
+
+配置文件是 JSON。可以直接参考示例：
+
+配置文件可以是 TOML 或 JSON（推荐 TOML，支持注释）。可以直接参考示例：
+
+- `config.toml.example`：统一示例（通过 `sandbox.provider` 选择 `boxlite_oci` / `container_oci`）
+
+关键字段：
+
+- `orchestrator_url`：后端 WebSocket 地址，例如 `wss://backend.example.com/ws/agent`
+- `agent.id`：这台机器上报到后端的 agent 标识（建议全局唯一）
+- `sandbox.terminalEnabled`：是否允许执行终端类指令（建议只在沙盒可信时开启）
+- `sandbox.provider`：`boxlite_oci` 或 `container_oci`
+- `sandbox.image`：用于运行 ACP 的镜像（必填）
+- `agent_command`：在 guest 内执行的 ACP 启动命令
+- `sandbox.runtime`（仅 `provider=container_oci`）：容器运行时（默认 `docker`）
+- `sandbox.workingDir`：ACP 工作目录（默认 `/workspace`）
+
+### profiles
+
+`profiles` 允许在一份配置里为不同部署环境覆盖部分字段，例如切换 `orchestrator_url`、`sandbox.terminalEnabled`、`sandbox.provider` 或 `sandbox.image`。
+
+启动时通过 `--profile <name>` 选择：
+
+- `node dist/index.js --config config.toml --profile sandboxed`
+
+### 环境变量覆盖（容器友好）
+
+运行时可以用环境变量覆盖配置（优先级高于 config 文件与 profile 合并结果）：
+
+- `ACP_PROXY_ORCHESTRATOR_URL`
+- `ACP_PROXY_AUTH_TOKEN`
+- `ACP_PROXY_CWD`
+- `ACP_PROXY_TERMINAL_ENABLED`（`1`/`true` 为开启）
+- `ACP_PROXY_BOXLITE_IMAGE`
+- `ACP_PROXY_BOXLITE_WORKING_DIR`
+
+## 开发
+
+在仓库根目录安装依赖后：
+
+- `pnpm -C acp-proxy test`
+- `pnpm -C acp-proxy typecheck`
+
+## Boxlite 通讯自检（e2e）
+
+`BoxliteSandbox` 与 ACP agent 的通讯通道是 `stdin/stdout`。仓库提供了一个可选 e2e 用例来验证这条链路（默认跳过，不影响日常单测）。
+
+在 Linux/WSL2 或 macOS(arm64) 上运行：
+
+- `ACP_PROXY_BOXLITE_E2E=1 pnpm -C acp-proxy test`
+
+## acp-proxy 真机自检（e2e）
+
+仓库提供了一个可选 e2e 用例用于验证 “真实的 acp-proxy 进程” 能否：
+
+- 连接 Orchestrator WebSocket
+- 成功发送 `register_agent`
+- 接收 `acp_open` 并通过 Boxlite 拉起一个 guest 内进程（用 `sh + cat/sleep` 做最小模拟）
+
+在 Linux/WSL2 或 macOS(arm64) 上运行：
+
+- `ACP_PROXY_E2E=1 pnpm -C acp-proxy test`
+
+## 是否需要先构建镜像并安装 codex-acp
+
+不强制，但强烈建议：
+
+- 最快上手：让 guest 里用 `npx --yes @zed-industries/codex-acp` 现装现跑（需要 guest 能访问公网）
+- 更稳更快：构建你自己的 `sandbox.image`，把 Node 与 `@zed-industries/codex-acp`（以及 git/ssh 等工具）预装在镜像里，然后把 `agent_command` 改成直接运行它

@@ -24,8 +24,8 @@ pnpm dev
 ```powershell
 # 终端 2：proxy
 cd acp-proxy
-Copy-Item config.json.example config.json
-notepad config.json
+Copy-Item config.toml.example config.toml
+notepad config.toml
 pnpm dev
 ```
 
@@ -48,8 +48,8 @@ pnpm dev
 
 ## 1.2 启动（macOS）
 
-- 默认建议 `sandbox.provider=host_process`（本机直跑），`orchestrator_url` 可继续用 `ws://localhost:3000/ws/agent`。
-- 如需 `sandbox.provider=boxlite_oci`：仅 Apple Silicon(arm64) 且 macOS 12+；Intel Mac 暂不支持。
+- Apple Silicon(arm64)：可使用 `sandbox.provider=boxlite_oci`
+- Intel：使用 `sandbox.provider=container_oci`（docker/podman）
 
 ---
 
@@ -127,50 +127,39 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 
 ---
 
-## 5. Proxy 配置（acp-proxy/config.json）
+## 5. Proxy 配置（acp-proxy/config.toml）
 
 最小配置项：
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
-- `cwd`: repo 根目录（运行中会覆盖为 Run 的 workspace cwd）
 - `agent.max_concurrent`: 单个 Agent 的并发 Run 上限（ACP 支持多 `session`；>1 时可并行多个 Run，但更吃 CPU/内存）
-- `agent_command`: 默认 `["npx","--yes","@zed-industries/codex-acp"]`（可替换为任意 ACP 兼容 Agent）
-- `sandbox.provider`: 默认 `host_process`（`boxlite_oci` 仅 WSL2/Linux/macOS Apple Silicon 可用）
+- `agent_command`: 默认 `["codex-acp"]`（可替换为任意 ACP 兼容 Agent）
+- `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（WSL2/Linux/macOS Apple Silicon）
+- `sandbox.image`: ACP Agent 镜像（建议使用仓库内提供的 codex-acp 镜像构建脚本）
+- `sandbox.runtime`: 容器运行时（仅 `provider=container_oci` 需要：docker/podman/nerdctl）
 - `pathMapping`: 可选（仅当你在 WSL 内运行 proxy 且后端传入 Windows 路径时使用，把 `D:\\...` 转成 `/mnt/d/...`）
 
 示例：替换为其它 ACP agent 启动命令：
 
-```json
-{ "agent_command": ["npx", "--yes", "<some-acp-agent>"] }
+```toml
+agent_command = ["npx", "--yes", "<some-acp-agent>"]
 ```
 
 示例：使用 BoxLite（`sandbox.provider=boxlite_oci`）在 OCI/micro-VM 里运行 ACP Agent：
 
-```json
-{
-  "sandbox": {
-    "provider": "boxlite_oci",
-    "boxlite": {
-      "image": "ghcr.io/<org>/codex-acp:latest",
-      "workingDir": "/workspace",
-      "env": { "OPENAI_API_KEY": "<key>" },
-      "volumes": [{ "hostPath": "/mnt/d/repo/tuixiu", "guestPath": "/workspace" }]
-    }
-  }
-}
+```toml
+[sandbox]
+provider = "boxlite_oci"
+image = "tuixiu-codex-acp:local"
+workingDir = "/workspace"
+
+[sandbox.env]
+OPENAI_API_KEY = "<key>"
 ```
 
 > 镜像参考：`docs/03_guides/agent-images/codex-acp/Dockerfile`（建议构建并推送到 registry，供 BoxLite 拉取）。
 
-WSL2/Linux 最短链路（假设已准备好可拉取的镜像）：
-
-```bash
-pnpm -C acp-proxy add @boxlite-ai/boxlite
-# 编辑 acp-proxy/config.json：按上面的 boxlite_oci 示例配置 image/volumes/pathMapping
-pnpm -C acp-proxy dev
-```
-
-Windows 下如遇 `spawn npx ENOENT`，请先确认 `where.exe npx` 可用；proxy 已内置 `cmd.exe /c` shim（`acp-proxy/src/sandbox/hostProcessSandbox.ts`）。
+> `acp-proxy` 已内置 BoxLite 依赖与容器模式支持；按平台选择 `sandbox.provider` 即可。
 
 ---
 

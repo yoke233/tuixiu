@@ -25,6 +25,29 @@
 - 安装：`git`、Node.js 20+、`pnpm`、Docker Desktop（用于 Postgres）
 - 准备一个 ACP Agent（默认：`npx --yes @zed-industries/codex-acp`），并在运行 `acp-proxy` 的环境里准备好 API Key（例如 `OPENAI_API_KEY`）
 
+### 0.5) 构建 Codex ACP 镜像（推荐）
+
+仓库内提供了一个可直接构建的 Codex ACP 镜像（包含：node + git + codex + codex-acp），用于给 `acp-proxy` 在沙箱里启动 agent：
+
+```powershell
+docker build -t tuixiu-codex-acp:local docs/03_guides/agent-images/codex-acp
+```
+
+也可以使用其它容器运行时（例如 podman）：
+
+```powershell
+podman build -t tuixiu-codex-acp:local docs/03_guides/agent-images/codex-acp
+```
+
+自检（可选）：
+
+```powershell
+docker run --rm tuixiu-codex-acp:local node -v
+docker run --rm tuixiu-codex-acp:local git --version
+docker run --rm tuixiu-codex-acp:local codex --version
+docker run --rm tuixiu-codex-acp:local codex-acp --help
+```
+
 ### 1) 安装依赖 + 启动数据库
 
 ```powershell
@@ -32,13 +55,15 @@ pnpm install
 docker compose up -d
 
 Copy-Item backend/.env.example backend/.env
-Copy-Item acp-proxy/config.json.example acp-proxy/config.json
+Copy-Item acp-proxy/config.toml.example acp-proxy/config.toml
 ```
 
-编辑 `acp-proxy/config.json`（至少确认）：
+编辑 `acp-proxy/config.toml`（至少确认）：
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
-- `cwd`: 本仓库根目录（运行中会覆盖为 Run 的 workspace）
+- `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（Linux/WSL2/macOS arm64）
+- `sandbox.image`: `tuixiu-codex-acp:local`
+- `sandbox.runtime`: `docker`（可替换为 `podman`/`nerdctl`，仅 `provider=container_oci` 会用到）
 
 ### 2) 启动（3 个终端）
 
@@ -88,10 +113,10 @@ pnpm -C frontend dev
 
 创建 Project 时需要选 `workspaceMode`：
 
-| 模式 | 适合谁 | 你需要准备什么 |
-| --- | --- | --- |
-| `worktree`（默认） | 你已经在本机 clone 了目标仓库 | **在该 repo 目录里启动 backend**，且本机 Git 能 `git push`（SSH key / GCM / 凭据） |
-| `clone` | 不想预先 clone / 想跑多个仓库 | 让后端自动 clone（会用 `WORKSPACES_ROOT` 与 `REPO_CACHE_ROOT`），并在 Project 配好 git 认证方式（HTTPS PAT / SSH） |
+| 模式               | 适合谁                        | 你需要准备什么                                                                                                     |
+| ------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `worktree`（默认） | 你已经在本机 clone 了目标仓库 | **在该 repo 目录里启动 backend**，且本机 Git 能 `git push`（SSH key / GCM / 凭据）                                 |
+| `clone`            | 不想预先 clone / 想跑多个仓库 | 让后端自动 clone（会用 `WORKSPACES_ROOT` 与 `REPO_CACHE_ROOT`），并在 Project 配好 git 认证方式（HTTPS PAT / SSH） |
 
 注意：SCM token 用于调用 GitHub/GitLab API（创建/合并 PR 等）；`git push` 在 `worktree` 模式下仍依赖本机 Git 的认证配置。
 
@@ -166,7 +191,7 @@ pnpm test
 
 - **页面不刷新/看不到输出**：确认前端显示 `WS: connected`，以及 backend/proxy 都在运行
 - **无法启动 Step / 提示未登录**：先访问 `http://localhost:5173/login` 登录（首次用 bootstrap）
-- **Agent 无输出**：检查 `acp-proxy/config.json` 的 `agent_command` 与 `orchestrator_url`，以及环境变量（如 `OPENAI_API_KEY`）
+- **Agent 无输出**：检查 `acp-proxy/config.toml` 的 `agent_command` 与 `orchestrator_url`，以及环境变量（如 `OPENAI_API_KEY`）
 - **PR 创建失败**：检查 Project token 权限、以及 `worktree` 模式下本机是否能 `git push origin <branch>`
 
 > Windows 下命令行调本地 API：建议用 `curl.exe --noproxy 127.0.0.1 ...`，避免系统代理影响。

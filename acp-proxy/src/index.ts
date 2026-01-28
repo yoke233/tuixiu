@@ -1,5 +1,5 @@
 import { access } from "node:fs/promises";
-import { constants as fsConstants } from "node:fs";
+import { constants as fsConstants, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -8,10 +8,9 @@ import WebSocket from "ws";
 
 import { loadConfig } from "./config.js";
 import type { AgentUpdateMessage, IncomingMessage } from "./types.js";
-import { DefaultAgentLauncher } from "./launchers/defaultLauncher.js";
-import type { AcpTransport, AgentLauncher } from "./launchers/types.js";
-import { HostProcessSandbox } from "./sandbox/hostProcessSandbox.js";
+import { SandboxAgentLauncher } from "./launchers/sandboxLauncher.js";
 import { BoxliteSandbox } from "./sandbox/boxliteSandbox.js";
+import { ContainerSandbox } from "./sandbox/containerSandbox.js";
 
 function pickArg(args: string[], name: string): string | null {
   const idx = args.indexOf(name);
@@ -54,8 +53,11 @@ function pickSecretValues(env: Record<string, string> | undefined): string[] {
 }
 
 async function main() {
-  const configPath = pickArg(process.argv.slice(2), "--config") ?? "config.json";
-  const cfg = await loadConfig(configPath);
+  const configPath =
+    pickArg(process.argv.slice(2), "--config") ??
+    (existsSync("config.toml") ? "config.toml" : "config.json");
+  const profile = pickArg(process.argv.slice(2), "--profile") ?? null;
+  const cfg = await loadConfig(configPath, { profile: profile ?? undefined });
 
   const log = (msg: string, extra?: Record<string, unknown>) => {
     const head = `[proxy] ${msg}`;
@@ -63,53 +65,33 @@ async function main() {
     else console.log(head);
   };
 
+  const isWsl =
+    process.platform === "linux" &&
+    !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
+
   if (cfg.sandbox.provider === "boxlite_oci") {
-    if (!cfg.sandbox.boxlite?.image?.trim()) {
-      throw new Error("sandbox.provider=boxlite_oci 时必须配置 sandbox.boxlite.image");
-    }
-
-    if (process.platform === "win32") {
-      throw new Error(
-        "BoxLite 不支持 Windows 原生运行，请在 WSL2/Linux 或 macOS(Apple Silicon) 上运行 acp-proxy，或改用 sandbox.provider=host_process",
-      );
-    }
-
     if (process.platform === "darwin" && process.arch !== "arm64") {
       throw new Error(
-        "BoxLite 仅支持 macOS Apple Silicon(arm64)。Intel Mac 请改用 sandbox.provider=host_process 或在 Linux/WSL2 上运行 acp-proxy",
+        "BoxLite 仅支持 macOS Apple Silicon(arm64)。Intel Mac 请使用 container_oci 或在 Linux/WSL2 上运行",
       );
     }
-
     if (process.platform === "linux") {
-      await access("/dev/kvm", fsConstants.R_OK | fsConstants.W_OK).catch(() => {
-        throw new Error(
-          "BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm",
-        );
-      });
-    }
-  }
-
-  const boxliteWorkspaceMode =
-    cfg.sandbox.provider === "boxlite_oci"
-      ? (cfg.sandbox.boxlite?.workspaceMode ?? "mount")
-      : "mount";
-
-  if (cfg.sandbox.provider === "boxlite_oci" && boxliteWorkspaceMode === "mount") {
-    const volumes = cfg.sandbox.boxlite?.volumes ?? [];
-    if (!Array.isArray(volumes) || volumes.length === 0) {
-      throw new Error(
-        "BoxLite mount 模式必须配置 sandbox.boxlite.volumes（至少挂载一个包含 Run workspace 的目录）。若不想挂载请改用 sandbox.boxlite.workspaceMode=git_clone。",
+      await access("/dev/kvm", fsConstants.R_OK | fsConstants.W_OK).catch(
+        () => {
+          throw new Error(
+            "BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm",
+          );
+        },
       );
     }
   }
-
-  const isWsl = process.platform === "linux" && !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
 
   const mapWindowsPathToWsl = (cwd: string): string => {
     const raw = cwd.trim();
     if (!raw) return raw;
     if (!isWsl) return raw;
-    if (!cfg.pathMapping || cfg.pathMapping.type !== "windows_to_wsl") return raw;
+    if (!cfg.pathMapping || cfg.pathMapping.type !== "windows_to_wsl")
+      return raw;
 
     const m = /^([a-zA-Z]):[\\/](.*)$/.exec(raw);
     if (!m) return raw;
@@ -121,65 +103,40 @@ async function main() {
     return rest ? `${mountRoot}/${drive}/${rest}` : `${mountRoot}/${drive}`;
   };
 
-  const mapHostPathToBox = (cwd: string): string => {
-    const raw = cwd.trim();
-    if (!raw) return raw;
-    if (cfg.sandbox.provider !== "boxlite_oci") return raw;
-    const volumes = cfg.sandbox.boxlite?.volumes ?? [];
-    if (!volumes.length) return raw;
+  const mapCwd = (cwd: string): string => mapWindowsPathToWsl(cwd);
+  const defaultCwd = mapCwd(cfg.cwd);
 
-    const norm = raw.replace(/\\/g, "/");
+  const sandbox =
+    cfg.sandbox.provider === "container_oci"
+      ? new ContainerSandbox({
+          log,
+          config: {
+            image: cfg.sandbox.image,
+            runtime: cfg.sandbox.runtime ?? "docker",
+            extraRunArgs: cfg.sandbox.extraRunArgs,
+            workingDir: cfg.sandbox.workingDir,
+            volumes: cfg.sandbox.volumes,
+            env: cfg.sandbox.env,
+            cpus: cfg.sandbox.cpus,
+            memoryMib: cfg.sandbox.memoryMib,
+          },
+        })
+      : new BoxliteSandbox({
+          log,
+          config: {
+            image: cfg.sandbox.image,
+            workingDir: cfg.sandbox.workingDir,
+            volumes: cfg.sandbox.volumes,
+            env: cfg.sandbox.env,
+            cpus: cfg.sandbox.cpus,
+            memoryMib: cfg.sandbox.memoryMib,
+          },
+        });
 
-    const candidates = volumes
-      .map((v) => ({
-        hostPath: mapWindowsPathToWsl(v.hostPath).replace(/\\/g, "/").replace(/\/+$/, ""),
-        guestPath: v.guestPath.replace(/\\/g, "/").replace(/\/+$/, ""),
-      }))
-      .filter((v) => v.hostPath && v.guestPath);
-
-    let best: { hostPath: string; guestPath: string } | null = null;
-    for (const v of candidates) {
-      if (norm === v.hostPath || norm.startsWith(`${v.hostPath}/`)) {
-        if (!best || v.hostPath.length > best.hostPath.length) best = v;
-      }
-    }
-
-    if (!best) return norm;
-    return `${best.guestPath}${norm.slice(best.hostPath.length)}`;
-  };
-
-  const mapCwd = (cwd: string): string => mapHostPathToBox(mapWindowsPathToWsl(cwd));
-
-  const isBoxliteGitClone =
-    cfg.sandbox.provider === "boxlite_oci" && boxliteWorkspaceMode === "git_clone";
-
-  const boxliteWorkingDir =
-    cfg.sandbox.provider === "boxlite_oci"
-      ? (cfg.sandbox.boxlite?.workingDir?.trim()
-          ? cfg.sandbox.boxlite.workingDir.trim()
-          : "/workspace")
-      : "";
-
-  const defaultCwd = isBoxliteGitClone ? boxliteWorkingDir : mapCwd(cfg.cwd);
-
-  const hostSandbox = new HostProcessSandbox({ log });
-  const hostLauncher = new DefaultAgentLauncher({
-    sandbox: hostSandbox,
+  const launcher = new SandboxAgentLauncher({
+    sandbox,
     command: cfg.agent_command,
   });
-
-  const createBoxliteSandbox = (runId: string) =>
-    new BoxliteSandbox({
-      log: (msg, extra) => log(`[run:${runId}] ${msg}`, extra),
-      config: {
-        image: cfg.sandbox.boxlite?.image ?? "",
-        workingDir: cfg.sandbox.boxlite?.workingDir,
-        volumes: cfg.sandbox.boxlite?.volumes,
-        env: cfg.sandbox.boxlite?.env,
-        cpus: cfg.sandbox.boxlite?.cpus,
-        memoryMib: cfg.sandbox.boxlite?.memoryMib,
-      },
-    });
 
   type RunState = {
     cwd: string;
@@ -197,7 +154,8 @@ async function main() {
   let ws: WebSocket | null = null;
 
   const send = (payload: unknown) => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error("ws not connected");
+    if (!ws || ws.readyState !== WebSocket.OPEN)
+      throw new Error("ws not connected");
     ws.send(JSON.stringify(payload));
   };
 
@@ -226,10 +184,15 @@ async function main() {
   };
 
   const registerAgent = () => {
-    const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities) ? cfg.agent.capabilities : {};
-    const baseSandbox: Record<string, unknown> = isRecord(baseCaps.sandbox) ? baseCaps.sandbox : {};
-    const baseRuntime: Record<string, unknown> = isRecord(baseCaps.runtime) ? baseCaps.runtime : {};
-    const baseBoxlite: Record<string, unknown> = isRecord(baseSandbox.boxlite) ? (baseSandbox.boxlite as Record<string, unknown>) : {};
+    const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities)
+      ? cfg.agent.capabilities
+      : {};
+    const baseSandbox: Record<string, unknown> = isRecord(baseCaps.sandbox)
+      ? baseCaps.sandbox
+      : {};
+    const baseRuntime: Record<string, unknown> = isRecord(baseCaps.runtime)
+      ? baseCaps.runtime
+      : {};
 
     const runtime: Record<string, unknown> = {
       ...baseRuntime,
@@ -242,15 +205,14 @@ async function main() {
     const sandboxCaps: Record<string, unknown> = {
       ...baseSandbox,
       provider: cfg.sandbox.provider,
+      terminalEnabled: cfg.sandbox.terminalEnabled,
+      image: cfg.sandbox.image ?? null,
+      workingDir: cfg.sandbox.workingDir ?? null,
     };
-    if (cfg.sandbox.provider === "boxlite_oci") {
-      sandboxCaps.boxlite = {
-        ...baseBoxlite,
-        image: cfg.sandbox.boxlite?.image ?? null,
-        workingDir: cfg.sandbox.boxlite?.workingDir ?? null,
-        workspaceMode: cfg.sandbox.boxlite?.workspaceMode ?? "mount",
-      };
-    }
+    if (cfg.sandbox.provider === "container_oci")
+      sandboxCaps.runtime = cfg.sandbox.runtime ?? "docker";
+    if (cfg.sandbox.provider === "boxlite_oci")
+      sandboxCaps.workspaceMode = cfg.sandbox.workspaceMode ?? "mount";
 
     send({
       type: "register_agent",
@@ -314,7 +276,9 @@ async function main() {
       ? Math.max(1, Math.min(3600, timeoutSecondsRaw))
       : 300;
 
-    const env = opts.init?.env ? { ...process.env, ...opts.init.env } : process.env;
+    const env = opts.init?.env
+      ? { ...process.env, ...opts.init.env }
+      : process.env;
     const secrets = pickSecretValues(opts.init?.env);
 
     sendUpdate(opts.runId, {
@@ -595,7 +559,12 @@ async function main() {
     transport.onExit?.((info) => {
       void closeRun(runId, "agent_exit").finally(() => {
         try {
-          send({ type: "acp_exit", run_id: runId, code: info.code, signal: info.signal });
+          send({
+            type: "acp_exit",
+            run_id: runId,
+            code: info.code,
+            signal: info.signal,
+          });
         } catch {
           // ignore
         }
@@ -635,45 +604,32 @@ async function main() {
     const runId = String(msg.run_id ?? "").trim();
     if (!runId) return;
 
-    const cwd = getRunCwd(runId, typeof msg.cwd === "string" ? msg.cwd : undefined);
+    const cwd = getRunCwd(
+      runId,
+      typeof msg.cwd === "string" ? msg.cwd : undefined,
+    );
     const init = isRecord(msg.init) ? (msg.init as any) : undefined;
-    const env = init && isRecord(init.env) ? (init.env as Record<string, string>) : undefined;
-    const envKey = normalizeEnvKey(env);
-
-    const existing = runStates.get(runId);
-    if (existing && existing.cwd === cwd && existing.envKey === envKey) {
-      existing.lastUsedAt = Date.now();
-      try {
-        send({ type: "acp_opened", run_id: runId, ok: true });
-      } catch {
-        // ignore
-      }
-      return;
-    }
 
     try {
-      if (cfg.sandbox.provider === "boxlite_oci") {
-        const sandbox = createBoxliteSandbox(runId);
-        const initOk = await runInitScriptBoxlite({ runId, cwd, sandbox, init });
-        if (!initOk) {
-          send({ type: "acp_opened", run_id: runId, ok: false, error: "init_failed" });
-          return;
-        }
-
-        const launcher = new DefaultAgentLauncher({ sandbox, command: cfg.agent_command });
-        await ensureRun(runId, cwd, launcher, env);
-      } else {
-        const initOk = await runInitScriptHost({ runId, cwd, init });
-        if (!initOk) {
-          send({ type: "acp_opened", run_id: runId, ok: false, error: "init_failed" });
-          return;
-        }
-        await ensureRun(runId, cwd, hostLauncher, env);
+      const initOk = await runInitScript({ runId, cwd, init });
+      if (!initOk) {
+        send({
+          type: "acp_opened",
+          run_id: runId,
+          ok: false,
+          error: "init_failed",
+        });
+        return;
       }
-
+      await ensureRun(runId, cwd);
       send({ type: "acp_opened", run_id: runId, ok: true });
     } catch (err) {
-      send({ type: "acp_opened", run_id: runId, ok: false, error: String(err) });
+      send({
+        type: "acp_opened",
+        run_id: runId,
+        ok: false,
+        error: String(err),
+      });
     }
   };
 
@@ -688,7 +644,11 @@ async function main() {
 
     const message = msg.message;
     if (!isRecord(message) || message.jsonrpc !== "2.0") {
-      send({ type: "acp_error", run_id: runId, error: "invalid_jsonrpc_message" });
+      send({
+        type: "acp_error",
+        run_id: runId,
+        error: "invalid_jsonrpc_message",
+      });
       return;
     }
 
@@ -753,7 +713,8 @@ async function main() {
             try {
               const text = data.toString();
               const msg = JSON.parse(text) as IncomingMessage;
-              if (!msg || !isRecord(msg) || typeof msg.type !== "string") return;
+              if (!msg || !isRecord(msg) || typeof msg.type !== "string")
+                return;
 
               if (msg.type === "acp_open") {
                 void handleAcpOpen(msg);
@@ -798,4 +759,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-

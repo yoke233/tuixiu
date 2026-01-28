@@ -147,7 +147,6 @@ WebSocket：
 ## 7. Proxy（acp-proxy）实现位置
 
 - 入口：`acp-proxy/src/index.ts`
-- ACP 桥接：`acp-proxy/src/acpBridge.ts`
-- 配置：`acp-proxy/config.json`（示例见 `acp-proxy/config.json.example`）
+- 配置：`acp-proxy/config.toml`（示例见 `acp-proxy/config.toml.example`）
 
 协议细节与 session 策略：见 `docs/01_architecture/acp-integration.md`。

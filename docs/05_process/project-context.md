@@ -12,7 +12,7 @@ last_reviewed: "2026-01-27"
 ## 1. 仓库结构（pnpm workspace）
 
 - `backend/`：Fastify 编排层（REST API + WebSocket gateway），Prisma schema/migrations 在 `backend/prisma/`，单测在 `backend/test/`
-- `acp-proxy/`：WebSocket ↔ ACP bridge 与 agent launcher；运行时配置 `acp-proxy/config.json`（从 `config.json.example` 拷贝）
+- `acp-proxy/`：WebSocket ↔ ACP bridge 与 agent launcher；运行时配置 `acp-proxy/config.toml`（从 `config.toml.example` 拷贝）
 - `frontend/`：Vite + React UI；页面在 `frontend/src/pages/`，组件在 `frontend/src/components/`
 - `docs/`：架构、PRD、实现说明与执行计划
 - `.worktrees/`：运行时生成的 git worktrees（不要手动编辑、不要提交）
@@ -61,7 +61,7 @@ pnpm dev
 - 机密信息（PAT/API key/Token）禁止写入代码、日志与文档；不要提交到 git
 - 配置文件参考：
   - `backend/.env.example` → `backend/.env`
-  - `acp-proxy/config.json.example` → `acp-proxy/config.json`
+  - `acp-proxy/config.toml.example` → `acp-proxy/config.toml`
 
 ## 7. 参考
 
