@@ -26,7 +26,15 @@ describe("Policy routes", () => {
     expect(body.data.source).toBe("default");
     expect(body.data.policy).toEqual({
       version: 1,
-      automation: { autoStartIssue: true, autoReview: true, autoCreatePr: true, autoRequestMergeApproval: true },
+      automation: {
+        autoStartIssue: true,
+        autoReview: true,
+        autoCreatePr: true,
+        autoRequestMergeApproval: true,
+        autoMerge: false,
+        mergeMethod: "squash",
+        ciGate: true,
+      },
       approvals: { requireForActions: ["merge_pr"], escalateOnSensitivePaths: ["create_pr", "publish_artifact"] },
       sensitivePaths: [],
     });
@@ -66,7 +74,15 @@ describe("Policy routes", () => {
         projectId: "00000000-0000-0000-0000-000000000001",
         policy: {
           version: 1,
-          automation: { autoStartIssue: false, autoReview: true, autoCreatePr: true, autoRequestMergeApproval: true },
+          automation: {
+            autoStartIssue: false,
+            autoReview: true,
+            autoCreatePr: true,
+            autoRequestMergeApproval: true,
+            autoMerge: false,
+            mergeMethod: "squash",
+            ciGate: true,
+          },
           approvals: { requireForActions: ["merge_pr"], escalateOnSensitivePaths: ["create_pr", "publish_artifact"] },
           sensitivePaths: ["backend/prisma/**"],
         },
@@ -80,7 +96,15 @@ describe("Policy routes", () => {
           foo: "bar",
           pmPolicy: {
             version: 1,
-            automation: { autoStartIssue: false, autoReview: true, autoCreatePr: true, autoRequestMergeApproval: true },
+            automation: {
+              autoStartIssue: false,
+              autoReview: true,
+              autoCreatePr: true,
+              autoRequestMergeApproval: true,
+              autoMerge: false,
+              mergeMethod: "squash",
+              ciGate: true,
+            },
             approvals: { requireForActions: ["merge_pr"], escalateOnSensitivePaths: ["create_pr", "publish_artifact"] },
             sensitivePaths: ["backend/prisma/**"],
           },

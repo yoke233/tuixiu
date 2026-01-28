@@ -37,6 +37,13 @@ function buildStepInstruction(step: any, issue: any): string {
   const params = step?.params ?? {};
   const mode = typeof (params as any).mode === "string" ? String((params as any).mode).trim().toLowerCase() : "";
 
+  const feedbackRaw = (params as any)?.feedback;
+  const feedbackMessage =
+    feedbackRaw && typeof feedbackRaw === "object" && typeof (feedbackRaw as any).message === "string"
+      ? String((feedbackRaw as any).message).trim()
+      : "";
+  const feedbackClamped = feedbackMessage.length > 2000 ? `${feedbackMessage.slice(0, 1800)}\n\n…（截断）` : feedbackMessage;
+
   if (kind === "prd.generate") {
     return [
       "你是产品经理（PM）。请根据任务信息生成一份 PRD（中文）。",
@@ -126,6 +133,7 @@ function buildStepInstruction(step: any, issue: any): string {
 
   if (kind === "dev.implement") {
     return [
+      ...(feedbackClamped ? ["上次流程反馈（请先处理/修复后再继续）：", feedbackClamped, ""] : []),
       "你是软件工程师。请在当前分支实现需求并提交代码（git commit）。",
       "实现完成后输出：变更摘要、关键文件列表、以及如何验证。",
     ].join("\n");

@@ -4,6 +4,8 @@ import type { PrismaDeps } from "../../deps.js";
 
 const approvalActionSchema = z.enum(["merge_pr", "create_pr", "publish_artifact"]);
 
+const mergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
+
 export const pmPolicyV1Schema = z
   .object({
     version: z.literal(1).default(1),
@@ -13,8 +15,19 @@ export const pmPolicyV1Schema = z
         autoReview: z.boolean().default(true),
         autoCreatePr: z.boolean().default(true),
         autoRequestMergeApproval: z.boolean().default(true),
+        autoMerge: z.boolean().default(false),
+        mergeMethod: mergeMethodSchema.default("squash"),
+        ciGate: z.boolean().default(true),
       })
-      .default({ autoStartIssue: true, autoReview: true, autoCreatePr: true, autoRequestMergeApproval: true }),
+      .default({
+        autoStartIssue: true,
+        autoReview: true,
+        autoCreatePr: true,
+        autoRequestMergeApproval: true,
+        autoMerge: false,
+        mergeMethod: "squash",
+        ciGate: true,
+      }),
     approvals: z
       .object({
         requireForActions: z.array(approvalActionSchema).default(["merge_pr"]),

@@ -11,6 +11,8 @@ import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/t
 import { rollbackTaskToStep } from "../services/taskEngine.js";
 import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
 import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
+import { isPmAutomationEnabled } from "../services/pm/pmLlm.js";
+import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
 
 function getHeader(headers: Record<string, unknown>, name: string): string | undefined {
   const key = name.toLowerCase();
@@ -259,11 +261,143 @@ export function makeGitHubWebhookRoutes(deps: {
             { runId: run.id, issueId: (run as any).issueId, trigger: "ci_completed" },
           );
 
-          if ((run as any).taskId) {
+          if ((run as any).taskId && deps.acp) {
             triggerTaskAutoAdvance(
-              { prisma: deps.prisma, broadcastToClients: deps.broadcastToClients },
+              { prisma: deps.prisma, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
               { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "ci_completed" },
             );
+          }
+
+          if (passed && isPmAutomationEnabled()) {
+            const { policy } = getPmPolicyFromBranchProtection((project as any).branchProtection);
+            const allowAutoMerge = (policy as any)?.automation?.autoMerge === true;
+            const requireMergeApproval = Array.isArray((policy as any)?.approvals?.requireForActions)
+              ? (policy as any).approvals.requireForActions.includes("merge_pr")
+              : false;
+            const mergeMethod =
+              typeof (policy as any)?.automation?.mergeMethod === "string" ? String((policy as any).automation.mergeMethod) : "squash";
+            const ciGate = (policy as any)?.automation?.ciGate !== false;
+
+            const token = String((project as any)?.githubAccessToken ?? "").trim();
+            const prNumber =
+              prNumbers.length === 1
+                ? prNumbers[0]
+                : Number.isFinite((run as any)?.scmPrNumber)
+                  ? Number((run as any).scmPrNumber)
+                  : null;
+            const prUrl = prNumber && parsedRepo.webBaseUrl ? `${parsedRepo.webBaseUrl}/pull/${prNumber}` : "";
+
+            const canAutoMerge =
+              allowAutoMerge &&
+              !requireMergeApproval &&
+              !!token &&
+              !!prNumber &&
+              (!ciGate || scmCiStatus === "passed") &&
+              String((project as any)?.scmType ?? "").toLowerCase() === "github";
+
+            if (canAutoMerge) {
+              const auth: github.GitHubAuth = {
+                apiBaseUrl: parsedRepo.apiBaseUrl,
+                owner: parsedRepo.owner,
+                repo: parsedRepo.repo,
+                accessToken: token,
+              };
+
+              try {
+                const res = await github.mergePullRequest(auth, {
+                  pullNumber: prNumber,
+                  mergeMethod: mergeMethod === "merge" || mergeMethod === "rebase" ? (mergeMethod as any) : "squash",
+                });
+
+                if (!res?.merged) {
+                  throw new Error(`GITHUB_MERGE_NOT_MERGED ${String(res?.message ?? "").trim()}`.trim());
+                }
+
+                await deps.prisma.event
+                  .create({
+                    data: {
+                      id: uuidv7(),
+                      runId: run.id,
+                      source: "system",
+                      type: "pm.pr.auto_merge.executed",
+                      payload: { prNumber, prUrl: prUrl || undefined, headSha, mergeMethod } as any,
+                    } as any,
+                  })
+                  .catch(() => {});
+              } catch (err) {
+                const errorText = err instanceof Error ? err.message : String(err);
+                await deps.prisma.event
+                  .create({
+                    data: {
+                      id: uuidv7(),
+                      runId: run.id,
+                      source: "system",
+                      type: "pm.pr.auto_merge.failed",
+                      payload: { prNumber, prUrl: prUrl || undefined, headSha, mergeMethod, error: errorText } as any,
+                    } as any,
+                  })
+                  .catch(() => {});
+
+                const taskId = String((run as any)?.taskId ?? "").trim();
+                if (taskId) {
+                  const task = await deps.prisma.task
+                    .findUnique({ where: { id: taskId }, include: { steps: { orderBy: { order: "asc" } } } as any })
+                    .catch(() => null);
+                  const steps = Array.isArray((task as any)?.steps) ? ((task as any).steps as any[]) : [];
+                  const target = steps.find((s) => String(s?.kind ?? "") === "dev.implement") ?? steps[0] ?? null;
+                  if (target) {
+                    const existingParams =
+                      target.params && typeof target.params === "object" && !Array.isArray(target.params) ? target.params : {};
+                    const fixMessage = [
+                      "自动合并失败，需要你修复后重新 push：",
+                      prUrl ? `- PR：${prUrl}` : prNumber ? `- PR：#${prNumber}` : "",
+                      headSha ? `- Head：${String(headSha).slice(0, 12)}` : "",
+                      errorText ? `- 失败原因：${errorText}` : "",
+                      "",
+                      "建议处理：",
+                      "- 拉取最新 base 分支并解决冲突（如有）",
+                      "- 确保本地测试通过",
+                      "- git push 更新该 PR 分支，等待 CI 再次通过",
+                    ]
+                      .filter(Boolean)
+                      .join("\n");
+
+                    await deps.prisma.step
+                      .update({
+                        where: { id: target.id },
+                        data: {
+                          params: {
+                            ...existingParams,
+                            feedback: { type: "auto_merge_failed", message: fixMessage, prNumber, prUrl, headSha, error: errorText },
+                          } as any,
+                        } as any,
+                      })
+                      .catch(() => {});
+
+                    await rollbackTaskToStep({ prisma: deps.prisma }, taskId, { stepId: target.id }).catch(() => {});
+
+                    await deps.prisma.event
+                      .create({
+                        data: {
+                          id: uuidv7(),
+                          runId: run.id,
+                          source: "system",
+                          type: "pm.pr.auto_merge.rolled_back",
+                          payload: { taskId, stepId: target.id, reason: "auto_merge_failed" } as any,
+                        } as any,
+                      })
+                      .catch(() => {});
+
+                    if (deps.acp) {
+                      triggerTaskAutoAdvance(
+                        { prisma: deps.prisma, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
+                        { issueId: (run as any).issueId, taskId, trigger: "task_rolled_back" },
+                      );
+                    }
+                  }
+                }
+              }
+            }
           }
 
           return { success: true, data: { ok: true, handled: true, runId: run.id, passed } };

@@ -188,6 +188,184 @@ describe("GitHub webhook routes", () => {
     await server.close();
   });
 
+  it("POST /api/webhooks/github auto-merges PR when policy enables autoMerge", async () => {
+    const prevEnv = process.env.PM_AUTOMATION_ENABLED;
+    process.env.PM_AUTOMATION_ENABLED = "1";
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ merged: true, message: "Merged", sha: "deadbeef" }),
+    } as any);
+
+    const server = createHttpServer();
+    const prisma = {
+      project: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "p1",
+            repoUrl: "https://github.com/o/r",
+            scmType: "github",
+            githubAccessToken: "token",
+            branchProtection: {
+              pmPolicy: {
+                version: 1,
+                automation: { autoMerge: true, mergeMethod: "squash", ciGate: true },
+                approvals: { requireForActions: [], escalateOnSensitivePaths: [] },
+                sensitivePaths: [],
+              },
+            },
+          },
+        ]),
+      },
+      run: {
+        findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: "t1", stepId: "s1" }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+    } as any;
+
+    await server.register(makeGitHubWebhookRoutes({ prisma }), { prefix: "/api/webhooks" });
+
+    const payload = {
+      action: "completed",
+      check_suite: {
+        head_branch: "run/xyz",
+        head_sha: "abc",
+        status: "completed",
+        conclusion: "success",
+        pull_requests: [{ number: 123 }],
+      },
+      repository: { html_url: "https://github.com/o/r" },
+    };
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/webhooks/github",
+      headers: { "x-github-event": "check_suite" },
+      payload,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { ok: true, handled: true, runId: "r1", passed: true } });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://api.github.com/repos/o/r/pulls/123/merge",
+      expect.objectContaining({ method: "PUT" }),
+    );
+    expect(prisma.event.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ runId: "r1", type: "pm.pr.auto_merge.executed" }),
+      }),
+    );
+
+    await server.close();
+
+    globalThis.fetch = originalFetch;
+    if (typeof prevEnv === "string") process.env.PM_AUTOMATION_ENABLED = prevEnv;
+    else delete process.env.PM_AUTOMATION_ENABLED;
+  });
+
+  it("POST /api/webhooks/github rolls back task when autoMerge fails", async () => {
+    const prevEnv = process.env.PM_AUTOMATION_ENABLED;
+    process.env.PM_AUTOMATION_ENABLED = "1";
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      text: async () => "merge conflict",
+    } as any);
+
+    const server = createHttpServer();
+    const prisma = {
+      project: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "p1",
+            repoUrl: "https://github.com/o/r",
+            scmType: "github",
+            githubAccessToken: "token",
+            branchProtection: {
+              pmPolicy: {
+                version: 1,
+                automation: { autoMerge: true, mergeMethod: "squash", ciGate: true },
+                approvals: { requireForActions: [], escalateOnSensitivePaths: [] },
+                sensitivePaths: [],
+              },
+            },
+          },
+        ]),
+      },
+      run: {
+        findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: "t1", stepId: "s1" }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      task: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "t1",
+          steps: [
+            { id: "dev1", kind: "dev.implement", order: 1, params: {} },
+            { id: "merge1", kind: "pr.merge", order: 2, params: {} },
+          ],
+        }),
+        update: vi.fn().mockResolvedValue({ id: "t1" }),
+      },
+      step: {
+        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      issue: { update: vi.fn().mockResolvedValue({}) },
+      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+    } as any;
+
+    await server.register(makeGitHubWebhookRoutes({ prisma }), { prefix: "/api/webhooks" });
+
+    const payload = {
+      action: "completed",
+      check_suite: {
+        head_branch: "run/xyz",
+        head_sha: "abc",
+        status: "completed",
+        conclusion: "success",
+        pull_requests: [{ number: 123 }],
+      },
+      repository: { html_url: "https://github.com/o/r" },
+    };
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/webhooks/github",
+      headers: { "x-github-event": "check_suite" },
+      payload,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prisma.step.updateMany).toHaveBeenCalled();
+    expect(prisma.step.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "dev1" },
+        data: expect.objectContaining({ params: expect.any(Object) }),
+      }),
+    );
+    expect(prisma.event.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ runId: "r1", type: "pm.pr.auto_merge.failed" }),
+      }),
+    );
+    expect(prisma.event.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ runId: "r1", type: "pm.pr.auto_merge.rolled_back" }),
+      }),
+    );
+
+    await server.close();
+
+    globalThis.fetch = originalFetch;
+    if (typeof prevEnv === "string") process.env.PM_AUTOMATION_ENABLED = prevEnv;
+    else delete process.env.PM_AUTOMATION_ENABLED;
+  });
+
   it("POST /api/webhooks/github returns BAD_PAYLOAD when body invalid", async () => {
     const server = createHttpServer();
     const prisma = {
