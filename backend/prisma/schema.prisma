@@ -118,6 +118,21 @@ enum ArtifactType {
   ci_result
 }
 
+enum ApprovalAction {
+  merge_pr
+  create_pr
+  publish_artifact
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  executing
+  executed
+  failed
+}
+
 model Project {
   id                     String   @id @default(uuid()) @db.Uuid
   name                   String   @db.VarChar(255)
@@ -270,6 +285,7 @@ model Run {
 
   events         Event[]
   artifacts      Artifact[]
+  approvals      Approval[]
   sandboxInstances SandboxInstance[]
 
   @@index([issueId])
@@ -336,6 +352,33 @@ model Artifact {
   createdAt DateTime     @default(now())
 
   @@index([runId, type])
+}
+
+model Approval {
+  id          String         @id @default(uuid()) @db.Uuid
+
+  runId       String         @db.Uuid
+  run         Run            @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  action      ApprovalAction
+  status      ApprovalStatus @default(pending)
+
+  requestedBy String?        @db.VarChar(100)
+  requestedAt DateTime       @default(now())
+
+  decidedBy   String?        @db.VarChar(100)
+  decidedAt   DateTime?
+
+  reason      String?        @db.Text
+  payload     Json?
+  result      Json?
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([runId, createdAt(sort: Desc)])
+  @@index([action, status])
+  @@index([status, createdAt(sort: Desc)])
 }
 
 model RoleTemplate {

@@ -5,29 +5,6 @@ import { extractAgentTextFromEvents, extractTaggedCodeBlock } from "./agentOutpu
 
 type TerminalOutcome = "completed" | "failed" | "cancelled";
 
-async function ensureArtifactOnce(opts: {
-  prisma: PrismaDeps;
-  runId: string;
-  type: "report" | "ci_result";
-  content: any;
-}) {
-  const existing = await opts.prisma.artifact
-    .findFirst({ where: { runId: opts.runId, type: opts.type } as any, orderBy: { createdAt: "desc" } })
-    .catch(() => null);
-  if (existing) return;
-
-  await opts.prisma.artifact
-    .create({
-      data: {
-        id: uuidv7(),
-        runId: opts.runId,
-        type: opts.type,
-        content: opts.content as any,
-      },
-    })
-    .catch(() => {});
-}
-
 async function maybeCreateAgentArtifacts(deps: { prisma: PrismaDeps }, run: any, step: any) {
   if (run.executorType !== "agent") return;
   const kind = String(step?.kind ?? "").trim();
@@ -49,7 +26,17 @@ async function maybeCreateAgentArtifacts(deps: { prisma: PrismaDeps }, run: any,
       parsed = null;
     }
     const content = parsed && typeof parsed === "object" ? parsed : { passed: true, raw: agentText.slice(-4000) };
-    await ensureArtifactOnce({ prisma: deps.prisma, runId: run.id, type: "ci_result", content });
+    await deps.prisma.event
+      .create({
+        data: {
+          id: uuidv7(),
+          runId: run.id,
+          source: "system",
+          type: "agent.ci_result",
+          payload: content as any,
+        } as any,
+      })
+      .catch(() => {});
     return;
   }
 
@@ -67,7 +54,17 @@ async function maybeCreateAgentArtifacts(deps: { prisma: PrismaDeps }, run: any,
       ? { ...parsed, kind: parsed.kind ?? reportKind, markdown: parsed.markdown ?? agentText }
       : { kind: reportKind, markdown: agentText };
 
-  await ensureArtifactOnce({ prisma: deps.prisma, runId: run.id, type: "report", content });
+  await deps.prisma.event
+    .create({
+      data: {
+        id: uuidv7(),
+        runId: run.id,
+        source: "system",
+        type: "agent.report",
+        payload: content as any,
+      } as any,
+    })
+    .catch(() => {});
 }
 
 function lastStepKind(steps: any[]): string {

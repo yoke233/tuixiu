@@ -130,8 +130,6 @@ export function makeGitLabWebhookRoutes(deps: {
           .toLowerCase();
         const branch = String(payload.object_attributes.ref ?? "").trim();
         const sha = String(payload.object_attributes.sha ?? "").trim();
-        const pipelineId = String(payload.object_attributes.id ?? "");
-
         const terminalStatuses = new Set(["success", "failed", "canceled", "cancelled", "skipped"]);
         if (!branch || !terminalStatuses.has(status)) {
           return { success: true, data: { ok: true, ignored: true, reason: "NOT_COMPLETED", event, status, branch } };
@@ -146,31 +144,13 @@ export function makeGitLabWebhookRoutes(deps: {
           .catch(() => null);
 
         if (!run) {
-          const prArtifact = await deps.prisma.artifact
+          run = await deps.prisma.run
             .findFirst({
-              where: {
-                type: "pr",
-                run: { is: { issue: { is: { projectId: (project as any).id } } } } as any,
-                AND: [
-                  { content: { path: ["provider"], equals: "gitlab" } as any },
-                  { content: { path: ["sourceBranch"], equals: branch } as any },
-                ] as any,
-              } as any,
-              orderBy: { createdAt: "desc" },
+              where: { branchName: branch, issue: { projectId: (project as any).id } } as any,
+              orderBy: { startedAt: "desc" },
+              select: { id: true, issueId: true, taskId: true, stepId: true },
             })
             .catch(() => null);
-
-          if (prArtifact) {
-            const prRun = await deps.prisma.run
-              .findUnique({
-                where: { id: String((prArtifact as any).runId) },
-                select: { id: true, issueId: true, taskId: true, stepId: true, status: true } as any,
-              })
-              .catch(() => null);
-            if (prRun && String((prRun as any).status ?? "") === "waiting_ci") {
-              run = prRun as any;
-            }
-          }
         }
 
         if (!run) {
@@ -179,14 +159,15 @@ export function makeGitLabWebhookRoutes(deps: {
 
         const passed = status === "success";
 
-        await deps.prisma.artifact
-          .create({
+        await deps.prisma.run
+          .update({
+            where: { id: (run as any).id },
             data: {
-              id: uuidv7(),
-              runId: (run as any).id,
-              type: "ci_result",
-              content: { provider: "gitlab", event, pipelineId, branch, status, sha, passed } as any,
-            },
+              scmProvider: "gitlab",
+              scmHeadSha: sha || null,
+              scmCiStatus: passed ? "passed" : "failed",
+              scmUpdatedAt: new Date(),
+            } as any,
           })
           .catch(() => {});
 

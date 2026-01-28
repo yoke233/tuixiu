@@ -57,6 +57,31 @@ describe("Runs routes", () => {
     await server.close();
   });
 
+  it("GET /api/runs/:id/changes returns 404 (deprecated)", async () => {
+    const server = createHttpServer();
+    const prisma = {} as any;
+
+    await server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
+
+    const res = await server.inject({ method: "GET", url: "/api/runs/00000000-0000-0000-0000-000000000001/changes" });
+    expect(res.statusCode).toBe(404);
+    await server.close();
+  });
+
+  it("GET /api/runs/:id/diff returns 404 (deprecated)", async () => {
+    const server = createHttpServer();
+    const prisma = {} as any;
+
+    await server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
+
+    const res = await server.inject({
+      method: "GET",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/diff?path=README.md",
+    });
+    expect(res.statusCode).toBe(404);
+    await server.close();
+  });
+
   it("POST /api/runs/:id/cancel marks cancelled", async () => {
     const server = createHttpServer();
     const prisma = {
@@ -305,7 +330,7 @@ describe("Runs routes", () => {
   });
 
 
-  it("POST /api/runs/:id/create-pr pushes branch and creates PR artifact", async () => {
+  it("POST /api/runs/:id/create-pr pushes branch and updates Run.scm fields", async () => {
     const server = createHttpServer();
     const prisma = {
       run: {
@@ -330,7 +355,6 @@ describe("Runs routes", () => {
         }),
         update: vi.fn().mockResolvedValue({})
       },
-      artifact: { create: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr" }) }
     } as any;
 
     const gitPush = vi.fn().mockResolvedValue(undefined);
@@ -370,9 +394,16 @@ describe("Runs routes", () => {
       expect.objectContaining({ cwd: "D:\\repo\\.worktrees\\run-r1", branch: "run/r1" }),
     );
     expect(createMergeRequest).toHaveBeenCalled();
-    expect(prisma.artifact.create).toHaveBeenCalled();
     expect(prisma.run.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "r1" }, data: { status: "waiting_ci" } })
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({
+          scmProvider: "gitlab",
+          scmPrNumber: 7,
+          scmPrUrl: "https://gitlab.example.com/group/repo/-/merge_requests/7",
+          scmPrState: "open",
+        }),
+      }),
     );
     await server.close();
   });
@@ -385,6 +416,7 @@ describe("Runs routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
           issueId: "i1",
+          scmPrUrl: "https://gitlab.example.com/group/repo/-/merge_requests/7",
           issue: {
             id: "i1",
             project: {
@@ -392,18 +424,21 @@ describe("Runs routes", () => {
               scmType: "gitlab",
             }
           },
-          artifacts: [{ id: "pr-1", type: "pr", content: { iid: 7, webUrl: "https://gitlab.example.com/group/repo/-/merge_requests/7" } }]
+          artifacts: []
         }),
       },
-      artifact: {
+      approval: {
+        findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({
           id: "ap-1",
           runId: "r1",
-          type: "report",
-          content: { kind: "approval_request", action: "merge_pr", status: "pending" },
-          createdAt: "2026-01-25T00:00:00.000Z"
-        })
-      }
+          action: "merge_pr",
+          status: "pending",
+          requestedBy: "api_merge_pr",
+          requestedAt: new Date("2026-01-25T00:00:00.000Z"),
+          createdAt: new Date("2026-01-25T00:00:00.000Z"),
+        }),
+      },
     } as any;
 
     await server.register(
@@ -422,16 +457,15 @@ describe("Runs routes", () => {
     const body = res.json();
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("APPROVAL_REQUIRED");
-    expect(prisma.artifact.create).toHaveBeenCalled();
-    const call = prisma.artifact.create.mock.calls[0][0];
-    expect(call.data.type).toBe("report");
-    expect(call.data.content.action).toBe("merge_pr");
-    expect(call.data.content.status).toBe("pending");
-    expect(call.data.content.requestedBy).toBe("api_merge_pr");
+    expect(prisma.approval.create).toHaveBeenCalled();
+    const call = prisma.approval.create.mock.calls[0][0];
+    expect(call.data.action).toBe("merge_pr");
+    expect(call.data.status).toBe("pending");
+    expect(call.data.requestedBy).toBe("api_merge_pr");
     await server.close();
   });
 
-  it("POST /api/runs/:id/create-pr supports GitHub (creates PR artifact)", async () => {
+  it("POST /api/runs/:id/create-pr supports GitHub (updates Run.scm fields)", async () => {
     const server = createHttpServer();
     const prisma = {
       run: {
@@ -455,7 +489,6 @@ describe("Runs routes", () => {
         }),
         update: vi.fn().mockResolvedValue({})
       },
-      artifact: { create: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr" }) }
     } as any;
 
     const gitPush = vi.fn().mockResolvedValue(undefined);
@@ -501,9 +534,16 @@ describe("Runs routes", () => {
       expect.objectContaining({ cwd: "D:\\repo\\.worktrees\\run-r1", branch: "run/r1" }),
     );
     expect(createPullRequest).toHaveBeenCalled();
-    expect(prisma.artifact.create).toHaveBeenCalled();
     expect(prisma.run.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "r1" }, data: { status: "waiting_ci" } })
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({
+          scmProvider: "github",
+          scmPrNumber: 12,
+          scmPrUrl: "https://github.com/octo-org/octo-repo/pull/12",
+          scmPrState: "open",
+        }),
+      }),
     );
     await server.close();
   });
@@ -516,6 +556,7 @@ describe("Runs routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
           issueId: "i1",
+          scmPrUrl: "https://github.com/octo-org/octo-repo/pull/12",
           issue: {
             id: "i1",
             project: {
@@ -524,18 +565,21 @@ describe("Runs routes", () => {
               githubAccessToken: "ghp_xxx"
             }
           },
-          artifacts: [{ id: "pr-1", type: "pr", content: { number: 12, webUrl: "https://github.com/octo-org/octo-repo/pull/12" } }]
+          artifacts: []
         }),
       },
-      artifact: {
+      approval: {
+        findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({
           id: "ap-1",
           runId: "r1",
-          type: "report",
-          content: { kind: "approval_request", action: "merge_pr", status: "pending" },
-          createdAt: "2026-01-25T00:00:00.000Z"
-        })
-      }
+          action: "merge_pr",
+          status: "pending",
+          requestedBy: "api_merge_pr",
+          requestedAt: new Date("2026-01-25T00:00:00.000Z"),
+          createdAt: new Date("2026-01-25T00:00:00.000Z"),
+        }),
+      },
     } as any;
 
     await server.register(
@@ -554,7 +598,7 @@ describe("Runs routes", () => {
     const body = res.json();
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("APPROVAL_REQUIRED");
-    expect(prisma.artifact.create).toHaveBeenCalled();
+    expect(prisma.approval.create).toHaveBeenCalled();
     await server.close();
   });
 
@@ -565,6 +609,8 @@ describe("Runs routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
           issueId: "i1",
+          scmPrNumber: 12,
+          scmPrUrl: "https://github.com/octo-org/octo-repo/pull/12",
           issue: {
             id: "i1",
             project: {
@@ -573,12 +619,11 @@ describe("Runs routes", () => {
               githubAccessToken: "ghp_xxx"
             }
           },
-          artifacts: [{ id: "pr-1", type: "pr", content: { number: 12 } }]
+          artifacts: []
         }),
         update: vi.fn().mockResolvedValue({})
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
-      artifact: { update: vi.fn().mockResolvedValue({ id: "pr-1", type: "pr" }) }
     } as any;
 
     const getPullRequest = vi.fn().mockResolvedValue({
@@ -587,7 +632,7 @@ describe("Runs routes", () => {
       title: "t1",
       state: "open",
       html_url: "https://github.com/octo-org/octo-repo/pull/12",
-      head: { ref: "run/r1" },
+      head: { ref: "run/r1", sha: "abcdef" },
       base: { ref: "main" },
       merged_at: null,
       mergeable: false,
@@ -628,16 +673,17 @@ describe("Runs routes", () => {
       expect.objectContaining({ pullNumber: 12 })
     );
 
-    expect(prisma.artifact.update).toHaveBeenCalledWith(
+    expect(prisma.run.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "pr-1" },
+        where: { id: "r1" },
         data: expect.objectContaining({
-          content: expect.objectContaining({
-            mergeable: false,
-            mergeable_state: "dirty"
-          })
-        })
-      })
+          scmProvider: "github",
+          scmPrNumber: 12,
+          scmPrUrl: "https://github.com/octo-org/octo-repo/pull/12",
+          scmPrState: "open",
+          scmHeadSha: "abcdef",
+        }),
+      }),
     );
 
     expect(prisma.issue.update).not.toHaveBeenCalled();

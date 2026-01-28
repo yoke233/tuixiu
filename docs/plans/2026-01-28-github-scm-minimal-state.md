@@ -246,6 +246,10 @@ Expected: FAIL
 - 在 pmAutoAdvance 的 `ci_completed` 分支里执行：
   - autoMerge=true 且 ciGate 满足 -> 调用 GitHub merge API（复用现有 github integration 或新增 service）
   - autoMerge=false -> 走 `autoRequestMergeApproval`（现有逻辑）
+- **autoMerge 失败时（必须可审计、可“打回”）：**
+  - 写入 Event：`pm.pr.auto_merge.failed`（含 prUrl/prNumber/headSha/ciStatus/error）
+  - 将对应 Task 回滚到 `dev.implement`（或模板第一步）并触发自动继续，让 agent 进入修复流程
+  - 额外给 agent 一条“失败原因 + 下一步”消息（通过 ACP prompt 注入到新的 run，会形成事件审计）
 
 **Step 4: 跑测试**
 Run: `pnpm -C backend test -- -t "auto merge"`
@@ -328,9 +332,48 @@ git commit -m "docs: describe github scm minimal state flow"
 
 ---
 
+### Task 11: Prompt 模板配置（平台默认 + 项目覆盖）
+
+**动机：** 目前与 agent 交互的很多提示词写死在代码中（如 `acpAgentExecutor.ts` 的步骤指令、PM 自动评审、PR 自动评审、worktree/branch 命名等）。希望把提示词集中为“可配置模板”，平台可统一管理，项目可覆盖，且每次使用可审计追溯。
+
+**设计：**
+- 定义 `PromptKey`（示例）：`step.prd.generate`、`step.dev.implement`、`step.code.review`、`pm.auto_review.system`、`github.pr.auto_review.system`、`utils.git.branch_name.system`、`automation.auto_merge.fix_instruction` 等。
+- 提示词解析优先级（从高到低）：
+  1) Project 覆盖（例如 `Project.branchProtection.prompts[key]`）
+  2) 平台默认（例如从环境变量指向的 JSON/YAML 文件加载，或新增 DB 表持久化；二选一）
+  3) 代码内置默认（兜底，确保系统可跑）
+- 模板变量：复用现有 `renderTemplate` 语法（`{{issue.title}}`/`{{run.id}}`/`{{pr.url}}` 等），并提供一份“可用变量清单”文档。
+- 审计：每次向 agent 发送 prompt 时，写入 `Event(type="prompt.used")`，记录 `key/version/hash/runId/projectId`，保证可追溯“当时用了哪个提示词”。
+
+**Files（建议）：**
+- Create: `backend/src/services/prompts/promptCatalog.ts`（PromptKey 常量与默认值）
+- Create: `backend/src/services/prompts/promptResolver.ts`（按优先级解析 + render）
+- Modify: `backend/src/executors/acpAgentExecutor.ts`（`buildStepInstruction` 改为从 resolver 取模板）
+- Modify: `backend/src/services/startIssueRun.ts`（首条 prompt 改为从 resolver 取模板）
+- Modify: `backend/src/utils/gitWorkspace.ts`（branch/worktree 命名 prompt 改为从 resolver 取模板）
+- Modify: `backend/src/services/githubPrAutoReview.ts` / `backend/src/services/pm/pmAnalyzeIssue.ts`（系统提示词改为从 resolver 取模板）
+- （可选）新增 admin 接口：`GET/PUT /api/admin/projects/:id/prompts` / `GET/PUT /api/admin/prompts`（平台级）
+
+**Step 1: 写一个解析优先级测试**
+- Project 覆盖存在时优先使用覆盖；否则使用平台默认；都没有则回退内置默认。
+
+**Step 2: 逐个替换硬编码提示词**
+- 先替换 `step.*`（最大收益），再替换其它工具/自动化 prompt。
+
+**Step 3: 跑全量测试**
+Run: `pnpm -C backend test`
+
+**Step 4: Commit**
+```powershell
+git add backend/src backend/test
+git commit -m "refactor(backend): make agent prompts configurable"
+```
+
+---
+
 ## 执行备注（实现时的“坑位清单”）
 - `backend/src/routes/githubWebhooks.ts` 目前会用 `Artifact(type=pr)` 反查 run，需要先让 Run 存 `scmPrNumber/scmHeadSha` 才能替换掉。
 - GitHub CI 事件很多：必须做“rollup”策略（至少不要因单个 check success 就把整次 CI 判为 passed）。
 - 自动合并必须幂等：重复 webhook 不应重复 merge；需要在合并前再查询 PR 状态。
 - 迁移期间允许 Artifact 表保留，但要确保新逻辑不再写入 pr/ci/report。
-
+- autoMerge 失败要能把任务“打回”并记录审计：失败原因、回滚目标 step、触发的新 runId、以及发给 agent 的指令内容（key/hash）。

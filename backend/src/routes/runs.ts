@@ -8,11 +8,6 @@ import { uuidv7 } from "../utils/uuid.js";
 import { buildContextFromRun } from "../services/runContext.js";
 import type { AcpTunnel } from "../services/acpTunnel.js";
 import {
-  getRunChanges,
-  getRunDiff,
-  RunGitChangeError,
-} from "../services/runGitChanges.js";
-import {
   createReviewRequestForRun,
   mergeReviewRequestForRun,
   syncReviewRequestForRun,
@@ -22,7 +17,6 @@ import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/t
 import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
 import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
-import { computeSensitiveHitFromFiles } from "../services/pm/pmSensitivePaths.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
 
@@ -95,90 +89,6 @@ export function makeRunRoutes(deps: {
       return { success: true, data: { events } };
     });
 
-    server.get("/:id/changes", async (request) => {
-      const paramsSchema = z.object({ id: z.string().uuid() });
-      const { id } = paramsSchema.parse(request.params);
-
-      try {
-        const data = await getRunChanges({ prisma: deps.prisma, runId: id });
-        return { success: true, data };
-      } catch (err) {
-        if (err instanceof RunGitChangeError) {
-          if (err.code === "NOT_FOUND") {
-            return {
-              success: false,
-              error: { code: "NOT_FOUND", message: err.message },
-            };
-          }
-          if (err.code === "NO_BRANCH") {
-            return {
-              success: false,
-              error: { code: "NO_BRANCH", message: err.message },
-            };
-          }
-          return {
-            success: false,
-            error: {
-              code: "GIT_DIFF_FAILED",
-              message: err.message,
-              details: err.details,
-            },
-          };
-        }
-        return {
-          success: false,
-          error: {
-            code: "GIT_DIFF_FAILED",
-            message: "获取变更失败",
-            details: String(err),
-          },
-        };
-      }
-    });
-
-    server.get("/:id/diff", async (request) => {
-      const paramsSchema = z.object({ id: z.string().uuid() });
-      const querySchema = z.object({ path: z.string().min(1) });
-      const { id } = paramsSchema.parse(request.params);
-      const { path } = querySchema.parse(request.query);
-
-      try {
-        const data = await getRunDiff({ prisma: deps.prisma, runId: id, path });
-        return { success: true, data };
-      } catch (err) {
-        if (err instanceof RunGitChangeError) {
-          if (err.code === "NOT_FOUND") {
-            return {
-              success: false,
-              error: { code: "NOT_FOUND", message: err.message },
-            };
-          }
-          if (err.code === "NO_BRANCH") {
-            return {
-              success: false,
-              error: { code: "NO_BRANCH", message: err.message },
-            };
-          }
-          return {
-            success: false,
-            error: {
-              code: "GIT_DIFF_FAILED",
-              message: err.message,
-              details: err.details,
-            },
-          };
-        }
-        return {
-          success: false,
-          error: {
-            code: "GIT_DIFF_FAILED",
-            message: "获取 diff 失败",
-            details: String(err),
-          },
-        };
-      }
-    });
-
     server.post("/:id/create-pr", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const bodySchema = z.object({
@@ -199,24 +109,8 @@ export function makeRunRoutes(deps: {
       if (!project) return { success: false, error: { code: "BAD_RUN", message: "Run 缺少 project" } };
 
       const { policy } = getPmPolicyFromBranchProtection(project.branchProtection);
-      const sensitivePatterns = Array.isArray(policy.sensitivePaths) ? policy.sensitivePaths : [];
-      const needSensitiveCheck =
-        sensitivePatterns.length > 0 && policy.approvals.escalateOnSensitivePaths.includes("create_pr");
-
-      let sensitive = null as ReturnType<typeof computeSensitiveHitFromFiles> | null;
-      let sensitiveCheckFailed = false;
-      if (needSensitiveCheck) {
-        try {
-          const changes = await getRunChanges({ prisma: deps.prisma, runId: id });
-          sensitive = computeSensitiveHitFromFiles(changes.files ?? [], sensitivePatterns);
-        } catch {
-          sensitiveCheckFailed = true;
-        }
-      }
-
       const requireApproval =
-        policy.approvals.requireForActions.includes("create_pr") ||
-        (needSensitiveCheck && (sensitive !== null || sensitiveCheckFailed));
+        policy.approvals.requireForActions.includes("create_pr");
 
       if (requireApproval) {
         const req = await requestCreatePrApproval({
@@ -227,9 +121,6 @@ export function makeRunRoutes(deps: {
             title: body.title,
             description: body.description,
             targetBranch: body.targetBranch,
-            sensitive: sensitive
-              ? { patterns: sensitive.patterns.slice(0, 20), matchedFiles: sensitive.matchedFiles.slice(0, 60) }
-              : undefined,
           },
         });
         if (!req.success) return req;
@@ -466,14 +357,15 @@ export function makeRunRoutes(deps: {
               ? "merge"
               : stepKind || "human";
 
-      await deps.prisma.artifact
+      await deps.prisma.event
         .create({
           data: {
             id: uuidv7(),
             runId: run.id,
-            type: "report",
-            content: { kind: reportKind, verdict, markdown: comment } as any,
-          },
+            source: "user",
+            type: "human.step.submitted",
+            payload: { kind: reportKind, verdict, markdown: comment || null } as any,
+          } as any,
         })
         .catch(() => {});
 

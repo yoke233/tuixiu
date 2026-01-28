@@ -4,7 +4,7 @@ import { makeRunRoutes } from "../../src/routes/runs.js";
 import { createHttpServer } from "../test-utils.js";
 
 describe("Run approval request routes", () => {
-  it("POST /api/runs/:id/request-merge-pr creates approval artifact", async () => {
+  it("POST /api/runs/:id/request-merge-pr creates approval row", async () => {
     const server = createHttpServer();
     const prisma = {
       event: { create: vi.fn().mockResolvedValue({}) },
@@ -12,16 +12,20 @@ describe("Run approval request routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
           issueId: "i1",
+          scmPrUrl: "https://gitlab.example.com/group/repo/-/merge_requests/7",
           issue: { id: "i1", title: "t1", projectId: "p1" },
-          artifacts: [{ id: "pr-1", runId: "r1", type: "pr", content: { iid: 7 }, createdAt: new Date().toISOString() }],
+          artifacts: [],
         }),
       },
-      artifact: {
+      approval: {
+        findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({
           id: "ap-1",
           runId: "r1",
-          type: "report",
-          content: { kind: "approval_request", action: "merge_pr", status: "pending", requestedBy: "user", requestedAt: new Date().toISOString() },
+          action: "merge_pr",
+          status: "pending",
+          requestedBy: "tester",
+          requestedAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         }),
       },
@@ -37,14 +41,12 @@ describe("Run approval request routes", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.success).toBe(true);
-    expect(prisma.artifact.create).toHaveBeenCalled();
-    const call = prisma.artifact.create.mock.calls[0][0];
-    expect(call.data.type).toBe("report");
+    expect(prisma.approval.create).toHaveBeenCalled();
+    const call = prisma.approval.create.mock.calls[0][0];
     expect(call.data.runId).toBe("r1");
-    expect(call.data.content.kind).toBe("approval_request");
-    expect(call.data.content.action).toBe("merge_pr");
-    expect(call.data.content.status).toBe("pending");
-    expect(call.data.content.requestedBy).toBe("tester");
+    expect(call.data.action).toBe("merge_pr");
+    expect(call.data.status).toBe("pending");
+    expect(call.data.requestedBy).toBe("tester");
     await server.close();
   });
 
@@ -56,14 +58,21 @@ describe("Run approval request routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
           issueId: "i1",
+          scmPrUrl: "https://gitlab.example.com/group/repo/-/merge_requests/7",
           issue: { id: "i1", title: "t1", projectId: "p1" },
-          artifacts: [
-            { id: "ap-1", runId: "r1", type: "report", content: { kind: "approval_request", action: "merge_pr", status: "pending" }, createdAt: new Date().toISOString() },
-            { id: "pr-1", runId: "r1", type: "pr", content: { iid: 7 }, createdAt: new Date().toISOString() },
-          ],
+          artifacts: [],
         }),
       },
-      artifact: {
+      approval: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "ap-1",
+          runId: "r1",
+          action: "merge_pr",
+          status: "pending",
+          requestedBy: "user",
+          requestedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        }),
         create: vi.fn(),
       },
     } as any;
@@ -79,7 +88,7 @@ describe("Run approval request routes", () => {
     const body = res.json();
     expect(body.success).toBe(true);
     expect(body.data.approval.id).toBe("ap-1");
-    expect(prisma.artifact.create).not.toHaveBeenCalled();
+    expect(prisma.approval.create).not.toHaveBeenCalled();
     await server.close();
   });
 });

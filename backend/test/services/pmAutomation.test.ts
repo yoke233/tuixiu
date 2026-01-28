@@ -24,7 +24,7 @@ describe("PM automation", () => {
     }
   });
 
-  it("dispatch starts run and stores pm_analysis artifact (fallback mode)", async () => {
+  it("dispatch starts run and stores pm_analysis event (fallback mode)", async () => {
     const createWorkspace = vi.fn().mockResolvedValue({
       repoRoot: "D:\\repo",
       branchName: "run/t1-r1",
@@ -89,6 +89,9 @@ describe("PM automation", () => {
         create: vi.fn().mockResolvedValue({ id: "r1" }),
         update: vi.fn().mockResolvedValue({ id: "r1" }),
       },
+      event: {
+        create: vi.fn().mockResolvedValue({}),
+      },
       artifact: {
         create: vi.fn().mockResolvedValue({ id: "art-1" }),
       },
@@ -103,10 +106,9 @@ describe("PM automation", () => {
     expect(acp.promptRun).toHaveBeenCalledTimes(1);
     expect(String(acp.promptRun.mock.calls[0][0].prompt)).toContain("（系统/PM）以下为 PM 自动分析结果");
 
-    expect(prisma.artifact.create).toHaveBeenCalledTimes(2);
-    expect(prisma.artifact.create).toHaveBeenCalledWith(
+    expect(prisma.event.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ type: "report", content: expect.objectContaining({ kind: "pm_analysis" }) }),
+        data: expect.objectContaining({ type: "pm.analysis.generated" }),
       }),
     );
   });

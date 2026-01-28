@@ -192,8 +192,11 @@ async function runGitHubPrAutoReviewOnce(
   const headSha = String(opts.headSha ?? content.headSha ?? "").trim();
   if (!headSha) return;
 
-  const lastHeadSha = String(content.lastAutoReviewHeadSha ?? "").trim();
-  if (lastHeadSha && lastHeadSha === headSha) return;
+  const lastHeadShaFromArtifact = String(content.lastAutoReviewHeadSha ?? "").trim();
+  const lastHeadShaFromRun = String(((run as any)?.metadata as any)?.githubPrAutoReview?.lastHeadSha ?? "").trim();
+  if ((lastHeadShaFromArtifact && lastHeadShaFromArtifact === headSha) || (lastHeadShaFromRun && lastHeadShaFromRun === headSha)) {
+    return;
+  }
 
   const prNumber = Number.isFinite(opts.prNumber as any) ? Number(opts.prNumber) : Number(content.number);
   if (!Number.isFinite(prNumber) || prNumber <= 0) return;
@@ -563,15 +566,16 @@ async function runGitHubPrAutoReviewOnce(
     markdown: review.markdown,
   };
 
-  const reportArtifact = await deps.prisma.artifact
+  await deps.prisma.event
     .create({
       data: {
         id: uuidv7(),
         runId: run.id,
-        type: "report",
-        content: {
+        source: "system",
+        type: "github.pr.auto_review.reported",
+        payload: {
           kind: "github_pr_auto_review",
-          version: 2,
+          version: 3,
           provider: "github",
           prNumber,
           prUrl,
@@ -586,9 +590,8 @@ async function runGitHubPrAutoReviewOnce(
           createdAt: nowIso,
         } as any,
       } as any,
-      select: { id: true } as any,
     })
-    .catch(() => null);
+    .catch(() => {});
 
   const body = renderReviewBody({
     prNumber,
@@ -613,20 +616,23 @@ async function runGitHubPrAutoReviewOnce(
     reviewError = String(err);
   }
 
-  await deps.prisma.artifact
+  const prevMeta = run?.metadata && typeof run.metadata === "object" ? (run.metadata as any) : {};
+  const prevAuto = prevMeta.githubPrAutoReview && typeof prevMeta.githubPrAutoReview === "object" ? (prevMeta.githubPrAutoReview as any) : {};
+  await deps.prisma.run
     .update({
-      where: { id: (prArtifact as any).id },
+      where: { id: run.id } as any,
       data: {
-        content: {
-          ...content,
-          lastAutoReviewHeadSha: headSha,
-          lastAutoReviewAt: nowIso,
-          lastAutoReviewArtifactId: (reportArtifact as any)?.id ?? null,
-          lastAutoReviewRunId: agentRunId,
-          lastAutoReviewReviewId: reviewId,
-          lastAutoReviewReviewError: reviewError,
-          lastAutoReviewVerdict: normalized.verdict,
-          lastWebhookAt: content.lastWebhookAt ?? nowIso,
+        metadata: {
+          ...prevMeta,
+          githubPrAutoReview: {
+            ...prevAuto,
+            lastHeadSha: headSha,
+            lastAt: nowIso,
+            lastVerdict: normalized.verdict,
+            lastAgentRunId: agentRunId,
+            lastReviewId: reviewId,
+            lastReviewError: reviewError,
+          },
         } as any,
       } as any,
     })
