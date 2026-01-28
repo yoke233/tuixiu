@@ -214,6 +214,8 @@ export async function createReviewRequestForRun(
     const githubTokenForComment = String(project.githubAccessToken ?? "").trim();
     if (issueIsGitHub && githubTokenForComment) {
       await postGitHubPrCreatedCommentBestEffort({
+        prisma: deps.prisma,
+        projectId: (run as any)?.issue?.projectId ?? null,
         repoUrl: repoUrlForIssue,
         githubAccessToken: githubTokenForComment,
         issueNumber,
@@ -298,6 +300,8 @@ export async function createReviewRequestForRun(
     const repoUrlForIssue = String((run as any)?.issue?.externalUrl ?? project.repoUrl ?? "").trim();
     if (issueIsGitHub && token) {
       await postGitHubPrCreatedCommentBestEffort({
+        prisma: deps.prisma,
+        projectId: (run as any)?.issue?.projectId ?? null,
         repoUrl: repoUrlForIssue,
         githubAccessToken: token,
         issueNumber,

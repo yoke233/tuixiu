@@ -1,4 +1,6 @@
 import * as github from "../../integrations/github.js";
+import type { PrismaDeps } from "../../deps.js";
+import { renderTextTemplateFromDb } from "../textTemplates.js";
 
 type CommentKind = "assigned" | "started";
 type ApprovalCommentKind =
@@ -20,16 +22,11 @@ type ApprovalCommentKind =
 type PrCommentProvider = "github" | "gitlab" | "unknown";
 type AutoReviewNextAction = "create_pr" | "request_create_pr_approval" | "wait_ci" | "request_merge_approval" | "manual_review" | "none";
 
-function formatRole(roleKey?: string | null): string {
-  const raw = typeof roleKey === "string" ? roleKey.trim() : "";
-  return raw ? `\n- 角色：\`${raw}\`` : "";
-}
-
 function fmt(text: string): string {
   return text.replace(/\r\n/g, "\n").trim();
 }
 
-export function renderGitHubIssueComment(opts: {
+function renderGitHubIssueCommentFallback(opts: {
   kind: CommentKind;
   agentName: string;
   roleKey?: string | null;
@@ -37,7 +34,7 @@ export function renderGitHubIssueComment(opts: {
   branchName?: string | null;
 }): string {
   const agentName = String(opts.agentName ?? "").trim() || "unknown";
-  const roleLine = formatRole(opts.roleKey);
+  const roleKey = typeof opts.roleKey === "string" ? opts.roleKey.trim() : "";
   const runId = String(opts.runId ?? "").trim() || "unknown";
   const branchName = typeof opts.branchName === "string" ? opts.branchName.trim() : "";
 
@@ -46,7 +43,8 @@ export function renderGitHubIssueComment(opts: {
       [
         "### ✅ 已分配执行者",
         "",
-        `- 执行者：**${agentName}**${roleLine}`,
+        `- 执行者：**${agentName}**`,
+        roleKey ? `- 角色：\`${roleKey}\`` : "",
         `- Run：\`${runId}\``,
         "- 状态：已分配，正在创建工作区并准备开始执行",
         "",
@@ -59,7 +57,8 @@ export function renderGitHubIssueComment(opts: {
     [
       "### 🚀 开始执行",
       "",
-      `- 执行者：**${agentName}**${roleLine}`,
+      `- 执行者：**${agentName}**`,
+      roleKey ? `- 角色：\`${roleKey}\`` : "",
       `- Run：\`${runId}\``,
       branchName ? `- 分支：\`${branchName}\`` : "",
       "",
@@ -70,7 +69,41 @@ export function renderGitHubIssueComment(opts: {
   );
 }
 
+export async function renderGitHubIssueComment(opts: {
+  prisma?: PrismaDeps;
+  projectId?: string | null;
+  kind: CommentKind;
+  agentName: string;
+  roleKey?: string | null;
+  runId: string;
+  branchName?: string | null;
+}): Promise<string> {
+  const fallback = renderGitHubIssueCommentFallback(opts);
+  const prisma = opts.prisma;
+  if (!prisma) return fallback;
+
+  const templateKey = opts.kind === "assigned" ? "github.issueComment.assigned" : "github.issueComment.started";
+  const body = await renderTextTemplateFromDb(
+    { prisma },
+    {
+      key: templateKey,
+      projectId: opts.projectId ?? null,
+      vars: {
+        agentName: String(opts.agentName ?? "").trim() || "unknown",
+        roleKey: typeof opts.roleKey === "string" ? opts.roleKey.trim() : "",
+        runId: String(opts.runId ?? "").trim() || "unknown",
+        branchName: typeof opts.branchName === "string" ? opts.branchName.trim() : "",
+      },
+      missingText: fallback,
+    },
+  );
+
+  return fmt(body);
+}
+
 export async function postGitHubIssueCommentBestEffort(opts: {
+  prisma?: PrismaDeps;
+  projectId?: string | null;
   repoUrl: string;
   githubAccessToken: string;
   issueNumber: number;
@@ -96,7 +129,9 @@ export async function postGitHubIssueCommentBestEffort(opts: {
     accessToken: token,
   };
 
-  const body = renderGitHubIssueComment({
+  const body = await renderGitHubIssueComment({
+    prisma: opts.prisma,
+    projectId: opts.projectId ?? null,
     kind: opts.kind,
     agentName: opts.agentName,
     roleKey: opts.roleKey,
@@ -111,7 +146,9 @@ export async function postGitHubIssueCommentBestEffort(opts: {
   }
 }
 
-export function renderGitHubApprovalComment(opts: {
+export async function renderGitHubApprovalComment(opts: {
+  prisma?: PrismaDeps;
+  projectId?: string | null;
   kind: ApprovalCommentKind;
   runId: string;
   approvalId: string;
@@ -119,7 +156,7 @@ export function renderGitHubApprovalComment(opts: {
   prUrl?: string | null;
   reason?: string | null;
   error?: string | null;
-}): string {
+}): Promise<string> {
   const runId = String(opts.runId ?? "").trim() || "unknown";
   const approvalId = String(opts.approvalId ?? "").trim() || "unknown";
   const actor = String(opts.actor ?? "").trim() || "unknown";
@@ -127,276 +164,43 @@ export function renderGitHubApprovalComment(opts: {
   const reason = typeof opts.reason === "string" ? opts.reason.trim() : "";
   const error = typeof opts.error === "string" ? opts.error.trim() : "";
 
-  if (opts.kind === "create_pr_requested") {
-    return fmt(
-      [
-        "### 🛡️ 已发起创建 PR 审批",
-        "",
-        "- 动作：创建 PR",
-        `- Run：\`${runId}\``,
-        `- 审批单：\`${approvalId}\``,
-        "- 状态：待审批",
-        "",
-        "> 由 ACP 协作台发起审批",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "create_pr_approved") {
-    return fmt(
-      [
-        "### ✅ 审批通过，开始创建 PR",
-        "",
-        "- 动作：创建 PR",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        `- 审批单：\`${approvalId}\``,
-        "",
-        "> 由 ACP 协作台创建 PR",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "create_pr_rejected") {
-    return fmt(
-      [
-        "### ⛔ 审批被拒绝",
-        "",
-        "- 动作：创建 PR",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        `- 审批单：\`${approvalId}\``,
-        reason ? `- 原因：${reason}` : "",
-        "",
-        "> 如需继续，请重新发起审批",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "create_pr_executed") {
-    return fmt(
-      [
-        "### 🎉 PR 已创建",
-        "",
-        "- 动作：创建 PR",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        prUrl ? `- PR：${prUrl}` : "",
-        `- 审批单：\`${approvalId}\``,
-        "- 状态：已创建",
-        "",
-        "> 由 ACP 协作台完成创建",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "create_pr_failed") {
-    return fmt(
-      [
-        "### ❌ 创建 PR 失败",
-        "",
-        "- 动作：创建 PR",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        `- 审批单：\`${approvalId}\``,
-        error ? `- 错误：${error}` : "",
-        "",
-        "> 请在协作台查看错误详情后重试",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "publish_artifact_requested") {
-    return fmt(
-      [
-        "### 🛡️ 已发起发布交付物审批",
-        "",
-        "- 动作：发布交付物",
-        `- Run：\`${runId}\``,
-        `- 审批单：\`${approvalId}\``,
-        "- 状态：待审批",
-        "",
-        "> 由 ACP 协作台发起审批",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "publish_artifact_approved") {
-    return fmt(
-      [
-        "### ✅ 审批通过，开始发布",
-        "",
-        "- 动作：发布交付物",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        `- 审批单：\`${approvalId}\``,
-        "",
-        "> 由 ACP 协作台执行发布",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "publish_artifact_rejected") {
-    return fmt(
-      [
-        "### ⛔ 审批被拒绝",
-        "",
-        "- 动作：发布交付物",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        `- 审批单：\`${approvalId}\``,
-        reason ? `- 原因：${reason}` : "",
-        "",
-        "> 如需继续，请重新发起审批",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "publish_artifact_executed") {
-    return fmt(
-      [
-        "### 🎉 发布已完成",
-        "",
-        "- 动作：发布交付物",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        `- 审批单：\`${approvalId}\``,
-        "- 状态：已发布",
-        "",
-        "> 由 ACP 协作台完成发布",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "publish_artifact_failed") {
-    return fmt(
-      [
-        "### ❌ 发布执行失败",
-        "",
-        "- 动作：发布交付物",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        `- 审批单：\`${approvalId}\``,
-        error ? `- 错误：${error}` : "",
-        "",
-        "> 请在协作台查看错误详情后重试",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "merge_pr_requested") {
-    return fmt(
-      [
-        "### 🛡️ 已发起合并审批",
-        "",
-        "- 动作：合并 PR",
-        `- Run：\`${runId}\``,
-        prUrl ? `- PR：${prUrl}` : "",
-        `- 审批单：\`${approvalId}\``,
-        "- 状态：待审批",
-        "",
-        "> 由 ACP 协作台发起审批",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "merge_pr_approved") {
-    return fmt(
-      [
-        "### ✅ 审批通过，开始合并",
-        "",
-        "- 动作：合并 PR",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        prUrl ? `- PR：${prUrl}` : "",
-        `- 审批单：\`${approvalId}\``,
-        "",
-        "> 由 ACP 协作台执行合并",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "merge_pr_rejected") {
-    return fmt(
-      [
-        "### ⛔ 审批被拒绝",
-        "",
-        "- 动作：合并 PR",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        prUrl ? `- PR：${prUrl}` : "",
-        `- 审批单：\`${approvalId}\``,
-        reason ? `- 原因：${reason}` : "",
-        "",
-        "> 如需继续，请重新发起审批",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  if (opts.kind === "merge_pr_executed") {
-    return fmt(
-      [
-        "### 🎉 合并已完成",
-        "",
-        "- 动作：合并 PR",
-        `- 审批人：**${actor}**`,
-        `- Run：\`${runId}\``,
-        prUrl ? `- PR：${prUrl}` : "",
-        `- 审批单：\`${approvalId}\``,
-        "- 状态：已合并",
-        "",
-        "> 由 ACP 协作台完成合并",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-
-  return fmt(
+  const fallback = fmt(
     [
-      "### ❌ 合并执行失败",
+      "### 🛡️ 审批状态更新",
       "",
-      "- 动作：合并 PR",
+      `- 动作：${opts.kind}`,
       `- 审批人：**${actor}**`,
       `- Run：\`${runId}\``,
       prUrl ? `- PR：${prUrl}` : "",
       `- 审批单：\`${approvalId}\``,
+      reason ? `- 原因：${reason}` : "",
       error ? `- 错误：${error}` : "",
       "",
-      "> 请在协作台查看错误详情后重试",
+      "> 由 ACP 协作台回写",
     ]
       .filter(Boolean)
       .join("\n"),
   );
+
+  const prisma = opts.prisma;
+  if (!prisma) return fallback;
+
+  const body = await renderTextTemplateFromDb(
+    { prisma },
+    {
+      key: `github.approvalComment.${String(opts.kind)}`,
+      projectId: opts.projectId ?? null,
+      vars: { runId, approvalId, actor, prUrl, reason, error },
+      missingText: fallback,
+    },
+  );
+
+  return fmt(body);
 }
 
 export async function postGitHubApprovalCommentBestEffort(opts: {
+  prisma?: PrismaDeps;
+  projectId?: string | null;
   repoUrl: string;
   githubAccessToken: string;
   issueNumber: number;
@@ -424,7 +228,9 @@ export async function postGitHubApprovalCommentBestEffort(opts: {
     accessToken: token,
   };
 
-  const body = renderGitHubApprovalComment({
+  const body = await renderGitHubApprovalComment({
+    prisma: opts.prisma,
+    projectId: opts.projectId ?? null,
     kind: opts.kind,
     runId: opts.runId,
     approvalId: opts.approvalId,
@@ -441,13 +247,15 @@ export async function postGitHubApprovalCommentBestEffort(opts: {
   }
 }
 
-export function renderGitHubPrCreatedComment(opts: {
+export async function renderGitHubPrCreatedComment(opts: {
+  prisma?: PrismaDeps;
+  projectId?: string | null;
   runId: string;
   prUrl: string;
   provider?: PrCommentProvider | null;
   sourceBranch?: string | null;
   targetBranch?: string | null;
-}): string {
+}): Promise<string> {
   const runId = String(opts.runId ?? "").trim() || "unknown";
   const prUrl = String(opts.prUrl ?? "").trim();
   const provider = String(opts.provider ?? "").trim().toLowerCase();
@@ -455,7 +263,7 @@ export function renderGitHubPrCreatedComment(opts: {
   const sourceBranch = typeof opts.sourceBranch === "string" ? opts.sourceBranch.trim() : "";
   const targetBranch = typeof opts.targetBranch === "string" ? opts.targetBranch.trim() : "";
 
-  return fmt(
+  const fallback = fmt(
     [
       "### 🔗 已创建 PR",
       "",
@@ -470,9 +278,26 @@ export function renderGitHubPrCreatedComment(opts: {
       .filter(Boolean)
       .join("\n"),
   );
+
+  const prisma = opts.prisma;
+  if (!prisma) return fallback;
+
+  const body = await renderTextTemplateFromDb(
+    { prisma },
+    {
+      key: "github.prCreatedComment",
+      projectId: opts.projectId ?? null,
+      vars: { runId, prUrl, providerLabel, sourceBranch, targetBranch },
+      missingText: fallback,
+    },
+  );
+
+  return fmt(body);
 }
 
 export async function postGitHubPrCreatedCommentBestEffort(opts: {
+  prisma?: PrismaDeps;
+  projectId?: string | null;
   repoUrl: string;
   githubAccessToken: string;
   issueNumber: number;
@@ -498,7 +323,9 @@ export async function postGitHubPrCreatedCommentBestEffort(opts: {
     accessToken: token,
   };
 
-  const body = renderGitHubPrCreatedComment({
+  const body = await renderGitHubPrCreatedComment({
+    prisma: opts.prisma,
+    projectId: opts.projectId ?? null,
     runId: opts.runId,
     prUrl: opts.prUrl,
     provider: opts.provider,
@@ -513,7 +340,9 @@ export async function postGitHubPrCreatedCommentBestEffort(opts: {
   }
 }
 
-export function renderGitHubAutoReviewComment(opts: {
+export async function renderGitHubAutoReviewComment(opts: {
+  prisma?: PrismaDeps;
+  projectId?: string | null;
   runId: string;
   prUrl?: string | null;
   changedFiles?: number | null;
@@ -521,7 +350,7 @@ export function renderGitHubAutoReviewComment(opts: {
   sensitiveHits?: number | null;
   nextAction?: AutoReviewNextAction | string | null;
   reason?: string | null;
-}): string {
+}): Promise<string> {
   const runId = String(opts.runId ?? "").trim() || "unknown";
   const prUrl = typeof opts.prUrl === "string" ? opts.prUrl.trim() : "";
   const changedFiles = Number.isFinite(opts.changedFiles as any) ? Number(opts.changedFiles) : null;
@@ -530,7 +359,12 @@ export function renderGitHubAutoReviewComment(opts: {
   const nextAction = typeof opts.nextAction === "string" ? String(opts.nextAction).trim() : "";
   const reason = typeof opts.reason === "string" ? opts.reason.trim() : "";
 
-  return fmt(
+  const ciText = ciPassed === null ? "⏳ 未知/未运行" : ciPassed ? "✅ 通过" : "❌ 失败";
+  const changedFilesText = changedFiles === null ? "" : String(changedFiles);
+  const sensitiveText =
+    sensitiveHits === null ? "" : sensitiveHits > 0 ? `⚠️ 命中 ${sensitiveHits} 个文件` : "无";
+
+  const fallback = fmt(
     [
       "### 🧾 自动验收摘要",
       "",
@@ -546,9 +380,34 @@ export function renderGitHubAutoReviewComment(opts: {
       .filter(Boolean)
       .join("\n"),
   );
+
+  const prisma = opts.prisma;
+  if (!prisma) return fallback;
+
+  const body = await renderTextTemplateFromDb(
+    { prisma },
+    {
+      key: "github.autoReviewComment",
+      projectId: opts.projectId ?? null,
+      vars: {
+        runId,
+        prUrl,
+        changedFiles: changedFilesText,
+        ciText,
+        sensitiveText,
+        nextAction,
+        reason,
+      },
+      missingText: fallback,
+    },
+  );
+
+  return fmt(body);
 }
 
 export async function postGitHubAutoReviewCommentBestEffort(opts: {
+  prisma?: PrismaDeps;
+  projectId?: string | null;
   repoUrl: string;
   githubAccessToken: string;
   issueNumber: number;
@@ -576,7 +435,9 @@ export async function postGitHubAutoReviewCommentBestEffort(opts: {
     accessToken: token,
   };
 
-  const body = renderGitHubAutoReviewComment({
+  const body = await renderGitHubAutoReviewComment({
+    prisma: opts.prisma,
+    projectId: opts.projectId ?? null,
     runId: opts.runId,
     prUrl: opts.prUrl,
     changedFiles: opts.changedFiles,

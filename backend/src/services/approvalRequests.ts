@@ -173,6 +173,8 @@ export async function requestMergePrApproval(opts: {
 
   if (issueIsGitHub && token) {
     await postGitHubApprovalCommentBestEffort({
+      prisma: opts.prisma,
+      projectId: issue?.projectId ?? null,
       repoUrl,
       githubAccessToken: token,
       issueNumber,
@@ -256,6 +258,8 @@ export async function requestCreatePrApproval(opts: {
 
   if (issueIsGitHub && token) {
     await postGitHubApprovalCommentBestEffort({
+      prisma: opts.prisma,
+      projectId: issue?.projectId ?? null,
       repoUrl,
       githubAccessToken: token,
       issueNumber,
@@ -340,6 +344,8 @@ export async function requestPublishArtifactApproval(opts: {
 
   if (issueIsGitHub && token) {
     await postGitHubApprovalCommentBestEffort({
+      prisma: opts.prisma,
+      projectId: issue?.projectId ?? null,
       repoUrl,
       githubAccessToken: token,
       issueNumber,
@@ -353,4 +359,3 @@ export async function requestPublishArtifactApproval(opts: {
   if (!summary) return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
   return { success: true, data: { approval: summary } };
 }
-

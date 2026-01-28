@@ -8,6 +8,7 @@ import {
   deriveSandboxInstanceName,
   normalizeKeepaliveTtlSeconds,
 } from "../utils/sandbox.js";
+import { renderTextTemplate } from "../utils/textTemplate.js";
 import { postGitHubIssueCommentBestEffort } from "./githubIssueComments.js";
 import type { AcpTunnel } from "./acpTunnel.js";
 
@@ -33,13 +34,6 @@ function toPublicIssue<T extends { project?: unknown }>(issue: T): T {
     return { ...anyIssue, project: toPublicProject(anyIssue.project) };
   }
   return issue;
-}
-
-function renderTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_m, key) => {
-    const v = vars[key];
-    return typeof v === "string" ? v : "";
-  });
 }
 
 export async function startIssueRun(opts: {
@@ -127,6 +121,8 @@ export async function startIssueRun(opts: {
 
   if (issueIsGitHub && githubAccessToken) {
     await postGitHubIssueCommentBestEffort({
+      prisma: opts.prisma,
+      projectId: (issue as any).projectId,
       repoUrl,
       githubAccessToken,
       issueNumber: githubIssueNumber,
@@ -238,7 +234,7 @@ export async function startIssueRun(opts: {
   const workspaceNotice =
     noticeTemplate === undefined
       ? workspaceNoticeDefault
-      : renderTemplate(String(noticeTemplate), workspaceNoticeVars).trim();
+      : renderTextTemplate(String(noticeTemplate), workspaceNoticeVars).trim();
   promptParts.push(
     [
       workspaceMode === "clone" ? "你正在一个独立的 Git clone 工作区中执行任务：" : "你正在一个独立的 Git worktree 中执行任务：",
@@ -249,7 +245,7 @@ export async function startIssueRun(opts: {
   );
 
   if (role?.promptTemplate?.trim()) {
-    const rendered = renderTemplate((role as any).promptTemplate, {
+    const rendered = renderTextTemplate((role as any).promptTemplate, {
       workspace: workspacePath,
       branch: branchName,
       repoUrl: String(((issue as any).project as any).repoUrl ?? ""),
@@ -335,6 +331,8 @@ export async function startIssueRun(opts: {
 
     if (issueIsGitHub && githubAccessToken) {
       await postGitHubIssueCommentBestEffort({
+        prisma: opts.prisma,
+        projectId: (issue as any).projectId,
         repoUrl,
         githubAccessToken,
         issueNumber: githubIssueNumber,
