@@ -1,13 +1,14 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { execFile } from "node:child_process";
+import { createReadStream } from "node:fs";
 import { promisify } from "node:util";
 
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { buildContextFromRun } from "../services/runContext.js";
 import type { AcpTunnel } from "../services/acpTunnel.js";
-import { acpPromptSchema } from "../services/acpContent.js";
+import { clientAcpPromptSchema, compactAcpPromptForEvent, type AcpContentBlock, type ClientAcpContentBlock } from "../services/acpContent.js";
 import {
   createReviewRequestForRun,
   mergeReviewRequestForRun,
@@ -18,6 +19,7 @@ import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/t
 import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
 import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
+import type { AttachmentStore } from "../services/attachments/attachmentStore.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
 
@@ -28,6 +30,7 @@ export function makeRunRoutes(deps: {
   sendToAgent?: SendToAgent;
   acp?: AcpTunnel;
   broadcastToClients?: (payload: unknown) => void;
+  attachments?: AttachmentStore;
   gitPush?: (opts: { cwd: string; branch: string; project: any }) => Promise<void>;
   gitlab?: {
     inferBaseUrl?: typeof gitlab.inferGitlabBaseUrl;
@@ -88,6 +91,75 @@ export function makeRunRoutes(deps: {
         take: limit,
       });
       return { success: true, data: { events } };
+    });
+
+    server.post("/:id/attachments", async (request) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const bodySchema = z.object({
+        mimeType: z.string().min(1),
+        base64: z.string().min(1),
+        name: z.string().min(1).max(500).optional(),
+      });
+      const { id } = paramsSchema.parse(request.params);
+      const body = bodySchema.parse(request.body ?? {});
+
+      if (!deps.attachments) {
+        return { success: false, error: { code: "ATTACHMENTS_DISABLED", message: "附件存储未配置" } };
+      }
+      if (!body.mimeType.startsWith("image/")) {
+        return { success: false, error: { code: "UNSUPPORTED_MIME", message: "本期仅支持图片上传" } };
+      }
+
+      const run = await deps.prisma.run.findUnique({ where: { id }, select: { id: true } });
+      if (!run) {
+        return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+      }
+
+      try {
+        const attachment = await deps.attachments.putFromBase64({
+          runId: id,
+          mimeType: body.mimeType,
+          base64: body.base64,
+          name: body.name ?? null,
+        });
+        return { success: true, data: { attachment } };
+      } catch (error) {
+        const code = String((error as any)?.message ?? "");
+        if (code === "FILE_TOO_LARGE") {
+          return {
+            success: false,
+            error: {
+              code: "FILE_TOO_LARGE",
+              message: "文件过大",
+              details: `maxBytes=${String((error as any)?.maxBytes ?? "")} size=${String((error as any)?.size ?? "")}`,
+            },
+          };
+        }
+        if (code === "EMPTY_FILE") {
+          return { success: false, error: { code: "EMPTY_FILE", message: "文件为空" } };
+        }
+        return { success: false, error: { code: "UPLOAD_FAILED", message: "上传失败", details: String(error) } };
+      }
+    });
+
+    server.get("/:id/attachments/:attachmentId", async (request, reply) => {
+      const paramsSchema = z.object({ id: z.string().uuid(), attachmentId: z.string().min(1).max(200) });
+      const { id, attachmentId } = paramsSchema.parse(request.params);
+
+      if (!deps.attachments) {
+        reply.code(404);
+        return { success: false, error: { code: "ATTACHMENTS_DISABLED", message: "附件存储未配置" } };
+      }
+
+      const info = await deps.attachments.getInfo({ runId: id, id: attachmentId });
+      if (!info) {
+        reply.code(404);
+        return { success: false, error: { code: "NOT_FOUND", message: "附件不存在" } };
+      }
+
+      reply.header("content-length", String(info.size));
+      reply.type(info.mimeType);
+      return reply.send(createReadStream(info.filePath));
     });
 
     server.post("/:id/create-pr", async (request) => {
@@ -211,9 +283,65 @@ export function makeRunRoutes(deps: {
 
     server.post("/:id/prompt", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
-      const bodySchema = z.object({ prompt: acpPromptSchema });
+      const bodySchema = z.object({ prompt: clientAcpPromptSchema });
       const { id } = paramsSchema.parse(request.params);
-      const { prompt } = bodySchema.parse(request.body);
+      const { prompt: clientPrompt } = bodySchema.parse(request.body);
+
+      const materializePrompt = async (prompt: readonly ClientAcpContentBlock[]): Promise<AcpContentBlock[] | { error: any }> => {
+        const out: AcpContentBlock[] = [];
+        for (const block of prompt) {
+          if (block.type !== "image") {
+            out.push(block as any);
+            continue;
+          }
+
+          const data = typeof block.data === "string" ? block.data.trim() : "";
+          if (data) {
+            out.push({ ...block, data } as any);
+            continue;
+          }
+
+          const uri = typeof block.uri === "string" ? block.uri.trim() : "";
+          if (!uri) {
+            return { error: { code: "BAD_PROMPT", message: "image 缺少 data/uri" } };
+          }
+          if (!deps.attachments) {
+            return { error: { code: "ATTACHMENTS_DISABLED", message: "附件存储未配置，无法从 uri 物化图片" } };
+          }
+
+          let attachmentId = "";
+          try {
+            const u = new URL(uri, "http://localhost");
+            const parts = u.pathname.split("/").filter(Boolean);
+            const runsIdx = parts.indexOf("runs");
+            if (runsIdx >= 0 && parts.length >= runsIdx + 4 && parts[runsIdx + 2] === "attachments") {
+              const runIdFromUri = parts[runsIdx + 1] ?? "";
+              const attachmentFromUri = parts[runsIdx + 3] ?? "";
+              if (runIdFromUri === id) attachmentId = attachmentFromUri;
+            }
+          } catch {
+            // ignore
+          }
+
+          if (!attachmentId) {
+            return { error: { code: "BAD_PROMPT", message: "image.uri 非法（仅支持 /runs/:id/attachments/:attachmentId）" } };
+          }
+
+          const bytes = await deps.attachments.getBytes({ runId: id, id: attachmentId });
+          if (!bytes) {
+            return { error: { code: "ATTACHMENT_NOT_FOUND", message: "图片附件不存在或不可读" } };
+          }
+
+          out.push({ ...block, data: bytes.toString("base64"), uri } as any);
+        }
+        return out;
+      };
+
+      const materialized = await materializePrompt(clientPrompt);
+      if ((materialized as any)?.error) {
+        return { success: false, error: (materialized as any).error };
+      }
+      const prompt = materialized as AcpContentBlock[];
 
       const run = await deps.prisma.run.findUnique({
         where: { id },
@@ -290,7 +418,7 @@ export function makeRunRoutes(deps: {
             runId: id,
             source: "user",
             type: "user.message",
-            payload: { prompt } as any,
+            payload: { prompt: compactAcpPromptForEvent(prompt) } as any,
             timestamp: createdAt,
           },
         });

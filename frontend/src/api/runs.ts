@@ -1,5 +1,6 @@
 import { apiGet, apiPost } from "./client";
 import type { Approval, Artifact, Event, Run } from "../types";
+import type { ContentBlock } from "../acp/contentBlocks";
 
 export type RunChangeFile = { path: string; status: string; oldPath?: string };
 export type RunChanges = { baseBranch: string; branch: string; files: RunChangeFile[] };
@@ -35,8 +36,25 @@ export async function completeRun(id: string): Promise<Run> {
   return data.run;
 }
 
-export async function promptRun(id: string, text: string): Promise<void> {
-  await apiPost<{ ok: true }>(`/runs/${id}/prompt`, { text });
+export async function promptRun(id: string, prompt: ContentBlock[]): Promise<void> {
+  await apiPost<{ ok: true }>(`/runs/${id}/prompt`, { prompt });
+}
+
+export type UploadedAttachment = {
+  id: string;
+  runId: string;
+  mimeType: string;
+  size: number;
+  sha256: string;
+  uri: string;
+};
+
+export async function uploadRunAttachment(
+  runId: string,
+  input: { mimeType: string; base64: string; name?: string }
+): Promise<UploadedAttachment> {
+  const data = await apiPost<{ attachment: UploadedAttachment }>(`/runs/${runId}/attachments`, input);
+  return data.attachment;
 }
 
 export async function pauseRun(id: string): Promise<void> {

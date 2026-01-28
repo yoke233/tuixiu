@@ -318,7 +318,7 @@ export function useRunChangesController(props: Props) {
         "要求：不引入无关改动。",
       ].filter(Boolean);
 
-      await promptRun(props.runId, lines.join("\n"));
+      await promptRun(props.runId, [{ type: "text", text: lines.join("\n") }]);
       await refreshRun();
       props.onAfterAction?.();
     } catch (e) {
@@ -364,4 +364,3 @@ export function useRunChangesController(props: Props) {
     setError,
   } as const;
 }
-

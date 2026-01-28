@@ -89,9 +89,10 @@ describe("RunChangesPanel", () => {
       expect(call).toBeTruthy();
 
       const init = call![1] as RequestInit;
-      const body = JSON.parse(String(init.body ?? "{}")) as { text?: string };
-      expect(body.text).toMatch(/解决合并冲突/);
-      expect(body.text).toMatch(/git merge origin\/main/);
+      const body = JSON.parse(String(init.body ?? "{}")) as any;
+      expect(body.prompt?.[0]?.type).toBe("text");
+      expect(String(body.prompt?.[0]?.text ?? "")).toMatch(/解决合并冲突/);
+      expect(String(body.prompt?.[0]?.text ?? "")).toMatch(/git merge origin\/main/);
     });
   });
 

@@ -5,7 +5,7 @@ import { listAgents } from "../../api/agents";
 import { getIssue, startIssue } from "../../api/issues";
 import { analyzeIssue as analyzePmIssue, dispatchIssue as dispatchPmIssue, getIssueNextAction } from "../../api/pm";
 import { listRoles } from "../../api/roles";
-import { cancelRun, completeRun, getRun, listRunEvents, pauseRun, promptRun, submitRun } from "../../api/runs";
+import { cancelRun, completeRun, getRun, listRunEvents, pauseRun, promptRun, submitRun, uploadRunAttachment } from "../../api/runs";
 import { startStep as startTaskStep, rollbackTask as rollbackTaskToStep } from "../../api/steps";
 import { createIssueTask, listIssueTasks, listTaskTemplates } from "../../api/tasks";
 import { useAuth } from "../../auth/AuthContext";
@@ -28,6 +28,7 @@ import type {
   UserRole,
 } from "../../types";
 import { getAgentEnvLabel, getAgentSandboxLabel } from "../../utils/agentLabels";
+import { readFileAsBase64 } from "../../utils/files";
 import { canManageTasks, canPauseAgent, canRunIssue, canUsePmTools } from "../../utils/permissions";
 
 import { pickTemplateKey, sortTemplatesByPriority } from "./taskTemplates";
@@ -82,6 +83,11 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
   const [selectedRoleKey, setSelectedRoleKey] = useState<string>("");
   const [worktreeName, setWorktreeName] = useState<string>("");
   const [chatText, setChatText] = useState<string>("");
+  const [pendingImages, setPendingImages] = useState<
+    Array<{ id: string; uri: string; mimeType: string; name?: string; size: number }>
+  >([]);
+  const uploadSeqRef = useRef(0);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [sending, setSending] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [cancellingRun, setCancellingRun] = useState(false);
@@ -553,6 +559,7 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
       setError("当前账号无权限与 Agent 对话");
       return;
     }
+    if (uploadingImages) return;
     if (run && run.executorType !== "agent") {
       setError("当前 Run 不是 Agent 执行器，无法对话");
       return;
@@ -562,18 +569,68 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
       return;
     }
     const text = chatText.trim();
-    if (!text) return;
+    const prompt = [
+      ...(text ? [{ type: "text" as const, text }] : []),
+      ...pendingImages.map((img) => ({ type: "image" as const, mimeType: img.mimeType, uri: img.uri })),
+    ];
+    if (!prompt.length) return;
     setError(null);
     setSending(true);
     try {
-      await promptRun(currentRunId, text);
+      await promptRun(currentRunId, prompt);
       setChatText("");
+      setPendingImages([]);
       await refresh({ silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSending(false);
     }
+  }
+
+  async function onDropFiles(filesLike: FileList | File[]) {
+    if (!currentRunId) {
+      setError("请先启动 Run");
+      return;
+    }
+    if (!requireLogin()) return;
+    if (!allowRunActions) {
+      setError("当前账号无权限与 Agent 对话");
+      return;
+    }
+    if (run && run.executorType !== "agent") {
+      setError("当前 Run 不是 Agent 执行器，无法上传图片");
+      return;
+    }
+
+    const files = Array.isArray(filesLike) ? filesLike : Array.from(filesLike);
+    const images = files.filter((f) => f && typeof f.type === "string" && f.type.startsWith("image/"));
+    if (!images.length) {
+      setError("本期只支持图片上传（image/*）");
+      return;
+    }
+
+    const seq = (uploadSeqRef.current += 1);
+    setError(null);
+    setUploadingImages(true);
+    try {
+      for (const f of images) {
+        const base64 = await readFileAsBase64(f);
+        const attachment = await uploadRunAttachment(currentRunId, { mimeType: f.type, base64, name: f.name });
+        setPendingImages((prev) => {
+          if (prev.some((p) => p.id === attachment.id)) return prev;
+          return [...prev, { id: attachment.id, uri: attachment.uri, mimeType: attachment.mimeType, name: f.name, size: attachment.size }];
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (uploadSeqRef.current === seq) setUploadingImages(false);
+    }
+  }
+
+  function removePendingImage(id: string) {
+    setPendingImages((prev) => prev.filter((p) => p.id !== id));
   }
 
   const templatesByKey = useMemo(() => {
@@ -850,6 +907,8 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     // console input / run actions
     chatText,
     setChatText,
+    pendingImages,
+    uploadingImages,
     sending,
     pausing,
     cancellingRun,
@@ -859,6 +918,8 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     onCompleteRun,
     onPauseRun,
     onSendPrompt,
+    onDropFiles,
+    removePendingImage,
 
     // tasks templates & tasks
     taskTemplates,

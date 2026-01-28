@@ -29,11 +29,13 @@ import { makeTaskRoutes } from "./routes/tasks.js";
 import { createPmAutomation } from "./services/pm/pmAutomation.js";
 import { createAcpTunnel } from "./services/acpTunnel.js";
 import { startGitHubPollingLoop } from "./services/githubPolling.js";
+import { createLocalAttachmentStore } from "./services/attachments/localAttachmentStore.js";
 import { createRunWorkspace } from "./utils/runWorkspace.js";
 import { startWorkspaceCleanupLoop } from "./services/workspaceCleanup.js";
 import { createWebSocketGateway } from "./websocket/gateway.js";
 
 const env = loadEnv();
+const attachments = createLocalAttachmentStore({ rootDir: env.ATTACHMENTS_ROOT, maxBytes: env.ATTACHMENTS_MAX_BYTES });
 
 const server = Fastify({
   logger: {
@@ -137,7 +139,13 @@ server.register(
   },
 );
 server.register(
-  makeRunRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, acp: acpTunnel, broadcastToClients: wsGateway.broadcastToClients }),
+  makeRunRoutes({
+    prisma,
+    sendToAgent: wsGateway.sendToAgent,
+    acp: acpTunnel,
+    broadcastToClients: wsGateway.broadcastToClients,
+    attachments,
+  }),
   { prefix: "/api/runs" },
 );
 server.register(

@@ -4,6 +4,7 @@ import path from "node:path";
 
 const defaultWorkspacesRoot = path.join(os.homedir(), ".tuixiu", "workspaces");
 const defaultRepoCacheRoot = path.join(os.homedir(), ".tuixiu", "repo-cache");
+const defaultAttachmentsRoot = path.join(os.homedir(), ".tuixiu", "attachments");
 
 function pathWithDefault(defaultValue: string) {
   return z.preprocess((v) => {
@@ -26,6 +27,8 @@ const envSchema = z.object({
   WORKSPACE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   REPO_CACHE_TTL_DAYS: z.coerce.number().int().positive().default(30),
   CLEANUP_INTERVAL_SECONDS: z.coerce.number().int().positive().default(60 * 60),
+  ATTACHMENTS_ROOT: pathWithDefault(defaultAttachmentsRoot),
+  ATTACHMENTS_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
   GITLAB_URL: z.string().optional(),
   GITLAB_ACCESS_TOKEN: z.string().optional(),
   GITLAB_PROJECT_ID: z.string().optional(),
