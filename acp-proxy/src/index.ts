@@ -181,7 +181,8 @@ async function main() {
       type: "sandbox_instance_status",
       instance_name: opts.instanceName,
       provider: sandbox.provider,
-      runtime: sandbox.provider === "container_oci" ? sandbox.runtime ?? null : null,
+      runtime:
+        sandbox.provider === "container_oci" ? (sandbox.runtime ?? null) : null,
       status: opts.status,
       last_seen_at: nowIso(),
       last_error: opts.lastError ?? null,
@@ -338,7 +339,10 @@ async function main() {
             const text = redact(line);
             if (!text.trim()) continue;
             log("agent stderr", { runId: run.runId, text });
-            sendUpdate(run.runId, { type: "text", text: `[agent:stderr] ${text}` });
+            sendUpdate(run.runId, {
+              type: "text",
+              text: `[agent:stderr] ${text}`,
+            });
           }
         }
       } catch (err) {
@@ -350,7 +354,10 @@ async function main() {
         const rest = redact(buf);
         if (rest.trim()) {
           log("agent stderr", { runId: run.runId, text: rest });
-          sendUpdate(run.runId, { type: "text", text: `[agent:stderr] ${rest}` });
+          sendUpdate(run.runId, {
+            type: "text",
+            text: `[agent:stderr] ${rest}`,
+          });
         }
       }
     })();
@@ -455,7 +462,11 @@ async function main() {
 
   const runInitScript = async (opts: {
     run: RunRuntime;
-    init?: { script?: string; timeout_seconds?: number; env?: Record<string, string> };
+    init?: {
+      script?: string;
+      timeout_seconds?: number;
+      env?: Record<string, string>;
+    };
   }): Promise<boolean> => {
     const script = opts.init?.script?.trim() ?? "";
     if (!script) return true;
@@ -568,7 +579,12 @@ async function main() {
       const init = isRecord(msg.init) ? (msg.init as any) : undefined;
       const initOk = await runInitScript({ run, init });
       if (!initOk) {
-        send({ type: "acp_opened", run_id: runId, ok: false, error: "init_failed" });
+        send({
+          type: "acp_opened",
+          run_id: runId,
+          ok: false,
+          error: "init_failed",
+        });
         return;
       }
       await startAgent(run);
@@ -630,13 +646,13 @@ async function main() {
       type: "sandbox_inventory",
       inventory_id: inventoryId,
       provider: sandbox.provider,
-      runtime: sandbox.provider === "container_oci" ? sandbox.runtime ?? null : null,
+      runtime:
+        sandbox.provider === "container_oci" ? (sandbox.runtime ?? null) : null,
       captured_at: capturedAt,
       instances: instances.map((i) => {
-        const runId =
-          i.instanceName.startsWith("tuixiu-run-")
-            ? i.instanceName.slice("tuixiu-run-".length)
-            : null;
+        const runId = i.instanceName.startsWith("tuixiu-run-")
+          ? i.instanceName.slice("tuixiu-run-".length)
+          : null;
         return {
           instance_name: i.instanceName,
           run_id: runId,
@@ -819,6 +835,33 @@ async function main() {
         ws = new WebSocket(cfg.orchestrator_url);
         const ac = new AbortController();
 
+        ws.on("message", (data) => {
+          try {
+            const text = data.toString();
+            const msg = JSON.parse(text) as IncomingMessage;
+            if (!msg || !isRecord(msg) || typeof msg.type !== "string") return;
+
+            if (msg.type === "acp_open") {
+              void handleAcpOpen(msg);
+              return;
+            }
+            if (msg.type === "acp_message") {
+              void handleAcpMessage(msg);
+              return;
+            }
+            if (msg.type === "acp_close") {
+              void handleAcpClose(msg);
+              return;
+            }
+            if (msg.type === "sandbox_control") {
+              void handleSandboxControl(msg);
+              return;
+            }
+          } catch (err) {
+            log("failed to handle ws message", { err: String(err) });
+          }
+        });
+
         await new Promise<void>((resolve, reject) => {
           if (!ws) return reject(new Error("ws init failed"));
           ws.on("open", () => resolve());
@@ -834,33 +877,6 @@ async function main() {
 
         await new Promise<void>((resolve, reject) => {
           if (!ws) return reject(new Error("ws init failed"));
-          ws.on("message", (data) => {
-            try {
-              const text = data.toString();
-              const msg = JSON.parse(text) as IncomingMessage;
-              if (!msg || !isRecord(msg) || typeof msg.type !== "string")
-                return;
-
-              if (msg.type === "acp_open") {
-                void handleAcpOpen(msg);
-                return;
-              }
-              if (msg.type === "acp_message") {
-                void handleAcpMessage(msg);
-                return;
-              }
-              if (msg.type === "acp_close") {
-                void handleAcpClose(msg);
-                return;
-              }
-              if (msg.type === "sandbox_control") {
-                void handleSandboxControl(msg);
-                return;
-              }
-            } catch (err) {
-              log("failed to handle ws message", { err: String(err) });
-            }
-          });
           ws.on("close", () => resolve());
           ws.on("error", (err) => reject(err));
         });

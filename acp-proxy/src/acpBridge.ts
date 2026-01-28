@@ -8,7 +8,10 @@ import path from "node:path";
 import type { AcpTransport, AgentLauncher } from "./launchers/types.js";
 import type { SandboxProvider } from "./sandbox/types.js";
 
-type SessionUpdateFn = (sessionId: string, update: acp.SessionNotification["update"]) => void;
+type SessionUpdateFn = (
+  sessionId: string,
+  update: acp.SessionNotification["update"],
+) => void;
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
 
@@ -31,7 +34,10 @@ function isAuthRequiredError(err: unknown): boolean {
   return code === -32000;
 }
 
-function trimToByteLimit(value: string, limit: number): { value: string; truncated: boolean } {
+function trimToByteLimit(
+  value: string,
+  limit: number,
+): { value: string; truncated: boolean } {
   if (limit <= 0) return { value: "", truncated: true };
   const bytes = Buffer.byteLength(value, "utf8");
   if (bytes <= limit) return { value, truncated: false };
@@ -55,18 +61,26 @@ function trimToByteLimit(value: string, limit: number): { value: string; truncat
   return { value: trimmed, truncated: true };
 }
 
-function resolveWorkspacePath(workspaceRoot: string, requestedPath: string): string {
+function resolveWorkspacePath(
+  workspaceRoot: string,
+  requestedPath: string,
+): string {
   const base = path.resolve(workspaceRoot);
   const resolved = path.isAbsolute(requestedPath)
     ? path.resolve(requestedPath)
     : path.resolve(base, requestedPath);
 
   const baseWithSep = base.endsWith(path.sep) ? base : `${base}${path.sep}`;
-  const within = process.platform === "win32"
-    ? resolved.toLowerCase().startsWith(baseWithSep.toLowerCase()) || resolved.toLowerCase() === base.toLowerCase()
-    : resolved.startsWith(baseWithSep) || resolved === base;
+  const within =
+    process.platform === "win32"
+      ? resolved.toLowerCase().startsWith(baseWithSep.toLowerCase()) ||
+        resolved.toLowerCase() === base.toLowerCase()
+      : resolved.startsWith(baseWithSep) || resolved === base;
 
-  if (!within) throw acp.RequestError.invalidParams({ path: "Path is outside workspace root" });
+  if (!within)
+    throw acp.RequestError.invalidParams({
+      path: "Path is outside workspace root",
+    });
   return resolved;
 }
 
@@ -120,13 +134,16 @@ export class AcpBridge {
     }
   }
 
-  private async readTextFileImpl(params: acp.ReadTextFileRequest): Promise<acp.ReadTextFileResponse> {
+  private async readTextFileImpl(
+    params: acp.ReadTextFileRequest,
+  ): Promise<acp.ReadTextFileResponse> {
     const resolved = resolveWorkspacePath(this.opts.cwd, params.path);
     let content: string;
     try {
       content = await fs.readFile(resolved, "utf8");
     } catch (err: any) {
-      if (err?.code === "ENOENT") throw acp.RequestError.resourceNotFound(params.path);
+      if (err?.code === "ENOENT")
+        throw acp.RequestError.resourceNotFound(params.path);
       throw err;
     }
 
@@ -134,23 +151,33 @@ export class AcpBridge {
     const limitRaw = params.limit ?? null;
     if (lineRaw == null && limitRaw == null) return { content };
 
-    const start = Math.max(0, Number.isFinite(lineRaw) ? Math.max(0, (lineRaw as number) - 1) : 0);
-    const limit = Number.isFinite(limitRaw) ? Math.max(0, limitRaw as number) : null;
+    const start = Math.max(
+      0,
+      Number.isFinite(lineRaw) ? Math.max(0, (lineRaw as number) - 1) : 0,
+    );
+    const limit = Number.isFinite(limitRaw)
+      ? Math.max(0, limitRaw as number)
+      : null;
     if (limit === 0) return { content: "" };
 
     const lines = content.split(/\r?\n/g);
-    const end = limit == null ? lines.length : Math.min(lines.length, start + limit);
+    const end =
+      limit == null ? lines.length : Math.min(lines.length, start + limit);
     return { content: lines.slice(start, end).join("\n") };
   }
 
-  private async writeTextFileImpl(params: acp.WriteTextFileRequest): Promise<acp.WriteTextFileResponse> {
+  private async writeTextFileImpl(
+    params: acp.WriteTextFileRequest,
+  ): Promise<acp.WriteTextFileResponse> {
     const resolved = resolveWorkspacePath(this.opts.cwd, params.path);
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await fs.writeFile(resolved, params.content ?? "", "utf8");
     return {};
   }
 
-  private async createTerminalImpl(params: acp.CreateTerminalRequest): Promise<acp.CreateTerminalResponse> {
+  private async createTerminalImpl(
+    params: acp.CreateTerminalRequest,
+  ): Promise<acp.CreateTerminalResponse> {
     const terminalId = randomUUID();
     const cwd = params.cwd?.trim() ? params.cwd.trim() : this.opts.cwd;
     const resolvedCwd = resolveWorkspacePath(this.opts.cwd, cwd);
@@ -163,11 +190,17 @@ export class AcpBridge {
 
     const outputByteLimitRaw = params.outputByteLimit ?? null;
     const outputByteLimit = Number.isFinite(outputByteLimitRaw as number)
-      ? Math.max(4_096, Math.min(64 * 1024 * 1024, outputByteLimitRaw as number))
+      ? Math.max(
+          4_096,
+          Math.min(64 * 1024 * 1024, outputByteLimitRaw as number),
+        )
       : 2 * 1024 * 1024;
 
-    const command = [params.command, ...(params.args ?? [])].filter((x) => typeof x === "string" && x.length);
-    if (!command.length) throw acp.RequestError.invalidParams({ command: "command is required" });
+    const command = [params.command, ...(params.args ?? [])].filter(
+      (x) => typeof x === "string" && x.length,
+    );
+    if (!command.length)
+      throw acp.RequestError.invalidParams({ command: "command is required" });
 
     const handle = await this.opts.sandbox.runProcess({
       command,
@@ -203,7 +236,10 @@ export class AcpBridge {
       term.truncated = term.truncated || trimmed.truncated;
     };
 
-    const consumeStream = (stream: ReadableStream<Uint8Array> | undefined, label: "stdout" | "stderr") => {
+    const consumeStream = (
+      stream: ReadableStream<Uint8Array> | undefined,
+      label: "stdout" | "stderr",
+    ) => {
       if (!stream) return;
       const decoder = new TextDecoder();
       void (async () => {
@@ -218,7 +254,11 @@ export class AcpBridge {
           }
           appendOutput(decoder.decode());
         } catch (err) {
-          this.opts.log("terminal stream read failed", { terminalId, label, err: String(err) });
+          this.opts.log("terminal stream read failed", {
+            terminalId,
+            label,
+            err: String(err),
+          });
         } finally {
           reader.releaseLock();
         }
@@ -229,7 +269,10 @@ export class AcpBridge {
     consumeStream(handle.stderr, "stderr");
 
     handle.onExit?.((info) => {
-      const exitStatus: TerminalExitStatus = { exitCode: info.code, signal: info.signal };
+      const exitStatus: TerminalExitStatus = {
+        exitCode: info.code,
+        signal: info.signal,
+      };
       term.exitStatus = exitStatus;
       resolveExit(exitStatus);
     });
@@ -245,28 +288,41 @@ export class AcpBridge {
     return term;
   }
 
-  private async terminalOutputImpl(params: acp.TerminalOutputRequest): Promise<acp.TerminalOutputResponse> {
+  private async terminalOutputImpl(
+    params: acp.TerminalOutputRequest,
+  ): Promise<acp.TerminalOutputResponse> {
     const term = this.getTerminalOrThrow(params);
     return {
       output: term.output,
       truncated: term.truncated,
-      exitStatus: term.exitStatus ? { exitCode: term.exitStatus.exitCode ?? null, signal: term.exitStatus.signal ?? null } : null,
+      exitStatus: term.exitStatus
+        ? {
+            exitCode: term.exitStatus.exitCode ?? null,
+            signal: term.exitStatus.signal ?? null,
+          }
+        : null,
     };
   }
 
-  private async waitForTerminalExitImpl(params: acp.WaitForTerminalExitRequest): Promise<acp.WaitForTerminalExitResponse> {
+  private async waitForTerminalExitImpl(
+    params: acp.WaitForTerminalExitRequest,
+  ): Promise<acp.WaitForTerminalExitResponse> {
     const term = this.getTerminalOrThrow(params);
     const status = term.exitStatus ?? (await term.exitPromise);
     return { exitCode: status.exitCode ?? null, signal: status.signal ?? null };
   }
 
-  private async killTerminalImpl(params: acp.KillTerminalCommandRequest): Promise<acp.KillTerminalResponse> {
+  private async killTerminalImpl(
+    params: acp.KillTerminalCommandRequest,
+  ): Promise<acp.KillTerminalResponse> {
     const term = this.getTerminalOrThrow(params);
     await term.kill();
     return {};
   }
 
-  private async releaseTerminalImpl(params: acp.ReleaseTerminalRequest): Promise<acp.ReleaseTerminalResponse> {
+  private async releaseTerminalImpl(
+    params: acp.ReleaseTerminalRequest,
+  ): Promise<acp.ReleaseTerminalResponse> {
     const term = this.getTerminalOrThrow(params);
     await term.release();
     this.terminals.delete(params.terminalId);
@@ -294,12 +350,20 @@ export class AcpBridge {
 
       const clientImpl: acp.Client = {
         requestPermission: async (params) => {
+          // Auto-approve all permission requests
+          // Priority: allow_always > allow_once > first option
           const preferred =
-            params.options.find((o) => o.kind === "allow_once") ?? params.options[0] ?? null;
+            params.options.find((o) => o.kind === "allow_always") ??
+            params.options.find((o) => o.kind === "allow_once") ??
+            params.options[0] ??
+            null;
+
           if (!preferred) {
             return { outcome: { outcome: "cancelled" } };
           }
-          return { outcome: { outcome: "selected", optionId: preferred.optionId } };
+          return {
+            outcome: { outcome: "selected", optionId: preferred.optionId },
+          };
         },
         sessionUpdate: async (params) => {
           this.opts.onSessionUpdate(params.sessionId, params.update);
@@ -308,9 +372,11 @@ export class AcpBridge {
         writeTextFile: async (params) => await this.writeTextFileImpl(params),
         createTerminal: async (params) => await this.createTerminalImpl(params),
         terminalOutput: async (params) => await this.terminalOutputImpl(params),
-        waitForTerminalExit: async (params) => await this.waitForTerminalExitImpl(params),
+        waitForTerminalExit: async (params) =>
+          await this.waitForTerminalExitImpl(params),
         killTerminal: async (params) => await this.killTerminalImpl(params),
-        releaseTerminal: async (params) => await this.releaseTerminalImpl(params),
+        releaseTerminal: async (params) =>
+          await this.releaseTerminalImpl(params),
         extMethod: async (method, params) => {
           this.opts.log("acp extMethod (unhandled)", { method, params });
           return {};
@@ -366,10 +432,28 @@ export class AcpBridge {
     await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
-    return await this.withAuthRetry(() => this.conn!.newSession({ cwd, mcpServers: [] }));
+    const res = await this.withAuthRetry(() =>
+      this.conn!.newSession({ cwd, mcpServers: [] }),
+    );
+
+    // Auto-switch to "code" mode if available
+    if (res.modes && res.modes.availableModes.some((m) => m.id === "code")) {
+      try {
+        await this.setSessionMode(res.sessionId, "code");
+      } catch (err) {
+        this.opts.log("failed to set session mode to code", {
+          err: String(err),
+        });
+      }
+    }
+
+    return res;
   }
 
-  async loadSession(sessionId: string, cwd: string): Promise<acp.LoadSessionResponse | null> {
+  async loadSession(
+    sessionId: string,
+    cwd: string,
+  ): Promise<acp.LoadSessionResponse | null> {
     await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
@@ -389,7 +473,10 @@ export class AcpBridge {
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
     return await this.withAuthRetry(() =>
-      this.conn!.prompt({ sessionId, prompt: [{ type: "text", text: prompt }] }),
+      this.conn!.prompt({
+        sessionId,
+        prompt: [{ type: "text", text: prompt }],
+      }),
     );
   }
 
@@ -404,14 +491,18 @@ export class AcpBridge {
     await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
-    await this.withAuthRetry(() => this.conn!.setSessionMode({ sessionId, modeId }));
+    await this.withAuthRetry(() =>
+      this.conn!.setSessionMode({ sessionId, modeId }),
+    );
   }
 
   async setSessionModel(sessionId: string, modelId: string): Promise<void> {
     await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
-    await this.withAuthRetry(() => this.conn!.setSessionModel({ sessionId, modelId }));
+    await this.withAuthRetry(() =>
+      this.conn!.setSessionModel({ sessionId, modelId }),
+    );
   }
 
   close(): void {
