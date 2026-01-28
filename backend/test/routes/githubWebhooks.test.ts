@@ -107,6 +107,7 @@ describe("GitHub webhook routes", () => {
       action: "completed",
       workflow_run: {
         head_branch: "run/xyz",
+        head_sha: "abc",
         status: "completed",
         conclusion: "success"
       },
@@ -122,35 +123,26 @@ describe("GitHub webhook routes", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { ok: true, handled: true, runId: "r1", passed: true } });
-    expect(prisma.artifact.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ runId: "r1", type: "ci_result" })
-      })
-    );
+    expect(prisma.artifact.create).not.toHaveBeenCalled();
     expect(prisma.run.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "r1" },
-        data: expect.objectContaining({ status: "completed" })
+        data: expect.objectContaining({ status: "completed", scmProvider: "github", scmCiStatus: "passed", scmHeadSha: "abc" })
       })
     );
 
     await server.close();
   });
 
-  it("POST /api/webhooks/github handles check_suite completed and resolves run by PR artifact", async () => {
+  it("POST /api/webhooks/github handles check_suite completed and resolves run by scmPrNumber", async () => {
     const server = createHttpServer();
     const prisma = {
       project: {
         findMany: vi.fn().mockResolvedValue([{ id: "p1", repoUrl: "https://github.com/o/r", scmType: "github" }])
       },
       run: {
-        findFirst: vi.fn().mockResolvedValue(null),
-        findUnique: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: null, stepId: null, status: "waiting_ci", branchName: "run/xyz" }),
+        findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: null, stepId: null }),
         update: vi.fn().mockResolvedValue({})
-      },
-      artifact: {
-        findFirst: vi.fn().mockResolvedValue({ id: "pr1", runId: "r1", content: { provider: "github", number: 123, sourceBranch: "run/xyz" } }),
-        create: vi.fn().mockResolvedValue({ id: "a1" })
       }
     } as any;
 
@@ -177,9 +169,21 @@ describe("GitHub webhook routes", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { ok: true, handled: true, runId: "r1", passed: true } });
-    expect(prisma.artifact.findFirst).toHaveBeenCalled();
-    expect(prisma.run.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "r1" } }));
-    expect(prisma.run.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "r1" } }));
+    expect(prisma.run.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "waiting_ci",
+          scmProvider: "github",
+          scmPrNumber: { in: [123] },
+        }),
+      }),
+    );
+    expect(prisma.run.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({ status: "completed", scmProvider: "github", scmCiStatus: "passed", scmHeadSha: "abc" }),
+      }),
+    );
 
     await server.close();
   });
@@ -410,12 +414,12 @@ describe("GitHub webhook routes", () => {
     await server.close();
   });
 
-  it("POST /api/webhooks/github handles pull_request and updates pr artifact", async () => {
+  it("POST /api/webhooks/github handles pull_request and updates run scm state", async () => {
     const server = createHttpServer();
     const prisma = {
       project: { findMany: vi.fn().mockResolvedValue([{ id: "p1", repoUrl: "https://github.com/o/r", scmType: "github" }]) },
-      artifact: {
-        findFirst: vi.fn().mockResolvedValue({ id: "a1", runId: "r1", type: "pr", content: { provider: "github", number: 123 } }),
+      run: {
+        findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: null }),
         update: vi.fn().mockResolvedValue({}),
       },
     } as any;
@@ -451,7 +455,18 @@ describe("GitHub webhook routes", () => {
         data: expect.objectContaining({ ok: true, handled: true, event: "pull_request", prNumber: 123, headSha: "abc" }),
       }),
     );
-    expect(prisma.artifact.update).toHaveBeenCalled();
+    expect(prisma.run.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({
+          scmProvider: "github",
+          scmPrNumber: 123,
+          scmPrUrl: "https://github.com/o/r/pull/123",
+          scmPrState: "open",
+          scmHeadSha: "abc",
+        }),
+      }),
+    );
     await server.close();
   });
 
@@ -459,14 +474,9 @@ describe("GitHub webhook routes", () => {
     const server = createHttpServer();
     const prisma = {
       project: { findMany: vi.fn().mockResolvedValue([{ id: "p1", repoUrl: "https://github.com/o/r", scmType: "github" }]) },
-      artifact: {
-        findFirst: vi.fn().mockResolvedValue({ id: "a1", runId: "r1", type: "pr", content: { provider: "github", number: 123 } }),
-        update: vi.fn().mockResolvedValue({}),
-      },
       run: {
         findUnique: vi.fn().mockImplementation(async (args: any) => {
           const id = String(args?.where?.id ?? "");
-          if (id === "r1") return { taskId: "t1", issueId: "i1" };
           if (id === "mergeRun") {
             return {
               id: "mergeRun",
@@ -478,7 +488,11 @@ describe("GitHub webhook routes", () => {
           }
           return null;
         }),
-        findFirst: vi.fn().mockResolvedValue({ id: "mergeRun" }),
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({ id: "r1", issueId: "i1", taskId: "t1" })
+          .mockResolvedValueOnce({ id: "mergeRun" }),
+        update: vi.fn().mockResolvedValue({}),
       },
       task: { update: vi.fn().mockResolvedValue({}) },
       issue: { update: vi.fn().mockResolvedValue({}) },
@@ -522,15 +536,9 @@ describe("GitHub webhook routes", () => {
     const server = createHttpServer();
     const prisma = {
       project: { findMany: vi.fn().mockResolvedValue([{ id: "p1", repoUrl: "https://github.com/o/r", scmType: "github" }]) },
-      artifact: {
-        findFirst: vi.fn().mockResolvedValue({ id: "a1", runId: "r1", type: "pr", content: { provider: "github", number: 123 } }),
-        update: vi.fn().mockResolvedValue({}),
-        create: vi.fn().mockResolvedValue({ id: "x" }),
-      },
       run: {
         findUnique: vi.fn().mockImplementation(async (args: any) => {
           const id = String(args?.where?.id ?? "");
-          if (id === "r1") return { taskId: "t1", issueId: "i1" };
           if (id === "mergeRun") {
             return {
               id: "mergeRun",
@@ -543,6 +551,7 @@ describe("GitHub webhook routes", () => {
           }
           return null;
         }),
+        findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: "t1" }),
         findMany: vi.fn().mockResolvedValue([{ id: "mergeRun", issueId: "i1", taskId: "t1", stepId: "s1" }]),
         update: vi.fn().mockResolvedValue({}),
       },
