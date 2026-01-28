@@ -22,6 +22,7 @@ import { makePolicyRoutes } from "./routes/policies.js";
 import { makeProjectRoutes } from "./routes/projects.js";
 import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
 import { makeRunRoutes } from "./routes/runs.js";
+import { makeSandboxRoutes } from "./routes/sandboxes.js";
 import { makeStepRoutes } from "./routes/steps.js";
 import { makeTaskRoutes } from "./routes/tasks.js";
 import { createPmAutomation } from "./services/pm/pmAutomation.js";
@@ -201,6 +202,7 @@ server.register(
   }),
   { prefix: "/api/admin" },
 );
+server.register(makeSandboxRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, auth }), { prefix: "/api/admin" });
 
 startWorkspaceCleanupLoop({
   prisma,

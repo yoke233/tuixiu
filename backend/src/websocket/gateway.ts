@@ -8,6 +8,7 @@ import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
 import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
 import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { deriveSandboxInstanceName } from "../utils/sandbox.js";
 
 type AgentRegisterMessage = {
   type: "register_agent";
@@ -50,16 +51,64 @@ type BranchCreatedMessage = {
   branch: string;
 };
 
+type AcpExitMessage = {
+  type: "acp_exit";
+  run_id: string;
+  instance_name?: string;
+  code?: number;
+  signal?: string | null;
+};
+
+type SandboxInventoryMessage = {
+  type: "sandbox_inventory";
+  inventory_id: string;
+  provider?: string;
+  runtime?: string;
+  captured_at?: string;
+  instances?: Array<{
+    instance_name: string;
+    run_id?: string | null;
+    status?: string;
+    created_at?: string;
+    last_seen_at?: string;
+    last_error?: string | null;
+    provider?: string;
+    runtime?: string;
+  }>;
+};
+
 type AnyAgentMessage =
   | AgentRegisterMessage
   | AgentHeartbeatMessage
   | AgentUpdateMessage
   | AcpOpenedMessage
   | AcpMessageMessage
-  | BranchCreatedMessage;
+  | BranchCreatedMessage
+  | AcpExitMessage
+  | SandboxInventoryMessage;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseTimestamp(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function normalizeSandboxStatus(value: unknown): "creating" | "running" | "stopped" | "missing" | "error" | null {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (!v) return null;
+  if (v === "creating" || v === "created" || v === "starting") return "creating";
+  if (v === "running") return "running";
+  if (v === "stopped" || v === "exited" || v === "dead") return "stopped";
+  if (v === "missing" || v === "not_found") return "missing";
+  if (v === "error" || v === "failed") return "error";
+  return null;
 }
 
 export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
@@ -301,6 +350,154 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
           return;
         }
 
+        if (message.type === "acp_exit") {
+          if (!proxyId) return;
+
+          const instanceName =
+            typeof message.instance_name === "string" && message.instance_name.trim()
+              ? message.instance_name.trim()
+              : deriveSandboxInstanceName(message.run_id);
+          const code = typeof message.code === "number" && Number.isFinite(message.code) ? message.code : null;
+          const signal = typeof message.signal === "string" && message.signal.trim() ? message.signal.trim() : null;
+          const ok = code === null ? true : code === 0 && !signal;
+          const status = ok ? "stopped" : "error";
+          const now = new Date();
+          const lastError = ok ? null : `acp_exit: code=${code ?? "unknown"}${signal ? ` signal=${signal}` : ""}`;
+
+          await enqueueRunTask(message.run_id, async () => {
+            await flushRunChunkBuffer(message.run_id);
+
+            const createdEvent = await deps.prisma.event
+              .create({
+                data: {
+                  id: uuidv7(),
+                  runId: message.run_id,
+                  source: "acp",
+                  type: "sandbox.acp_exit",
+                  payload: {
+                    ...message,
+                    instance_name: instanceName,
+                    received_at: now.toISOString(),
+                  } as any,
+                } as any,
+              })
+              .catch(() => null);
+
+            const runRes = await deps.prisma.run
+              .updateMany({
+                where: { id: message.run_id },
+                data: {
+                  sandboxInstanceName: instanceName,
+                  sandboxStatus: status as any,
+                  sandboxLastSeenAt: now,
+                  sandboxLastError: lastError,
+                } as any,
+              } as any)
+              .catch(() => ({ count: 0 }));
+
+            await deps.prisma.sandboxInstance
+              .upsert({
+                where: { proxyId_instanceName: { proxyId, instanceName } } as any,
+                create: {
+                  id: uuidv7(),
+                  proxyId,
+                  instanceName,
+                  ...(runRes.count > 0 ? { runId: message.run_id } : {}),
+                  status: status as any,
+                  lastSeenAt: now,
+                  lastError,
+                } as any,
+                update: {
+                  ...(runRes.count > 0 ? { runId: message.run_id } : {}),
+                  status: status as any,
+                  lastSeenAt: now,
+                  lastError,
+                } as any,
+              } as any)
+              .catch(() => {});
+
+            if (createdEvent) {
+              broadcastToClients({ type: "event_added", run_id: message.run_id, event: createdEvent });
+            }
+          });
+          return;
+        }
+
+        if (message.type === "sandbox_inventory") {
+          if (!proxyId) return;
+
+          const instances = Array.isArray(message.instances) ? message.instances : [];
+          const capturedAt = parseTimestamp(message.captured_at) ?? new Date();
+          const providerDefault = typeof message.provider === "string" && message.provider.trim() ? message.provider.trim() : null;
+          const runtimeDefault = typeof message.runtime === "string" && message.runtime.trim() ? message.runtime.trim() : null;
+
+          for (const inst of instances) {
+            if (!inst || typeof inst !== "object") continue;
+            const instanceName = typeof inst.instance_name === "string" ? inst.instance_name.trim() : "";
+            if (!instanceName) continue;
+
+            const runId = typeof inst.run_id === "string" && inst.run_id.trim() ? inst.run_id.trim() : null;
+            const status = normalizeSandboxStatus(inst.status);
+            const createdAt = parseTimestamp(inst.created_at);
+            const lastSeenAt = parseTimestamp(inst.last_seen_at) ?? capturedAt;
+            const lastError = typeof inst.last_error === "string" && inst.last_error.trim() ? inst.last_error.trim() : null;
+            const provider = typeof inst.provider === "string" && inst.provider.trim() ? inst.provider.trim() : providerDefault;
+            const runtime = typeof inst.runtime === "string" && inst.runtime.trim() ? inst.runtime.trim() : runtimeDefault;
+
+            const upsert = async (opts: { runExists: boolean }) => {
+              await deps.prisma.sandboxInstance
+                .upsert({
+                  where: { proxyId_instanceName: { proxyId, instanceName } } as any,
+                  create: {
+                    id: uuidv7(),
+                    proxyId,
+                    instanceName,
+                    ...(opts.runExists && runId ? { runId } : {}),
+                    provider,
+                    runtime,
+                    ...(status ? { status: status as any } : {}),
+                    ...(createdAt ? { createdAt } : {}),
+                    lastSeenAt,
+                    lastError,
+                  } as any,
+                  update: {
+                    ...(opts.runExists && runId ? { runId } : {}),
+                    provider,
+                    runtime,
+                    ...(status ? { status: status as any } : {}),
+                    ...(createdAt ? { createdAt } : {}),
+                    lastSeenAt,
+                    lastError,
+                  } as any,
+                } as any)
+                .catch(() => {});
+            };
+
+            if (runId) {
+              await enqueueRunTask(runId, async () => {
+                const runRes = await deps.prisma.run
+                  .updateMany({
+                    where: { id: runId },
+                    data: {
+                      sandboxInstanceName: instanceName,
+                      ...(status ? { sandboxStatus: status as any } : {}),
+                      sandboxLastSeenAt: lastSeenAt,
+                      sandboxLastError: lastError,
+                    } as any,
+                  } as any)
+                  .catch(() => ({ count: 0 }));
+
+                await upsert({ runExists: runRes.count > 0 });
+              });
+              continue;
+            }
+
+            await upsert({ runExists: false });
+          }
+
+          return;
+        }
+
         if (message.type === "agent_update") {
           const chunkSeg = extractChunkSegment(message.content);
           if (chunkSeg) {
@@ -324,6 +521,56 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             });
 
             const contentType = isRecord(message.content) ? message.content.type : undefined;
+            if (contentType === "sandbox_instance_status") {
+              const raw = message.content as any;
+              const instanceName =
+                typeof raw.instance_name === "string" && raw.instance_name.trim()
+                  ? raw.instance_name.trim()
+                  : deriveSandboxInstanceName(message.run_id);
+              const provider = typeof raw.provider === "string" && raw.provider.trim() ? raw.provider.trim() : null;
+              const runtime = typeof raw.runtime === "string" && raw.runtime.trim() ? raw.runtime.trim() : null;
+              const status = normalizeSandboxStatus(raw.status);
+              const lastSeenAt = parseTimestamp(raw.last_seen_at) ?? new Date();
+              const lastError = typeof raw.last_error === "string" && raw.last_error.trim() ? raw.last_error.trim() : null;
+
+              const runData: any = {
+                sandboxInstanceName: instanceName,
+                ...(status ? { sandboxStatus: status } : {}),
+                sandboxLastSeenAt: lastSeenAt,
+                sandboxLastError: lastError,
+              };
+              const runRes = await deps.prisma.run
+                .updateMany({ where: { id: message.run_id }, data: runData } as any)
+                .catch(() => ({ count: 0 }));
+
+              if (proxyId) {
+                await deps.prisma.sandboxInstance
+                  .upsert({
+                    where: { proxyId_instanceName: { proxyId, instanceName } } as any,
+                    create: {
+                      id: uuidv7(),
+                      proxyId,
+                      instanceName,
+                      ...(runRes.count > 0 ? { runId: message.run_id } : {}),
+                      provider,
+                      runtime,
+                      ...(status ? { status: status as any } : {}),
+                      lastSeenAt,
+                      lastError,
+                    } as any,
+                    update: {
+                      ...(runRes.count > 0 ? { runId: message.run_id } : {}),
+                      provider,
+                      runtime,
+                      ...(status ? { status: status as any } : {}),
+                      lastSeenAt,
+                      lastError,
+                    } as any,
+                  } as any)
+                  .catch(() => {});
+              }
+            }
+
             if (contentType === "session_created") {
               const sessionId = isRecord(message.content) ? message.content.session_id : undefined;
               if (typeof sessionId === "string" && sessionId) {

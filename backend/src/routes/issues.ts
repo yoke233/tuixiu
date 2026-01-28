@@ -152,10 +152,11 @@ export function makeIssueRoutes(deps: {
       const bodySchema = z.object({
         agentId: z.string().uuid().optional(),
         roleKey: z.string().min(1).max(100).optional(),
-        worktreeName: z.string().trim().min(1).max(100).optional()
+        worktreeName: z.string().trim().min(1).max(100).optional(),
+        keepaliveTtlSeconds: z.coerce.number().int().min(60).max(86_400).optional(),
       });
       const { id } = paramsSchema.parse(request.params);
-      const { agentId, roleKey, worktreeName } = bodySchema.parse(request.body ?? {});
+      const { agentId, roleKey, worktreeName, keepaliveTtlSeconds } = bodySchema.parse(request.body ?? {});
 
       return await startIssueRun({
         prisma: deps.prisma,
@@ -164,7 +165,8 @@ export function makeIssueRoutes(deps: {
         issueId: id,
         agentId,
         roleKey,
-        worktreeName
+        worktreeName,
+        keepaliveTtlSeconds,
       });
     });
 

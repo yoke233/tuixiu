@@ -187,6 +187,224 @@ describe("WebSocketGateway", () => {
     expect(msg.event).toBeTruthy();
   });
 
+  it("agent_update sandbox_instance_status updates run and upserts sandboxInstance", async () => {
+    const prisma = {
+      agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
+      event: {
+        create: vi.fn().mockResolvedValue({
+          id: "e1",
+          runId: "r1",
+          source: "acp",
+          type: "acp.update.received",
+          payload: { type: "sandbox_instance_status" },
+          timestamp: new Date(),
+        }),
+      },
+      run: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      sandboxInstance: { upsert: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    const clientSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+    gateway.__testing.handleClientConnection(clientSocket as any);
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(JSON.stringify({ type: "register_agent", agent: { id: "proxy-1", name: "codex-1" } })),
+    );
+    await flushMicrotasks();
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_update",
+          run_id: "r1",
+          content: {
+            type: "sandbox_instance_status",
+            instance_name: "tuixiu-run-r1",
+            provider: "container_oci",
+            runtime: "docker",
+            status: "running",
+            last_seen_at: "2026-01-28T12:00:00.000Z",
+            last_error: null,
+          },
+        }),
+      ),
+    );
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(prisma.run.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({
+          sandboxInstanceName: "tuixiu-run-r1",
+          sandboxStatus: "running",
+          sandboxLastSeenAt: expect.any(Date),
+          sandboxLastError: null,
+        }),
+      }),
+    );
+
+    expect(prisma.sandboxInstance.upsert).toHaveBeenCalledTimes(1);
+    const upsertArg = prisma.sandboxInstance.upsert.mock.calls[0][0];
+    expect(upsertArg.where).toEqual({ proxyId_instanceName: { proxyId: "proxy-1", instanceName: "tuixiu-run-r1" } });
+    expect(upsertArg.create).toMatchObject({
+      proxyId: "proxy-1",
+      instanceName: "tuixiu-run-r1",
+      runId: "r1",
+      provider: "container_oci",
+      runtime: "docker",
+      status: "running",
+    });
+
+    const msg = clientSocket.sent.map((s) => JSON.parse(s)).find((m) => m.type === "event_added");
+    expect(msg).toBeTruthy();
+    expect(msg.run_id).toBe("r1");
+  });
+
+  it("acp_exit updates run and upserts sandboxInstance", async () => {
+    const prisma = {
+      agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
+      event: {
+        create: vi.fn().mockResolvedValue({
+          id: "e1",
+          runId: "r1",
+          source: "acp",
+          type: "sandbox.acp_exit",
+          payload: { type: "acp_exit" },
+          timestamp: new Date(),
+        }),
+      },
+      run: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      sandboxInstance: { upsert: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    const clientSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+    gateway.__testing.handleClientConnection(clientSocket as any);
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(JSON.stringify({ type: "register_agent", agent: { id: "proxy-1", name: "codex-1" } })),
+    );
+    await flushMicrotasks();
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "acp_exit",
+          run_id: "r1",
+          instance_name: "tuixiu-run-r1",
+          code: 1,
+          signal: null,
+        }),
+      ),
+    );
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(prisma.event.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ runId: "r1", type: "sandbox.acp_exit" }),
+      }),
+    );
+
+    expect(prisma.run.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({ sandboxInstanceName: "tuixiu-run-r1", sandboxStatus: "error" }),
+      }),
+    );
+
+    expect(prisma.sandboxInstance.upsert).toHaveBeenCalledTimes(1);
+    const upsertArg = prisma.sandboxInstance.upsert.mock.calls[0][0];
+    expect(upsertArg.where).toEqual({ proxyId_instanceName: { proxyId: "proxy-1", instanceName: "tuixiu-run-r1" } });
+    expect(upsertArg.create).toMatchObject({
+      proxyId: "proxy-1",
+      instanceName: "tuixiu-run-r1",
+      runId: "r1",
+      status: "error",
+    });
+
+    const msg = clientSocket.sent.map((s) => JSON.parse(s)).find((m) => m.type === "event_added");
+    expect(msg).toBeTruthy();
+    expect(msg.run_id).toBe("r1");
+  });
+
+  it("sandbox_inventory upserts instances and updates run when run_id present", async () => {
+    const prisma = {
+      agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
+      run: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      sandboxInstance: { upsert: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(JSON.stringify({ type: "register_agent", agent: { id: "proxy-1", name: "codex-1" } })),
+    );
+    await flushMicrotasks();
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "sandbox_inventory",
+          inventory_id: "inv-1",
+          provider: "container_oci",
+          runtime: "docker",
+          captured_at: "2026-01-28T12:00:00.000Z",
+          instances: [
+            {
+              instance_name: "tuixiu-run-r1",
+              run_id: "r1",
+              status: "running",
+              created_at: "2026-01-28T10:00:00.000Z",
+              last_seen_at: "2026-01-28T12:00:00.000Z",
+            },
+          ],
+        }),
+      ),
+    );
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(prisma.run.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "r1" },
+        data: expect.objectContaining({
+          sandboxInstanceName: "tuixiu-run-r1",
+          sandboxStatus: "running",
+          sandboxLastSeenAt: expect.any(Date),
+        }),
+      }),
+    );
+
+    expect(prisma.sandboxInstance.upsert).toHaveBeenCalledTimes(1);
+    const upsertArg = prisma.sandboxInstance.upsert.mock.calls[0][0];
+    expect(upsertArg.where).toEqual({ proxyId_instanceName: { proxyId: "proxy-1", instanceName: "tuixiu-run-r1" } });
+    expect(upsertArg.create).toMatchObject({
+      proxyId: "proxy-1",
+      instanceName: "tuixiu-run-r1",
+      runId: "r1",
+      provider: "container_oci",
+      runtime: "docker",
+      status: "running",
+    });
+  });
+
   it("coalesces agent_message_chunk session_update before persisting", async () => {
     let n = 0;
     const prisma = {
