@@ -3,6 +3,17 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeIssueRoutes } from "../../src/routes/issues.js";
 import { createHttpServer } from "../test-utils.js";
 
+function extractPromptText(prompt: unknown): string {
+  if (typeof prompt === "string") return prompt;
+  if (Array.isArray(prompt)) {
+    return prompt
+      .map((b: any) => (b && b.type === "text" ? String(b.text ?? "") : ""))
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(prompt ?? "");
+}
+
 describe("Issues routes", () => {
   const originalEnv = {
     WORKTREE_NAME_LLM: process.env.WORKTREE_NAME_LLM,
@@ -235,12 +246,13 @@ describe("Issues routes", () => {
     expect(promptCall.runId).toBe("r1");
     expect(promptCall.sessionId).toBeNull();
     expect(promptCall.cwd).toBe("D:\\xyad\\tuixiu\\.worktrees\\run-t1-r1");
-    expect(String(promptCall.prompt)).toContain("任务标题: t1");
-    expect(String(promptCall.prompt)).toContain("- workspace:");
-    expect(String(promptCall.prompt)).toContain("run/t1-r1");
-    expect(String(promptCall.prompt)).toContain("任务描述:");
-    expect(String(promptCall.prompt)).toContain("验收标准:");
-    expect(String(promptCall.prompt)).toContain("约束条件:");
+    const promptText = extractPromptText(promptCall.prompt);
+    expect(promptText).toContain("任务标题: t1");
+    expect(promptText).toContain("- workspace:");
+    expect(promptText).toContain("run/t1-r1");
+    expect(promptText).toContain("任务描述:");
+    expect(promptText).toContain("验收标准:");
+    expect(promptText).toContain("约束条件:");
 
     expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "t1-r1" });
     await server.close();
@@ -536,8 +548,9 @@ describe("Issues routes", () => {
     expect(res.statusCode).toBe(200);
 
     const call = acp.promptRun.mock.calls[0][0];
-    expect(String(call.prompt)).toContain("测试要求:");
-    expect(String(call.prompt)).toContain("需要加单测");
+    const promptText = extractPromptText(call.prompt);
+    expect(promptText).toContain("测试要求:");
+    expect(promptText).toContain("需要加单测");
     expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "t1-r1" });
 
     await server.close();
@@ -605,8 +618,9 @@ describe("Issues routes", () => {
     expect(prisma.roleTemplate.findFirst).toHaveBeenCalled();
 
     const call = acp.promptRun.mock.calls[0][0];
-    expect(String(call.prompt)).toContain("角色指令:");
-    expect(String(call.prompt)).toContain("后端开发");
+    const promptText = extractPromptText(call.prompt);
+    expect(promptText).toContain("角色指令:");
+    expect(promptText).toContain("后端开发");
     expect(call.init).toEqual(
       expect.objectContaining({
         script: "echo init",

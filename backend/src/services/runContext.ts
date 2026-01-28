@@ -1,3 +1,5 @@
+import { summarizeAcpContentBlocks, tryParseAcpContentBlocks } from "./acpContent.js";
+
 type ContextEvent = { source?: string; type?: string; payload?: any; timestamp?: any };
 
 function trimTail(text: string, maxChars: number): string {
@@ -54,7 +56,16 @@ export function buildContextFromRun(opts: {
     if (source === "user") {
       flushAgent();
       const t = payload?.text;
-      if (typeof t === "string" && t.trim()) lines.push(`User: ${t.trim()}`);
+      if (typeof t === "string" && t.trim()) {
+        lines.push(`User: ${t.trim()}`);
+        continue;
+      }
+
+      const blocks = tryParseAcpContentBlocks(payload?.prompt);
+      if (blocks?.length) {
+        const summary = summarizeAcpContentBlocks(blocks, { maxChars: 1200 });
+        if (summary.trim()) lines.push(`User: ${summary.trim()}`);
+      }
       continue;
     }
 

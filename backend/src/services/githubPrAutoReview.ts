@@ -386,7 +386,7 @@ async function runGitHubPrAutoReviewOnce(
               runId: agentRunId,
               cwd: workspacePath,
               sessionId: null,
-              prompt: promptParts.join("\n\n"),
+              prompt: [{ type: "text", text: promptParts.join("\n\n") }],
               init,
             });
 

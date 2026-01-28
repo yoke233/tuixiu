@@ -401,7 +401,7 @@ export async function startAcpAgentExecution(deps: {
     runId: run.id,
     cwd: workspace.workspacePath,
     sessionId: (run as any).acpSessionId ?? null,
-    prompt: promptParts.join("\n\n"),
+    prompt: [{ type: "text", text: promptParts.join("\n\n") }],
     init,
   });
 }
