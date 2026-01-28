@@ -3,6 +3,41 @@ import { describe, expect, it, vi } from "vitest";
 import { createAcpTunnel } from "../../src/services/acpTunnel.js";
 
 describe("acpTunnel", () => {
+  it("rejects promptRun when acp_open times out", async () => {
+    vi.useFakeTimers();
+
+    const prev = process.env.ACP_OPEN_TIMEOUT_MS;
+    process.env.ACP_OPEN_TIMEOUT_MS = "10";
+
+    const prisma = {
+      run: { findUnique: vi.fn().mockResolvedValue(null) },
+    } as any;
+
+    const tunnel = createAcpTunnel({
+      prisma,
+      sendToAgent: vi.fn().mockResolvedValue(undefined),
+      broadcastToClients: vi.fn(),
+    });
+
+    const p = tunnel.promptRun({
+      proxyId: "proxy-1",
+      runId: "r1",
+      cwd: "c1",
+      prompt: "hi",
+    });
+
+    const assertion = expect(p).rejects.toThrow(/acp_open timeout/i);
+    await vi.advanceTimersByTimeAsync(20);
+    await assertion;
+
+    if (prev === undefined) {
+      delete process.env.ACP_OPEN_TIMEOUT_MS;
+    } else {
+      process.env.ACP_OPEN_TIMEOUT_MS = prev;
+    }
+    vi.useRealTimers();
+  });
+
   it("coalesces agent_message_chunk session_update before persisting", async () => {
     let n = 0;
     const prisma = {

@@ -1,5 +1,4 @@
 import type { PrismaDeps } from "../deps.js";
-import { uuidv7 } from "../utils/uuid.js";
 import { suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
 import { parseEnvText } from "../utils/envText.js";
 import type { AcpTunnel } from "../services/acpTunnel.js";
@@ -219,15 +218,6 @@ async function ensureWorkspace(opts: {
       workspacePath,
       branchName,
     } as any,
-  });
-
-  await opts.prisma.artifact.create({
-    data: {
-      id: uuidv7(),
-      runId: opts.run.id,
-      type: "branch",
-      content: { branch: branchName, baseBranch, workspacePath, workspaceMode: mode } as any,
-    },
   });
 
   return { workspace: { ...ws, baseBranch }, mode };

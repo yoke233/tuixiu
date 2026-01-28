@@ -620,9 +620,9 @@ describe("WebSocketGateway", () => {
     expect(prisma.agent.update).toHaveBeenCalledWith({ where: { id: "a1" }, data: { currentLoad: { decrement: 1 } } });
   });
 
-  it("branch_created persists artifact and broadcasts", async () => {
+  it("branch_created persists event and broadcasts", async () => {
     const prisma = {
-      artifact: { create: vi.fn().mockResolvedValue({ id: "art1", type: "branch" }) },
+      event: { create: vi.fn().mockResolvedValue({ id: "e1", type: "scm.branch.created" }) },
       run: { update: vi.fn().mockResolvedValue({}) },
     } as any;
 
@@ -638,12 +638,13 @@ describe("WebSocketGateway", () => {
     );
     await flushMicrotasks();
 
-    expect(prisma.artifact.create).toHaveBeenCalled();
+    expect(prisma.event.create).toHaveBeenCalled();
     expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { branchName: "acp/test" } });
-    const msg = clientSocket.sent.map((s) => JSON.parse(s)).find((m) => m.type === "artifact_added");
+    const msg = clientSocket.sent.map((s) => JSON.parse(s)).find((m) => m.type === "event_added");
     expect(msg).toBeTruthy();
     expect(msg.run_id).toBe("r1");
-    expect(msg.artifact).toBeTruthy();
+    expect(msg.event).toBeTruthy();
+    expect(msg.event.type).toBe("scm.branch.created");
   });
 
   it("client close removes from broadcast list", async () => {

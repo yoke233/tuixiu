@@ -7,6 +7,7 @@ import type { PrismaDeps } from "../deps.js";
 import * as github from "../integrations/github.js";
 import { uuidv7 } from "../utils/uuid.js";
 import type { AcpTunnel } from "../services/acpTunnel.js";
+import { buildRunScmStateUpdate } from "../services/scm/runScmState.js";
 import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
 import { rollbackTaskToStep } from "../services/taskEngine.js";
 import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
@@ -223,17 +224,18 @@ export function makeGitHubWebhookRoutes(deps: {
 
           const passed = String(conclusion ?? "").toLowerCase() === "success";
           const scmCiStatus = passed ? "passed" : "failed";
+          const now = new Date();
 
           await deps.prisma.run
             .update({
               where: { id: run.id },
               data: {
                 status: passed ? "completed" : "failed",
-                completedAt: new Date(),
-                scmProvider: "github",
-                scmCiStatus,
-                scmHeadSha: headSha || null,
-                scmUpdatedAt: new Date(),
+                completedAt: now,
+                ...buildRunScmStateUpdate(
+                  { scmProvider: "github", scmCiStatus, scmHeadSha: headSha || null },
+                  { now },
+                ),
                 ...(passed ? null : { failureReason: "ci_failed", errorMessage: `ci_failed: ${String(conclusion ?? "unknown")}` }),
               } as any,
             })
@@ -525,12 +527,13 @@ export function makeGitHubWebhookRoutes(deps: {
             .update({
               where: { id: (resolvedRun as any).id },
               data: {
-                scmProvider: "github",
-                scmPrNumber: prNumber,
-                scmPrUrl: prUrl || null,
-                scmPrState: normalizedPrState,
-                scmHeadSha: headSha || null,
-                scmUpdatedAt: new Date(),
+                ...buildRunScmStateUpdate({
+                  scmProvider: "github",
+                  scmPrNumber: prNumber,
+                  scmPrUrl: prUrl || null,
+                  scmPrState: normalizedPrState,
+                  scmHeadSha: headSha || null,
+                }),
               } as any,
             })
             .catch(() => {});
@@ -757,11 +760,12 @@ export function makeGitHubWebhookRoutes(deps: {
             .update({
               where: { id: (resolvedRun as any).id },
               data: {
-                scmProvider: "github",
-                scmPrNumber: prNumber,
-                scmPrUrl: prUrl || null,
-                scmHeadSha: headSha || null,
-                scmUpdatedAt: new Date(),
+                ...buildRunScmStateUpdate({
+                  scmProvider: "github",
+                  scmPrNumber: prNumber,
+                  scmPrUrl: prUrl || null,
+                  scmHeadSha: headSha || null,
+                }),
               } as any,
             })
             .catch(() => {});
