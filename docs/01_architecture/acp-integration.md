@@ -80,10 +80,12 @@ proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 worktre
 
 ### 3.2 代码入口与职责
 
-- `acp-proxy/src/index.ts`
+- `acp-proxy/src/index.ts`：CLI 入口（不放业务逻辑）
+- `acp-proxy/src/proxyCli.ts`
   - WebSocket 连接与重连、心跳
   - 处理 `acp_open` / `acp_message` / `acp_close`（转发 ACP JSON-RPC over stdio）
   - 维护 `runId → ACP stream` 的运行态映射（Run 的 cwd 由后端 workspace 决定）
+  - 沙箱启动模式：`sandbox.agentMode=exec|entrypoint`（`entrypoint` 下如提供 `acp_open.init.script` 会在 agent 启动前执行）
 - `acp-proxy/src/launchers/*`：Agent 启动抽象（Launcher），便于未来切换不同运行方式
 - `acp-proxy/src/sandbox/*`：Sandbox 抽象（当前实现 `BoxliteSandbox` 与 `ContainerSandbox`）
 - `acp-proxy/src/config.ts`：加载 `config.toml`/`config.json` 并用 zod 校验

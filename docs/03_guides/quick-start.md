@@ -137,6 +137,7 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 - `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（WSL2/Linux/macOS Apple Silicon）
 - `sandbox.image`: ACP Agent 镜像（建议使用仓库内提供的 codex-acp 镜像构建脚本）
 - `sandbox.runtime`: 容器运行时（仅 `provider=container_oci` 需要：docker/podman/nerdctl）
+- `sandbox.agentMode`: （可选）`exec`（默认）或 `entrypoint`（容器主进程为 agent；如提供 `acp_open.init.script` 会在 agent 启动前执行）
 
 示例：替换为其它 ACP agent 启动命令：
 
