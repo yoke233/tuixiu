@@ -1,0 +1,271 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+
+import { listIssues, startIssue, updateIssue } from "../../api/issues";
+import { listProjects } from "../../api/projects";
+import { cancelRun, completeRun } from "../../api/runs";
+import { useAuth } from "../../auth/AuthContext";
+import type { Issue, IssueStatus, Project } from "../../types";
+import { canChangeIssueStatus, canRunIssue } from "../../utils/permissions";
+import { getShowArchivedIssues } from "../../utils/settings";
+import type { IssuesOutletContext } from "../issueDetail/types";
+
+import { hasStringLabel } from "./issueListUtils";
+import type { DragPayload, IssueBoardColumn } from "./types";
+
+export type IssueListController = ReturnType<typeof useIssueListController>;
+
+function getIssuesByStatus(issues: Issue[]): Record<IssueStatus, Issue[]> {
+  const map: Record<IssueStatus, Issue[]> = {
+    pending: [],
+    running: [],
+    reviewing: [],
+    done: [],
+    failed: [],
+    cancelled: [],
+  };
+  for (const i of issues) {
+    map[i.status]?.push(i);
+  }
+  for (const key of Object.keys(map) as IssueStatus[]) {
+    map[key].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+  return map;
+}
+
+export function useIssueListController() {
+  const params = useParams();
+  const selectedIssueId = params.id ?? "";
+  const hasDetail = !!selectedIssueId;
+  const navigate = useNavigate();
+  const location = useLocation();
+  const auth = useAuth();
+  const userRole = auth.user?.role ?? null;
+  const canRun = canRunIssue(userRole);
+  const canChangeStatus = canChangeIssueStatus(userRole);
+
+  const [dragging, setDragging] = useState<DragPayload | null>(null);
+  const [dropStatus, setDropStatus] = useState<IssueStatus | null>(null);
+  const [moving, setMoving] = useState(false);
+
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const onIssueUpdated = useCallback((issue: Issue) => {
+    setIssues((prev) => {
+      const idx = prev.findIndex((x) => x.id === issue.id);
+      if (idx === -1) return [issue, ...prev];
+      const next = [...prev];
+      next[idx] = issue;
+      return next;
+    });
+  }, []);
+
+  const outletContext = useMemo<IssuesOutletContext>(() => ({ onIssueUpdated }), [onIssueUpdated]);
+
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [showArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
+  const [searchText, setSearchText] = useState("");
+
+  const closeDetail = useCallback(() => {
+    navigate("/issues", { replace: true });
+  }, [navigate]);
+
+  const effectiveProjectId = useMemo(() => {
+    if (selectedProjectId) return selectedProjectId;
+    return projects[0]?.id ?? "";
+  }, [projects, selectedProjectId]);
+
+  const visibleIssues = useMemo(() => {
+    const needle = searchText.trim().toLowerCase();
+    const filtered = issues.filter(
+      (i) =>
+        i.projectId === effectiveProjectId &&
+        (showArchivedOnBoard || !i.archivedAt) &&
+        !hasStringLabel(i.labels, "_session"),
+    );
+    if (!needle) return filtered;
+    return filtered.filter((i) => {
+      const t = `${i.title ?? ""}\n${i.description ?? ""}`.toLowerCase();
+      return t.includes(needle);
+    });
+  }, [effectiveProjectId, issues, searchText, showArchivedOnBoard]);
+
+  const issuesByStatus = useMemo(() => getIssuesByStatus(visibleIssues), [visibleIssues]);
+
+  useEffect(() => {
+    if (!hasDetail) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDetail();
+    };
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [closeDetail, hasDetail]);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [ps, is] = await Promise.all([listProjects(), listIssues()]);
+      setProjects(ps);
+      setIssues(is.issues);
+      setSelectedProjectId((prev) => (prev ? prev : ps[0]?.id ?? ""));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const readDragPayload = useCallback(
+    (e: React.DragEvent): DragPayload | null => {
+      try {
+        const raw = e.dataTransfer.getData("application/json");
+        if (!raw) return null;
+        const v = JSON.parse(raw) as any;
+        if (!v || typeof v !== "object") return null;
+        if (typeof v.issueId !== "string") return null;
+        if (typeof v.fromStatus !== "string") return null;
+        const issueId = v.issueId as string;
+        const fromStatus = v.fromStatus as IssueStatus;
+        const runId = typeof v.runId === "string" && v.runId ? (v.runId as string) : undefined;
+        return { issueId, fromStatus, runId };
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  const moveIssue = useCallback(
+    async (payload: DragPayload, toStatus: IssueStatus) => {
+      if (!payload.issueId) return;
+      if (payload.fromStatus === toStatus) return;
+      if (!auth.user) {
+        const next = encodeURIComponent(`${location.pathname}${location.search}`);
+        navigate(`/login?next=${next}`);
+        return;
+      }
+
+      const isRunAction = payload.fromStatus === "running" || toStatus === "running";
+      if (isRunAction && !canRun) {
+        setError("当前账号无权限操作 Run");
+        return;
+      }
+      if (!isRunAction && !canChangeStatus) {
+        setError("当前账号无权限变更 Issue 状态");
+        return;
+      }
+
+      setMoving(true);
+      setError(null);
+      try {
+        if (toStatus === "running") {
+          await startIssue(payload.issueId, {});
+          await refresh();
+          return;
+        }
+
+        if (payload.fromStatus === "running") {
+          if (!payload.runId) {
+            throw new Error("缺少 runId，无法变更运行中状态");
+          }
+          if (toStatus === "reviewing") {
+            await completeRun(payload.runId);
+            await refresh();
+            return;
+          }
+          if (toStatus === "cancelled") {
+            await cancelRun(payload.runId);
+            await refresh();
+            return;
+          }
+          throw new Error("运行中 Issue 只能拖到 In Review 或 Cancelled");
+        }
+
+        await updateIssue(payload.issueId, { status: toStatus });
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setMoving(false);
+        setDragging(null);
+        setDropStatus(null);
+      }
+    },
+    [auth.user, canChangeStatus, canRun, location.pathname, location.search, navigate, refresh],
+  );
+
+  const columns = useMemo(
+    () =>
+      [
+        { key: "pending", title: "To Do", dot: "dotGray" },
+        { key: "running", title: "In Progress", dot: "dotBlue" },
+        { key: "reviewing", title: "In Review", dot: "dotPurple" },
+        { key: "done", title: "Done", dot: "dotGreen" },
+        { key: "failed", title: "Failed", dot: "dotRed" },
+        { key: "cancelled", title: "Cancelled", dot: "dotGray" },
+      ] as const satisfies IssueBoardColumn[],
+    [],
+  );
+
+  return {
+    // router
+    selectedIssueId,
+    hasDetail,
+    navigate,
+    location,
+    closeDetail,
+
+    // auth
+    auth,
+    canRun,
+    canChangeStatus,
+
+    // state
+    projects,
+    issues,
+    loading,
+    error,
+    searchText,
+    setSearchText,
+    selectedProjectId,
+    setSelectedProjectId,
+    dragging,
+    setDragging,
+    dropStatus,
+    setDropStatus,
+    moving,
+
+    // derived
+    effectiveProjectId,
+    visibleIssues,
+    issuesByStatus,
+    columns,
+    showArchivedOnBoard,
+
+    // outlet
+    outletContext,
+    onIssueUpdated,
+
+    // actions
+    refresh,
+    readDragPayload,
+    moveIssue,
+  } as const;
+}
+
