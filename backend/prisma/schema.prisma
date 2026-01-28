@@ -74,6 +74,23 @@ enum SandboxStatus {
   error
 }
 
+enum ScmProvider {
+  github
+  gitlab
+}
+
+enum ScmPrState {
+  open
+  closed
+  merged
+}
+
+enum ScmCiStatus {
+  pending
+  passed
+  failed
+}
+
 enum StepStatus {
   pending
   ready
@@ -229,6 +246,14 @@ model Run {
   sandboxLastSeenAt   DateTime?
   sandboxLastError    String? @db.Text
 
+  scmProvider   ScmProvider?
+  scmHeadSha    String? @db.VarChar(64)
+  scmPrNumber   Int?
+  scmPrUrl      String? @db.VarChar(500)
+  scmPrState    ScmPrState?
+  scmCiStatus   ScmCiStatus?
+  scmUpdatedAt  DateTime?
+
   status         RunStatus @default(pending)
 
   startedAt      DateTime  @default(now())
@@ -253,6 +278,9 @@ model Run {
   @@index([stepId, startedAt])
   @@index([acpSessionId])
   @@index([status])
+  @@index([scmProvider, scmPrNumber])
+  @@index([scmHeadSha])
+  @@index([scmCiStatus])
 }
 
 model SandboxInstance {

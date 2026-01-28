@@ -8,7 +8,6 @@ import * as github from "../integrations/github.js";
 import { uuidv7 } from "../utils/uuid.js";
 import type { AcpTunnel } from "../services/acpTunnel.js";
 import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
-import { triggerGitHubPrAutoReview } from "../services/githubPrAutoReview.js";
 import { rollbackTaskToStep } from "../services/taskEngine.js";
 import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
 import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
@@ -185,65 +184,34 @@ export function makeGitHubWebhookRoutes(deps: {
               : null;
 
           if (!run) {
-            let prArtifact: any = null;
-
             if (prNumbers.length > 0) {
-              prArtifact = await deps.prisma.artifact
+              run = await deps.prisma.run
                 .findFirst({
                   where: {
-                    type: "pr",
-                    run: { is: { issue: { is: { projectId: project.id } } } } as any,
-                    AND: [
-                      { content: { path: ["provider"], equals: "github" } as any },
-                      {
-                        OR: prNumbers.map((n) => ({ content: { path: ["number"], equals: n } as any })) as any,
-                      },
-                    ] as any,
+                    status: "waiting_ci",
+                    scmProvider: "github",
+                    scmPrNumber: { in: prNumbers },
+                    issue: { projectId: project.id },
                   } as any,
-                  orderBy: { createdAt: "desc" },
+                  orderBy: { startedAt: "desc" },
+                  select: { id: true, issueId: true, taskId: true, stepId: true },
                 })
                 .catch(() => null);
             }
 
-            if (!prArtifact && headSha) {
-              prArtifact = await deps.prisma.artifact
+            if (!run && headSha) {
+              run = await deps.prisma.run
                 .findFirst({
                   where: {
-                    type: "pr",
-                    run: { is: { issue: { is: { projectId: project.id } } } } as any,
-                    AND: [
-                      { content: { path: ["provider"], equals: "github" } as any },
-                      { content: { path: ["headSha"], equals: headSha } as any },
-                    ] as any,
+                    status: "waiting_ci",
+                    scmProvider: "github",
+                    scmHeadSha: headSha,
+                    issue: { projectId: project.id },
                   } as any,
-                  orderBy: { createdAt: "desc" },
+                  orderBy: { startedAt: "desc" },
+                  select: { id: true, issueId: true, taskId: true, stepId: true },
                 })
                 .catch(() => null);
-            }
-
-            if (prArtifact) {
-              const branchFromPr = String(((prArtifact as any).content ?? {})?.sourceBranch ?? "").trim();
-              if (!branch && branchFromPr) branch = branchFromPr;
-
-              const prRun = await deps.prisma.run
-                .findUnique({
-                  where: { id: String((prArtifact as any).runId) },
-                  select: { id: true, issueId: true, taskId: true, stepId: true, status: true, branchName: true } as any,
-                })
-                .catch(() => null);
-
-              if (prRun && String((prRun as any).status ?? "") === "waiting_ci") {
-                run = prRun as any;
-                if (!branch) branch = String((prRun as any).branchName ?? "").trim();
-              } else if (branch) {
-                run = await deps.prisma.run
-                  .findFirst({
-                    where: { status: "waiting_ci", branchName: branch, issue: { projectId: project.id } } as any,
-                    orderBy: { startedAt: "desc" },
-                    select: { id: true, issueId: true, taskId: true, stepId: true },
-                  })
-                  .catch(() => null);
-              }
             }
           }
 
@@ -252,17 +220,7 @@ export function makeGitHubWebhookRoutes(deps: {
           }
 
           const passed = String(conclusion ?? "").toLowerCase() === "success";
-
-          await deps.prisma.artifact
-            .create({
-              data: {
-                id: uuidv7(),
-                runId: run.id,
-                type: "ci_result",
-                content: { provider: "github", event, branch, status, conclusion, passed, headSha: headSha || undefined, prNumbers } as any,
-              },
-            })
-            .catch(() => {});
+          const scmCiStatus = passed ? "passed" : "failed";
 
           await deps.prisma.run
             .update({
@@ -270,6 +228,10 @@ export function makeGitHubWebhookRoutes(deps: {
               data: {
                 status: passed ? "completed" : "failed",
                 completedAt: new Date(),
+                scmProvider: "github",
+                scmCiStatus,
+                scmHeadSha: headSha || null,
+                scmUpdatedAt: new Date(),
                 ...(passed ? null : { failureReason: "ci_failed", errorMessage: `ci_failed: ${String(conclusion ?? "unknown")}` }),
               } as any,
             })
@@ -378,80 +340,73 @@ export function makeGitHubWebhookRoutes(deps: {
               ? payload.pull_request.merged
               : Boolean(payload.pull_request.merged_at);
 
-          const prArtifact = await deps.prisma.artifact
-            .findFirst({
-              where: {
-                type: "pr",
-                run: { is: { issue: { is: { projectId: (project as any).id } } } } as any,
-                AND: [
-                  { content: { path: ["provider"], equals: "github" } as any },
-                  { content: { path: ["number"], equals: prNumber } as any },
-                ] as any,
-              } as any,
-              orderBy: { createdAt: "desc" },
-            })
-            .catch(() => null);
+          const resolvedRun =
+            (await deps.prisma.run
+              .findFirst({
+                where: {
+                  scmProvider: "github",
+                  scmPrNumber: prNumber,
+                  issue: { projectId: project.id },
+                } as any,
+                orderBy: { startedAt: "desc" },
+                select: { id: true, issueId: true, taskId: true } as any,
+              })
+              .catch(() => null)) ??
+            (await deps.prisma.run
+              .findFirst({
+                where: { branchName: headRef, issue: { projectId: project.id } } as any,
+                orderBy: { startedAt: "desc" },
+                select: { id: true, issueId: true, taskId: true } as any,
+              })
+              .catch(() => null)) ??
+            (headSha
+              ? await deps.prisma.run
+                  .findFirst({
+                    where: {
+                      scmProvider: "github",
+                      scmHeadSha: headSha,
+                      issue: { projectId: project.id },
+                    } as any,
+                    orderBy: { startedAt: "desc" },
+                    select: { id: true, issueId: true, taskId: true } as any,
+                  })
+                  .catch(() => null)
+              : null);
 
-          if (!prArtifact) {
-            return { success: true, data: { ok: true, ignored: true, reason: "NO_PR_ARTIFACT", prNumber } };
+          if (!resolvedRun) {
+            return { success: true, data: { ok: true, ignored: true, reason: "NO_RUN", prNumber, headRef, headSha } };
           }
 
-          const content = ((prArtifact as any).content ?? {}) as any;
-          await deps.prisma.artifact
+          const action = String(payload.action ?? "").trim().toLowerCase();
+          const normalizedPrState = merged
+            ? "merged"
+            : String(prState ?? "")
+                .trim()
+                .toLowerCase() === "open"
+              ? "open"
+              : String(prState ?? "")
+                  .trim()
+                  .toLowerCase() === "closed"
+                ? "closed"
+                : null;
+
+          await deps.prisma.run
             .update({
-              where: { id: (prArtifact as any).id },
+              where: { id: (resolvedRun as any).id },
               data: {
-                content: {
-                  ...content,
-                  number: content.number ?? prNumber,
-                  webUrl: content.webUrl ?? prUrl,
-                  state: prState || content.state,
-                  title: prTitle || content.title,
-                  sourceBranch: headRef || content.sourceBranch,
-                  targetBranch: baseRef || content.targetBranch,
-                  headSha,
-                  baseSha: baseSha || content.baseSha,
-                  merged,
-                  merged_at: payload.pull_request.merged_at ?? content.merged_at ?? null,
-                  lastWebhookAt: new Date().toISOString(),
-                } as any,
+                scmProvider: "github",
+                scmPrNumber: prNumber,
+                scmPrUrl: prUrl || null,
+                scmPrState: normalizedPrState,
+                scmHeadSha: headSha || null,
+                scmUpdatedAt: new Date(),
               } as any,
             })
             .catch(() => {});
 
-          const action = String(payload.action ?? "").trim().toLowerCase();
-          const isDraft = Boolean((payload.pull_request as any).draft);
-          const shouldAutoReview =
-            !merged &&
-            (action === "opened" || action === "reopened" || action === "ready_for_review" || action === "synchronize") &&
-            (!isDraft || action === "ready_for_review");
-          if (shouldAutoReview) {
-            triggerGitHubPrAutoReview(
-              { prisma: deps.prisma, acp: deps.acp },
-              {
-                prArtifactId: String((prArtifact as any).id),
-                prNumber,
-                prUrl,
-                title: prTitle || null,
-                body: typeof payload.pull_request.body === "string" ? payload.pull_request.body : null,
-                headSha,
-                baseSha: baseSha || null,
-                sourceBranch: headRef,
-                targetBranch: baseRef,
-              },
-            );
-          }
-
-          if (merged && String(payload.action ?? "").trim().toLowerCase() === "closed") {
-            const prRun = await deps.prisma.run
-              .findUnique({
-                where: { id: (prArtifact as any).runId },
-                select: { taskId: true, issueId: true } as any,
-              })
-              .catch(() => null);
-
-            const taskId = String((prRun as any)?.taskId ?? "").trim();
-            const issueId = String((prRun as any)?.issueId ?? "").trim();
+          if (merged && action === "closed") {
+            const taskId = String((resolvedRun as any)?.taskId ?? "").trim();
+            const issueId = String((resolvedRun as any)?.issueId ?? "").trim();
             if (taskId) {
               const runs = await deps.prisma.run
                 .findMany({
@@ -507,7 +462,7 @@ export function makeGitHubWebhookRoutes(deps: {
                     .create({
                       data: {
                         id: uuidv7(),
-                        runId: (prArtifact as any).runId,
+                        runId: (resolvedRun as any).id,
                         source: "system",
                         type: "github.pr.merged",
                         payload: { prNumber, headSha } as any,
@@ -523,14 +478,8 @@ export function makeGitHubWebhookRoutes(deps: {
                 }
               }
             }
-          } else if (String(payload.action ?? "").trim().toLowerCase() === "synchronize") {
-            const prRun = await deps.prisma.run
-              .findUnique({
-                where: { id: (prArtifact as any).runId },
-                select: { taskId: true, issueId: true } as any,
-              })
-              .catch(() => null);
-            const taskId = String((prRun as any)?.taskId ?? "").trim();
+          } else if (action === "synchronize") {
+            const taskId = String((resolvedRun as any)?.taskId ?? "").trim();
             if (taskId) {
               const task = await deps.prisma.task
                 .findUnique({
@@ -547,7 +496,7 @@ export function makeGitHubWebhookRoutes(deps: {
                     .create({
                       data: {
                         id: uuidv7(),
-                        runId: (prArtifact as any).runId,
+                        runId: (resolvedRun as any).id,
                         source: "system",
                         type: "github.pr.synchronize.rollback",
                         payload: { prNumber, headSha, taskId, stepId: target.id } as any,
@@ -632,51 +581,64 @@ export function makeGitHubWebhookRoutes(deps: {
 
           const prNumber = payload.pull_request.number;
           const reviewState = String(payload.review?.state ?? "").trim().toLowerCase();
+          const headRef = payload.pull_request.head.ref;
+          const headSha = payload.pull_request.head.sha;
+          const prUrl = payload.pull_request.html_url;
 
-          const prArtifact = await deps.prisma.artifact
-            .findFirst({
-              where: {
-                type: "pr",
-                run: { is: { issue: { is: { projectId: (project as any).id } } } } as any,
-                AND: [
-                  { content: { path: ["provider"], equals: "github" } as any },
-                  { content: { path: ["number"], equals: prNumber } as any },
-                ] as any,
-              } as any,
-              orderBy: { createdAt: "desc" },
-            })
-            .catch(() => null);
+          const resolvedRun =
+            (await deps.prisma.run
+              .findFirst({
+                where: {
+                  scmProvider: "github",
+                  scmPrNumber: prNumber,
+                  issue: { projectId: project.id },
+                } as any,
+                orderBy: { startedAt: "desc" },
+                select: { id: true, issueId: true, taskId: true } as any,
+              })
+              .catch(() => null)) ??
+            (await deps.prisma.run
+              .findFirst({
+                where: { branchName: headRef, issue: { projectId: project.id } } as any,
+                orderBy: { startedAt: "desc" },
+                select: { id: true, issueId: true, taskId: true } as any,
+              })
+              .catch(() => null)) ??
+            (headSha
+              ? await deps.prisma.run
+                  .findFirst({
+                    where: {
+                      scmProvider: "github",
+                      scmHeadSha: headSha,
+                      issue: { projectId: project.id },
+                    } as any,
+                    orderBy: { startedAt: "desc" },
+                    select: { id: true, issueId: true, taskId: true } as any,
+                  })
+                  .catch(() => null)
+              : null);
 
-          if (!prArtifact) {
-            return { success: true, data: { ok: true, ignored: true, reason: "NO_PR_ARTIFACT", prNumber, reviewState } };
+          if (!resolvedRun) {
+            return { success: true, data: { ok: true, ignored: true, reason: "NO_RUN", prNumber, reviewState } };
           }
 
-          const content = ((prArtifact as any).content ?? {}) as any;
-          await deps.prisma.artifact
+          await deps.prisma.run
             .update({
-              where: { id: (prArtifact as any).id },
+              where: { id: (resolvedRun as any).id },
               data: {
-                content: {
-                  ...content,
-                  headSha: payload.pull_request.head.sha,
-                  sourceBranch: payload.pull_request.head.ref,
-                  lastReviewState: reviewState,
-                  lastReviewAt: new Date().toISOString(),
-                } as any,
+                scmProvider: "github",
+                scmPrNumber: prNumber,
+                scmPrUrl: prUrl || null,
+                scmHeadSha: headSha || null,
+                scmUpdatedAt: new Date(),
               } as any,
             })
             .catch(() => {});
 
           const action = String(payload.action ?? "").trim().toLowerCase();
           if (action === "submitted" && reviewState === "changes_requested") {
-            const prRun = await deps.prisma.run
-              .findUnique({
-                where: { id: (prArtifact as any).runId },
-                select: { taskId: true, issueId: true } as any,
-              })
-              .catch(() => null);
-            const taskId = String((prRun as any)?.taskId ?? "").trim();
-            const issueId = String((prRun as any)?.issueId ?? "").trim();
+            const taskId = String((resolvedRun as any)?.taskId ?? "").trim();
+            const issueId = String((resolvedRun as any)?.issueId ?? "").trim();
 
             const comment = typeof payload.review?.body === "string" ? payload.review.body.trim() : "";
             const reason = { code: "CHANGES_REQUESTED", message: comment || "changes requested" };
@@ -686,7 +648,7 @@ export function makeGitHubWebhookRoutes(deps: {
                 .findFirst({
                   where: {
                     taskId,
-                    branchName: payload.pull_request.head.ref,
+                    branchName: headRef,
                     status: { in: ["running", "waiting_ci"] } as any,
                   } as any,
                   orderBy: { startedAt: "desc" },
@@ -694,7 +656,7 @@ export function makeGitHubWebhookRoutes(deps: {
                 })
                 .catch(() => null);
 
-              const runId = String((activeRun as any)?.id ?? (prArtifact as any).runId).trim();
+              const runId = String((activeRun as any)?.id ?? (resolvedRun as any).id).trim();
               await setTaskBlockedFromRun({ prisma: deps.prisma }, runId, reason).catch(() => {});
               if (taskId && issueId) {
                 deps.broadcastToClients?.({
