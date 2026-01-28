@@ -2,6 +2,17 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createPmAutomation } from "../../src/services/pm/pmAutomation.js";
 
+function extractPromptText(prompt: unknown): string {
+  if (typeof prompt === "string") return prompt;
+  if (Array.isArray(prompt)) {
+    return prompt
+      .map((b: any) => (b && b.type === "text" ? String(b.text ?? "") : ""))
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(prompt ?? "");
+}
+
 describe("PM automation", () => {
   const originalEnv = {
     PM_LLM_BASE_URL: process.env.PM_LLM_BASE_URL,
@@ -104,7 +115,7 @@ describe("PM automation", () => {
     expect((res as any).success).toBe(true);
 
     expect(acp.promptRun).toHaveBeenCalledTimes(1);
-    expect(String(acp.promptRun.mock.calls[0][0].prompt)).toContain("（系统/PM）以下为 PM 自动分析结果");
+    expect(extractPromptText(acp.promptRun.mock.calls[0][0].prompt)).toContain("（系统/PM）以下为 PM 自动分析结果");
 
     expect(prisma.event.create).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -7,6 +7,7 @@ import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { buildContextFromRun } from "../services/runContext.js";
 import type { AcpTunnel } from "../services/acpTunnel.js";
+import { acpPromptSchema } from "../services/acpContent.js";
 import {
   createReviewRequestForRun,
   mergeReviewRequestForRun,
@@ -210,9 +211,9 @@ export function makeRunRoutes(deps: {
 
     server.post("/:id/prompt", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
-      const bodySchema = z.object({ text: z.string().min(1) });
+      const bodySchema = z.object({ prompt: acpPromptSchema });
       const { id } = paramsSchema.parse(request.params);
-      const { text } = bodySchema.parse(request.body);
+      const { prompt } = bodySchema.parse(request.body);
 
       const run = await deps.prisma.run.findUnique({
         where: { id },
@@ -269,7 +270,7 @@ export function makeRunRoutes(deps: {
           cwd,
           sessionId: run.acpSessionId ?? null,
           context,
-          prompt: text,
+          prompt,
         });
       } catch (error) {
         return {
@@ -289,7 +290,7 @@ export function makeRunRoutes(deps: {
             runId: id,
             source: "user",
             type: "user.message",
-            payload: { text } as any,
+            payload: { prompt } as any,
             timestamp: createdAt,
           },
         });

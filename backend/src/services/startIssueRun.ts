@@ -329,7 +329,7 @@ export async function startIssueRun(opts: {
       runId: String((run as any).id),
       cwd: workspacePath,
       sessionId: (run as any).acpSessionId ?? null,
-      prompt: promptParts.join("\n\n"),
+      prompt: [{ type: "text", text: promptParts.join("\n\n") }],
       init,
     });
 

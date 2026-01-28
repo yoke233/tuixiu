@@ -178,7 +178,7 @@ describe("Runs routes", () => {
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/prompt",
-      payload: { text: "hello" }
+      payload: { prompt: [{ type: "text", text: "hello" }] }
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { ok: true } });
@@ -190,7 +190,7 @@ describe("Runs routes", () => {
         runId: "00000000-0000-0000-0000-000000000001",
         cwd: "C:/repo/.worktrees/run-1",
         sessionId: null,
-        prompt: "hello",
+        prompt: [{ type: "text", text: "hello" }],
         context: expect.any(String),
       }),
     );
@@ -218,7 +218,7 @@ describe("Runs routes", () => {
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/prompt",
-      payload: { text: "hello" },
+      payload: { prompt: [{ type: "text", text: "hello" }] },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
@@ -252,7 +252,7 @@ describe("Runs routes", () => {
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/prompt",
-      payload: { text: "hello" },
+      payload: { prompt: [{ type: "text", text: "hello" }] },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -284,7 +284,7 @@ describe("Runs routes", () => {
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/prompt",
-      payload: { text: "hello" },
+      payload: { prompt: [{ type: "text", text: "hello" }] },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({

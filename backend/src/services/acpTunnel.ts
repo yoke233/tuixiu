@@ -11,6 +11,7 @@ import { uuidv7 } from "../utils/uuid.js";
 import { DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS, deriveSandboxInstanceName } from "../utils/sandbox.js";
 import { advanceTaskFromRunTerminal } from "./taskProgress.js";
 import { triggerPmAutoAdvance } from "./pm/pmAutoAdvance.js";
+import type { AcpContentBlock } from "./acpContent.js";
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
 
@@ -58,6 +59,44 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+type PromptCapabilities = {
+  image?: boolean;
+  audio?: boolean;
+  embeddedContext?: boolean;
+};
+
+function getPromptCapabilities(initResult: acp.InitializeResponse | null): PromptCapabilities {
+  const caps = (initResult as any)?.agentCapabilities?.promptCapabilities;
+  return isRecord(caps) ? (caps as PromptCapabilities) : {};
+}
+
+function assertPromptBlocksSupported(prompt: readonly AcpContentBlock[], promptCapabilities: PromptCapabilities) {
+  for (const block of prompt) {
+    switch (block.type) {
+      case "text":
+      case "resource_link":
+        break;
+      case "image":
+        if (!promptCapabilities.image) {
+          throw new Error("Agent 未启用 promptCapabilities.image，无法发送 image 类型内容");
+        }
+        break;
+      case "audio":
+        if (!promptCapabilities.audio) {
+          throw new Error("Agent 未启用 promptCapabilities.audio，无法发送 audio 类型内容");
+        }
+        break;
+      case "resource":
+        if (!promptCapabilities.embeddedContext) {
+          throw new Error("Agent 未启用 promptCapabilities.embeddedContext，无法发送 resource(embedded) 类型内容");
+        }
+        break;
+      default:
+        throw new Error(`未知的 ACP content block type: ${(block as any).type}`);
+    }
+  }
+}
+
 function isAuthRequiredError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const code = (err as any).code;
@@ -69,19 +108,35 @@ function shouldRecreateSession(err: unknown): boolean {
   return msg.includes("session") || msg.includes("sessionid");
 }
 
-function composePromptWithContext(context: string | undefined, prompt: string): string {
+function composePromptWithContext(
+  context: string | undefined,
+  prompt: AcpContentBlock[],
+  promptCapabilities: PromptCapabilities,
+): AcpContentBlock[] {
   const ctx = context?.trim();
   if (!ctx) return prompt;
-  return [
+
+  const prelude = [
     "你正在接手一个可能因为进程重启导致 ACP session 丢失的任务。",
     "下面是系统保存的上下文（Issue 信息 + 最近对话节选）。请先阅读、恢复当前进度，然后继续响应用户的新消息。",
     "",
     "=== 上下文开始 ===",
-    ctx,
-    "=== 上下文结束 ===",
-    "",
-    `用户: ${prompt}`,
   ].join("\n");
+  const suffix = ["=== 上下文结束 ===", "", "用户消息："].join("\n");
+
+  if (promptCapabilities.embeddedContext) {
+    return [
+      { type: "text", text: prelude },
+      {
+        type: "resource",
+        resource: { uri: "tuixiu://context", mimeType: "text/markdown", text: ctx },
+      },
+      { type: "text", text: suffix },
+      ...prompt,
+    ];
+  }
+
+  return [{ type: "text", text: [prelude, ctx, suffix].join("\n") }, ...prompt];
 }
 
 function trimToByteLimit(value: string, limit: number): { value: string; truncated: boolean } {
@@ -627,14 +682,15 @@ export function createAcpTunnel(deps: {
     cwd: string;
     sessionId?: string | null;
     context?: string;
-    prompt: string;
+    prompt: AcpContentBlock[];
     init?: AcpOpenPayload;
-  }): Promise<{ state: RunTunnelState; sessionId: string; promptText: string }> {
+  }): Promise<{ state: RunTunnelState; sessionId: string; prompt: AcpContentBlock[] }> {
     const state = await ensureOpen({ proxyId: opts.proxyId, runId: opts.runId, cwd: opts.cwd, init: opts.init });
     await ensureInitialized(state);
 
+    const promptCapabilities = getPromptCapabilities(state.initResult);
     let sessionId = typeof opts.sessionId === "string" ? opts.sessionId.trim() : "";
-    let promptText = opts.prompt;
+    let promptBlocks = opts.prompt;
 
     if (!sessionId) {
       const created = await withAuthRetry(state, () => state.conn.newSession({ cwd: opts.cwd, mcpServers: [] }));
@@ -651,8 +707,8 @@ export function createAcpTunnel(deps: {
         lastStopReason: null,
         note: "session_created",
       });
-      promptText = composePromptWithContext(opts.context, promptText);
-      return { state, sessionId, promptText };
+      promptBlocks = composePromptWithContext(opts.context, promptBlocks, promptCapabilities);
+      return { state, sessionId, prompt: promptBlocks };
     }
 
     // 仅当本进程没见过该 session 时，尝试 load 历史会话。
@@ -689,7 +745,7 @@ export function createAcpTunnel(deps: {
       }
     }
 
-    return { state, sessionId, promptText };
+    return { state, sessionId, prompt: promptBlocks };
   }
 
   async function persistPromptResult(runId: string, stopReason: string) {
@@ -753,10 +809,10 @@ export function createAcpTunnel(deps: {
     cwd: string;
     sessionId?: string | null;
     context?: string;
-    prompt: string;
+    prompt: AcpContentBlock[];
     init?: AcpOpenPayload;
   }): Promise<{ sessionId: string; stopReason: string }> {
-    const { state, sessionId, promptText } = await ensureSessionForPrompt(opts);
+    const { state, sessionId, prompt } = await ensureSessionForPrompt(opts);
 
     await updateSessionState(opts.runId, {
       sessionId,
@@ -768,7 +824,9 @@ export function createAcpTunnel(deps: {
 
     let res: acp.PromptResponse;
     try {
-      res = await withAuthRetry(state, () => state.conn.prompt({ sessionId, prompt: [{ type: "text", text: promptText }] }));
+      const promptCapabilities = getPromptCapabilities(state.initResult);
+      assertPromptBlocksSupported(prompt, promptCapabilities);
+      res = await withAuthRetry(state, () => state.conn.prompt({ sessionId, prompt }));
     } catch (err) {
       if (shouldRecreateSession(err)) {
         const created = await withAuthRetry(state, () => state.conn.newSession({ cwd: opts.cwd, mcpServers: [] }));
@@ -786,9 +844,11 @@ export function createAcpTunnel(deps: {
           note: "session_recreated",
         });
 
-        const replay = composePromptWithContext(opts.context, opts.prompt);
+        const promptCapabilities = getPromptCapabilities(state.initResult);
+        const replay = composePromptWithContext(opts.context, opts.prompt, promptCapabilities);
+        assertPromptBlocksSupported(replay, promptCapabilities);
         res = await withAuthRetry(state, () =>
-          state.conn.prompt({ sessionId: newSessionId, prompt: [{ type: "text", text: replay }] }),
+          state.conn.prompt({ sessionId: newSessionId, prompt: replay }),
         );
         await updateSessionState(opts.runId, {
           sessionId: newSessionId,

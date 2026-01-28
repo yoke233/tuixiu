@@ -154,8 +154,12 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
           cwd,
           sessionId: run.acpSessionId ?? null,
           context,
-          prompt:
-            "（系统）检测到 acp-proxy 断线重连/重启。请在当前工作目录(该 Run 的 workspace)检查进度（git status/最近改动/已有 commit）后继续完成任务；若你判断任务已完成，请输出总结并结束。",
+          prompt: [
+            {
+              type: "text",
+              text: "（系统）检测到 acp-proxy 断线重连/重启。请在当前工作目录(该 Run 的 workspace)检查进度（git status/最近改动/已有 commit）后继续完成任务；若你判断任务已完成，请输出总结并结束。",
+            },
+          ],
         });
       } catch (err) {
         opts.logError(err);
