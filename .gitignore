@@ -20,3 +20,4 @@ frontend/dist/
 acp-proxy/bin/
 acp-proxy/*.log
 acp-proxy/config.json
+acp-proxy/config.toml

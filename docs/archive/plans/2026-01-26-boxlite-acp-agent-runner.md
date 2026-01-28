@@ -152,7 +152,7 @@ export interface SandboxProvider {
 ### Task 5: 准备一个可运行的 ACP Agent 容器镜像（以 Codex 为例）
 
 **Files:**
-- Create: `docs/03_guides/agent-images/codex-acp/Dockerfile`
+- Create: `acp-proxy/agent-images/codex-acp/Dockerfile`
 - Modify: `docs/03_guides/environment-setup.md`
 - Modify: `docs/03_guides/quick-start.md`
 

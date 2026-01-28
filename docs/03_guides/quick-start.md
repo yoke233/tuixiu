@@ -137,7 +137,6 @@ curl.exe --noproxy 127.0.0.1 -X POST http://localhost:3000/api/projects `
 - `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（WSL2/Linux/macOS Apple Silicon）
 - `sandbox.image`: ACP Agent 镜像（建议使用仓库内提供的 codex-acp 镜像构建脚本）
 - `sandbox.runtime`: 容器运行时（仅 `provider=container_oci` 需要：docker/podman/nerdctl）
-- `pathMapping`: 可选（仅当你在 WSL 内运行 proxy 且后端传入 Windows 路径时使用，把 `D:\\...` 转成 `/mnt/d/...`）
 
 示例：替换为其它 ACP agent 启动命令：
 
@@ -157,7 +156,7 @@ workingDir = "/workspace"
 OPENAI_API_KEY = "<key>"
 ```
 
-> 镜像参考：`docs/03_guides/agent-images/codex-acp/Dockerfile`（建议构建并推送到 registry，供 BoxLite 拉取）。
+> 镜像参考：`acp-proxy/agent-images/codex-acp/Dockerfile`（建议构建并推送到 registry，供 BoxLite 拉取）。
 
 > `acp-proxy` 已内置 BoxLite 依赖与容器模式支持；按平台选择 `sandbox.provider` 即可。
 
