@@ -8,8 +8,7 @@ import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
 import { planArtifactPublish, publishArtifact } from "../services/artifactPublish.js";
 import { requestCreatePrApproval, requestPublishArtifactApproval } from "../services/approvalRequests.js";
 import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
-import { computeSensitiveHitFromFiles, computeSensitiveHitFromPaths } from "../services/pm/pmSensitivePaths.js";
-import { getRunChanges } from "../services/runGitChanges.js";
+import { computeSensitiveHitFromPaths } from "../services/pm/pmSensitivePaths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -43,24 +42,8 @@ export async function startSystemExecution(deps: { prisma: PrismaDeps }, runId: 
   const { policy } = getPmPolicyFromBranchProtection(project.branchProtection);
 
   if (kind === "pr.create") {
-    const sensitivePatterns = Array.isArray(policy.sensitivePaths) ? policy.sensitivePaths : [];
-    const needSensitiveCheck =
-      sensitivePatterns.length > 0 && policy.approvals.escalateOnSensitivePaths.includes("create_pr");
-
-    let sensitive = null as ReturnType<typeof computeSensitiveHitFromFiles> | null;
-    let sensitiveCheckFailed = false;
-    if (needSensitiveCheck) {
-      try {
-        const changes = await getRunChanges({ prisma: deps.prisma, runId });
-        sensitive = computeSensitiveHitFromFiles(changes.files ?? [], sensitivePatterns);
-      } catch {
-        sensitiveCheckFailed = true;
-      }
-    }
-
     const requireApproval =
-      policy.approvals.requireForActions.includes("create_pr") ||
-      (needSensitiveCheck && (sensitive !== null || sensitiveCheckFailed));
+      policy.approvals.requireForActions.includes("create_pr");
 
     if (requireApproval) {
       await requestCreatePrApproval({
@@ -68,9 +51,7 @@ export async function startSystemExecution(deps: { prisma: PrismaDeps }, runId: 
         runId,
         requestedBy: "system_step",
         payload: {
-          sensitive: sensitive
-            ? { patterns: sensitive.patterns.slice(0, 20), matchedFiles: sensitive.matchedFiles.slice(0, 60) }
-            : undefined,
+          // intentionally empty; backend 不再基于本地 git diff 做敏感目录判断
         },
       });
 

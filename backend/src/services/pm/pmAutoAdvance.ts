@@ -6,11 +6,9 @@ import { uuidv7 } from "../../utils/uuid.js";
 import { createGitProcessEnv } from "../../utils/gitAuth.js";
 import { createReviewRequestForRun } from "../runReviewRequest.js";
 import { requestCreatePrApproval, requestMergePrApproval } from "../approvalRequests.js";
-import { getRunChanges } from "../runGitChanges.js";
 import { autoReviewRunForPm } from "./pmAutoReviewRun.js";
 import { isPmAutomationEnabled } from "./pmLlm.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
-import { computeSensitiveHitFromFiles } from "./pmSensitivePaths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -38,17 +36,10 @@ async function defaultGitPush(opts: { cwd: string; branch: string; project: any 
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function getLatestCiPassed(artifacts: any[]): boolean | null {
-  const items = Array.isArray(artifacts) ? artifacts : [];
-  const latest = items.find((a) => a?.type === "ci_result");
-  if (!latest) return null;
-  const content = latest?.content;
-  if (!isRecord(content)) return null;
-  return typeof (content as any).passed === "boolean" ? (content as any).passed : null;
+function hasScmPr(run: any): boolean {
+  if (typeof run?.scmPrUrl === "string" && run.scmPrUrl.trim()) return true;
+  const n = Number(run?.scmPrNumber ?? 0);
+  return Number.isFinite(n) && n > 0;
 }
 
 async function runAutoAdvanceOnce(
@@ -64,7 +55,7 @@ async function runAutoAdvanceOnce(
 
   const run = await deps.prisma.run.findUnique({
     where: { id: runId },
-    include: { issue: { include: { project: true } }, artifacts: { orderBy: { createdAt: "desc" } } } as any,
+    include: { issue: { include: { project: true } } } as any,
   });
   if (!run) return;
   if ((run as any).taskId) return;
@@ -79,35 +70,18 @@ async function runAutoAdvanceOnce(
   const allowAutoRequestMergeApproval = policy.automation.autoRequestMergeApproval !== false;
 
   const log = deps.log ?? (() => {});
-  const artifacts = Array.isArray((run as any).artifacts) ? ((run as any).artifacts as any[]) : [];
 
-  const needChanges = allowReview || (trigger === "run_completed" && allowCreatePr);
-
-  const changes =
-    needChanges
-      ? await getRunChanges({ prisma: deps.prisma, runId }).catch((err: unknown) => ({ error: String(err) }))
-      : null;
-
-  if (allowReview && needChanges) {
-    const getChanges = async () => {
-      if (changes && "error" in changes) throw new Error(String((changes as any).error));
-      return changes as any;
-    };
-    await autoReviewRunForPm({ prisma: deps.prisma }, runId, { getChanges, commentToGithub: trigger === "ci_completed" }).catch((err: unknown) => {
+  if (allowReview) {
+    await autoReviewRunForPm({ prisma: deps.prisma }, runId, { commentToGithub: trigger === "ci_completed" }).catch((err: unknown) => {
       log("pm auto-review failed", { runId, trigger, err: String(err) });
     });
   }
 
   if (trigger === "run_completed" && allowCreatePr) {
-    const hasPr = artifacts.some((a) => a?.type === "pr");
+    const hasPr = hasScmPr(run as any);
     if (hasPr) return;
-    if (!changes || "error" in changes) return;
-    if (!Array.isArray((changes as any).files) || (changes as any).files.length === 0) return;
-
-    const sensitive = computeSensitiveHitFromFiles((changes as any).files ?? [], Array.isArray(policy.sensitivePaths) ? policy.sensitivePaths : []);
     const requireCreatePrApproval =
-      policy.approvals.requireForActions.includes("create_pr") ||
-      (sensitive && policy.approvals.escalateOnSensitivePaths.includes("create_pr"));
+      policy.approvals.requireForActions.includes("create_pr");
 
     if (requireCreatePrApproval) {
       const req = await requestCreatePrApproval({
@@ -115,9 +89,7 @@ async function runAutoAdvanceOnce(
         runId,
         requestedBy: "pm_auto",
         payload: {
-          sensitive: sensitive
-            ? { patterns: sensitive.patterns.slice(0, 20), matchedFiles: sensitive.matchedFiles.slice(0, 60) }
-            : undefined,
+          // backend 不再基于本地 git diff 做敏感目录判断
         },
       }).catch((err: unknown) => ({
         success: false as const,
@@ -177,12 +149,12 @@ async function runAutoAdvanceOnce(
   }
 
   if (trigger === "ci_completed" && allowAutoRequestMergeApproval) {
-    const passed = getLatestCiPassed(artifacts);
-    if (passed !== true) return;
+    const passed = String((run as any).scmCiStatus ?? "") === "passed";
+    if (!passed) return;
 
     if (!policy.approvals.requireForActions.includes("merge_pr")) return;
 
-    const hasPr = artifacts.some((a) => a?.type === "pr");
+    const hasPr = hasScmPr(run as any);
     if (!hasPr) return;
 
     await requestMergePrApproval({

@@ -91,23 +91,22 @@ export function createPmAutomation(deps: {
 
     const runId = (startRes as any).data?.run?.id;
     if (typeof runId === "string" && runId) {
-      await deps.prisma.artifact
+      await deps.prisma.event
         .create({
           data: {
             id: uuidv7(),
             runId,
-            type: "report",
-            content: {
-              kind: "pm_analysis",
-              version: 1,
+            source: "system",
+            type: "pm.analysis.generated",
+            payload: {
               reason,
               analysis,
               meta: analyzed.meta,
               createdAt: new Date().toISOString(),
             } as any,
-          },
+          } as any,
         })
-        .catch((err: unknown) => log("pm artifact create failed", { issueId, runId, err: String(err) }));
+        .catch((err: unknown) => log("pm analysis event create failed", { issueId, runId, err: String(err) }));
     }
 
     return {

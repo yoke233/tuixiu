@@ -1,5 +1,5 @@
 import type { PrismaDeps } from "../../deps.js";
-import { parseApprovalContent, toApprovalSummary, type ApprovalSummary } from "../approvalRequests.js";
+import { toApprovalSummary, type ApprovalSummary } from "../approvalRequests.js";
 
 type NextActionSource = "approval" | "task" | "auto_review" | "issue" | "fallback";
 
@@ -22,56 +22,6 @@ function parseDate(value: unknown): number {
 function isTerminalTaskStatus(status: unknown): boolean {
   const v = String(status ?? "").trim().toLowerCase();
   return v === "completed" || v === "failed" || v === "cancelled";
-}
-
-function findLatestPendingApproval(runs: any[]): { approval: ApprovalSummary; createdAtMs: number } | null {
-  let best: { approval: ApprovalSummary; createdAtMs: number } | null = null;
-
-  for (const run of Array.isArray(runs) ? runs : []) {
-    const artifacts = Array.isArray(run?.artifacts) ? (run.artifacts as any[]) : [];
-    for (const art of artifacts) {
-      if (String(art?.type ?? "") !== "report") continue;
-      const content = parseApprovalContent(art?.content);
-      if (!content) continue;
-      if (content.status !== "pending") continue;
-
-      const summary = toApprovalSummary(art, run);
-      if (!summary) continue;
-
-      const createdAtMs = parseDate(art?.createdAt);
-      if (!best || createdAtMs > best.createdAtMs) {
-        best = { approval: summary, createdAtMs };
-      }
-    }
-  }
-
-  return best;
-}
-
-function findLatestAutoReviewRecommendation(runs: any[]): { action: string; reason: string; createdAtMs: number } | null {
-  let best: { action: string; reason: string; createdAtMs: number } | null = null;
-
-  for (const run of Array.isArray(runs) ? runs : []) {
-    const artifacts = Array.isArray(run?.artifacts) ? (run.artifacts as any[]) : [];
-    for (const art of artifacts) {
-      if (String(art?.type ?? "") !== "report") continue;
-      const content = art?.content as any;
-      if (!content || typeof content !== "object") continue;
-      if (String(content.kind ?? "") !== "auto_review") continue;
-
-      const rec = content.recommendation as any;
-      const action = typeof rec?.nextAction === "string" ? rec.nextAction.trim() : "";
-      const reason = typeof rec?.reason === "string" ? rec.reason.trim() : "";
-      if (!action && !reason) continue;
-
-      const createdAtMs = parseDate(art?.createdAt);
-      if (!best || createdAtMs > best.createdAtMs) {
-        best = { action: action || "none", reason: reason || "auto-review 未给出原因", createdAtMs };
-      }
-    }
-  }
-
-  return best;
 }
 
 function pickActiveTask(tasks: any[]): any | null {
@@ -125,44 +75,52 @@ export async function getPmNextActionForIssue(
     }),
     deps.prisma.run.findMany({
       where: { issueId: id },
-      include: { artifacts: { orderBy: { createdAt: "desc" } }, step: true, task: true } as any,
+      include: { step: true, task: true } as any,
       orderBy: { startedAt: "desc" },
       take: 20,
     }),
   ]);
 
-  const pendingApproval = findLatestPendingApproval(runs as any[]);
-  if (pendingApproval) {
-    const approvalRun =
-      (Array.isArray(runs) ? (runs as any[]) : []).find((r) => String(r?.id ?? "") === pendingApproval.approval.runId) ??
-      null;
-    const approvalRunStatus = approvalRun ? String(approvalRun.status ?? "") : "unknown";
-    const taskIdFromRun = approvalRun && typeof approvalRun.taskId === "string" ? String(approvalRun.taskId) : null;
-    const stepFromRun = approvalRun?.step
-      ? {
-          id: String(approvalRun.step.id ?? ""),
-          key: String(approvalRun.step.key ?? ""),
-          kind: String(approvalRun.step.kind ?? ""),
-          status: String(approvalRun.step.status ?? ""),
-          executorType: String(approvalRun.step.executorType ?? ""),
-        }
-      : null;
+  const pendingApproval = await deps.prisma.approval
+    .findFirst({
+      where: { status: "pending", run: { is: { issueId: id } } } as any,
+      orderBy: { createdAt: "desc" } as any,
+      include: { run: { include: { step: true, task: true, issue: true } } } as any,
+    })
+    .catch(() => null);
 
-    return {
-      success: true,
-      data: {
-        nextAction: {
-          issueId: id,
-          action: "approve_action",
-          reason: `存在待审批动作：${pendingApproval.approval.action}`,
-          source: "approval",
-          taskId: taskIdFromRun,
-          step: stepFromRun,
-          run: { id: pendingApproval.approval.runId, status: approvalRunStatus },
-          approval: pendingApproval.approval,
+  if (pendingApproval && (pendingApproval as any).run) {
+    const approvalRun = (pendingApproval as any).run as any;
+    const summary = toApprovalSummary(pendingApproval as any, approvalRun);
+    if (summary) {
+      const approvalRunStatus = String(approvalRun.status ?? "unknown");
+      const taskIdFromRun = typeof approvalRun.taskId === "string" ? String(approvalRun.taskId) : null;
+      const stepFromRun = approvalRun?.step
+        ? {
+            id: String(approvalRun.step.id ?? ""),
+            key: String(approvalRun.step.key ?? ""),
+            kind: String(approvalRun.step.kind ?? ""),
+            status: String(approvalRun.step.status ?? ""),
+            executorType: String(approvalRun.step.executorType ?? ""),
+          }
+        : null;
+
+      return {
+        success: true,
+        data: {
+          nextAction: {
+            issueId: id,
+            action: "approve_action",
+            reason: `存在待审批动作：${summary.action}`,
+            source: "approval",
+            taskId: taskIdFromRun,
+            step: stepFromRun,
+            run: { id: summary.runId, status: approvalRunStatus },
+            approval: summary,
+          },
         },
-      },
-    };
+      };
+    }
   }
 
   const task = pickActiveTask(tasks as any[]);
@@ -304,15 +262,27 @@ export async function getPmNextActionForIssue(
     };
   }
 
-  const rec = findLatestAutoReviewRecommendation(runs as any[]);
-  if (rec) {
+  const autoReview = await deps.prisma.event
+    .findFirst({
+      where: { type: "pm.auto_review.reported", run: { is: { issueId: id } } } as any,
+      orderBy: { timestamp: "desc" } as any,
+      select: { payload: true } as any,
+    })
+    .catch(() => null);
+
+  const payload = autoReview?.payload as any;
+  const recommendation = payload && typeof payload === "object" ? (payload as any).recommendation : null;
+  const action = typeof recommendation?.nextAction === "string" ? recommendation.nextAction.trim() : "";
+  const reason = typeof recommendation?.reason === "string" ? recommendation.reason.trim() : "";
+
+  if (action || reason) {
     return {
       success: true,
       data: {
         nextAction: {
           issueId: id,
-          action: rec.action,
-          reason: rec.reason,
+          action: action || "none",
+          reason: reason || "auto-review 未给出原因",
           source: "auto_review",
           taskId: null,
           step: null,

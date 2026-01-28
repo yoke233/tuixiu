@@ -273,10 +273,10 @@ describe("githubPolling", () => {
     );
   });
 
-  it("does not create a new Issue when PR artifact exists; updates artifact instead", async () => {
+  it("does not create a new Issue when run exists for PR; updates run scm state instead", async () => {
     const prisma = {
-      artifact: {
-        findFirst: vi.fn().mockResolvedValue({ id: "a1", content: { provider: "github", number: 12, webUrl: "x" } }),
+      run: {
+        findFirst: vi.fn().mockResolvedValue({ id: "r1" }),
         update: vi.fn().mockResolvedValue({}),
       },
       issue: {
@@ -327,11 +327,15 @@ describe("githubPolling", () => {
     );
 
     expect(prisma.issue.create).not.toHaveBeenCalled();
-    expect(prisma.artifact.update).toHaveBeenCalledWith(
+    expect(prisma.run.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "a1" },
+        where: { id: "r1" },
         data: expect.objectContaining({
-          content: expect.objectContaining({ number: 12, headSha: "abcdef1234567890", targetBranch: "main" }),
+          scmProvider: "github",
+          scmPrNumber: 12,
+          scmPrUrl: "https://github.com/o/r/pull/12",
+          scmPrState: "open",
+          scmHeadSha: "abcdef1234567890",
         }),
       }),
     );

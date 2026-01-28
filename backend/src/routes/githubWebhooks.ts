@@ -130,7 +130,7 @@ export function makeGitHubWebhookRoutes(deps: {
             };
           }
 
-          let branch =
+          const branch =
             event === "workflow_run"
               ? String((request.body as any)?.workflow_run?.head_branch ?? "")
               : event === "check_suite"
@@ -464,11 +464,8 @@ export function makeGitHubWebhookRoutes(deps: {
           const prNumber = payload.pull_request.number;
           const headRef = payload.pull_request.head.ref;
           const headSha = payload.pull_request.head.sha;
-          const baseRef = payload.pull_request.base.ref;
-          const baseSha = typeof (payload.pull_request.base as any).sha === "string" ? String((payload.pull_request.base as any).sha).trim() : "";
           const prUrl = payload.pull_request.html_url;
           const prState = typeof payload.pull_request.state === "string" ? payload.pull_request.state : "";
-          const prTitle = typeof payload.pull_request.title === "string" ? payload.pull_request.title : "";
           const merged =
             typeof payload.pull_request.merged === "boolean"
               ? payload.pull_request.merged

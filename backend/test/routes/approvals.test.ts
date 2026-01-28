@@ -7,10 +7,9 @@ describe("Approvals routes", () => {
   it("GET /api/approvals lists approval requests", async () => {
     const server = createHttpServer();
     const prisma = {
-      artifact: {
+      approval: {
         findMany: vi.fn().mockResolvedValue([
-          { id: "a1", runId: "r1", type: "report", content: { kind: "approval_request", action: "merge_pr", status: "pending" }, createdAt: "2026-01-25T00:00:00.000Z", run: { issue: { id: "i1", title: "t1", projectId: "p1" } } },
-          { id: "x1", runId: "r1", type: "report", content: { kind: "pm_analysis", analysis: { risk: "low" } }, createdAt: "2026-01-25T00:00:00.000Z", run: { issue: { id: "i1", title: "t1", projectId: "p1" } } },
+          { id: "a1", runId: "r1", action: "merge_pr", status: "pending", createdAt: new Date("2026-01-25T00:00:00.000Z"), run: { issue: { id: "i1", title: "t1", projectId: "p1" } } },
         ]),
       },
     } as any;
@@ -31,25 +30,31 @@ describe("Approvals routes", () => {
     const server = createHttpServer();
     const prisma = {
       event: { create: vi.fn().mockResolvedValue({}) },
-      artifact: {
+      approval: {
         findUnique: vi.fn().mockImplementation(async (args: any) => ({
           id: args.where.id,
           runId: "r1",
-          type: "report",
-          content: { kind: "approval_request", action: "merge_pr", status: "pending", payload: { squash: true } },
-          createdAt: "2026-01-25T00:00:00.000Z",
+          action: "merge_pr",
+          status: "pending",
+          payload: { squash: true },
+          createdAt: new Date("2026-01-25T00:00:00.000Z"),
+          requestedAt: new Date("2026-01-25T00:00:00.000Z"),
         })),
-        update: vi.fn().mockImplementation(async (args: any) => {
-          if (args.where.id === "pr-1") {
-            return { id: "pr-1", runId: "r1", type: "pr", content: args.data.content, createdAt: "2026-01-25T00:00:00.000Z" };
-          }
-          return { id: args.where.id, runId: "r1", type: "report", content: args.data.content, createdAt: "2026-01-25T00:00:00.000Z" };
+        update: vi.fn().mockResolvedValue({
+          id: "a1",
+          runId: "r1",
+          action: "merge_pr",
+          status: "executed",
+          createdAt: new Date("2026-01-25T00:00:00.000Z"),
+          requestedAt: new Date("2026-01-25T00:00:00.000Z"),
         }),
       },
       run: {
         findUnique: vi.fn().mockResolvedValue({
           id: "r1",
           issueId: "i1",
+          scmPrNumber: 7,
+          scmPrUrl: "https://gitlab.example.com/group/repo/-/merge_requests/7",
           issue: {
             id: "i1",
             projectId: "p1",
@@ -60,7 +65,7 @@ describe("Approvals routes", () => {
               gitlabAccessToken: "tok",
             },
           },
-          artifacts: [{ id: "pr-1", type: "pr", content: { iid: 7 } }],
+          artifacts: [],
         }),
         update: vi.fn().mockResolvedValue({}),
       },
@@ -103,7 +108,7 @@ describe("Approvals routes", () => {
     expect(getMergeRequest).toHaveBeenCalled();
     expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
     expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
-    expect(prisma.artifact.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: approvalId } }));
+    expect(prisma.approval.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: approvalId } }));
     await server.close();
   });
 });

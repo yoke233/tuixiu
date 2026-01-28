@@ -95,7 +95,6 @@ describe("GitLab webhook routes", () => {
         findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: null, stepId: null }),
         update: vi.fn().mockResolvedValue({})
       },
-      artifact: { create: vi.fn().mockResolvedValue({ id: "a1" }) },
     } as any;
 
     await server.register(makeGitLabWebhookRoutes({ prisma, webhookSecret: "s3cret" }), { prefix: "/api/webhooks" });
@@ -116,9 +115,10 @@ describe("GitLab webhook routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { ok: true, handled: true, runId: "r1", passed: true } });
 
-    expect(prisma.artifact.create).toHaveBeenCalledWith(
+    expect(prisma.run.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ runId: "r1", type: "ci_result" }),
+        where: { id: "r1" },
+        data: expect.objectContaining({ scmProvider: "gitlab", scmHeadSha: "abc", scmCiStatus: "passed" }),
       }),
     );
     expect(prisma.run.update).toHaveBeenCalledWith(

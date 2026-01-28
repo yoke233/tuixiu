@@ -10,22 +10,6 @@ export type ApprovalAction = z.infer<typeof approvalActionSchema>;
 const approvalStatusSchema = z.enum(["pending", "approved", "rejected", "executing", "executed", "failed"]);
 export type ApprovalStatus = z.infer<typeof approvalStatusSchema>;
 
-export const approvalContentSchema = z.object({
-  kind: z.literal("approval_request"),
-  version: z.number().int().positive().default(1),
-  action: approvalActionSchema,
-  status: approvalStatusSchema,
-  requestedBy: z.string().min(1).optional(),
-  requestedAt: z.string().min(1).optional(),
-  decidedBy: z.string().min(1).nullable().optional(),
-  decidedAt: z.string().min(1).nullable().optional(),
-  reason: z.string().nullable().optional(),
-  payload: z.any().optional(),
-  result: z.any().optional(),
-});
-
-export type ApprovalContent = z.infer<typeof approvalContentSchema>;
-
 export type ApprovalSummary = {
   id: string;
   runId: string;
@@ -42,59 +26,82 @@ export type ApprovalSummary = {
   projectId?: string | null;
 };
 
-export function parseApprovalContent(content: unknown): ApprovalContent | null {
-  const parsed = approvalContentSchema.safeParse(content);
-  return parsed.success ? parsed.data : null;
+function toIso(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  const s = String(value).trim();
+  return s ? s : null;
 }
 
-export function toApprovalSummary(artifact: any, run?: any): ApprovalSummary | null {
-  const content = parseApprovalContent(artifact?.content);
-  if (!content) return null;
+function isAllowedAction(value: unknown): value is ApprovalAction {
+  return approvalActionSchema.safeParse(value).success;
+}
+
+function isAllowedStatus(value: unknown): value is ApprovalStatus {
+  return approvalStatusSchema.safeParse(value).success;
+}
+
+export function toApprovalSummary(approval: any, run?: any): ApprovalSummary | null {
+  if (!approval) return null;
+  if (!isAllowedAction(approval.action)) return null;
+  if (!isAllowedStatus(approval.status)) return null;
 
   const issueId = run?.issue?.id ?? run?.issueId ?? null;
   const issueTitle = run?.issue?.title ?? null;
   const projectId = run?.issue?.projectId ?? run?.projectId ?? null;
 
   return {
-    id: String(artifact?.id ?? ""),
-    runId: String(artifact?.runId ?? ""),
-    createdAt: String(artifact?.createdAt ?? ""),
-    action: content.action,
-    status: content.status,
-    requestedBy: typeof content.requestedBy === "string" ? content.requestedBy : null,
-    requestedAt: typeof content.requestedAt === "string" ? content.requestedAt : null,
-    decidedBy: typeof content.decidedBy === "string" ? content.decidedBy : content.decidedBy ?? null,
-    decidedAt: typeof content.decidedAt === "string" ? content.decidedAt : content.decidedAt ?? null,
-    reason: typeof content.reason === "string" ? content.reason : content.reason ?? null,
+    id: String(approval.id ?? ""),
+    runId: String(approval.runId ?? ""),
+    createdAt: toIso(approval.createdAt) ?? "",
+    action: approval.action,
+    status: approval.status,
+    requestedBy: typeof approval.requestedBy === "string" ? approval.requestedBy : null,
+    requestedAt: toIso(approval.requestedAt),
+    decidedBy: typeof approval.decidedBy === "string" ? approval.decidedBy : null,
+    decidedAt: toIso(approval.decidedAt),
+    reason: typeof approval.reason === "string" ? approval.reason : null,
     issueId,
     issueTitle,
     projectId,
   };
 }
 
-export function findLatestApprovalArtifact(opts: {
-  artifacts: any[];
-  action: ApprovalAction;
-  status?: ApprovalStatus | ApprovalStatus[];
-}): { artifact: any; content: ApprovalContent } | null {
-  const { artifacts, action } = opts;
-  const statuses = Array.isArray(opts.status) ? new Set(opts.status) : opts.status ? new Set([opts.status]) : null;
+async function findLatestApproval(
+  prisma: PrismaDeps,
+  opts: { runId: string; action: ApprovalAction; status?: ApprovalStatus | ApprovalStatus[] },
+): Promise<any | null> {
+  const statuses = Array.isArray(opts.status) ? opts.status : opts.status ? [opts.status] : null;
+  return await prisma.approval
+    .findFirst({
+      where: {
+        runId: opts.runId,
+        action: opts.action as any,
+        ...(statuses ? { status: { in: statuses as any } } : null),
+      } as any,
+      orderBy: { createdAt: "desc" } as any,
+    })
+    .catch(() => null);
+}
 
-  const sorted = [...(Array.isArray(artifacts) ? artifacts : [])].sort((a, b) => {
-    const ta = Date.parse(String(a?.createdAt ?? "")) || 0;
-    const tb = Date.parse(String(b?.createdAt ?? "")) || 0;
-    return tb - ta;
-  });
+function extractPrHint(run: any): { prNumber: number | null; prUrl: string | null } {
+  const prNumber = Number.isFinite(run?.scmPrNumber as any) ? Number(run.scmPrNumber) : null;
+  const prUrl = typeof run?.scmPrUrl === "string" ? String(run.scmPrUrl).trim() : "";
+  if ((prNumber && prNumber > 0) || prUrl) return { prNumber: prNumber && prNumber > 0 ? prNumber : null, prUrl: prUrl || null };
 
-  for (const a of sorted) {
-    if (a?.type !== "report") continue;
-    const content = parseApprovalContent(a?.content);
-    if (!content) continue;
-    if (content.action !== action) continue;
-    if (statuses && !statuses.has(content.status)) continue;
-    return { artifact: a, content };
-  }
-  return null;
+  const prArtifact = (run?.artifacts ?? []).find((a: any) => a?.type === "pr");
+  const content = (prArtifact?.content ?? {}) as any;
+  const fallbackNumber = Number(content.iid ?? content.number);
+  const fallbackUrl =
+    typeof content.webUrl === "string"
+      ? String(content.webUrl).trim()
+      : typeof content.web_url === "string"
+        ? String(content.web_url).trim()
+        : "";
+  return {
+    prNumber: Number.isFinite(fallbackNumber) && fallbackNumber > 0 ? fallbackNumber : null,
+    prUrl: fallbackUrl || null,
+  };
 }
 
 export async function requestMergePrApproval(opts: {
@@ -110,56 +117,40 @@ export async function requestMergePrApproval(opts: {
     where: { id: opts.runId },
     include: { issue: { include: { project: true } }, artifacts: true },
   });
-  if (!run) {
-    return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
-  }
+  if (!run) return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
 
-  const pr = (run as any)?.artifacts?.find((a: any) => a?.type === "pr") ?? null;
-  if (!pr) {
-    return { success: false, error: { code: "NO_PR", message: "该 Run 尚未创建 PR" } };
-  }
+  const { prUrl } = extractPrHint(run as any);
+  if (!prUrl) return { success: false, error: { code: "NO_PR", message: "该 Run 尚未创建 PR" } };
 
-  const existing = findLatestApprovalArtifact({
-    artifacts: (run as any)?.artifacts ?? [],
+  const existing = await findLatestApproval(opts.prisma, {
+    runId: (run as any).id,
     action: "merge_pr",
     status: ["pending", "approved", "executing"],
   });
   if (existing) {
-    const summary = toApprovalSummary(existing.artifact, run);
+    const summary = toApprovalSummary(existing, run);
     if (summary) return { success: true, data: { approval: summary } };
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   const requestedBy = typeof opts.requestedBy === "string" && opts.requestedBy.trim() ? opts.requestedBy.trim() : "user";
   const payload = opts.payload && typeof opts.payload === "object" ? opts.payload : {};
 
-  const created = await opts.prisma.artifact.create({
+  const created = await opts.prisma.approval.create({
     data: {
       id: uuidv7(),
       runId: (run as any).id,
-      type: "report",
-      content: {
-        kind: "approval_request",
-        version: 1,
-        action: "merge_pr",
-        status: "pending",
-        requestedBy,
-        requestedAt: now,
-        payload: {
-          prArtifactId: String((pr as any).id ?? ""),
-          squash: payload.squash ?? undefined,
-          mergeCommitMessage: payload.mergeCommitMessage ?? undefined,
-        },
+      action: "merge_pr" as any,
+      status: "pending" as any,
+      requestedBy,
+      requestedAt: now,
+      payload: {
+        squash: payload.squash ?? undefined,
+        mergeCommitMessage: payload.mergeCommitMessage ?? undefined,
       } as any,
-    },
+    } as any,
   });
-
-  const prUrl =
-    typeof (pr as any)?.content?.webUrl === "string"
-      ? String((pr as any).content.webUrl).trim()
-      : typeof (pr as any)?.content?.web_url === "string"
-        ? String((pr as any).content.web_url).trim()
-        : "";
 
   await opts.prisma.event
     .create({
@@ -168,12 +159,7 @@ export async function requestMergePrApproval(opts: {
         runId: (run as any).id,
         source: "system",
         type: "approval.merge_pr.requested",
-        payload: {
-          approvalId: (created as any).id,
-          requestedBy,
-          requestedAt: now,
-          prUrl: prUrl || undefined,
-        } as any,
+        payload: { approvalId: (created as any).id, requestedBy, requestedAt: nowIso, prUrl } as any,
       },
     })
     .catch(() => {});
@@ -193,14 +179,12 @@ export async function requestMergePrApproval(opts: {
       kind: "merge_pr_requested",
       runId: String((run as any).id),
       approvalId: String((created as any).id),
-      prUrl: prUrl || null,
+      prUrl,
     });
   }
 
   const summary = toApprovalSummary(created, run);
-  if (!summary) {
-    return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
-  }
+  if (!summary) return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
   return { success: true, data: { approval: summary } };
 }
 
@@ -208,53 +192,47 @@ export async function requestCreatePrApproval(opts: {
   prisma: PrismaDeps;
   runId: string;
   requestedBy?: string;
-  payload?: { title?: string; description?: string; targetBranch?: string; sensitive?: { patterns: string[]; matchedFiles: string[] } };
+  payload?: { title?: string; description?: string; targetBranch?: string; sensitive?: unknown };
 }): Promise<
   | { success: true; data: { approval: ApprovalSummary } }
   | { success: false; error: { code: string; message: string; details?: string } }
 > {
   const run = await opts.prisma.run.findUnique({
     where: { id: opts.runId },
-    include: { issue: { include: { project: true } }, artifacts: true },
+    include: { issue: { include: { project: true } } },
   });
-  if (!run) {
-    return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
-  }
+  if (!run) return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
 
-  const existing = findLatestApprovalArtifact({
-    artifacts: (run as any)?.artifacts ?? [],
+  const existing = await findLatestApproval(opts.prisma, {
+    runId: (run as any).id,
     action: "create_pr",
     status: ["pending", "approved", "executing"],
   });
   if (existing) {
-    const summary = toApprovalSummary(existing.artifact, run);
+    const summary = toApprovalSummary(existing, run);
     if (summary) return { success: true, data: { approval: summary } };
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   const requestedBy = typeof opts.requestedBy === "string" && opts.requestedBy.trim() ? opts.requestedBy.trim() : "user";
   const payload = opts.payload && typeof opts.payload === "object" ? opts.payload : {};
 
-  const created = await opts.prisma.artifact.create({
+  const created = await opts.prisma.approval.create({
     data: {
       id: uuidv7(),
       runId: (run as any).id,
-      type: "report",
-      content: {
-        kind: "approval_request",
-        version: 1,
-        action: "create_pr",
-        status: "pending",
-        requestedBy,
-        requestedAt: now,
-        payload: {
-          title: typeof payload.title === "string" ? payload.title : undefined,
-          description: typeof payload.description === "string" ? payload.description : undefined,
-          targetBranch: typeof payload.targetBranch === "string" ? payload.targetBranch : undefined,
-          sensitive: payload.sensitive && typeof payload.sensitive === "object" ? payload.sensitive : undefined,
-        },
+      action: "create_pr" as any,
+      status: "pending" as any,
+      requestedBy,
+      requestedAt: now,
+      payload: {
+        title: typeof payload.title === "string" ? payload.title : undefined,
+        description: typeof payload.description === "string" ? payload.description : undefined,
+        targetBranch: typeof payload.targetBranch === "string" ? payload.targetBranch : undefined,
+        sensitive: payload.sensitive ?? undefined,
       } as any,
-    },
+    } as any,
   });
 
   await opts.prisma.event
@@ -264,11 +242,7 @@ export async function requestCreatePrApproval(opts: {
         runId: (run as any).id,
         source: "system",
         type: "approval.create_pr.requested",
-        payload: {
-          approvalId: (created as any).id,
-          requestedBy,
-          requestedAt: now,
-        } as any,
+        payload: { approvalId: (created as any).id, requestedBy, requestedAt: nowIso } as any,
       },
     })
     .catch(() => {});
@@ -292,9 +266,7 @@ export async function requestCreatePrApproval(opts: {
   }
 
   const summary = toApprovalSummary(created, run);
-  if (!summary) {
-    return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
-  }
+  if (!summary) return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
   return { success: true, data: { approval: summary } };
 }
 
@@ -309,50 +281,42 @@ export async function requestPublishArtifactApproval(opts: {
 > {
   const artifact = await opts.prisma.artifact.findUnique({
     where: { id: opts.artifactId },
-    include: { run: { include: { issue: { include: { project: true } }, artifacts: true } } } as any,
+    include: { run: { include: { issue: { include: { project: true } }, approvals: true } } } as any,
   });
-  if (!artifact) {
-    return { success: false, error: { code: "NOT_FOUND", message: "Artifact 不存在" } };
-  }
+  if (!artifact) return { success: false, error: { code: "NOT_FOUND", message: "Artifact 不存在" } };
 
   const run = (artifact as any)?.run;
-  if (!run) {
-    return { success: false, error: { code: "NO_RUN", message: "Artifact 未绑定 Run" } };
-  }
+  if (!run) return { success: false, error: { code: "NO_RUN", message: "Artifact 未绑定 Run" } };
 
-  const existing = findLatestApprovalArtifact({
-    artifacts: (run as any)?.artifacts ?? [],
+  const existing = await findLatestApproval(opts.prisma, {
+    runId: String((run as any).id),
     action: "publish_artifact",
     status: ["pending", "approved", "executing"],
   });
   if (existing) {
-    const summary = toApprovalSummary(existing.artifact, run);
+    const summary = toApprovalSummary(existing, run);
     if (summary) return { success: true, data: { approval: summary } };
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   const requestedBy = typeof opts.requestedBy === "string" && opts.requestedBy.trim() ? opts.requestedBy.trim() : "user";
   const payload = opts.payload && typeof opts.payload === "object" ? opts.payload : {};
 
-  const created = await opts.prisma.artifact.create({
+  const created = await opts.prisma.approval.create({
     data: {
       id: uuidv7(),
       runId: String((run as any).id),
-      type: "report",
-      content: {
-        kind: "approval_request",
-        version: 1,
-        action: "publish_artifact",
-        status: "pending",
-        requestedBy,
-        requestedAt: now,
-        payload: {
-          sourceArtifactId: String((artifact as any).id),
-          path: typeof payload.path === "string" ? payload.path : undefined,
-          sensitive: payload.sensitive && typeof payload.sensitive === "object" ? payload.sensitive : undefined,
-        },
+      action: "publish_artifact" as any,
+      status: "pending" as any,
+      requestedBy,
+      requestedAt: now,
+      payload: {
+        sourceArtifactId: String((artifact as any).id),
+        path: typeof payload.path === "string" ? payload.path : undefined,
+        sensitive: payload.sensitive && typeof payload.sensitive === "object" ? payload.sensitive : undefined,
       } as any,
-    },
+    } as any,
   });
 
   await opts.prisma.event
@@ -362,12 +326,7 @@ export async function requestPublishArtifactApproval(opts: {
         runId: String((run as any).id),
         source: "system",
         type: "approval.publish_artifact.requested",
-        payload: {
-          approvalId: (created as any).id,
-          requestedBy,
-          requestedAt: now,
-          artifactId: String((artifact as any).id),
-        } as any,
+        payload: { approvalId: (created as any).id, requestedBy, requestedAt: nowIso, artifactId: String((artifact as any).id) } as any,
       },
     })
     .catch(() => {});
@@ -391,14 +350,7 @@ export async function requestPublishArtifactApproval(opts: {
   }
 
   const summary = toApprovalSummary(created, run);
-  if (!summary) {
-    return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
-  }
+  if (!summary) return { success: false, error: { code: "BAD_APPROVAL", message: "审批请求写入成功但解析失败" } };
   return { success: true, data: { approval: summary } };
 }
 
-export function withApprovalUpdate(prev: ApprovalContent, patch: Partial<ApprovalContent>): ApprovalContent {
-  const next = approvalContentSchema.safeParse({ ...prev, ...patch });
-  if (next.success) return next.data;
-  return { ...prev, ...patch } as ApprovalContent;
-}

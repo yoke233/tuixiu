@@ -248,72 +248,54 @@ async function upsertGitHubPullRequestAsIssue(
   return { issueId: (res as any).id, created: false, updated: true };
 }
 
-async function findGitHubPrArtifact(
+async function findGitHubRunByPrNumber(
   prisma: PrismaDeps,
   opts: { projectId: string; prNumber: number },
-): Promise<any | null> {
-  if (!Number.isFinite(opts.prNumber as any) || Number(opts.prNumber) <= 0) return null;
+): Promise<{ id: string } | null> {
+  const prNumber = Number(opts.prNumber ?? 0);
+  if (!Number.isFinite(prNumber) || prNumber <= 0) return null;
 
-  const find = (prisma as any)?.artifact?.findFirst;
+  const find = (prisma as any)?.run?.findFirst;
   if (typeof find !== "function") return null;
 
-  return await (prisma as any).artifact
+  return await (prisma as any).run
     .findFirst({
       where: {
-        type: "pr",
-        run: { is: { issue: { is: { projectId: opts.projectId } } } } as any,
-        AND: [
-          { content: { path: ["provider"], equals: "github" } as any },
-          { content: { path: ["number"], equals: opts.prNumber } as any },
-        ] as any,
+        scmProvider: "github",
+        scmPrNumber: prNumber,
+        issue: { is: { projectId: opts.projectId } } as any,
       } as any,
-      orderBy: { createdAt: "desc" } as any,
+      orderBy: { startedAt: "desc" } as any,
+      select: { id: true } as any,
     })
     .catch(() => null);
 }
 
-async function updateGitHubPrArtifactFromPoll(
+async function updateGitHubRunScmFromPoll(
   prisma: PrismaDeps,
-  opts: { prArtifact: any; parsed: github.ParsedGitHubRepo; pr: github.GitHubPullRequest; now: Date },
+  opts: { runId: string; pr: github.GitHubPullRequest; now: Date },
 ): Promise<void> {
-  const update = (prisma as any)?.artifact?.update;
+  const update = (prisma as any)?.run?.update;
   if (typeof update !== "function") return;
 
   const prNumber = Number((opts.pr as any).number ?? 0);
   if (!Number.isFinite(prNumber) || prNumber <= 0) return;
 
   const prUrl = String((opts.pr as any).html_url ?? "").trim();
-  const prState = typeof (opts.pr as any).state === "string" ? String((opts.pr as any).state) : "";
-  const prTitle = typeof (opts.pr as any).title === "string" ? String((opts.pr as any).title) : "";
-  const prBody = typeof (opts.pr as any).body === "string" ? String((opts.pr as any).body) : "";
-  const headRef = String((opts.pr as any).head?.ref ?? "").trim();
+  const merged = Boolean((opts.pr as any).merged_at);
+  const stateRaw = String((opts.pr as any).state ?? "").trim().toLowerCase();
+  const prState = merged ? "merged" : stateRaw === "closed" ? "closed" : "open";
   const headSha = String((opts.pr as any).head?.sha ?? "").trim();
-  const baseRef = String((opts.pr as any).base?.ref ?? "").trim();
-  const mergedAt = (opts.pr as any).merged_at ?? null;
-  const merged = Boolean(mergedAt);
 
-  const content = ((opts.prArtifact as any).content ?? {}) as any;
   await update({
-    where: { id: String((opts.prArtifact as any).id) },
+    where: { id: String(opts.runId) } as any,
     data: {
-      content: {
-        ...content,
-        provider: "github",
-        apiBaseUrl: opts.parsed.apiBaseUrl,
-        owner: opts.parsed.owner,
-        repo: opts.parsed.repo,
-        number: content.number ?? prNumber,
-        webUrl: content.webUrl ?? prUrl,
-        state: prState || content.state,
-        title: prTitle || content.title,
-        body: prBody || content.body,
-        sourceBranch: headRef || content.sourceBranch,
-        targetBranch: baseRef || content.targetBranch,
-        headSha: headSha || content.headSha,
-        merged,
-        merged_at: mergedAt ?? content.merged_at ?? null,
-        lastPollAt: opts.now.toISOString(),
-      } as any,
+      scmProvider: "github",
+      scmPrNumber: prNumber,
+      scmPrUrl: prUrl || null,
+      scmPrState: prState as any,
+      scmHeadSha: headSha || null,
+      scmUpdatedAt: opts.now,
     } as any,
   }).catch(() => {});
 }
@@ -429,9 +411,9 @@ export async function syncGitHubProjectOnce(
         }
 
         const prNumber = Number((pr as any).number ?? 0);
-        const prArtifact = await findGitHubPrArtifact(deps.prisma, { projectId: project.id, prNumber });
-        if (prArtifact) {
-          await updateGitHubPrArtifactFromPoll(deps.prisma, { prArtifact, parsed, pr, now });
+        const run = await findGitHubRunByPrNumber(deps.prisma, { projectId: project.id, prNumber });
+        if (run) {
+          await updateGitHubRunScmFromPoll(deps.prisma, { runId: run.id, pr, now });
           continue;
         }
 

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { triggerGitHubPrAutoReview } from "../../src/services/githubPrAutoReview.js";
 
 describe("githubPrAutoReview", () => {
-  it("creates report + comments and updates pr artifact (dedup by head sha)", async () => {
+  it("creates events + comments and updates run metadata (dedup by head sha)", async () => {
     const prevEnabled = process.env.GITHUB_PR_AUTO_REVIEW_ENABLED;
     const prevKey = process.env.PM_LLM_API_KEY;
     process.env.GITHUB_PR_AUTO_REVIEW_ENABLED = "1";
@@ -24,12 +24,12 @@ describe("githubPrAutoReview", () => {
           },
           run: {
             id: "r1",
+            metadata: {},
             issue: { project: { githubAccessToken: "tok", repoUrl: "https://github.com/o/r" } },
           },
         }),
-        create: vi.fn().mockResolvedValue({ id: "rep1" }),
-        update: vi.fn().mockResolvedValue({}),
       },
+      run: { update: vi.fn().mockResolvedValue({}) },
       event: { create: vi.fn().mockResolvedValue({}) },
     } as any;
 
@@ -53,11 +53,13 @@ describe("githubPrAutoReview", () => {
     );
     expect(callLlmJson).toHaveBeenCalled();
     expect(createPullRequestReview).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pullNumber: 123, event: "APPROVE" }));
-    expect(prisma.artifact.update).toHaveBeenCalledWith(
+    expect(prisma.run.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "a1" },
+        where: { id: "r1" },
         data: expect.objectContaining({
-          content: expect.objectContaining({ lastAutoReviewHeadSha: "abcdef", lastAutoReviewVerdict: "approve" }),
+          metadata: expect.objectContaining({
+            githubPrAutoReview: expect.objectContaining({ lastHeadSha: "abcdef", lastVerdict: "approve" }),
+          }),
         }),
       }),
     );
@@ -72,9 +74,12 @@ describe("githubPrAutoReview", () => {
         owner: "o",
         repo: "r",
         number: 123,
-        lastAutoReviewHeadSha: "abcdef",
       },
-      run: { id: "r1", issue: { project: { githubAccessToken: "tok", repoUrl: "https://github.com/o/r" } } },
+      run: {
+        id: "r1",
+        metadata: { githubPrAutoReview: { lastHeadSha: "abcdef" } },
+        issue: { project: { githubAccessToken: "tok", repoUrl: "https://github.com/o/r" } },
+      },
     });
 
     listPullRequestFiles.mockClear();

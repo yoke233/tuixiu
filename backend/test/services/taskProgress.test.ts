@@ -133,10 +133,7 @@ describe("taskProgress", () => {
             },
           },
         ]),
-      },
-      artifact: {
-        findFirst: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({ id: "a1" }),
+        create: vi.fn().mockResolvedValue({}),
       },
       step: { update: vi.fn().mockResolvedValue({}) },
       task: { update: vi.fn().mockResolvedValue({}) },
@@ -144,12 +141,12 @@ describe("taskProgress", () => {
     } as any;
 
     await advanceTaskFromRunTerminal({ prisma }, "r1", "completed");
-    expect(prisma.artifact.create).toHaveBeenCalledWith(
+    expect(prisma.event.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           runId: "r1",
-          type: "report",
-          content: expect.objectContaining({ kind: "prd", title: "T" }),
+          type: "agent.report",
+          payload: expect.objectContaining({ kind: "prd", title: "T" }),
         }),
       }),
     );

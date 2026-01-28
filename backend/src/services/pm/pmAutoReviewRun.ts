@@ -1,40 +1,15 @@
 import type { PrismaDeps } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
-import { getRunChanges, type RunChangeFile } from "../runGitChanges.js";
 import { postGitHubAutoReviewCommentBestEffort } from "../githubIssueComments.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
-import { computeSensitiveHitFromFiles } from "./pmSensitivePaths.js";
 
 type NextAction = "create_pr" | "request_create_pr_approval" | "wait_ci" | "request_merge_approval" | "manual_review" | "none";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function normalizePrInfo(content: unknown): { webUrl: string; state: string; mergeable: boolean | null; mergeableState: string } | null {
-  if (!isRecord(content)) return null;
-  const webUrl =
-    (typeof (content as any).webUrl === "string" && String((content as any).webUrl).trim()) ||
-    (typeof (content as any).web_url === "string" && String((content as any).web_url).trim()) ||
-    "";
-  if (!webUrl) return null;
-  const state = typeof (content as any).state === "string" ? String((content as any).state).trim() : "";
-  const mergeable = typeof (content as any).mergeable === "boolean" ? (content as any).mergeable : null;
-  const mergeableState =
-    typeof (content as any).mergeable_state === "string" ? String((content as any).mergeable_state).trim() : "";
-  return { webUrl, state, mergeable, mergeableState };
-}
-
-function normalizeCiResult(content: unknown): { passed: boolean | null; summary: string } | null {
-  if (!isRecord(content)) return null;
-  const passed = typeof (content as any).passed === "boolean" ? (content as any).passed : null;
-  const summary =
-    (typeof (content as any).summary === "string" && String((content as any).summary).trim()) ||
-    (typeof (content as any).logExcerpt === "string" && String((content as any).logExcerpt).trim()) ||
-    "";
-  if (passed === null && !summary) return null;
-  return { passed, summary };
-}
+export type RunChangeFile = {
+  path: string;
+  status: string;
+  oldPath?: string;
+};
 
 function buildMarkdown(opts: {
   runId: string;
@@ -87,19 +62,17 @@ function buildMarkdown(opts: {
 export async function autoReviewRunForPm(
   deps: { prisma: PrismaDeps },
   runId: string,
-  opts?: { now?: () => Date; getChanges?: typeof getRunChanges; commentToGithub?: boolean },
+  opts?: { now?: () => Date; commentToGithub?: boolean },
 ): Promise<
-  | { success: true; data: { runId: string; artifactId: string; report: any } }
+  | { success: true; data: { runId: string; report: any } }
   | { success: false; error: { code: string; message: string; details?: string } }
 > {
   const now = opts?.now ?? (() => new Date());
-  const getChanges = opts?.getChanges ?? getRunChanges;
 
   const run = await deps.prisma.run.findUnique({
     where: { id: runId },
     include: {
       issue: { include: { project: true } },
-      artifacts: { orderBy: { createdAt: "desc" } },
     } as any,
   });
   if (!run) return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
@@ -109,64 +82,33 @@ export async function autoReviewRunForPm(
   if (!issue || !project) return { success: false, error: { code: "BAD_RUN", message: "Run 缺少 issue/project" } };
 
   const { policy } = getPmPolicyFromBranchProtection(project.branchProtection);
-  const sensitivePatterns = Array.isArray(policy.sensitivePaths) ? policy.sensitivePaths : [];
 
-  let baseBranch = String(project.defaultBranch ?? "main");
-  let branch = String((run as any).branchName ?? "");
-  let files: RunChangeFile[] = [];
-  let changesError: string | null = null;
-  try {
-    const changes = await getChanges({ prisma: deps.prisma, runId });
-    baseBranch = changes.baseBranch;
-    branch = changes.branch;
-    files = changes.files;
-  } catch (err) {
-    changesError = err instanceof Error ? err.message : String(err);
-  }
+  const baseBranch = String(project.defaultBranch ?? "main");
+  const branch = String((run as any).branchName ?? "");
+  const files: RunChangeFile[] = [];
+  const changesError: string | null = null;
 
-  const scopeWhere = (run as any).taskId
-    ? ({ taskId: (run as any).taskId } as any)
-    : ({ id: (run as any).id } as any);
+  const prUrl = typeof (run as any).scmPrUrl === "string" ? String((run as any).scmPrUrl).trim() : "";
+  const prState = typeof (run as any).scmPrState === "string" ? String((run as any).scmPrState).trim() : "";
+  const prInfo = prUrl ? { webUrl: prUrl, state: prState || "open", mergeable: null, mergeableState: "" } : null;
 
-  const [latestPr, latestCi] = await Promise.all([
-    deps.prisma.artifact.findFirst({
-      where: { type: "pr" as any, run: { is: scopeWhere } } as any,
-      orderBy: { createdAt: "desc" },
-    }),
-    deps.prisma.artifact.findFirst({
-      where: { type: "ci_result" as any, run: { is: scopeWhere } } as any,
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
+  const ciStatus = typeof (run as any).scmCiStatus === "string" ? String((run as any).scmCiStatus).trim() : "";
+  const ciPassed = ciStatus === "passed" ? true : ciStatus === "failed" ? false : null;
+  const ciInfo = ciStatus ? { passed: ciPassed, summary: `scmCiStatus=${ciStatus}` } : null;
 
-  const prInfo = latestPr ? normalizePrInfo((latestPr as any).content) : null;
-  const ciInfo = latestCi ? normalizeCiResult((latestCi as any).content) : null;
-
-  const sensitive = computeSensitiveHitFromFiles(files, sensitivePatterns);
+  const sensitive: { matchedFiles: string[]; patterns: string[] } | null = null;
 
   let nextAction: NextAction = "none";
   let nextReason = "无需动作";
   if (!prInfo) {
-    if (changesError) {
-      nextAction = "manual_review";
-      nextReason = `尚未发现 PR；但获取变更失败（${changesError}），建议人工确认后再创建 PR`;
-    } else if (files.length === 0) {
-      nextAction = "none";
-      nextReason = "未发现变更文件，无需创建 PR";
-    } else {
-      const requireCreatePrApproval =
-        policy.approvals.requireForActions.includes("create_pr") ||
-        (sensitive && policy.approvals.escalateOnSensitivePaths.includes("create_pr"));
+    const requireCreatePrApproval = policy.approvals.requireForActions.includes("create_pr");
 
-      if (requireCreatePrApproval) {
-        nextAction = "request_create_pr_approval";
-        nextReason = sensitive
-          ? "变更触达敏感目录；创建 PR 需要审批/人工确认后再继续"
-          : "创建 PR 需要审批/人工确认后再继续";
-      } else {
-        nextAction = "create_pr";
-        nextReason = "尚未发现 PR 交付物，建议先创建 PR 进入 Review/CI 流程";
-      }
+    if (requireCreatePrApproval) {
+      nextAction = "request_create_pr_approval";
+      nextReason = "创建 PR 需要审批/人工确认后再继续";
+    } else {
+      nextAction = "create_pr";
+      nextReason = "尚未发现 PR 交付物，建议先创建 PR 进入 Review/CI 流程";
     }
   } else if (!ciInfo || ciInfo.passed !== true) {
     nextAction = "wait_ci";
@@ -209,15 +151,17 @@ export async function autoReviewRunForPm(
     markdown,
   };
 
-  const artifact = await deps.prisma.artifact.create({
-    data: {
-      id: uuidv7(),
-      runId,
-      type: "report",
-      content: report as any,
-    } as any,
-    select: { id: true } as any,
-  });
+  await deps.prisma.event
+    .create({
+      data: {
+        id: uuidv7(),
+        runId,
+        source: "system",
+        type: "pm.auto_review.reported",
+        payload: report as any,
+      } as any,
+    })
+    .catch(() => {});
 
   const shouldComment = opts?.commentToGithub === true;
   if (shouldComment) {
@@ -251,7 +195,7 @@ export async function autoReviewRunForPm(
           prUrl: prInfo?.webUrl ?? null,
           changedFiles: files.length,
           ciPassed: ciInfo?.passed ?? null,
-          sensitiveHits: sensitive?.matchedFiles?.length ?? 0,
+          sensitiveHits: 0,
           nextAction: (report as any)?.recommendation?.nextAction ?? null,
           reason: (report as any)?.recommendation?.reason ?? null,
         });
@@ -259,5 +203,5 @@ export async function autoReviewRunForPm(
     }
   }
 
-  return { success: true, data: { runId, artifactId: (artifact as any).id, report } };
+  return { success: true, data: { runId, report } };
 }
