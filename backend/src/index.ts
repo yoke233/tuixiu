@@ -26,6 +26,7 @@ import { makeRunRoutes } from "./routes/runs.js";
 import { makeSandboxRoutes } from "./routes/sandboxes.js";
 import { makeStepRoutes } from "./routes/steps.js";
 import { makeTaskRoutes } from "./routes/tasks.js";
+import { makeTextTemplateRoutes } from "./routes/textTemplates.js";
 import { createPmAutomation } from "./services/pm/pmAutomation.js";
 import { createAcpTunnel } from "./services/acpTunnel.js";
 import { startGitHubPollingLoop } from "./services/githubPolling.js";
@@ -209,6 +210,7 @@ server.register(
   { prefix: "/api/admin" },
 );
 server.register(makeSandboxRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, auth }), { prefix: "/api/admin" });
+server.register(makeTextTemplateRoutes({ prisma, auth }), { prefix: "/api/admin" });
 
 startWorkspaceCleanupLoop({
   prisma,
