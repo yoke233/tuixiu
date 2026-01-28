@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createReviewRequestForRun } from "../src/services/runReviewRequest.js";
+import { createReviewRequestForRun, mergeReviewRequestForRun, syncReviewRequestForRun } from "../src/services/runReviewRequest.js";
 
 function makeDeps(overrides: {
   issue?: Record<string, unknown>;
@@ -177,6 +177,233 @@ describe("createReviewRequestForRun", () => {
     expect((res as any).error?.code).toBe("UNSUPPORTED_SCM");
     expect(gitPush).not.toHaveBeenCalled();
     expect(createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it("NOT_FOUND when run missing", async () => {
+    const prisma = { run: { findUnique: vi.fn().mockResolvedValue(null) } } as any;
+    const res = await createReviewRequestForRun({ prisma, gitPush: vi.fn() } as any, "r1", {});
+    expect(res.success).toBe(false);
+    expect((res as any).error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns existing PR when scmPrUrl exists", async () => {
+    const { prisma, gitPush } = makeDeps({
+      run: { scmProvider: "github", scmPrNumber: 9, scmPrUrl: "https://github.com/o/r/pull/9", scmPrState: "open" },
+    });
+
+    const res = await createReviewRequestForRun({ prisma, gitPush } as any, "r1", {});
+    expect(res).toEqual({
+      success: true,
+      data: { pr: { provider: "github", number: 9, url: "https://github.com/o/r/pull/9", state: "open" } },
+    });
+  });
+
+  it("taskId fallback: returns latest PR Artifact when present", async () => {
+    const { prisma, gitPush } = makeDeps({
+      run: { taskId: "t1", scmPrUrl: null, scmPrNumber: null },
+    });
+    prisma.artifact.findFirst = vi.fn().mockResolvedValue({ id: "a-pr-1", type: "pr", content: { webUrl: "u" } });
+
+    const res = await createReviewRequestForRun({ prisma, gitPush } as any, "r1", {});
+    expect(res).toEqual({ success: true, data: { pr: { id: "a-pr-1", type: "pr", content: { webUrl: "u" } } } });
+  });
+
+  it("NO_BRANCH when branch is missing", async () => {
+    const { prisma, gitPush } = makeDeps({ run: { branchName: null, artifacts: [] } });
+    const res = await createReviewRequestForRun({ prisma, gitPush } as any, "r1", {});
+    expect(res.success).toBe(false);
+    expect((res as any).error.code).toBe("NO_BRANCH");
+  });
+
+  it("GIT_PUSH_FAILED when gitPush throws", async () => {
+    const { prisma } = makeDeps({});
+    const gitPush = vi.fn().mockRejectedValue(new Error("boom"));
+    const res = await createReviewRequestForRun({ prisma, gitPush } as any, "r1", {});
+    expect(res.success).toBe(false);
+    expect((res as any).error.code).toBe("GIT_PUSH_FAILED");
+  });
+
+  it("GitLab: creates merge request and updates run scm state", async () => {
+    const project = {
+      scmType: "gitlab",
+      repoUrl: "https://gitlab.example.com/group/repo.git",
+      defaultBranch: "main",
+      gitlabProjectId: 123,
+      gitlabAccessToken: "tok",
+      githubAccessToken: "gh",
+    };
+    const issue = {
+      id: "i1",
+      title: "Issue title",
+      description: "Issue desc",
+      externalProvider: "github",
+      externalNumber: 3,
+      externalUrl: "https://github.com/o/r/issues/3",
+      projectId: "p1",
+      project,
+    };
+    const run = { id: "r1", branchName: "run/r1", workspacePath: "D:\\tmp", issue, artifacts: [] };
+
+    const prisma = {
+      run: { findUnique: vi.fn().mockResolvedValue(run), update: vi.fn().mockResolvedValue({}) },
+      artifact: { findFirst: vi.fn() },
+    } as any;
+
+    const gitPush = vi.fn().mockResolvedValue(undefined);
+    const createMergeRequest = vi.fn().mockResolvedValue({
+      id: 1,
+      iid: 7,
+      title: "t",
+      state: "opened",
+      web_url: "https://gitlab.example.com/group/repo/-/merge_requests/7",
+      source_branch: "run/r1",
+      target_branch: "main",
+    });
+
+    const res = await createReviewRequestForRun(
+      { prisma, gitPush, gitlab: { inferBaseUrl: () => "https://gitlab.example.com", createMergeRequest } } as any,
+      "r1",
+      {},
+    );
+
+    expect(res.success).toBe(true);
+    expect(createMergeRequest).toHaveBeenCalled();
+    expect(prisma.run.update).toHaveBeenCalled();
+  });
+});
+
+describe("mergeReviewRequestForRun", () => {
+  it("NOT_FOUND when run missing", async () => {
+    const prisma = { run: { findUnique: vi.fn().mockResolvedValue(null) } } as any;
+    const res = await mergeReviewRequestForRun({ prisma } as any, "r1", {});
+    expect(res.success).toBe(false);
+    expect((res as any).error.code).toBe("NOT_FOUND");
+  });
+
+  it("NO_PR when pr number missing", async () => {
+    const prisma = {
+      run: { findUnique: vi.fn().mockResolvedValue({ id: "r1", issue: { project: { scmType: "github" } }, artifacts: [] }) },
+    } as any;
+    const res = await mergeReviewRequestForRun({ prisma } as any, "r1", {});
+    expect(res.success).toBe(false);
+    expect((res as any).error.code).toBe("NO_PR");
+  });
+
+  it("GitLab: merges MR and updates issue/run when merged", async () => {
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          issueId: "i1",
+          scmPrNumber: 7,
+          scmPrUrl: "https://gitlab.example.com/mr/7",
+          issue: { id: "i1", project: { scmType: "gitlab", repoUrl: "https://gitlab.example.com/group/repo.git", gitlabProjectId: 123, gitlabAccessToken: "tok" } },
+          artifacts: [],
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      issue: { update: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    const mergeMergeRequest = vi.fn().mockResolvedValue({
+      id: 1,
+      iid: 7,
+      title: "t",
+      state: "merged",
+      web_url: "https://gitlab.example.com/mr/7",
+      source_branch: "run/r1",
+      target_branch: "main",
+    });
+    const getMergeRequest = vi.fn().mockResolvedValue({
+      id: 1,
+      iid: 7,
+      title: "t",
+      state: "merged",
+      web_url: "https://gitlab.example.com/mr/7",
+      source_branch: "run/r1",
+      target_branch: "main",
+    });
+
+    const res = await mergeReviewRequestForRun(
+      { prisma, gitPush: vi.fn(), gitlab: { inferBaseUrl: () => "https://gitlab.example.com", mergeMergeRequest, getMergeRequest } } as any,
+      "r1",
+      { squash: true },
+    );
+
+    expect(res.success).toBe(true);
+    expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
+    expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
+  });
+
+  it("GitHub: merges PR and updates issue/run when merged", async () => {
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          issueId: "i1",
+          scmPrNumber: 9,
+          scmPrUrl: "https://github.com/o/r/pull/9",
+          issue: { id: "i1", project: { scmType: "github", repoUrl: "https://github.com/o/r", githubAccessToken: "tok" } },
+          artifacts: [],
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      issue: { update: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    const parseRepo = vi.fn().mockReturnValue({ apiBaseUrl: "https://api.github.com", owner: "o", repo: "r" });
+    const mergePullRequest = vi.fn().mockResolvedValue({ merged: true, message: "ok" });
+    const getPullRequest = vi.fn().mockRejectedValue(new Error("ignore"));
+
+    const res = await mergeReviewRequestForRun(
+      { prisma, gitPush: vi.fn(), github: { parseRepo, mergePullRequest, getPullRequest } } as any,
+      "r1",
+      { squash: true, mergeCommitMessage: "m" },
+    );
+
+    expect(res.success).toBe(true);
+    expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
+    expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
+  });
+});
+
+describe("syncReviewRequestForRun", () => {
+  it("GitHub: fetches PR state and updates issue/run when merged", async () => {
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          issueId: "i1",
+          scmPrNumber: 9,
+          scmPrUrl: "https://github.com/o/r/pull/9",
+          scmHeadSha: "h1",
+          issue: { id: "i1", project: { scmType: "github", repoUrl: "https://github.com/o/r", githubAccessToken: "tok" } },
+          artifacts: [],
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      issue: { update: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    const parseRepo = vi.fn().mockReturnValue({ apiBaseUrl: "https://api.github.com", owner: "o", repo: "r" });
+    const getPullRequest = vi.fn().mockResolvedValue({
+      id: 1,
+      number: 9,
+      state: "closed",
+      merged_at: "2026-01-01T00:00:00.000Z",
+      html_url: "https://github.com/o/r/pull/9",
+      head: { ref: "h", sha: "sha" },
+      base: { ref: "main" },
+    });
+
+    const res = await syncReviewRequestForRun(
+      { prisma, gitPush: vi.fn(), github: { parseRepo, getPullRequest } } as any,
+      "r1",
+    );
+
+    expect(res.success).toBe(true);
+    expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
+    expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
   });
 });
 
