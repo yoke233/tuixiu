@@ -30,13 +30,13 @@
 仓库内提供了一个可直接构建的 Codex ACP 镜像（包含：node + git + codex + codex-acp），用于给 `acp-proxy` 在沙箱里启动 agent：
 
 ```powershell
-docker build -t tuixiu-codex-acp:local docs/03_guides/agent-images/codex-acp
+docker build -t tuixiu-codex-acp:local acp-proxy/agent-images/codex-acp
 ```
 
 也可以使用其它容器运行时（例如 podman）：
 
 ```powershell
-podman build -t tuixiu-codex-acp:local docs/03_guides/agent-images/codex-acp
+podman build -t tuixiu-codex-acp:local acp-proxy/agent-images/codex-acp
 ```
 
 自检（可选）：
@@ -64,6 +64,7 @@ Copy-Item acp-proxy/config.toml.example acp-proxy/config.toml
 - `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（Linux/WSL2/macOS arm64）
 - `sandbox.image`: `tuixiu-codex-acp:local`
 - `sandbox.runtime`: `docker`（可替换为 `podman`/`nerdctl`，仅 `provider=container_oci` 会用到）
+- （推荐）把宿主机 `~/.codex/config.toml` 只读挂载到容器内：`[[sandbox.volumes]] hostPath="C:/Users/<you>/.codex/config.toml" guestPath="/root/.codex/config.toml" readOnly=true`
 
 ### 2) 启动（3 个终端）
 

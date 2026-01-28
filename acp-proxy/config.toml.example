@@ -19,10 +19,10 @@ provider = "container_oci"
 runtime = "docker"
 
 # 运行 ACP agent 的 OCI 镜像名
-# 本仓库提供 docs/03_guides/agent-images/codex-acp/Dockerfile 可构建 tuixiu-codex-acp:local
+# 本仓库提供 acp-proxy/agent-images/codex-acp/Dockerfile 可构建 tuixiu-codex-acp:local
 image = "tuixiu-codex-acp:local"
 
-# 容器/BoxLite 内的工作目录；acp-proxy 会把 Run 的 workspace 挂载到 /workspace
+# 容器/BoxLite 内的工作目录（Run 的 workspace 固定在 guest 内 /workspace；通常由 `acp_open.init.script` 负责 git clone）
 workingDir = "/workspace"
 
 # 仅 provider=container_oci 时使用：透传给 `<runtime> run` 的额外参数
@@ -30,6 +30,18 @@ workingDir = "/workspace"
 
 [sandbox.env]
 OPENAI_API_KEY = "<set-me>"
+
+# Codex（`codex` / `codex-acp`）通常需要读取宿主机的 `~/.codex/config.toml`。
+# 这里建议把该文件以只读方式挂载到容器内 `/root/.codex/config.toml`（镜像默认以 root 运行）。
+#
+# 注意：`docker` 不会自动展开 `~`，请写绝对路径。
+# Windows 示例：C:/Users/<you>/.codex/config.toml
+# macOS/Linux 示例：/Users/<you>/.codex/config.toml 或 /home/<you>/.codex/config.toml
+#
+# [[sandbox.volumes]]
+# hostPath = "C:/Users/<you>/.codex/config.toml"
+# guestPath = "/root/.codex/config.toml"
+# readOnly = true
 
 
 [agent]

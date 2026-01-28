@@ -11,6 +11,7 @@ import type { IncomingMessage } from "./types.js";
 import type { SandboxInstanceProvider } from "./sandbox/types.js";
 import { BoxliteSandbox } from "./sandbox/boxliteSandbox.js";
 import { ContainerSandbox } from "./sandbox/containerSandbox.js";
+import { createLogger, type LoggerFn } from "./logger.js";
 
 function pickArg(args: string[], name: string): string | null {
   const idx = args.indexOf(name);
@@ -115,10 +116,10 @@ async function main() {
   const profile = pickArg(process.argv.slice(2), "--profile") ?? null;
   const cfg = await loadConfig(configPath, { profile: profile ?? undefined });
 
-  const log = (msg: string, extra?: Record<string, unknown>) => {
-    const head = `[proxy] ${msg}`;
-    if (extra) console.log(head, extra);
-    else console.log(head);
+  const logger = createLogger();
+  const log: LoggerFn = (msg, extra) => {
+    if (extra) logger.info(extra, msg);
+    else logger.info(msg);
   };
 
   const isWsl =
@@ -268,12 +269,18 @@ async function main() {
   const startAgent = async (run: RunRuntime) => {
     if (run.agent) return;
 
-    const handle = await sandbox.execProcess({
-      instanceName: run.instanceName,
-      command: cfg.agent_command,
-      cwdInGuest: WORKSPACE_GUEST_PATH,
-      env: undefined,
-    });
+    let handle: Awaited<ReturnType<typeof sandbox.execProcess>>;
+    try {
+      handle = await sandbox.execProcess({
+        instanceName: run.instanceName,
+        command: cfg.agent_command,
+        cwdInGuest: WORKSPACE_GUEST_PATH,
+        env: undefined,
+      });
+    } catch (err) {
+      log("start agent failed", { runId: run.runId, err: String(err) });
+      throw err;
+    }
 
     const stream = acp.ndJsonStream(handle.stdin, handle.stdout);
     const reader = stream.readable.getReader();
@@ -286,6 +293,12 @@ async function main() {
     run.agent = agent;
 
     handle.onExit?.((info) => {
+      log("agent exited", {
+        runId: run.runId,
+        instanceName: run.instanceName,
+        code: info.code,
+        signal: info.signal,
+      });
       void closeAgent(run, "agent_exit").finally(() => {
         try {
           send({
@@ -300,6 +313,47 @@ async function main() {
         }
       });
     });
+
+    void (async () => {
+      const secrets: string[] = [
+        ...(cfg.auth_token?.trim() ? [cfg.auth_token.trim()] : []),
+        ...pickSecretValues(cfg.sandbox.env),
+      ];
+      const redact = (line: string) => redactSecrets(line, secrets);
+
+      const stderr = handle.stderr;
+      if (!stderr) return;
+
+      const decoder = new TextDecoder();
+      const reader = stderr.getReader();
+      let buf = "";
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split(/\r?\n/g);
+          buf = parts.pop() ?? "";
+          for (const line of parts) {
+            const text = redact(line);
+            if (!text.trim()) continue;
+            log("agent stderr", { runId: run.runId, text });
+            sendUpdate(run.runId, { type: "text", text: `[agent:stderr] ${text}` });
+          }
+        }
+      } catch (err) {
+        log("agent stderr read failed", { runId: run.runId, err: String(err) });
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {}
+        const rest = redact(buf);
+        if (rest.trim()) {
+          log("agent stderr", { runId: run.runId, text: rest });
+          sendUpdate(run.runId, { type: "text", text: `[agent:stderr] ${rest}` });
+        }
+      }
+    })();
 
     void (async () => {
       try {

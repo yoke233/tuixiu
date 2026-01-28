@@ -99,3 +99,14 @@
 
 - 最快上手：让 guest 里用 `npx --yes @zed-industries/codex-acp` 现装现跑（需要 guest 能访问公网）
 - 更稳更快：构建你自己的 `sandbox.image`，把 Node 与 `@zed-industries/codex-acp`（以及 git/ssh 等工具）预装在镜像里，然后把 `agent_command` 改成直接运行它
+
+## Codex 配置文件挂载（推荐）
+
+`codex` / `codex-acp` 通常需要读取宿主机的 `~/.codex/config.toml`。建议通过 `sandbox.volumes` 以只读方式挂载到 guest：
+
+```toml
+[[sandbox.volumes]]
+hostPath = "C:/Users/<you>/.codex/config.toml" # Windows 示例
+guestPath = "/root/.codex/config.toml"
+readOnly = true
+```
