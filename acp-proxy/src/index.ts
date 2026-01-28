@@ -1,14 +1,14 @@
-import { access } from "node:fs/promises";
-import { constants as fsConstants, existsSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import * as acp from "@agentclientprotocol/sdk";
 import WebSocket from "ws";
 
+import { AcpClientFacade, type JsonRpcRequest } from "./acpClientFacade.js";
 import { loadConfig } from "./config.js";
-import type { AgentUpdateMessage, IncomingMessage } from "./types.js";
-import { SandboxAgentLauncher } from "./launchers/sandboxLauncher.js";
+import type { IncomingMessage } from "./types.js";
+import type { SandboxInstanceProvider } from "./sandbox/types.js";
 import { BoxliteSandbox } from "./sandbox/boxliteSandbox.js";
 import { ContainerSandbox } from "./sandbox/containerSandbox.js";
 
@@ -23,6 +23,10 @@ function pickArg(args: string[], name: string): string | null {
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
 function redactSecrets(text: string, secrets: string[]): string {
@@ -52,6 +56,58 @@ function pickSecretValues(env: Record<string, string> | undefined): string[] {
   return out;
 }
 
+function isJsonRpcMessage(v: unknown): v is { jsonrpc: "2.0" } {
+  return isRecord(v) && v.jsonrpc === "2.0";
+}
+
+function isJsonRpcRequest(v: unknown): v is JsonRpcRequest {
+  return (
+    isRecord(v) &&
+    v.jsonrpc === "2.0" &&
+    typeof v.method === "string" &&
+    (typeof (v as any).id === "string" || typeof (v as any).id === "number")
+  );
+}
+
+function validateRunId(v: unknown): string {
+  const runId = String(v ?? "").trim();
+  if (!runId) throw new Error("run_id 为空");
+  if (runId.length > 200) throw new Error("run_id 过长");
+  if (/[\\/]/.test(runId)) throw new Error("run_id 不能包含路径分隔符");
+  if (runId.includes(":")) throw new Error("run_id 不能包含 ':'");
+  return runId;
+}
+
+function validateInstanceName(v: unknown): string {
+  const name = String(v ?? "").trim();
+  if (!name) throw new Error("instance_name 为空");
+  if (name.length > 200) throw new Error("instance_name 过长");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name)) {
+    throw new Error("instance_name 含非法字符");
+  }
+  return name;
+}
+
+const WORKSPACE_GUEST_PATH = "/workspace";
+const DEFAULT_KEEPALIVE_TTL_SECONDS = 1800;
+
+type AgentStreamState = {
+  stream: ReturnType<typeof acp.ndJsonStream>;
+  reader: ReadableStreamDefaultReader<acp.AnyMessage>;
+  writeQueue: Promise<void>;
+  close: () => Promise<void>;
+};
+
+type RunRuntime = {
+  runId: string;
+  instanceName: string;
+  keepaliveTtlSeconds: number;
+  expiresAt: number | null;
+  agent: AgentStreamState | null;
+  lastUsedAt: number;
+  acpClient: AcpClientFacade;
+};
+
 async function main() {
   const configPath =
     pickArg(process.argv.slice(2), "--config") ??
@@ -69,44 +125,7 @@ async function main() {
     process.platform === "linux" &&
     !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
 
-  if (cfg.sandbox.provider === "boxlite_oci") {
-    if (process.platform === "darwin" && process.arch !== "arm64") {
-      throw new Error(
-        "BoxLite 仅支持 macOS Apple Silicon(arm64)。Intel Mac 请使用 container_oci 或在 Linux/WSL2 上运行",
-      );
-    }
-    if (process.platform === "linux") {
-      await access("/dev/kvm", fsConstants.R_OK | fsConstants.W_OK).catch(
-        () => {
-          throw new Error(
-            "BoxLite 需要 /dev/kvm 可用（Linux/WSL2）。请确认已启用硬件虚拟化并允许当前用户访问 /dev/kvm",
-          );
-        },
-      );
-    }
-  }
-
-  const mapWindowsPathToWsl = (cwd: string): string => {
-    const raw = cwd.trim();
-    if (!raw) return raw;
-    if (!isWsl) return raw;
-    if (!cfg.pathMapping || cfg.pathMapping.type !== "windows_to_wsl")
-      return raw;
-
-    const m = /^([a-zA-Z]):[\\/](.*)$/.exec(raw);
-    if (!m) return raw;
-
-    const drive = m[1].toLowerCase();
-    const rest = m[2].replace(/\\/g, "/");
-    const mountRoot = cfg.pathMapping.wslMountRoot.replace(/[\\/]+$/, "");
-
-    return rest ? `${mountRoot}/${drive}/${rest}` : `${mountRoot}/${drive}`;
-  };
-
-  const mapCwd = (cwd: string): string => mapWindowsPathToWsl(cwd);
-  const defaultCwd = mapCwd(cfg.cwd);
-
-  const sandbox =
+  const sandbox: SandboxInstanceProvider =
     cfg.sandbox.provider === "container_oci"
       ? new ContainerSandbox({
           log,
@@ -133,23 +152,7 @@ async function main() {
           },
         });
 
-  const launcher = new SandboxAgentLauncher({
-    sandbox,
-    command: cfg.agent_command,
-  });
-
-  type RunState = {
-    cwd: string;
-    envKey: string;
-    transport: AcpTransport;
-    stream: acp.Stream;
-    lastUsedAt: number;
-    writeQueue: Promise<void>;
-    reader: ReadableStreamDefaultReader<acp.AnyMessage> | null;
-  };
-
-  const runStates = new Map<string, RunState>();
-  const runToCwd = new Map<string, string>();
+  const runs = new Map<string, RunRuntime>();
 
   let ws: WebSocket | null = null;
 
@@ -160,27 +163,28 @@ async function main() {
   };
 
   const sendUpdate = (runId: string, content: unknown) => {
-    const msg: AgentUpdateMessage = {
-      type: "agent_update",
-      run_id: runId,
-      content,
-    };
-    send(msg);
-  };
-
-  const setRunCwd = (runId: string, cwd: string) => {
-    const value = mapCwd(cwd);
-    if (!value) return;
-    runToCwd.set(runId, value);
-  };
-
-  const getRunCwd = (runId: string, incomingCwd?: string): string => {
-    if (isBoxliteGitClone) return defaultCwd;
-    if (typeof incomingCwd === "string" && incomingCwd.trim()) {
-      setRunCwd(runId, incomingCwd);
-      return runToCwd.get(runId) ?? defaultCwd;
+    try {
+      send({ type: "agent_update", run_id: runId, content });
+    } catch (err) {
+      log("failed to send agent_update", { runId, err: String(err) });
     }
-    return runToCwd.get(runId) ?? defaultCwd;
+  };
+
+  const sendSandboxInstanceStatus = (opts: {
+    runId: string;
+    instanceName: string;
+    status: "creating" | "running" | "stopped" | "missing" | "error";
+    lastError?: string | null;
+  }) => {
+    sendUpdate(opts.runId, {
+      type: "sandbox_instance_status",
+      instance_name: opts.instanceName,
+      provider: sandbox.provider,
+      runtime: sandbox.provider === "container_oci" ? sandbox.runtime ?? null : null,
+      status: opts.status,
+      last_seen_at: nowIso(),
+      last_error: opts.lastError ?? null,
+    });
   };
 
   const registerAgent = () => {
@@ -230,210 +234,198 @@ async function main() {
     });
   };
 
-  const heartbeatLoop = async (signal: AbortSignal) => {
-    while (!signal.aborted) {
-      await delay(cfg.heartbeat_seconds * 1000, { signal }).catch(() => {});
-      if (signal.aborted) break;
-      try {
-        send({
-          type: "heartbeat",
-          agent_id: cfg.agent.id,
-          timestamp: new Date().toISOString(),
-        });
-      } catch {
-        // ignore
-      }
-    }
-  };
-
-  const closeRun = async (runId: string, reason: string) => {
-    const state = runStates.get(runId);
-    if (!state) return;
-    runStates.delete(runId);
+  const closeAgent = async (run: RunRuntime, reason: string) => {
+    const agent = run.agent;
+    if (!agent) return;
+    run.agent = null;
     try {
-      state.reader?.releaseLock();
+      agent.reader.releaseLock();
     } catch {
       // ignore
     }
-    await state.transport.close().catch(() => {});
-    log("run closed", { runId, reason });
+    await agent.close().catch(() => {});
+    log("agent closed", { runId: run.runId, reason });
   };
 
-  const runInitScriptHost = async (opts: {
-    runId: string;
-    cwd: string;
-    init?: {
-      script: string;
-      timeout_seconds?: number;
-      env?: Record<string, string>;
+  const writeToAgent = async (run: RunRuntime, message: acp.AnyMessage) => {
+    const agent = run.agent;
+    if (!agent) throw new Error("agent not connected");
+    agent.writeQueue = agent.writeQueue
+      .then(async () => {
+        const writer = agent.stream.writable.getWriter();
+        try {
+          await writer.write(message as any);
+        } finally {
+          writer.releaseLock();
+        }
+      })
+      .catch((err) => {
+        log("acp write failed", { runId: run.runId, err: String(err) });
+      });
+    await agent.writeQueue;
+  };
+
+  const startAgent = async (run: RunRuntime) => {
+    if (run.agent) return;
+
+    const handle = await sandbox.execProcess({
+      instanceName: run.instanceName,
+      command: cfg.agent_command,
+      cwdInGuest: WORKSPACE_GUEST_PATH,
+      env: undefined,
+    });
+
+    const stream = acp.ndJsonStream(handle.stdin, handle.stdout);
+    const reader = stream.readable.getReader();
+    const agent: AgentStreamState = {
+      stream,
+      reader,
+      writeQueue: Promise.resolve(),
+      close: handle.close,
     };
+    run.agent = agent;
+
+    handle.onExit?.((info) => {
+      void closeAgent(run, "agent_exit").finally(() => {
+        try {
+          send({
+            type: "acp_exit",
+            run_id: run.runId,
+            instance_name: run.instanceName,
+            code: info.code,
+            signal: info.signal,
+          });
+        } catch {
+          // ignore
+        }
+      });
+    });
+
+    void (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          run.lastUsedAt = Date.now();
+
+          if (isJsonRpcRequest(value)) {
+            const res = await run.acpClient.handleRequest(value);
+            if (res) {
+              await writeToAgent(run, res as any);
+              continue;
+            }
+          }
+
+          try {
+            send({ type: "acp_message", run_id: run.runId, message: value });
+          } catch (err) {
+            log("failed to forward acp message", {
+              runId: run.runId,
+              err: String(err),
+            });
+          }
+        }
+      } catch (err) {
+        log("acp stream read failed", { runId: run.runId, err: String(err) });
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          // ignore
+        }
+      }
+    })();
+  };
+
+  const ensureRuntime = async (msg: any): Promise<RunRuntime> => {
+    const runId = validateRunId(msg.run_id);
+    const instanceName =
+      typeof msg.instance_name === "string" && msg.instance_name.trim()
+        ? validateInstanceName(msg.instance_name)
+        : validateInstanceName(`tuixiu-run-${runId}`);
+
+    const keepaliveTtlRaw = msg.keepalive_ttl_seconds ?? null;
+    const keepaliveTtlSeconds = Number.isFinite(keepaliveTtlRaw as number)
+      ? Math.max(60, Math.min(24 * 3600, Number(keepaliveTtlRaw)))
+      : DEFAULT_KEEPALIVE_TTL_SECONDS;
+
+    const existing = runs.get(runId) ?? null;
+    if (existing && existing.instanceName !== instanceName) {
+      throw new Error("instance_name 与既有运行时不一致");
+    }
+
+    const run: RunRuntime =
+      existing ??
+      ({
+        runId,
+        instanceName,
+        keepaliveTtlSeconds,
+        expiresAt: null,
+        agent: null,
+        lastUsedAt: Date.now(),
+        acpClient: new AcpClientFacade({
+          runId,
+          instanceName,
+          workspaceGuestRoot: WORKSPACE_GUEST_PATH,
+          sandbox,
+          log,
+        }),
+      } satisfies RunRuntime);
+
+    run.keepaliveTtlSeconds = keepaliveTtlSeconds;
+    run.expiresAt = null;
+    run.lastUsedAt = Date.now();
+    runs.set(runId, run);
+
+    const info = await sandbox.ensureInstanceRunning({
+      runId,
+      instanceName,
+      workspaceGuestPath: WORKSPACE_GUEST_PATH,
+      env: undefined,
+    });
+
+    sendSandboxInstanceStatus({
+      runId,
+      instanceName,
+      status: info.status === "missing" ? "missing" : info.status,
+      lastError: null,
+    });
+
+    if (info.status !== "running") {
+      throw new Error(`sandbox 实例未处于 running 状态：${info.status}`);
+    }
+
+    return run;
+  };
+
+  const runInitScript = async (opts: {
+    run: RunRuntime;
+    init?: { script?: string; timeout_seconds?: number; env?: Record<string, string> };
   }): Promise<boolean> => {
-    const script = opts.init?.script?.trim();
+    const script = opts.init?.script?.trim() ?? "";
     if (!script) return true;
 
     const timeoutSecondsRaw = opts.init?.timeout_seconds ?? 300;
     const timeoutSeconds = Number.isFinite(timeoutSecondsRaw)
-      ? Math.max(1, Math.min(3600, timeoutSecondsRaw))
+      ? Math.max(1, Math.min(3600, Number(timeoutSecondsRaw)))
       : 300;
 
-    const env = opts.init?.env
-      ? { ...process.env, ...opts.init.env }
-      : process.env;
-    const secrets = pickSecretValues(opts.init?.env);
+    const env = opts.init?.env ? { ...opts.init.env } : undefined;
+    const secrets = pickSecretValues(env);
+    const redact = (line: string) => redactSecrets(line, secrets);
 
-    sendUpdate(opts.runId, {
+    sendUpdate(opts.run.runId, {
       type: "text",
       text: `[init] start (bash, timeout=${timeoutSeconds}s)`,
     });
 
-    const proc = spawn("bash", ["-lc", script], {
-      cwd: opts.cwd,
+    const proc = await sandbox.execProcess({
+      instanceName: opts.run.instanceName,
+      command: ["bash", "-lc", script],
+      cwdInGuest: WORKSPACE_GUEST_PATH,
       env,
-      stdio: ["ignore", "pipe", "pipe"],
     });
-
-    const pump = (stream: NodeJS.ReadableStream, label: string) => {
-      stream.setEncoding("utf8");
-      stream.on("data", (chunk) => {
-        const text = redactSecrets(String(chunk ?? ""), secrets).trimEnd();
-        if (!text) return;
-        sendUpdate(opts.runId, {
-          type: "text",
-          text: `[init:${label}] ${text}`,
-        });
-      });
-    };
-    pump(proc.stdout, "stdout");
-    pump(proc.stderr, "stderr");
-
-    const raced = await Promise.race([
-      new Promise<{ code: number | null }>((resolve) => {
-        proc.once("exit", (code) => resolve({ code }));
-        proc.once("error", () => resolve({ code: 1 }));
-      }),
-      delay(timeoutSeconds * 1000).then(() => ({ code: -1 })),
-    ]);
-
-    if (raced.code === -1) {
-      try {
-        proc.kill();
-      } catch {
-        // ignore
-      }
-      sendUpdate(opts.runId, {
-        type: "init_result",
-        ok: false,
-        error: `timeout after ${timeoutSeconds}s`,
-      });
-      return false;
-    }
-
-    if (raced.code !== 0) {
-      sendUpdate(opts.runId, {
-        type: "init_result",
-        ok: false,
-        exitCode: raced.code,
-        error: `exitCode=${raced.code}`,
-      });
-      return false;
-    }
-
-    sendUpdate(opts.runId, { type: "init_result", ok: true });
-    sendUpdate(opts.runId, { type: "text", text: "[init] done" });
-    return true;
-  };
-
-  const boxliteCloneInitScript = [
-    "set -euo pipefail",
-    "",
-    'WORKSPACE="${TUIXIU_BOX_WORKSPACE:-/workspace}"',
-    'REPO_URL="${TUIXIU_REPO_URL:-}"',
-    'BASE_BRANCH="${TUIXIU_BASE_BRANCH:-${TUIXIU_DEFAULT_BRANCH:-main}}"',
-    'RUN_BRANCH="${TUIXIU_RUN_BRANCH:-}"',
-    "",
-    'if [ -z "$REPO_URL" ]; then',
-    '  echo "[tuixiu] missing TUIXIU_REPO_URL" >&2',
-    "  exit 2",
-    "fi",
-    'if [ -z "$RUN_BRANCH" ]; then',
-    '  RUN_BRANCH="run/${TUIXIU_RUN_ID:-run}"',
-    "fi",
-    "",
-    'mkdir -p "$WORKSPACE"',
-    'cd "$WORKSPACE"',
-    "",
-    "# Prepare GIT_ASKPASS so git clone/push can run non-interactively when token is provided.",
-    'ASKPASS_DIR="$WORKSPACE/.tuixiu"',
-    'ASKPASS="$ASKPASS_DIR/askpass.sh"',
-    'mkdir -p "$ASKPASS_DIR"',
-    'cat > "$ASKPASS" <<\'EOF\'',
-    "#!/bin/sh",
-    'prompt="$1"',
-    'token="${GH_TOKEN:-${GITHUB_TOKEN:-${GITLAB_TOKEN:-${GITLAB_ACCESS_TOKEN:-}}}}"',
-    'if [ -z "$token" ]; then',
-    "  exit 1",
-    "fi",
-    'case "${TUIXIU_REPO_URL:-}" in',
-    "  *github.com*) user=\"x-access-token\" ;;",
-    "  *) user=\"oauth2\" ;;",
-    "esac",
-    'case "$prompt" in',
-    '  *Username*|*username*) echo "$user" ;;',
-    '  *Password*|*password*) echo "$token" ;;',
-    "  *) echo \"\" ;;",
-    "esac",
-    "EOF",
-    'chmod +x "$ASKPASS"',
-    'export GIT_ASKPASS="$ASKPASS"',
-    'export GIT_TERMINAL_PROMPT=0',
-    "",
-    'if [ ! -d .git ]; then',
-    '  echo "[tuixiu] git clone $REPO_URL" >&2',
-    '  git clone "$REPO_URL" .',
-    "else",
-    '  echo "[tuixiu] workspace already has .git; skipping clone" >&2',
-    "fi",
-    "",
-    'git remote set-url origin "$REPO_URL" >/dev/null 2>&1 || true',
-    'git fetch origin --prune',
-    "",
-    "# Checkout run branch: prefer remote branch if it exists; otherwise create from base branch.",
-    'if git show-ref --verify --quiet "refs/remotes/origin/$RUN_BRANCH"; then',
-    '  git checkout -B "$RUN_BRANCH" "origin/$RUN_BRANCH"',
-    "else",
-    '  git checkout -B "$RUN_BRANCH" "origin/$BASE_BRANCH"',
-    "fi",
-    "",
-    'git config user.name "${TUIXIU_GIT_NAME:-tuixiu-bot}" >/dev/null 2>&1 || true',
-    'git config user.email "${TUIXIU_GIT_EMAIL:-tuixiu-bot@localhost}" >/dev/null 2>&1 || true',
-  ].join("\n");
-
-  const runInitScriptBoxlite = async (opts: {
-    runId: string;
-    cwd: string;
-    sandbox: BoxliteSandbox;
-    init?: {
-      script?: string;
-      timeout_seconds?: number;
-      env?: Record<string, string>;
-    };
-  }): Promise<boolean> => {
-    const extra = opts.init?.script?.trim() ?? "";
-    const script = `${isBoxliteGitClone ? boxliteCloneInitScript : ""}\n\n${extra}`.trim();
-    if (!script) return true;
-
-    const timeoutSecondsRaw = opts.init?.timeout_seconds ?? 900;
-    const timeoutSeconds = Number.isFinite(timeoutSecondsRaw)
-      ? Math.max(1, Math.min(3600, timeoutSecondsRaw))
-      : 900;
-
-    const env = { ...(opts.init?.env ?? {}) };
-    env.TUIXIU_WORKSPACE = opts.cwd;
-    if (isBoxliteGitClone && !env.TUIXIU_BOX_WORKSPACE) {
-      env.TUIXIU_BOX_WORKSPACE = opts.cwd;
-    }
-    const secrets = pickSecretValues(env);
-    const redact = (line: string) => redactSecrets(line, secrets);
 
     const readLines = async (
       stream: ReadableStream<Uint8Array> | undefined,
@@ -453,30 +445,31 @@ async function main() {
           for (const line of parts) {
             const text = redact(line);
             if (!text.trim()) continue;
-            sendUpdate(opts.runId, { type: "text", text: `[init:${label}] ${text}` });
+            sendUpdate(opts.run.runId, {
+              type: "text",
+              text: `[init:${label}] ${text}`,
+            });
           }
         }
       } finally {
+        try {
+          reader.releaseLock();
+        } catch {}
         const rest = redact(buf);
-        if (rest.trim()) sendUpdate(opts.runId, { type: "text", text: `[init:${label}] ${rest}` });
+        if (rest.trim()) {
+          sendUpdate(opts.run.runId, {
+            type: "text",
+            text: `[init:${label}] ${rest}`,
+          });
+        }
       }
     };
 
-    sendUpdate(opts.runId, {
-      type: "text",
-      text: `[init] start (boxlite, bash, timeout=${timeoutSeconds}s)`,
-    });
-
-    const proc = await opts.sandbox.execProcess({
-      command: ["bash", "-lc", script],
-      cwd: opts.cwd,
-      env,
-    });
-
-    const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
-      proc.onExit?.((info) => resolve(info));
-    });
-
+    const exitP = new Promise<{ code: number | null; signal: string | null }>(
+      (resolve) => {
+        proc.onExit?.((info) => resolve(info));
+      },
+    );
     const outP = readLines(proc.stdout, "stdout");
     const errP = readLines(proc.stderr, "stderr");
 
@@ -486,20 +479,20 @@ async function main() {
     ]);
 
     if (raced.kind === "timeout") {
-      sendUpdate(opts.runId, {
-        type: "text",
-        text: `[init] timeout after ${timeoutSeconds}s (stopping box)`,
+      sendUpdate(opts.run.runId, {
+        type: "init_result",
+        ok: false,
+        error: `timeout after ${timeoutSeconds}s`,
       });
-      await opts.sandbox.stopBox();
+      await proc.close().catch(() => {});
       await Promise.allSettled([outP, errP]);
-      sendUpdate(opts.runId, { type: "init_result", ok: false, exitCode: null, error: "timeout" });
       return false;
     }
 
     await Promise.allSettled([outP, errP]);
 
     if (raced.code !== 0) {
-      sendUpdate(opts.runId, {
+      sendUpdate(opts.run.runId, {
         type: "init_result",
         ok: false,
         exitCode: raced.code,
@@ -508,120 +501,23 @@ async function main() {
       return false;
     }
 
-    sendUpdate(opts.runId, { type: "init_result", ok: true });
-    sendUpdate(opts.runId, { type: "text", text: "[init] done" });
+    sendUpdate(opts.run.runId, { type: "init_result", ok: true });
+    sendUpdate(opts.run.runId, { type: "text", text: "[init] done" });
     return true;
-  };
-
-  const normalizeEnvKey = (env: Record<string, string> | undefined): string => {
-    if (!env) return "";
-    try {
-      const keys = Object.keys(env).sort();
-      const normalized: Record<string, string> = {};
-      for (const k of keys) normalized[k] = String(env[k] ?? "");
-      return JSON.stringify(normalized);
-    } catch {
-      return "";
-    }
-  };
-
-  const ensureRun = async (
-    runId: string,
-    cwd: string,
-    launcher: AgentLauncher,
-    env: Record<string, string> | undefined,
-  ): Promise<RunState> => {
-    const envKey = normalizeEnvKey(env);
-    const existing = runStates.get(runId);
-    if (existing && existing.cwd === cwd && existing.envKey === envKey) {
-      existing.lastUsedAt = Date.now();
-      return existing;
-    }
-
-    if (existing) {
-      await closeRun(runId, "cwd_changed");
-    }
-
-    const transport = await launcher.launch({ cwd, env });
-    const stream = acp.ndJsonStream(transport.input, transport.output);
-
-    const state: RunState = {
-      cwd,
-      envKey,
-      transport,
-      stream,
-      lastUsedAt: Date.now(),
-      writeQueue: Promise.resolve(),
-      reader: null,
-    };
-    runStates.set(runId, state);
-
-    transport.onExit?.((info) => {
-      void closeRun(runId, "agent_exit").finally(() => {
-        try {
-          send({
-            type: "acp_exit",
-            run_id: runId,
-            code: info.code,
-            signal: info.signal,
-          });
-        } catch {
-          // ignore
-        }
-      });
-    });
-
-    const reader = stream.readable.getReader();
-    state.reader = reader;
-    void (async () => {
-      try {
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (!value) continue;
-          state.lastUsedAt = Date.now();
-          try {
-            send({ type: "acp_message", run_id: runId, message: value });
-          } catch (err) {
-            log("failed to forward acp message", { runId, err: String(err) });
-          }
-        }
-      } catch (err) {
-        log("acp stream read failed", { runId, err: String(err) });
-      } finally {
-        try {
-          reader.releaseLock();
-        } catch {
-          // ignore
-        }
-      }
-    })();
-
-    return state;
   };
 
   const handleAcpOpen = async (msg: any) => {
     const runId = String(msg.run_id ?? "").trim();
     if (!runId) return;
-
-    const cwd = getRunCwd(
-      runId,
-      typeof msg.cwd === "string" ? msg.cwd : undefined,
-    );
-    const init = isRecord(msg.init) ? (msg.init as any) : undefined;
-
     try {
-      const initOk = await runInitScript({ runId, cwd, init });
+      const run = await ensureRuntime(msg);
+      const init = isRecord(msg.init) ? (msg.init as any) : undefined;
+      const initOk = await runInitScript({ run, init });
       if (!initOk) {
-        send({
-          type: "acp_opened",
-          run_id: runId,
-          ok: false,
-          error: "init_failed",
-        });
+        send({ type: "acp_opened", run_id: runId, ok: false, error: "init_failed" });
         return;
       }
-      await ensureRun(runId, cwd);
+      await startAgent(run);
       send({ type: "acp_opened", run_id: runId, ok: true });
     } catch (err) {
       send({
@@ -636,14 +532,14 @@ async function main() {
   const handleAcpMessage = async (msg: any) => {
     const runId = String(msg.run_id ?? "").trim();
     if (!runId) return;
-    const state = runStates.get(runId);
-    if (!state) {
+    const run = runs.get(runId);
+    if (!run || !run.agent) {
       send({ type: "acp_error", run_id: runId, error: "run_not_open" });
       return;
     }
 
     const message = msg.message;
-    if (!isRecord(message) || message.jsonrpc !== "2.0") {
+    if (!isJsonRpcMessage(message)) {
       send({
         type: "acp_error",
         run_id: runId,
@@ -652,27 +548,19 @@ async function main() {
       return;
     }
 
-    state.lastUsedAt = Date.now();
-    state.writeQueue = state.writeQueue
-      .then(async () => {
-        const writer = state.stream.writable.getWriter();
-        try {
-          await writer.write(message as any);
-        } finally {
-          writer.releaseLock();
-        }
-      })
-      .catch((err) => {
-        log("acp write failed", { runId, err: String(err) });
-      });
-    await state.writeQueue;
+    run.lastUsedAt = Date.now();
+    await writeToAgent(run, message as any);
   };
 
   const handleAcpClose = async (msg: any) => {
     const runId = String(msg.run_id ?? "").trim();
     if (!runId) return;
+    const run = runs.get(runId);
+    if (!run) return;
 
-    await closeRun(runId, "requested");
+    await closeAgent(run, "requested");
+    run.expiresAt = Date.now() + run.keepaliveTtlSeconds * 1000;
+
     try {
       send({ type: "acp_closed", run_id: runId, ok: true });
     } catch {
@@ -680,15 +568,195 @@ async function main() {
     }
   };
 
-  const idleTimer = setInterval(() => {
+  const reportInventory = async () => {
+    const capturedAt = nowIso();
+    const inventoryId = randomUUID();
+    const instances = await sandbox.listInstances({ managedOnly: true });
+    send({
+      type: "sandbox_inventory",
+      inventory_id: inventoryId,
+      provider: sandbox.provider,
+      runtime: sandbox.provider === "container_oci" ? sandbox.runtime ?? null : null,
+      captured_at: capturedAt,
+      instances: instances.map((i) => {
+        const runId =
+          i.instanceName.startsWith("tuixiu-run-")
+            ? i.instanceName.slice("tuixiu-run-".length)
+            : null;
+        return {
+          instance_name: i.instanceName,
+          run_id: runId,
+          status: i.status,
+          created_at: i.createdAt,
+          last_seen_at: capturedAt,
+        };
+      }),
+    });
+  };
+
+  const handleSandboxControl = async (msg: any) => {
+    const runId = String(msg.run_id ?? "").trim();
+    const instanceNameRaw = String(msg.instance_name ?? "").trim();
+    const action = String(msg.action ?? "").trim();
+
+    const reply = (payload: Record<string, unknown>) => {
+      try {
+        send({
+          type: "sandbox_control_result",
+          run_id: runId || null,
+          instance_name: instanceNameRaw || null,
+          action,
+          ...payload,
+        });
+      } catch (err) {
+        log("failed to send sandbox_control_result", { err: String(err) });
+      }
+    };
+
+    try {
+      if (action === "report_inventory") {
+        await reportInventory();
+        reply({ ok: true });
+        return;
+      }
+
+      const instanceName = validateInstanceName(instanceNameRaw);
+
+      if (action === "inspect") {
+        const info = await sandbox.inspectInstance(instanceName);
+        if (runId) {
+          sendSandboxInstanceStatus({
+            runId,
+            instanceName,
+            status: info.status === "missing" ? "missing" : info.status,
+            lastError: null,
+          });
+        }
+        reply({
+          ok: true,
+          status: info.status,
+          details: { created_at: info.createdAt },
+        });
+        return;
+      }
+
+      if (action === "ensure_running") {
+        const effectiveRunId = validateRunId(runId);
+        const info = await sandbox.ensureInstanceRunning({
+          runId: effectiveRunId,
+          instanceName,
+          workspaceGuestPath: WORKSPACE_GUEST_PATH,
+          env: undefined,
+        });
+        sendSandboxInstanceStatus({
+          runId: effectiveRunId,
+          instanceName,
+          status: info.status === "missing" ? "missing" : info.status,
+          lastError: null,
+        });
+        reply({
+          ok: true,
+          status: info.status,
+          details: { created_at: info.createdAt },
+        });
+        return;
+      }
+
+      if (action === "stop") {
+        if (runId) {
+          const run = runs.get(runId);
+          if (run) await closeAgent(run, "sandbox_control_stop");
+        }
+        await sandbox.stopInstance(instanceName);
+        const info = await sandbox.inspectInstance(instanceName);
+        if (runId) {
+          sendSandboxInstanceStatus({
+            runId,
+            instanceName,
+            status: info.status === "missing" ? "missing" : info.status,
+            lastError: null,
+          });
+        }
+        reply({ ok: true, status: info.status });
+        return;
+      }
+
+      if (action === "remove") {
+        if (runId) {
+          const run = runs.get(runId);
+          if (run) await closeAgent(run, "sandbox_control_remove");
+          runs.delete(runId);
+        }
+        await sandbox.removeInstance(instanceName);
+        if (runId) {
+          sendSandboxInstanceStatus({
+            runId,
+            instanceName,
+            status: "missing",
+            lastError: null,
+          });
+        }
+        reply({ ok: true, status: "missing" });
+        return;
+      }
+
+      reply({ ok: false, error: "unsupported_action" });
+    } catch (err) {
+      const message = String(err);
+      if (runId && instanceNameRaw) {
+        sendSandboxInstanceStatus({
+          runId,
+          instanceName: instanceNameRaw,
+          status: "error",
+          lastError: message,
+        });
+      }
+      reply({ ok: false, error: message });
+    }
+  };
+
+  const cleanupTimer = setInterval(() => {
     const now = Date.now();
-    for (const [runId, state] of runStates) {
-      const idleMs = now - state.lastUsedAt;
-      if (idleMs < 30 * 60 * 1000) continue;
-      void closeRun(runId, "idle_timeout");
+    for (const [runId, run] of runs) {
+      if (run.expiresAt == null) continue;
+      if (now <= run.expiresAt) continue;
+      void (async () => {
+        await closeAgent(run, "keepalive_expired");
+        await sandbox.removeInstance(run.instanceName).catch((err) => {
+          log("sandbox remove failed", {
+            runId,
+            instanceName: run.instanceName,
+            err: String(err),
+          });
+        });
+        sendSandboxInstanceStatus({
+          runId,
+          instanceName: run.instanceName,
+          status: "missing",
+          lastError: null,
+        });
+        runs.delete(runId);
+        log("run expired & removed", { runId, instanceName: run.instanceName });
+      })();
     }
   }, 60_000);
-  idleTimer.unref?.();
+  cleanupTimer.unref?.();
+
+  const heartbeatLoop = async (signal: AbortSignal) => {
+    while (!signal.aborted) {
+      await delay(cfg.heartbeat_seconds * 1000, { signal }).catch(() => {});
+      if (signal.aborted) break;
+      try {
+        send({
+          type: "heartbeat",
+          agent_id: cfg.agent.id,
+          timestamp: nowIso(),
+        });
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   const connectLoop = async () => {
     for (;;) {
@@ -704,6 +772,9 @@ async function main() {
         });
 
         registerAgent();
+        await reportInventory().catch((err) => {
+          log("report inventory failed", { err: String(err) });
+        });
         log("connected & registered");
         void heartbeatLoop(ac.signal);
 
@@ -726,6 +797,10 @@ async function main() {
               }
               if (msg.type === "acp_close") {
                 void handleAcpClose(msg);
+                return;
+              }
+              if (msg.type === "sandbox_control") {
+                void handleSandboxControl(msg);
                 return;
               }
             } catch (err) {
