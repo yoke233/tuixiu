@@ -19,7 +19,7 @@ describe("Tasks routes", () => {
 
   it("POST /api/issues/:id/tasks returns BAD_TEMPLATE for unknown template", async () => {
     const server = createHttpServer();
-    const prisma = { issue: { findUnique: vi.fn() } } as any;
+    const prisma = { issue: { findUnique: vi.fn().mockResolvedValue({ id: "i1", project: { defaultBranch: "main" } }) } } as any;
     await server.register(makeTaskRoutes({ prisma }), { prefix: "/api" });
 
     const res = await server.inject({
@@ -32,7 +32,7 @@ describe("Tasks routes", () => {
       success: false,
       error: { code: "BAD_TEMPLATE", message: "未知的模板", details: "nope" },
     });
-    expect(prisma.issue.findUnique).not.toHaveBeenCalled();
+    expect(prisma.issue.findUnique).toHaveBeenCalled();
     await server.close();
   });
 
@@ -97,6 +97,60 @@ describe("Tasks routes", () => {
     const updateCall = prisma.task.update.mock.calls[0]?.[0] as any;
     expect(updateCall.where.id).toBeDefined();
     expect(updateCall.data.currentStepId).toBeDefined();
+    await server.close();
+  });
+
+  it("POST /api/issues/:id/tasks supports project-level template overrides", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      issue: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "i1",
+          project: {
+            defaultBranch: "main",
+            branchProtection: {
+              taskTemplates: {
+                "custom.hello": {
+                  displayName: "Hello",
+                  steps: [{ key: "dev.implement", kind: "dev.implement", executorType: "agent" }],
+                },
+              },
+            },
+          },
+        }),
+      },
+      task: {
+        create: vi.fn().mockResolvedValue({ id: "t1" }),
+        update: vi.fn().mockImplementation(async (args: any) => ({
+          id: "t1",
+          issueId: "i1",
+          templateKey: "custom.hello",
+          currentStepId: args?.data?.currentStepId ?? null,
+          status: "pending",
+          steps: [{ id: "s1", key: "dev.implement", order: 1, status: "ready" }],
+        })),
+      },
+    } as any;
+
+    await server.register(makeTaskRoutes({ prisma }), { prefix: "/api" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/issues/00000000-0000-0000-0000-000000000001/tasks",
+      payload: { templateKey: "custom.hello" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const json = res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.task.templateKey).toBe("custom.hello");
+
+    const createCall = prisma.task.create.mock.calls[0]?.[0] as any;
+    expect(createCall.data.templateKey).toBe("custom.hello");
+    expect(createCall.data.steps.create[0]).toEqual(
+      expect.objectContaining({ key: "dev.implement", kind: "dev.implement", order: 1, status: "ready" }),
+    );
+
     await server.close();
   });
 

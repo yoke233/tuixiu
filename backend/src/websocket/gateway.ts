@@ -748,18 +748,23 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
         if (message.type === "branch_created") {
           await enqueueRunTask(message.run_id, async () => {
             await flushRunChunkBuffer(message.run_id);
-            const createdArtifact = await deps.prisma.artifact.create({
-              data: {
-                id: uuidv7(),
-                runId: message.run_id,
-                type: "branch",
-                content: { branch: message.branch } as any
-              }
-            });
+            const createdEvent = await deps.prisma.event
+              .create({
+                data: {
+                  id: uuidv7(),
+                  runId: message.run_id,
+                  source: "acp",
+                  type: "scm.branch.created",
+                  payload: { branch: message.branch } as any,
+                } as any,
+              } as any)
+              .catch(() => null);
             await deps.prisma.run
               .update({ where: { id: message.run_id }, data: { branchName: message.branch } })
               .catch(() => {});
-            broadcastToClients({ type: "artifact_added", run_id: message.run_id, artifact: createdArtifact });
+            if (createdEvent) {
+              broadcastToClients({ type: "event_added", run_id: message.run_id, event: createdEvent });
+            }
           });
           return;
         }
