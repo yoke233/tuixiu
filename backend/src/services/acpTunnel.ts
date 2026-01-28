@@ -543,7 +543,31 @@ export function createAcpTunnel(deps: {
     const p = (async () => {
       const sandbox = await resolveSandboxOpenParams(opts.runId);
       await new Promise<void>((resolve, reject) => {
-        state.openDeferred = { resolve, reject };
+        const timeoutMsRaw = Number(process.env.ACP_OPEN_TIMEOUT_MS ?? "30000");
+        const timeoutMs = Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0 ? timeoutMsRaw : 30_000;
+
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          reject(new Error(`acp_open timeout after ${timeoutMs}ms`));
+        }, timeoutMs);
+        (timer as any).unref?.();
+
+        state.openDeferred = {
+          resolve: () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve();
+          },
+          reject: (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            reject(err);
+          },
+        };
         void deps
           .sendToAgent(opts.proxyId, {
             type: "acp_open",
