@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../../deps.js";
 import { callPmLlmJson, isPmLlmEnabled } from "./pmLlm.js";
+import { renderTextTemplateFromDb } from "../textTemplates.js";
 
 export const pmRiskSchema = z.enum(["low", "medium", "high"]);
 
@@ -214,49 +215,37 @@ export async function analyzeIssueForPm(opts: {
         .join("\n")
     : "- （无可用在线 Agent）";
 
+  const systemContent = await renderTextTemplateFromDb(
+    { prisma: opts.prisma },
+    { key: "pm.analyzeIssue.system", projectId: (issue as any).projectId, vars: {} },
+  );
+  const userContent = await renderTextTemplateFromDb(
+    { prisma: opts.prisma },
+    {
+      key: "pm.analyzeIssue.user",
+      projectId: (issue as any).projectId,
+      vars: {
+        title: String((issue as any).title ?? ""),
+        description: String((issue as any).description ?? ""),
+        labels: normalizeList((issue as any).labels, 20).join(" | "),
+        externalLabels: normalizeList((issue as any).externalLabels, 20).join(" | "),
+        acceptanceCriteria: normalizeList((issue as any).acceptanceCriteria, 10).join(" | "),
+        constraints: normalizeList((issue as any).constraints, 10).join(" | "),
+        testRequirements: String((issue as any).testRequirements ?? ""),
+        roleLines,
+        agentLines,
+      },
+    },
+  );
+
   const messages = [
     {
       role: "system" as const,
-      content: [
-        "你是一个软件项目的项目管理员（PM）。",
-        "你必须只输出严格的 JSON（不要 Markdown/代码块/解释）。",
-        "目标：根据任务内容，从可选 roleKey/Agent 中做出最合适的推荐，并给出风险等级与需要澄清的问题。",
-        "",
-        "输出 JSON Schema：",
-        "{",
-        '  "summary": string,',
-        '  "risk": "low" | "medium" | "high",',
-        '  "questions": string[],',
-        '  "recommendedRoleKey": string | null,',
-        '  "recommendedAgentId": string | null,',
-        '  "recommendedTrack": "quick" | "planning" | "enterprise" | null',
-        "}",
-        "",
-        "规则：",
-        "- recommendedRoleKey 必须是给定列表中的一个，否则返回 null。",
-        "- recommendedAgentId 必须是给定列表中的一个，否则返回 null。",
-        "- recommendedTrack 用于选择执行轨道：quick=快速实现+测试；planning=先固化 PRD/拆解/门禁再实施；enterprise=预留（更强合规/审计）。不确定时优先 quick；高风险/范围大时用 planning。",
-        "- questions 用于向提问者补齐信息，尽量少且关键（0-5 条）。",
-      ].join("\n"),
+      content: systemContent,
     },
     {
       role: "user" as const,
-      content: [
-        "【任务】",
-        `title: ${String((issue as any).title ?? "")}`,
-        `description: ${String((issue as any).description ?? "")}`,
-        `labels: ${normalizeList((issue as any).labels, 20).join(" | ")}`,
-        `externalLabels: ${normalizeList((issue as any).externalLabels, 20).join(" | ")}`,
-        `acceptanceCriteria: ${normalizeList((issue as any).acceptanceCriteria, 10).join(" | ")}`,
-        `constraints: ${normalizeList((issue as any).constraints, 10).join(" | ")}`,
-        `testRequirements: ${String((issue as any).testRequirements ?? "")}`,
-        "",
-        "【可选角色 roleKey】",
-        roleLines,
-        "",
-        "【可用 Agent】",
-        agentLines,
-      ].join("\n"),
+      content: userContent,
     },
   ];
 

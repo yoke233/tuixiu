@@ -137,6 +137,8 @@ export function makeApprovalRoutes(deps: {
 
         if (issueIsGitHub && token) {
           await postGitHubApprovalCommentBestEffort({
+            prisma: deps.prisma,
+            projectId: issue?.projectId ?? null,
             repoUrl,
             githubAccessToken: token,
             issueNumber,
@@ -183,6 +185,8 @@ export function makeApprovalRoutes(deps: {
 
         if (issueIsGitHub && token) {
           await postGitHubApprovalCommentBestEffort({
+            prisma: deps.prisma,
+            projectId: issue?.projectId ?? null,
             repoUrl,
             githubAccessToken: token,
             issueNumber,
@@ -217,6 +221,8 @@ export function makeApprovalRoutes(deps: {
 
         if (issueIsGitHub && token) {
           await postGitHubApprovalCommentBestEffort({
+            prisma: deps.prisma,
+            projectId: issue?.projectId ?? null,
             repoUrl,
             githubAccessToken: token,
             issueNumber,
@@ -267,6 +273,8 @@ export function makeApprovalRoutes(deps: {
 
         if (issueIsGitHub && token) {
           await postGitHubApprovalCommentBestEffort({
+            prisma: deps.prisma,
+            projectId: issue?.projectId ?? null,
             repoUrl,
             githubAccessToken: token,
             issueNumber,
@@ -341,6 +349,8 @@ export function makeApprovalRoutes(deps: {
 
         if (issueIsGitHub && token) {
           await postGitHubApprovalCommentBestEffort({
+            prisma: deps.prisma,
+            projectId: issue?.projectId ?? null,
             repoUrl,
             githubAccessToken: token,
             issueNumber,
@@ -383,6 +393,8 @@ export function makeApprovalRoutes(deps: {
 
         if (issueIsGitHub && token) {
           await postGitHubApprovalCommentBestEffort({
+            prisma: deps.prisma,
+            projectId: issue?.projectId ?? null,
             repoUrl,
             githubAccessToken: token,
             issueNumber,
@@ -482,6 +494,8 @@ export function makeApprovalRoutes(deps: {
 
       if (issueIsGitHub && token) {
         await postGitHubApprovalCommentBestEffort({
+          prisma: deps.prisma,
+          projectId: issue?.projectId ?? null,
           repoUrl,
           githubAccessToken: token,
           issueNumber,

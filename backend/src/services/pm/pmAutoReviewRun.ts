@@ -188,6 +188,8 @@ export async function autoReviewRunForPm(
 
       if (issueIsGitHub && token) {
         await postGitHubAutoReviewCommentBestEffort({
+          prisma: deps.prisma,
+          projectId: issue?.projectId ?? null,
           repoUrl: repoUrlForIssue,
           githubAccessToken: token,
           issueNumber,

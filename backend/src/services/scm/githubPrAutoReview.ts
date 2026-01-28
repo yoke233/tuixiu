@@ -4,9 +4,11 @@ import type { PrismaDeps } from "../../deps.js";
 import * as github from "../../integrations/github.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { parseEnvText } from "../../utils/envText.js";
+import { renderTextTemplate } from "../../utils/textTemplate.js";
 import type { AcpTunnel } from "../acpTunnel.js";
 import { extractAgentTextFromEvents, extractTaggedCodeBlock } from "../agentOutput.js";
 import { callPmLlmJson, isPmLlmEnabled } from "../pm/pmLlm.js";
+import { renderTextTemplateFromDb } from "../textTemplates.js";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 type QueueTask = () => Promise<void>;
@@ -60,27 +62,6 @@ function toGitHubReviewEvent(verdict: "approve" | "changes_requested" | null): "
   return "COMMENT";
 }
 
-function renderReviewBody(opts: {
-  prNumber: number;
-  prUrl?: string;
-  headSha: string;
-  verdict: "approve" | "changes_requested" | null;
-  markdown: string;
-  note: string;
-}): string {
-  const lines: string[] = [];
-  lines.push("### 🤖 自动代码评审（ACP 协作台）");
-  lines.push("");
-  lines.push(`- PR：#${opts.prNumber}${opts.prUrl ? `（${opts.prUrl}）` : ""}`);
-  lines.push(`- Head：\`${opts.headSha.slice(0, 12)}\``);
-  if (opts.verdict) lines.push(`- 结论：\`${opts.verdict}\``);
-  lines.push("");
-  lines.push(String(opts.markdown ?? "").trim());
-  lines.push("");
-  lines.push(`> 说明：${opts.note}`);
-  return lines.filter(Boolean).join("\n");
-}
-
 const llmReviewSchema = z.object({
   verdict: z.enum(["approve", "changes_requested"]),
   findings: z
@@ -108,13 +89,6 @@ const acpReviewSchema = z
     markdown: z.string().optional(),
   })
   .passthrough();
-
-function renderTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_m, key) => {
-    const v = vars[key];
-    return typeof v === "string" ? v : "";
-  });
-}
 
 async function selectAvailableAgent(prisma: PrismaDeps, preferredAgentId?: string | null, preferredSandboxProvider?: string | null) {
   const desiredProvider = String(preferredSandboxProvider ?? "").trim();
@@ -330,7 +304,7 @@ async function runGitHubPrAutoReviewOnce(
           );
 
           if (role?.promptTemplate?.trim()) {
-            const rendered = renderTemplate(String(role.promptTemplate), {
+            const rendered = renderTextTemplate(String(role.promptTemplate), {
               workspace: workspacePath,
               branch: String(run.branchName ?? ""),
               repoUrl: String(project.repoUrl ?? ""),
@@ -455,6 +429,11 @@ async function runGitHubPrAutoReviewOnce(
     const maxPatchCharsRaw = Number(process.env.GITHUB_PR_AUTO_REVIEW_MAX_PATCH_CHARS ?? 8000);
     const maxPatchChars = Number.isFinite(maxPatchCharsRaw) && maxPatchCharsRaw > 0 ? Math.min(maxPatchCharsRaw, 20000) : 8000;
 
+    const noPatchText = await renderTextTemplateFromDb(
+      { prisma: deps.prisma },
+      { key: "github.prAutoReview.patchMissing", projectId: issue.projectId, vars: {} },
+    );
+
     let files: github.GitHubPullRequestFile[] = [];
     try {
       files = await listPullRequestFiles(auth, { pullNumber: prNumber, perPage: 100, page: 1 });
@@ -484,47 +463,44 @@ async function runGitHubPrAutoReviewOnce(
         [
           `FILE: ${filename}`,
           status ? `STATUS: ${status}` : "",
-          patch ? clampText(patch, maxPatchChars) : "（无 patch：可能是二进制/过大/被截断）",
+          patch ? clampText(patch, maxPatchChars) : noPatchText,
         ]
           .filter(Boolean)
           .join("\n"),
       );
     }
 
+    const llmSystemPrompt = await renderTextTemplateFromDb(
+      { prisma: deps.prisma },
+      { key: "github.prAutoReview.llm.system", projectId: issue.projectId, vars: {} },
+    );
+    const llmUserPrompt = await renderTextTemplateFromDb(
+      { prisma: deps.prisma },
+      {
+        key: "github.prAutoReview.llm.user",
+        projectId: issue.projectId,
+        vars: {
+          prNumber,
+          prUrl,
+          prTitle,
+          branchLine: sourceBranch && targetBranch ? `${sourceBranch} -> ${targetBranch}` : "",
+          headSha,
+          baseSha,
+          prBody: prBody ? clampText(prBody, 4000) : "",
+          maxFiles,
+          patchBlocks: patchBlocks.join("\n\n---\n\n"),
+        },
+      },
+    );
+
     const system: ChatMessage = {
       role: "system",
-      content: [
-        "你是严谨的代码审查员。请根据给定的 Pull Request 变更给出评审结论。",
-        "",
-        "只输出一个 JSON 对象（不要输出多余文字/不要用 Markdown 代码块包裹）。字段：",
-        '- verdict: "approve" | "changes_requested"',
-        '- findings: { severity: "high"|"medium"|"low"; message: string; path?: string }[]',
-        "- markdown: string（用于贴到 PR 评论区的 Markdown；建议包含：总体评价、关键问题、可执行建议）",
-        "",
-        "要求：",
-        "- 优先指出会导致 bug/安全/数据一致性/可维护性问题的点；无问题也要给出简短通过说明。",
-        "- 如果 patch 被截断，请在 markdown 里明确提示并给出风险。",
-        "- 不要臆测仓库上下文中不存在的信息。",
-      ].join("\n"),
+      content: llmSystemPrompt,
     };
 
     const user: ChatMessage = {
       role: "user",
-      content: [
-        `PR #${prNumber}`,
-        prUrl ? `URL: ${prUrl}` : "",
-        prTitle ? `TITLE: ${prTitle}` : "",
-        sourceBranch && targetBranch ? `BRANCH: ${sourceBranch} -> ${targetBranch}` : "",
-        `HEAD_SHA: ${headSha}`,
-        baseSha ? `BASE_SHA: ${baseSha}` : "",
-        prBody ? `DESCRIPTION:\n${clampText(prBody, 4000)}` : "",
-        "",
-        `FILES（最多 ${maxFiles} 个；patch 可能截断）：`,
-        "",
-        patchBlocks.join("\n\n---\n\n"),
-      ]
-        .filter(Boolean)
-        .join("\n"),
+      content: llmUserPrompt,
     };
 
     const llm = await callLlm({
@@ -555,7 +531,10 @@ async function runGitHubPrAutoReviewOnce(
       markdown: llm.value.markdown,
     };
     model = llm.model;
-    note = "评审基于 GitHub PR files patch（可能被截断），仅供参考。";
+    note = await renderTextTemplateFromDb(
+      { prisma: deps.prisma },
+      { key: "github.prAutoReview.note.llmDefault", projectId: issue.projectId, vars: {} },
+    );
   }
 
   if (!review) return;
@@ -593,14 +572,25 @@ async function runGitHubPrAutoReviewOnce(
     })
     .catch(() => {});
 
-  const body = renderReviewBody({
-    prNumber,
-    prUrl: prUrl || undefined,
-    headSha,
-    verdict: normalized.verdict ?? null,
-    markdown: normalized.markdown,
-    note: note || "自动评审（无说明）",
-  });
+  const fallbackNote = await renderTextTemplateFromDb(
+    { prisma: deps.prisma },
+    { key: "github.prAutoReview.note.fallback", projectId: issue.projectId, vars: {} },
+  );
+  const body = await renderTextTemplateFromDb(
+    { prisma: deps.prisma },
+    {
+      key: "github.prAutoReview.reviewBody",
+      projectId: issue.projectId,
+      vars: {
+        prNumber,
+        prUrl: prUrl || "",
+        headShaShort: headSha.slice(0, 12),
+        verdict: normalized.verdict ?? "",
+        markdown: String(normalized.markdown ?? "").trim(),
+        note: note || fallbackNote,
+      },
+    },
+  );
 
   let reviewId: number | null = null;
   let reviewError: string | null = null;

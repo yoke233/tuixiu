@@ -3,15 +3,10 @@ import { suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
 import { parseEnvText } from "../utils/envText.js";
 import type { AcpTunnel } from "../services/acpTunnel.js";
 import { buildContextPackPrompt } from "../services/contextPack.js";
+import { renderTextTemplateFromDb } from "../services/textTemplates.js";
+import { renderTextTemplate } from "../utils/textTemplate.js";
 
 import type { CreateWorkspace, CreateWorkspaceResult } from "./types.js";
-
-function renderTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_m, key) => {
-    const v = vars[key];
-    return typeof v === "string" ? v : "";
-  });
-}
 
 function normalizeWorkspaceMode(mode: unknown): "worktree" | "clone" {
   return String(mode ?? "").trim().toLowerCase() === "clone" ? "clone" : "worktree";
@@ -31,7 +26,7 @@ function inferTestCommand(step: any, issue: any): string {
   return "pnpm -r test";
 }
 
-function buildStepInstruction(step: any, issue: any): string {
+async function buildStepInstruction(prisma: PrismaDeps, step: any, issue: any): Promise<string> {
   const kind = String(step?.kind ?? "").trim();
   const params = step?.params ?? {};
   const mode = typeof (params as any).mode === "string" ? String((params as any).mode).trim().toLowerCase() : "";
@@ -44,44 +39,25 @@ function buildStepInstruction(step: any, issue: any): string {
   const feedbackClamped = feedbackMessage.length > 2000 ? `${feedbackMessage.slice(0, 1800)}\n\n…（截断）` : feedbackMessage;
 
   if (kind === "prd.generate") {
-    return [
-      "你是产品经理（PM）。请根据任务信息生成一份 PRD（中文）。",
-      "要求：内容结构清晰、可执行、包含验收标准与非目标。",
-      "",
-      "最后请输出一个代码块：```REPORT_JSON```，其内容必须是 JSON：",
-      `- kind: "prd"`,
-      `- title: string`,
-      `- markdown: string（完整 PRD Markdown）`,
-      `- acceptanceCriteria: string[]`,
-      "不要在 JSON 外再包裹解释。",
-    ].join("\n");
+    return await renderTextTemplateFromDb(
+      { prisma },
+      { key: "acp.stepInstruction.prd.generate", projectId: issue?.projectId, vars: {} },
+    );
   }
 
   if (kind === "session.interactive") {
-    return [
-      "你是一个用于内部协作的 CLI Agent。当前是一个交互式 Session：",
-      "- 请优先等待用户输入的指令，再执行对应开发任务。",
-      "- 不要自行开始大规模改动；如需修改/执行命令，请先说明理由与计划。",
-      "",
-      "请先输出一行：READY",
-      "并简要说明：你看到的 workspace 路径、当前分支名、以及你能协助的事项。",
-      "随后等待用户输入。",
-    ].join("\n");
+    return await renderTextTemplateFromDb(
+      { prisma },
+      { key: "acp.stepInstruction.session.interactive", projectId: issue?.projectId, vars: {} },
+    );
   }
 
   if (kind === "test.run") {
     const cmd = inferTestCommand(step, issue);
-    return [
-      "请在 workspace 中运行测试，并根据结果输出结构化摘要。",
-      `建议命令：${cmd}`,
-      "",
-      "最后请输出一个代码块：```CI_RESULT_JSON```，其内容必须是 JSON：",
-      `- passed: boolean`,
-      `- failedCount?: number`,
-      `- durationMs?: number`,
-      `- summary?: string`,
-      `- logExcerpt?: string（最多 4000 字符）`,
-    ].join("\n");
+    return await renderTextTemplateFromDb(
+      { prisma },
+      { key: "acp.stepInstruction.test.run", projectId: issue?.projectId, vars: { cmd } },
+    );
   }
 
   if (kind === "code.review") {
@@ -94,51 +70,41 @@ function buildStepInstruction(step: any, issue: any): string {
     const prUrl = githubPr && typeof githubPr === "object" ? String((githubPr as any).url ?? "").trim() : "";
     const baseBranch = githubPr && typeof githubPr === "object" ? String((githubPr as any).baseBranch ?? "").trim() : "";
     const headBranch = githubPr && typeof githubPr === "object" ? String((githubPr as any).headBranch ?? "").trim() : "";
-    const headSha = githubPr && typeof githubPr === "object" ? String((githubPr as any).headSha ?? "").trim() : "";
+    const headShaShort =
+      githubPr && typeof githubPr === "object" ? String((githubPr as any).headSha ?? "").trim().slice(0, 12) : "";
+    const fetchBaseCommand = baseBranch ? `git fetch origin ${baseBranch}` : "";
+    const diffCommand = baseBranch ? `git diff ${baseBranch}...HEAD` : "git diff <base-branch>...HEAD";
 
-    const prInstructions =
-      prNumber > 0
-        ? [
-            "本步骤用于评审外部 GitHub Pull Request，请先在 workspace 中拉取并检出 PR 代码：",
-            prUrl ? `- PR：#${prNumber}（${prUrl}）` : `- PR：#${prNumber}`,
-            baseBranch ? `- Base：${baseBranch}` : "",
-            headBranch ? `- Head：${headBranch}${headSha ? `（${headSha.slice(0, 12)}）` : ""}` : "",
-            "",
-            "建议命令：",
-            `- git fetch origin pull/${prNumber}/head:pr-${prNumber}`,
-            `- git checkout pr-${prNumber}`,
-            baseBranch ? `- git fetch origin ${baseBranch}` : "",
-            baseBranch ? `- git diff ${baseBranch}...HEAD` : "- git diff <base-branch>...HEAD",
-            "",
-          ]
-            .filter(Boolean)
-            .join("\n")
-        : "";
-    return [
-      prInstructions,
-      `你是 ${who}。请对当前分支改动进行对抗式代码评审（默认更严格）。`,
-      "评审输入：仅基于 `git diff`（相对 base branch）+ 关键文件 + 测试/CI 产物（如有）。不要假设额外上下文。",
-      "要求：必须给出问题清单；若确实 0 findings，必须解释为什么确信没问题，并列出你检查过的项目（checks）。",
-      "请显式引用 DoD（`docs/05_process/definition-of-done.md`）判断是否可以 approve；不满足 DoD 则应 `changes_requested`。",
-      "",
-      "最后请输出一个代码块：```REPORT_JSON```，其内容必须是 JSON：",
-      `- kind: "review"`,
-      `- verdict: "approve" | "changes_requested"`,
-      `- checks: string[]（你实际检查过的项目）`,
-      `- findings: { severity: "high"|"medium"|"low"; message: string; path?: string; suggestion?: string }[]`,
-      `- markdown: string（评审报告 Markdown：结论、问题清单、风险、建议、证据）`,
-    ].join("\n");
+    return await renderTextTemplateFromDb(
+      { prisma },
+      {
+        key: "acp.stepInstruction.code.review",
+        projectId: issue?.projectId,
+        vars: {
+          who,
+          prNumber,
+          prUrl,
+          baseBranch,
+          headBranch,
+          headShaShort,
+          fetchBaseCommand,
+          diffCommand,
+        },
+      },
+    );
   }
 
   if (kind === "dev.implement") {
-    return [
-      ...(feedbackClamped ? ["上次流程反馈（请先处理/修复后再继续）：", feedbackClamped, ""] : []),
-      "你是软件工程师。请在当前分支实现需求并提交代码（git commit）。",
-      "实现完成后输出：变更摘要、关键文件列表、以及如何验证。",
-    ].join("\n");
+    return await renderTextTemplateFromDb(
+      { prisma },
+      { key: "acp.stepInstruction.dev.implement", projectId: issue?.projectId, vars: { feedback: feedbackClamped } },
+    );
   }
 
-  return `请执行步骤：${stepTitle(step)}`;
+  return await renderTextTemplateFromDb(
+    { prisma },
+    { key: "acp.stepInstruction.default", projectId: issue?.projectId, vars: { stepTitle: stepTitle(step) } },
+  );
 }
 
 async function selectAvailableAgent(prisma: PrismaDeps, preferredAgentId?: string | null): Promise<any | null> {
@@ -300,7 +266,7 @@ export async function startAcpAgentExecution(deps: {
   const workspaceNotice =
     noticeTemplate === undefined
       ? workspaceNoticeDefault
-      : renderTemplate(String(noticeTemplate), workspaceNoticeVars).trim();
+      : renderTextTemplate(String(noticeTemplate), workspaceNoticeVars).trim();
   promptParts.push(
     [
       mode === "clone" ? "你正在一个独立的 Git clone 工作区中执行任务：" : "你正在一个独立的 Git worktree 中执行任务：",
@@ -311,7 +277,7 @@ export async function startAcpAgentExecution(deps: {
   );
 
   if (role?.promptTemplate?.trim()) {
-    const rendered = renderTemplate(role.promptTemplate, {
+    const rendered = renderTextTemplate(role.promptTemplate, {
       workspace: workspace.workspacePath,
       branch: workspace.branchName,
       repoUrl: String(project.repoUrl ?? ""),
@@ -335,7 +301,7 @@ export async function startAcpAgentExecution(deps: {
   if (contextPack) promptParts.push(contextPack);
 
   promptParts.push(`当前步骤: ${stepTitle(step)}`);
-  promptParts.push(buildStepInstruction(step, issue));
+  promptParts.push(await buildStepInstruction(deps.prisma, step, issue));
 
   promptParts.push(`任务标题: ${issue.title}`);
   if (issue.description) promptParts.push(`任务描述:\n${issue.description}`);
