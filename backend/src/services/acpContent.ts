@@ -91,6 +91,83 @@ export const acpContentBlockSchema = z.discriminatedUnion("type", [
 export const acpContentBlocksSchema = z.array(acpContentBlockSchema);
 export const acpPromptSchema = acpContentBlocksSchema.min(1);
 
+export type ClientAcpContentBlock =
+  | { type: "text"; text: string; annotations?: Annotations | null; _meta?: Record<string, unknown> }
+  | {
+      type: "image";
+      mimeType: string;
+      data?: string;
+      uri?: string | null;
+      annotations?: Annotations | null;
+      _meta?: Record<string, unknown>;
+    }
+  | { type: "audio"; mimeType: string; data: string; annotations?: Annotations | null; _meta?: Record<string, unknown> }
+  | { type: "resource"; resource: AcpEmbeddedResourceResource; annotations?: Annotations | null; _meta?: Record<string, unknown> }
+  | {
+      type: "resource_link";
+      uri: string;
+      name: string;
+      mimeType?: string | null;
+      title?: string | null;
+      description?: string | null;
+      size?: number | null;
+      annotations?: Annotations | null;
+      _meta?: Record<string, unknown>;
+    };
+
+export const clientAcpContentBlockSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("text"),
+      text: z.string(),
+      annotations: annotationsSchema,
+      _meta: metaSchema,
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("image"),
+      mimeType: z.string().min(1),
+      data: z.string().min(1).optional(),
+      uri: z.string().nullable().optional(),
+      annotations: annotationsSchema,
+      _meta: metaSchema,
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("audio"),
+      mimeType: z.string().min(1),
+      data: z.string().min(1),
+      annotations: annotationsSchema,
+      _meta: metaSchema,
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("resource"),
+      resource: acpEmbeddedResourceResourceSchema,
+      annotations: annotationsSchema,
+      _meta: metaSchema,
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("resource_link"),
+      uri: z.string().min(1),
+      name: z.string().min(1),
+      mimeType: z.string().nullable().optional(),
+      title: z.string().nullable().optional(),
+      description: z.string().nullable().optional(),
+      size: z.number().int().nonnegative().nullable().optional(),
+      annotations: annotationsSchema,
+      _meta: metaSchema,
+    })
+    .passthrough(),
+]) satisfies z.ZodType<ClientAcpContentBlock>;
+
+export const clientAcpPromptSchema = z.array(clientAcpContentBlockSchema).min(1);
+
 export function tryParseAcpContentBlocks(value: unknown): AcpContentBlock[] | null {
   const parsed = acpContentBlocksSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
@@ -138,4 +215,17 @@ export function summarizeAcpContentBlocks(blocks: readonly AcpContentBlock[], op
   if (maxChars <= 0) return "";
   if (out.length <= maxChars) return out;
   return `${out.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+export function compactAcpPromptForEvent(prompt: readonly AcpContentBlock[]): AcpContentBlock[] {
+  return prompt.map((b) => {
+    if (b.type === "image") return { ...b, data: "<omitted>" };
+    if (b.type === "audio") return { ...b, data: "<omitted>" };
+    if (b.type === "resource") {
+      const r: any = b.resource;
+      if (r && typeof r === "object" && "blob" in r) return { ...b, resource: { ...r, blob: "<omitted>" } };
+      return b;
+    }
+    return b;
+  });
 }

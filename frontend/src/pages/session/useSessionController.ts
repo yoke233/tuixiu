@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { getIssue } from "../../api/issues";
-import { getRun, listRunEvents, pauseRun, promptRun } from "../../api/runs";
+import { getRun, listRunEvents, pauseRun, promptRun, uploadRunAttachment } from "../../api/runs";
 import { useAuth } from "../../auth/AuthContext";
 import { useWsClient, type WsMessage } from "../../hooks/useWsClient";
 import type { Event, Issue, Run } from "../../types";
+import { readFileAsBase64 } from "../../utils/files";
 
 import { readSessionState } from "./readSessionState";
 
@@ -25,6 +26,11 @@ export function useSessionController() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chatText, setChatText] = useState("");
+  const [pendingImages, setPendingImages] = useState<
+    Array<{ id: string; uri: string; mimeType: string; name?: string; size: number }>
+  >([]);
+  const uploadSeqRef = useRef(0);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [sending, setSending] = useState(false);
   const [pausing, setPausing] = useState(false);
 
@@ -127,15 +133,21 @@ export function useSessionController() {
       e.preventDefault();
       if (!runId) return;
       if (!requireLogin()) return;
+      if (uploadingImages) return;
 
       const text = chatText.trim();
-      if (!text) return;
+      const prompt = [
+        ...(text ? [{ type: "text" as const, text }] : []),
+        ...pendingImages.map((img) => ({ type: "image" as const, mimeType: img.mimeType, uri: img.uri })),
+      ];
+      if (!prompt.length) return;
 
       setError(null);
       setSending(true);
       try {
-        await promptRun(runId, text);
+        await promptRun(runId, prompt);
         setChatText("");
+        setPendingImages([]);
         void refresh({ silent: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -143,8 +155,45 @@ export function useSessionController() {
         setSending(false);
       }
     },
-    [chatText, refresh, requireLogin, runId],
+    [chatText, pendingImages, refresh, requireLogin, runId, uploadingImages],
   );
+
+  const onDropFiles = useCallback(
+    async (filesLike: FileList | File[]) => {
+      if (!runId) return;
+      if (!requireLogin()) return;
+
+      const files = Array.isArray(filesLike) ? filesLike : Array.from(filesLike);
+      const images = files.filter((f) => f && typeof f.type === "string" && f.type.startsWith("image/"));
+      if (!images.length) {
+        setError("本期只支持图片上传（image/*）");
+        return;
+      }
+
+      const seq = (uploadSeqRef.current += 1);
+      setError(null);
+      setUploadingImages(true);
+      try {
+        for (const f of images) {
+          const base64 = await readFileAsBase64(f);
+          const attachment = await uploadRunAttachment(runId, { mimeType: f.type, base64, name: f.name });
+          setPendingImages((prev) => {
+            if (prev.some((p) => p.id === attachment.id)) return prev;
+            return [...prev, { id: attachment.id, uri: attachment.uri, mimeType: attachment.mimeType, name: f.name, size: attachment.size }];
+          });
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (uploadSeqRef.current === seq) setUploadingImages(false);
+      }
+    },
+    [requireLogin, runId],
+  );
+
+  const removePendingImage = useCallback((id: string) => {
+    setPendingImages((prev) => prev.filter((p) => p.id !== id));
+  }, []);
 
   return {
     // auth & router
@@ -171,6 +220,8 @@ export function useSessionController() {
     error,
     chatText,
     setChatText,
+    pendingImages,
+    uploadingImages,
     sending,
     pausing,
 
@@ -178,6 +229,7 @@ export function useSessionController() {
     refresh,
     onPause,
     onSend,
+    onDropFiles,
+    removePendingImage,
   } as const;
 }
-

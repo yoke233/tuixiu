@@ -1,6 +1,11 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { makeRunRoutes } from "../../src/routes/runs.js";
+import { createLocalAttachmentStore } from "../../src/services/attachments/localAttachmentStore.js";
 import { createHttpServer } from "../test-utils.js";
 
 describe("Runs routes", () => {
@@ -195,6 +200,67 @@ describe("Runs routes", () => {
       }),
     );
     await server.close();
+  });
+
+  it("POST /api/runs/:id/prompt materializes image uri and compacts event payload", async () => {
+    const runId = "00000000-0000-0000-0000-000000000001";
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tuixiu-attachments-"));
+
+    const server = createHttpServer();
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: runId,
+          workspacePath: "C:/repo/.worktrees/run-1",
+          acpSessionId: null,
+          agent: { proxyId: "proxy-1" },
+          issue: { title: "t1" },
+          artifacts: []
+        })
+      },
+      event: { create: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([]) }
+    } as any;
+
+    const attachments = createLocalAttachmentStore({ rootDir: tmp, maxBytes: 1024 * 1024 });
+    const bytes = Buffer.from("hello-image");
+    const stored = await attachments.putFromBase64({ runId, mimeType: "image/png", base64: bytes.toString("base64") });
+
+    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    await server.register(makeRunRoutes({ prisma, acp, attachments }), { prefix: "/api/runs" });
+
+    try {
+      const res = await server.inject({
+        method: "POST",
+        url: `/api/runs/${runId}/prompt`,
+        payload: { prompt: [{ type: "image", mimeType: "image/png", uri: stored.uri }] }
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ success: true, data: { ok: true } });
+
+      expect(acp.promptRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runId,
+          prompt: [
+            expect.objectContaining({
+              type: "image",
+              mimeType: "image/png",
+              uri: stored.uri,
+              data: bytes.toString("base64"),
+            }),
+          ],
+        }),
+      );
+
+      expect(prisma.event.create).toHaveBeenCalled();
+      const call = prisma.event.create.mock.calls[0][0];
+      const prompt = call.data.payload.prompt;
+      expect(prompt[0].type).toBe("image");
+      expect(prompt[0].uri).toBe(stored.uri);
+      expect(prompt[0].data).toBe("<omitted>");
+    } finally {
+      await server.close();
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
   });
 
   it("POST /api/runs/:id/prompt does not persist user message when ACP tunnel missing", async () => {

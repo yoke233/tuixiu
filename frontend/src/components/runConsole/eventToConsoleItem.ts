@@ -2,6 +2,7 @@ import type { Event } from "../../types";
 
 import { extractToolCallInfo, formatToolCallInfo } from "./toolCallInfo";
 import type { ConsoleItem } from "./types";
+import { summarizeContentBlocks, tryParseContentBlocks } from "../../acp/contentBlocks";
 
 function extractTextFromUpdateContent(content: unknown): string | null {
   if (!content) return null;
@@ -75,12 +76,16 @@ function extractPlan(update: any): ConsoleItem["plan"] | null {
 
 export function eventToConsoleItem(e: Event): ConsoleItem {
   if (e.source === "user") {
-    const text = (e.payload as any)?.text;
+    const payload = e.payload as any;
+    const blocks = tryParseContentBlocks(payload?.prompt);
+    const textFromPrompt = blocks ? summarizeContentBlocks(blocks, { maxChars: 4000 }) : null;
+    const textFromLegacy = typeof payload?.text === "string" ? payload.text : null;
+    const text = textFromPrompt ?? textFromLegacy ?? JSON.stringify(payload ?? null, null, 2);
     return {
       id: e.id,
       role: "user",
       kind: "block",
-      text: typeof text === "string" ? text : JSON.stringify(e.payload, null, 2),
+      text,
       timestamp: e.timestamp,
     };
   }
@@ -220,4 +225,3 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
     timestamp: e.timestamp,
   };
 }
-

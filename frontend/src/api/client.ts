@@ -1,9 +1,14 @@
 import type { ApiEnvelope } from "../types";
 import { getStoredToken } from "../auth/storage";
 
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   const base = import.meta.env.VITE_API_URL as string | undefined;
   return (base ?? "http://localhost:3000/api").replace(/\/+$/, "");
+}
+
+export function apiUrl(path: string): string {
+  const base = getApiBaseUrl();
+  return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
