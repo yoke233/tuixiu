@@ -8,7 +8,10 @@ import { ThemeProvider } from "../theme";
 
 function mockFetchJsonOnce(body: unknown) {
   (globalThis.fetch as any).mockResolvedValueOnce(
-    new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
   );
 }
 
@@ -39,16 +42,23 @@ describe("IssueDetailPage", () => {
           status: "running",
           createdAt: "2026-01-25T00:00:00.000Z",
           runs: [
-            { id: "r1", issueId: "i1", agentId: "a1", executorType: "agent", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }
-          ]
-        }
-      }
+            {
+              id: "r1",
+              issueId: "i1",
+              agentId: "a1",
+              executorType: "agent",
+              status: "running",
+              startedAt: "2026-01-25T00:00:00.000Z",
+            },
+          ],
+        },
+      },
     });
 
     // agents list
     mockFetchJsonOnce({
       success: true,
-      data: { agents: [] }
+      data: { agents: [] },
     });
 
     // tasks list
@@ -71,11 +81,11 @@ describe("IssueDetailPage", () => {
               runId: "r1",
               type: "branch",
               content: { branch: "acp/test" },
-              createdAt: "2026-01-25T00:00:00.000Z"
-            }
-          ]
-        }
-      }
+              createdAt: "2026-01-25T00:00:00.000Z",
+            },
+          ],
+        },
+      },
     });
 
     // events
@@ -92,19 +102,19 @@ describe("IssueDetailPage", () => {
               type: "session_update",
               update: {
                 kind: "execute",
-                title: "Run node \"...\" bootstrap",
+                title: 'Run node "..." bootstrap',
                 status: "in_progress",
                 rawInput: {
                   cwd: "D:\\xyad\\tuixiu",
                   call_id: "call_test_tool_1",
-                  command: ["C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-Command", "echo hi"]
+                  command: ["C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-Command", "echo hi"],
                 },
                 toolCallId: "call_test_tool_1",
-                sessionUpdate: "tool_call"
+                sessionUpdate: "tool_call",
               },
-              session: "s1"
+              session: "s1",
             },
-            timestamp: "2026-01-25T00:00:00.100Z"
+            timestamp: "2026-01-25T00:00:00.100Z",
           },
           {
             id: "e1",
@@ -112,10 +122,10 @@ describe("IssueDetailPage", () => {
             source: "acp",
             type: "acp.update.received",
             payload: { type: "text", text: "hi" },
-            timestamp: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
+            timestamp: "2026-01-25T00:00:00.000Z",
+          },
+        ],
+      },
     });
 
     // roles
@@ -130,14 +140,13 @@ describe("IssueDetailPage", () => {
             </Routes>
           </MemoryRouter>
         </ThemeProvider>
-      </AuthProvider>
+      </AuthProvider>,
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
     expect(await screen.findByText("r1")).toBeInTheDocument();
     expect((await screen.findAllByText("branch")).length).toBeGreaterThan(0);
     expect(await screen.findByText("hi")).toBeInTheDocument();
-    expect(await screen.findByText(/工具调用/)).toBeInTheDocument();
 
     const WS = (globalThis as any).MockWebSocket;
     const instance = WS.instances[WS.instances.length - 1];
@@ -150,8 +159,8 @@ describe("IssueDetailPage", () => {
         source: "acp",
         type: "acp.update.received",
         payload: { type: "text", text: "again" },
-        timestamp: "2026-01-25T00:00:01.000Z"
-      }
+        timestamp: "2026-01-25T00:00:01.000Z",
+      },
     });
 
     await waitFor(() => expect(screen.getByText(/again/)).toBeInTheDocument());
@@ -172,16 +181,23 @@ describe("IssueDetailPage", () => {
           status: "running",
           createdAt: "2026-01-25T00:00:00.000Z",
           runs: [
-            { id: "r1", issueId: "i1", agentId: "a1", executorType: "agent", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }
-          ]
-        }
-      }
+            {
+              id: "r1",
+              issueId: "i1",
+              agentId: "a1",
+              executorType: "agent",
+              status: "running",
+              startedAt: "2026-01-25T00:00:00.000Z",
+            },
+          ],
+        },
+      },
     });
 
     // agents list
     mockFetchJsonOnce({
       success: true,
-      data: { agents: [] }
+      data: { agents: [] },
     });
 
     // tasks list
@@ -198,9 +214,9 @@ describe("IssueDetailPage", () => {
           executorType: "agent",
           status: "running",
           startedAt: "2026-01-25T00:00:00.000Z",
-          artifacts: []
-        }
-      }
+          artifacts: [],
+        },
+      },
     });
     // events
     mockFetchJsonOnce({ success: true, data: { events: [] } });
@@ -218,9 +234,9 @@ describe("IssueDetailPage", () => {
           executorType: "agent",
           status: "cancelled",
           startedAt: "2026-01-25T00:00:00.000Z",
-          artifacts: []
-        }
-      }
+          artifacts: [],
+        },
+      },
     });
 
     // refresh after cancel
@@ -234,10 +250,17 @@ describe("IssueDetailPage", () => {
           status: "cancelled",
           createdAt: "2026-01-25T00:00:00.000Z",
           runs: [
-            { id: "r1", issueId: "i1", agentId: "a1", executorType: "agent", status: "cancelled", startedAt: "2026-01-25T00:00:00.000Z" }
-          ]
-        }
-      }
+            {
+              id: "r1",
+              issueId: "i1",
+              agentId: "a1",
+              executorType: "agent",
+              status: "cancelled",
+              startedAt: "2026-01-25T00:00:00.000Z",
+            },
+          ],
+        },
+      },
     });
     // tasks list after cancel
     mockFetchJsonOnce({ success: true, data: { tasks: [] } });
@@ -251,9 +274,9 @@ describe("IssueDetailPage", () => {
           executorType: "agent",
           status: "cancelled",
           startedAt: "2026-01-25T00:00:00.000Z",
-          artifacts: []
-        }
-      }
+          artifacts: [],
+        },
+      },
     });
     mockFetchJsonOnce({ success: true, data: { events: [] } });
 
@@ -266,7 +289,7 @@ describe("IssueDetailPage", () => {
             </Routes>
           </MemoryRouter>
         </ThemeProvider>
-      </AuthProvider>
+      </AuthProvider>,
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
@@ -292,17 +315,20 @@ describe("IssueDetailPage", () => {
           title: "Need agent",
           status: "pending",
           createdAt: "2026-01-25T00:00:00.000Z",
-          runs: []
-        }
-      }
+          runs: [],
+        },
+      },
     });
 
     // agents list fails
     (globalThis.fetch as any).mockResolvedValueOnce(
-      new Response(JSON.stringify({ success: false, error: { code: "UPSTREAM", message: "agents down" } }), {
-        status: 500,
-        headers: { "content-type": "application/json" }
-      })
+      new Response(
+        JSON.stringify({ success: false, error: { code: "UPSTREAM", message: "agents down" } }),
+        {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        },
+      ),
     );
 
     // tasks list
@@ -318,7 +344,7 @@ describe("IssueDetailPage", () => {
             </Routes>
           </MemoryRouter>
         </ThemeProvider>
-      </AuthProvider>
+      </AuthProvider>,
     );
 
     expect(await screen.findByText("Need agent")).toBeInTheDocument();
@@ -344,10 +370,17 @@ describe("IssueDetailPage", () => {
           status: "running",
           createdAt: "2026-01-25T00:00:00.000Z",
           runs: [
-            { id: "r1", issueId: "i1", agentId: "a1", executorType: "agent", status: "running", startedAt: "2026-01-25T00:00:00.000Z" }
-          ]
-        }
-      }
+            {
+              id: "r1",
+              issueId: "i1",
+              agentId: "a1",
+              executorType: "agent",
+              status: "running",
+              startedAt: "2026-01-25T00:00:00.000Z",
+            },
+          ],
+        },
+      },
     });
 
     // agents list
@@ -368,9 +401,9 @@ describe("IssueDetailPage", () => {
           status: "running",
           acpSessionId: "s1",
           startedAt: "2026-01-25T00:00:00.000Z",
-          artifacts: []
-        }
-      }
+          artifacts: [],
+        },
+      },
     });
     mockFetchJsonOnce({ success: true, data: { events: [] } });
     mockFetchJsonOnce({ success: true, data: { roles: [] } });
@@ -384,7 +417,7 @@ describe("IssueDetailPage", () => {
             </Routes>
           </MemoryRouter>
         </ThemeProvider>
-      </AuthProvider>
+      </AuthProvider>,
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
@@ -396,8 +429,11 @@ describe("IssueDetailPage", () => {
     pauseBtn.click();
 
     await waitFor(() =>
-      expect((globalThis.fetch as any).mock.calls.some((c: any[]) => String(c[0]).includes("/runs/r1/pause"))).toBe(true)
+      expect(
+        (globalThis.fetch as any).mock.calls.some((c: any[]) =>
+          String(c[0]).includes("/runs/r1/pause"),
+        ),
+      ).toBe(true),
     );
   });
-
 });

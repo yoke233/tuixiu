@@ -4,7 +4,28 @@ import type { Event } from "../types";
 
 import { buildConsoleItems } from "./runConsole/buildConsoleItems";
 import { ConsoleDetailsBlock } from "./runConsole/ConsoleDetailsBlock";
-import { exitToBadgeClass, getToolTitle, kindToBadgeClass, priorityToBadgeClass, statusToBadgeClass } from "./runConsole/toolCallInfo";
+import {
+  exitToBadgeClass,
+  getToolTitle,
+  kindToBadgeClass,
+  priorityToBadgeClass,
+  statusToBadgeClass,
+} from "./runConsole/toolCallInfo";
+
+function getSandboxSummary(text: string): { status: string } | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
+  if (!trimmed.includes('"sandbox_instance_status"')) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as { type?: string; status?: string };
+    if (!parsed || parsed.type !== "sandbox_instance_status") return null;
+    const status =
+      typeof parsed.status === "string" && parsed.status.trim() ? parsed.status.trim() : "unknown";
+    return { status };
+  } catch {
+    return null;
+  }
+}
 
 export function RunConsole(props: { events: Event[] }) {
   const defaultVisibleCount = 160;
@@ -88,7 +109,8 @@ export function RunConsole(props: { events: Event[] }) {
             className="buttonSecondary"
             onClick={() => {
               const el = ref.current;
-              if (el) pendingScrollRestoreRef.current = { height: el.scrollHeight, top: el.scrollTop };
+              if (el)
+                pendingScrollRestoreRef.current = { height: el.scrollHeight, top: el.scrollTop };
               setVisibleCount((prev) => Math.min(items.length, prev + loadMoreStep));
             }}
           >
@@ -99,7 +121,8 @@ export function RunConsole(props: { events: Event[] }) {
             className="buttonSecondary"
             onClick={() => {
               const el = ref.current;
-              if (el) pendingScrollRestoreRef.current = { height: el.scrollHeight, top: el.scrollTop };
+              if (el)
+                pendingScrollRestoreRef.current = { height: el.scrollHeight, top: el.scrollTop };
               setShowAll(true);
             }}
           >
@@ -133,7 +156,7 @@ export function RunConsole(props: { events: Event[] }) {
               else acc.pending += 1;
               return acc;
             },
-            { completed: 0, in_progress: 0, pending: 0 }
+            { completed: 0, in_progress: 0, pending: 0 },
           );
           return (
             <ConsoleDetailsBlock
@@ -146,8 +169,12 @@ export function RunConsole(props: { events: Event[] }) {
                   <span className="toolSummaryTitle">
                     计划（{counts.completed}/{entries.length}）
                   </span>
-                  {counts.in_progress ? <span className="badge orange">in_progress {counts.in_progress}</span> : null}
-                  {counts.pending ? <span className="badge gray">pending {counts.pending}</span> : null}
+                  {counts.in_progress ? (
+                    <span className="badge orange">in_progress {counts.in_progress}</span>
+                  ) : null}
+                  {counts.pending ? (
+                    <span className="badge gray">pending {counts.pending}</span>
+                  ) : null}
                 </>
               }
               bodyClassName="planBody"
@@ -156,7 +183,9 @@ export function RunConsole(props: { events: Event[] }) {
                   {entries.map((e, idx) => (
                     <div key={`${idx}-${e.status}-${e.content}`} className="planItem">
                       <span className={statusToBadgeClass(e.status)}>{e.status}</span>
-                      {e.priority ? <span className={priorityToBadgeClass(e.priority)}>{e.priority}</span> : null}
+                      {e.priority ? (
+                        <span className={priorityToBadgeClass(e.priority)}>{e.priority}</span>
+                      ) : null}
                       <span className="planContent">{e.content}</span>
                     </div>
                   ))}
@@ -211,6 +240,24 @@ export function RunConsole(props: { events: Event[] }) {
             />
           );
         }
+        if (item.role === "system") {
+          const sandbox = getSandboxSummary(item.text);
+          if (sandbox) {
+            return (
+              <ConsoleDetailsBlock
+                key={item.id}
+                className={`consoleItem ${item.role}`}
+                summary={
+                  <>
+                    <span className="badge gray">SANDBOX</span>
+                    <span className="toolSummaryTitle">({sandbox.status})</span>
+                  </>
+                }
+                body={item.text}
+              />
+            );
+          }
+        }
         if (item.role === "system" && item.toolCallInfo) {
           return (
             <ConsoleDetailsBlock
@@ -220,10 +267,14 @@ export function RunConsole(props: { events: Event[] }) {
                 <>
                   <span className="badge gray">TOOL</span>
                   {item.toolCallInfo.kind ? (
-                    <span className={kindToBadgeClass(item.toolCallInfo.kind)}>{item.toolCallInfo.kind}</span>
+                    <span className={kindToBadgeClass(item.toolCallInfo.kind)}>
+                      {item.toolCallInfo.kind}
+                    </span>
                   ) : null}
                   {item.toolCallInfo.status ? (
-                    <span className={statusToBadgeClass(item.toolCallInfo.status)}>{item.toolCallInfo.status}</span>
+                    <span className={statusToBadgeClass(item.toolCallInfo.status)}>
+                      {item.toolCallInfo.status}
+                    </span>
                   ) : null}
                   {typeof item.toolCallInfo.exitCode === "number" ? (
                     <span className={exitToBadgeClass(item.toolCallInfo.exitCode)}>

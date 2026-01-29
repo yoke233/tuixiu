@@ -47,6 +47,11 @@ export function useIssueListController() {
   const [dragging, setDragging] = useState<DragPayload | null>(null);
   const [dropStatus, setDropStatus] = useState<IssueStatus | null>(null);
   const [moving, setMoving] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia("(max-width: 720px)").matches
+      : false,
+  );
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -97,6 +102,7 @@ export function useIssueListController() {
 
   useEffect(() => {
     if (!hasDetail) return;
+    if (isMobile) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeDetail();
@@ -110,7 +116,22 @@ export function useIssueListController() {
       document.body.style.overflow = prevOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [closeDetail, hasDetail]);
+  }, [closeDetail, hasDetail, isMobile]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const media = window.matchMedia("(max-width: 720px)");
+    const onChange = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches);
+    };
+    setIsMobile(media.matches);
+    if (media.addEventListener) {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    }
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -119,7 +140,7 @@ export function useIssueListController() {
       const [ps, is] = await Promise.all([listProjects(), listIssues()]);
       setProjects(ps);
       setIssues(is.issues);
-      setSelectedProjectId((prev) => (prev ? prev : ps[0]?.id ?? ""));
+      setSelectedProjectId((prev) => (prev ? prev : (ps[0]?.id ?? "")));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -131,25 +152,22 @@ export function useIssueListController() {
     void refresh();
   }, [refresh]);
 
-  const readDragPayload = useCallback(
-    (e: React.DragEvent): DragPayload | null => {
-      try {
-        const raw = e.dataTransfer.getData("application/json");
-        if (!raw) return null;
-        const v = JSON.parse(raw) as any;
-        if (!v || typeof v !== "object") return null;
-        if (typeof v.issueId !== "string") return null;
-        if (typeof v.fromStatus !== "string") return null;
-        const issueId = v.issueId as string;
-        const fromStatus = v.fromStatus as IssueStatus;
-        const runId = typeof v.runId === "string" && v.runId ? (v.runId as string) : undefined;
-        return { issueId, fromStatus, runId };
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
+  const readDragPayload = useCallback((e: React.DragEvent): DragPayload | null => {
+    try {
+      const raw = e.dataTransfer.getData("application/json");
+      if (!raw) return null;
+      const v = JSON.parse(raw) as any;
+      if (!v || typeof v !== "object") return null;
+      if (typeof v.issueId !== "string") return null;
+      if (typeof v.fromStatus !== "string") return null;
+      const issueId = v.issueId as string;
+      const fromStatus = v.fromStatus as IssueStatus;
+      const runId = typeof v.runId === "string" && v.runId ? (v.runId as string) : undefined;
+      return { issueId, fromStatus, runId };
+    } catch {
+      return null;
+    }
+  }, []);
 
   const moveIssue = useCallback(
     async (payload: DragPayload, toStatus: IssueStatus) => {
@@ -250,6 +268,7 @@ export function useIssueListController() {
     dropStatus,
     setDropStatus,
     moving,
+    isMobile,
 
     // derived
     effectiveProjectId,
@@ -268,4 +287,3 @@ export function useIssueListController() {
     moveIssue,
   } as const;
 }
-

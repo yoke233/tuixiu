@@ -270,7 +270,9 @@ select {
 }
 
 .inputMono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
   font-size: 13px;
   line-height: 1.4;
 }
@@ -467,11 +469,14 @@ a:hover {
   height: min(420px, 55vh);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
     monospace;
   font-size: 13px;
   line-height: 1.4;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .consoleTrimBar {
@@ -498,6 +503,7 @@ a:hover {
   border-radius: 10px;
   margin-bottom: 6px;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .consoleItem.system {
@@ -514,21 +520,67 @@ a:hover {
 
 .consoleInput {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
   margin-top: 12px;
+  position: relative;
+}
+
+.commandMenu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-soft);
+  max-height: 40vh;
+  overflow: auto;
+  z-index: 5;
+}
+
+.commandMenuItem {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.commandMenuItem:hover {
+  background: color-mix(in oklab, var(--card-bg), transparent 35%);
+}
+
+.commandMenuItem.isActive {
+  border-color: color-mix(in oklab, var(--accent), var(--card-border) 60%);
+  background: color-mix(in oklab, var(--card-bg), var(--accent) 8%);
+}
+
+.commandMenuName {
+  font-weight: 700;
+}
+
+.commandMenuHint {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .consoleInput input {
-  flex: 1 1 260px;
-  min-width: 200px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-@media (max-width: 520px) {
-  .consoleInput input {
-    flex-basis: 100%;
-    min-width: 0;
-  }
+.consoleInput button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .srOnly {
@@ -578,6 +630,11 @@ a:hover {
   gap: 16px;
 }
 
+.issuesTopTitle {
+  display: grid;
+  gap: 4px;
+}
+
 .issuesTopBar h1 {
   margin: 0;
   font-size: 20px;
@@ -589,15 +646,41 @@ a:hover {
 
 @media (max-width: 640px) {
   .issuesTopBar {
-    padding: calc(14px + env(safe-area-inset-top)) 12px 10px;
+    padding: calc(10px + env(safe-area-inset-top)) 12px 8px;
+    gap: 10px;
   }
 
   .issuesTopBar h1 {
-    font-size: 18px;
+    font-size: 17px;
+  }
+
+  .issuesTopTitle .muted {
+    font-size: 12px;
+  }
+
+  .issuesTopActions {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .issuesTopActions .row {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .issuesTopActions button,
+  .issuesTopActions .buttonSecondary {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .issuesTopActions .muted {
+    font-size: 12px;
   }
 
   .issuesBoard {
-    padding: 12px;
+    padding: 10px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 }
@@ -683,6 +766,10 @@ a:hover {
   }
 }
 
+.issueDetailFull {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
 @media (max-width: 640px) {
   .issueDetailDrawer .container {
     padding: 12px;
@@ -725,6 +812,61 @@ a:hover {
   grid-template-rows: auto 1fr auto;
 }
 
+.sessionMobileHeaderRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.sessionMobileTitle {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sessionMobileTitleText {
+  min-width: 0;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionMobileMenu {
+  position: relative;
+}
+
+.sessionMenuButton {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+
+.sessionMobileMenuPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(92vw, 420px);
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-soft);
+  z-index: 20;
+}
+
+.sessionMobileMenuMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
 .sessionMobileHeader {
   display: none;
 }
@@ -737,15 +879,51 @@ a:hover {
   height: 100%;
 }
 
+.consoleActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.consoleIconButton {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.iconSpinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  display: inline-block;
+  animation: consoleSpin 0.9s linear infinite;
+}
+
 @media (max-width: 920px) {
   .sessionShell {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "main"
-      "side";
-    height: auto;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 100dvh;
     overflow: visible;
-    padding: 12px;
+    padding: 4px;
+    gap: 0;
+  }
+
+  .sessionShell .console,
+  .sessionShell .consoleItem,
+  .sessionShell .detailsSummary,
+  .sessionShell .pre {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .sessionMobileHeader {
@@ -753,6 +931,13 @@ a:hover {
     position: sticky;
     top: calc(env(safe-area-inset-top) + 0px);
     z-index: 10;
+    padding: 2px 2px;
+    border-bottom: 1px solid color-mix(in oklab, var(--card-border), transparent 40%);
+    background: transparent;
+  }
+
+  .sessionSide {
+    display: none;
   }
 
   .sessionSide {
@@ -760,12 +945,145 @@ a:hover {
   }
 
   .sessionMain {
+    border: none;
     overflow: visible;
-    grid-template-rows: auto auto;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: 2px;
+    min-height: 0;
   }
 
   .sessionShell .console {
-    height: min(520px, 65vh);
+    height: auto;
+    flex: 1 1 auto;
+  }
+
+  .sessionConsoleHeader {
+    display: none;
+  }
+
+  .sessionConsoleCard {
+    padding: 0px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 100%;
+  }
+
+  .sessionConsoleBody {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    overflow: auto;
+  }
+
+  .sessionConsoleBody .console {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    height: 100%;
+  }
+
+  .sessionConsoleCard .consoleInput {
+    margin-top: 4px;
+    gap: 4px;
+  }
+
+  .sessionConsoleCard .consoleInput input {
+    padding: 5px 5px;
+    height: 40px;
+    line-height: 1.1;
+  }
+
+  .sessionConsoleCard .consoleActions .consoleIconButton {
+    width: 26px;
+    height: 30px;
+  }
+
+  .sessionConsoleCard .consoleCommandButton {
+    font-weight: 700;
+    font-size: 14px;
+    width: 26px;
+    height: 30px;
+    padding: 0;
+  }
+
+  .sessionShell .console {
+    border: 0;
+    border-radius: 0;
+    padding: 8px;
+  }
+
+  .sessionConsoleInput {
+    position: sticky;
+    bottom: calc(env(safe-area-inset-bottom) + 6px);
+    z-index: 5;
+    padding: 6px 6px calc(env(safe-area-inset-bottom) + 6px);
+    margin: 0 -6px;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      color-mix(in oklab, var(--bg), transparent 10%) 40%,
+      var(--bg) 100%
+    );
+    border-top: 1px solid color-mix(in oklab, var(--card-border), transparent 50%);
+  }
+
+  .commandMenu {
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    left: -8px;
+    right: -8px;
+  }
+
+  .commandMenuItem {
+    border-radius: 0;
+  }
+
+  .sessionMobileHeaderRow {
+    gap: 3px;
+  }
+
+  .sessionMobileTitleText {
+    font-size: 13px;
+    line-height: 1.05;
+  }
+
+  .sessionMobileHeader .badge {
+    padding: 1px 6px;
+    font-size: 12px;
+  }
+
+  .sessionBackButton {
+    padding: 2px 4px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .sessionMenuButton {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+@media (min-width: 921px) {
+  .sessionConsoleCard .consoleCommandButton {
+    display: none;
+  }
+}
+
+@keyframes consoleSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -810,11 +1128,50 @@ a:hover {
   min-height: 0;
 }
 
-@media (max-width: 540px) {
+@media (max-width: 720px) {
+  .issuesShell {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .issuesSplit {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .issuesBoard {
+    overflow: visible;
+  }
+
+  .kanban {
+    flex-direction: column;
+    overflow: visible;
+    padding-bottom: 24px;
+    height: auto;
+  }
+
   .kanbanCol {
-    flex: 0 0 88vw;
-    min-width: 88vw;
-    max-width: 88vw;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    display: block;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .kanbanColHeader {
+    padding: 10px 12px;
+  }
+
+  .kanbanColBody {
+    padding: 12px;
+    overflow: visible;
+  }
+
+  .issueCard {
+    padding: 12px;
+    min-height: 0;
   }
 }
 
@@ -892,7 +1249,10 @@ a:hover {
   background: var(--card-bg);
   text-decoration: none;
   color: inherit;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
 .issueCardWrap {
@@ -1108,6 +1468,7 @@ a:hover {
   color: var(--muted);
   font-weight: 700;
   list-style: none;
+  overflow-wrap: anywhere;
 }
 
 .detailsSummary::-webkit-details-marker {

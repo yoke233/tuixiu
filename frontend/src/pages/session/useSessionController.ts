@@ -26,6 +26,7 @@ export function useSessionController() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorTimerRef = useRef<number | null>(null);
   const [chatText, setChatText] = useState("");
   const [pendingImages, setPendingImages] = useState<
     Array<{ id: string; uri: string; mimeType: string; name?: string; size: number }>
@@ -37,8 +38,31 @@ export function useSessionController() {
   const [settingMode, setSettingMode] = useState(false);
   const [settingModel, setSettingModel] = useState(false);
 
+  const clearErrorTimer = useCallback(() => {
+    if (errorTimerRef.current !== null) {
+      window.clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+  }, []);
+
+  const setTransientError = useCallback(
+    (message: string | null) => {
+      clearErrorTimer();
+      setError(message);
+      if (message) {
+        errorTimerRef.current = window.setTimeout(() => {
+          setError(null);
+          errorTimerRef.current = null;
+        }, 4000);
+      }
+    },
+    [clearErrorTimer],
+  );
+
   const sessionState = useMemo(() => readSessionState(events), [events]);
   const sessionId = run?.acpSessionId ?? null;
+
+  useEffect(() => () => clearErrorTimer(), [clearErrorTimer]);
 
   const requireLogin = useCallback((): boolean => {
     if (auth.user) return true;
@@ -51,7 +75,7 @@ export function useSessionController() {
     async (opts?: { silent?: boolean }) => {
       if (!runId) return;
       if (!opts?.silent) setRefreshing(true);
-      setError(null);
+      setTransientError(null);
       try {
         const r = await getRun(runId);
         setRun(r);
@@ -60,13 +84,13 @@ export function useSessionController() {
         setEvents([...es].reverse());
         setIssue(iss);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setTransientError(err instanceof Error ? err.message : String(err));
       } finally {
         if (!opts?.silent) setRefreshing(false);
         setLoading(false);
       }
     },
-    [runId],
+    [runId, setTransientError],
   );
 
   useEffect(() => {
@@ -87,11 +111,23 @@ export function useSessionController() {
 
         const payload = (msg.event as any).payload;
         if (payload?.type === "prompt_result") {
-          setRun((r) => (r ? { ...r, status: "completed", completedAt: r.completedAt ?? new Date().toISOString() } : r));
+          setRun((r) =>
+            r
+              ? {
+                  ...r,
+                  status: "completed",
+                  completedAt: r.completedAt ?? new Date().toISOString(),
+                }
+              : r,
+          );
           void refresh({ silent: true });
         }
         if (payload?.type === "init_result" && payload?.ok === false) {
-          setRun((r) => (r ? { ...r, status: "failed", completedAt: r.completedAt ?? new Date().toISOString() } : r));
+          setRun((r) =>
+            r
+              ? { ...r, status: "failed", completedAt: r.completedAt ?? new Date().toISOString() }
+              : r,
+          );
           void refresh({ silent: true });
         }
         if (payload?.type === "session_created" && typeof payload.session_id === "string") {
@@ -106,7 +142,10 @@ export function useSessionController() {
           const artifacts = [...(r.artifacts ?? [])];
           if (!artifacts.some((a) => a.id === msg.artifact!.id)) artifacts.unshift(msg.artifact!);
 
-          const branch = (msg.artifact as any)?.type === "branch" ? (msg.artifact as any)?.content?.branch : undefined;
+          const branch =
+            (msg.artifact as any)?.type === "branch"
+              ? (msg.artifact as any)?.content?.branch
+              : undefined;
           const branchName = typeof branch === "string" ? branch : r.branchName;
 
           return { ...r, artifacts, branchName };
@@ -120,16 +159,16 @@ export function useSessionController() {
   const onPause = useCallback(async () => {
     if (!runId) return;
     if (!requireLogin()) return;
-    setError(null);
+    setTransientError(null);
     setPausing(true);
     try {
       await pauseRun(runId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setTransientError(err instanceof Error ? err.message : String(err));
     } finally {
       setPausing(false);
     }
-  }, [requireLogin, runId]);
+  }, [requireLogin, runId, setTransientError]);
 
   const onSetMode = useCallback(
     async (modeId: string) => {
@@ -140,18 +179,18 @@ export function useSessionController() {
       const id = modeId.trim();
       if (!id) return;
 
-      setError(null);
+      setTransientError(null);
       setSettingMode(true);
       try {
         await setAcpSessionMode(runId, sessionId, id);
         void refresh({ silent: true });
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setTransientError(err instanceof Error ? err.message : String(err));
       } finally {
         setSettingMode(false);
       }
     },
-    [refresh, requireLogin, runId, sessionId],
+    [refresh, requireLogin, runId, sessionId, setTransientError],
   );
 
   const onSetModel = useCallback(
@@ -163,18 +202,18 @@ export function useSessionController() {
       const id = modelId.trim();
       if (!id) return;
 
-      setError(null);
+      setTransientError(null);
       setSettingModel(true);
       try {
         await setAcpSessionModel(runId, sessionId, id);
         void refresh({ silent: true });
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setTransientError(err instanceof Error ? err.message : String(err));
       } finally {
         setSettingModel(false);
       }
     },
-    [refresh, requireLogin, runId, sessionId],
+    [refresh, requireLogin, runId, sessionId, setTransientError],
   );
 
   const onSend = useCallback(
@@ -187,11 +226,15 @@ export function useSessionController() {
       const text = chatText.trim();
       const prompt = [
         ...(text ? [{ type: "text" as const, text }] : []),
-        ...pendingImages.map((img) => ({ type: "image" as const, mimeType: img.mimeType, uri: img.uri })),
+        ...pendingImages.map((img) => ({
+          type: "image" as const,
+          mimeType: img.mimeType,
+          uri: img.uri,
+        })),
       ];
       if (!prompt.length) return;
 
-      setError(null);
+      setTransientError(null);
       setSending(true);
       try {
         await promptRun(runId, prompt);
@@ -199,12 +242,12 @@ export function useSessionController() {
         setPendingImages([]);
         void refresh({ silent: true });
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setTransientError(err instanceof Error ? err.message : String(err));
       } finally {
         setSending(false);
       }
     },
-    [chatText, pendingImages, refresh, requireLogin, runId, uploadingImages],
+    [chatText, pendingImages, refresh, requireLogin, runId, setTransientError, uploadingImages],
   );
 
   const onDropFiles = useCallback(
@@ -213,31 +256,46 @@ export function useSessionController() {
       if (!requireLogin()) return;
 
       const files = Array.isArray(filesLike) ? filesLike : Array.from(filesLike);
-      const images = files.filter((f) => f && typeof f.type === "string" && f.type.startsWith("image/"));
+      const images = files.filter(
+        (f) => f && typeof f.type === "string" && f.type.startsWith("image/"),
+      );
       if (!images.length) {
-        setError("本期只支持图片上传（image/*）");
+        setTransientError("本期只支持图片上传（image/*）");
         return;
       }
 
       const seq = (uploadSeqRef.current += 1);
-      setError(null);
+      setTransientError(null);
       setUploadingImages(true);
       try {
         for (const f of images) {
           const base64 = await readFileAsBase64(f);
-          const attachment = await uploadRunAttachment(runId, { mimeType: f.type, base64, name: f.name });
+          const attachment = await uploadRunAttachment(runId, {
+            mimeType: f.type,
+            base64,
+            name: f.name,
+          });
           setPendingImages((prev) => {
             if (prev.some((p) => p.id === attachment.id)) return prev;
-            return [...prev, { id: attachment.id, uri: attachment.uri, mimeType: attachment.mimeType, name: f.name, size: attachment.size }];
+            return [
+              ...prev,
+              {
+                id: attachment.id,
+                uri: attachment.uri,
+                mimeType: attachment.mimeType,
+                name: f.name,
+                size: attachment.size,
+              },
+            ];
           });
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setTransientError(err instanceof Error ? err.message : String(err));
       } finally {
         if (uploadSeqRef.current === seq) setUploadingImages(false);
       }
     },
-    [requireLogin, runId],
+    [requireLogin, runId, setTransientError],
   );
 
   const removePendingImage = useCallback((id: string) => {

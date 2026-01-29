@@ -13,11 +13,9 @@ export function IssuesTopBar(props: { model: IssueListController }) {
 
   return (
     <div className="issuesTopBar">
-      <div className="row gap">
-        <div>
-          <h1>ACP 协作台</h1>
-          <div className="muted">项目看板 / 需求池 / 执行面板</div>
-        </div>
+      <div className="issuesTopTitle">
+        <h1>ACP 协作台</h1>
+        <div className="muted">项目看板 / 需求池 / 执行面板</div>
       </div>
 
       <div className="row gap issuesTopActions">

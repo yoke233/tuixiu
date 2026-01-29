@@ -9,15 +9,14 @@ export function ConsoleDetailsBlock(props: {
   bodyClassName?: string;
 }) {
   return (
-    <details className={`${props.className}${props.bordered ? " consoleDetailsBorder" : ""}`} open={props.defaultOpen}>
+    <details
+      className={`${props.className}${props.bordered ? " consoleDetailsBorder" : ""}`}
+      open={props.defaultOpen}
+    >
       <summary className="detailsSummary">
-        <span className="toolSummaryRow">
-          {props.summary}
-          <span className="detailsCaret">▸</span>
-        </span>
+        <span className="toolSummaryRow">{props.summary}</span>
       </summary>
       <div className={props.bodyClassName ?? "pre"}>{props.body}</div>
     </details>
   );
 }
-

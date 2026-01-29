@@ -4,20 +4,30 @@ import { StatusBadge } from "../../../components/StatusBadge";
 import type { Issue } from "../../../types";
 import type { IssueListController } from "../useIssueListController";
 
-function IssueCardLink(props: {
-  model: IssueListController;
-  issue: Issue;
-}) {
+function IssueCardLink(props: { model: IssueListController; issue: Issue }) {
   const { model, issue } = props;
-  const { auth, canChangeStatus, canRun, dragging, moving, selectedIssueId, setDragging, setDropStatus } = model;
+  const {
+    auth,
+    canChangeStatus,
+    canRun,
+    dragging,
+    isMobile,
+    moving,
+    selectedIssueId,
+    setDragging,
+    setDropStatus,
+  } = model;
 
   const latestRun = issue.runs?.[0];
   const selected = selectedIssueId === issue.id;
   const isDragging = dragging?.issueId === issue.id;
 
+  const detailPath =
+    isMobile && latestRun?.id ? `/sessions/${latestRun.id}` : `/issues/${issue.id}`;
+
   return (
     <Link
-      to={`/issues/${issue.id}`}
+      to={detailPath}
       draggable={Boolean(auth.user) && (canRun || canChangeStatus)}
       onDragStart={(e) => {
         if (!auth.user) return;
@@ -57,7 +67,8 @@ function IssueCardLink(props: {
 }
 
 export function KanbanBoard(props: { model: IssueListController }) {
-  const { columns, dropStatus, issuesByStatus, moveIssue, readDragPayload, setDropStatus } = props.model;
+  const { columns, dropStatus, issuesByStatus, moveIssue, readDragPayload, setDropStatus } =
+    props.model;
 
   return (
     <section className="kanban" aria-label="Issues 看板">
@@ -105,4 +116,3 @@ export function KanbanBoard(props: { model: IssueListController }) {
     </section>
   );
 }
-

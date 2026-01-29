@@ -5,6 +5,7 @@ import { useSessionController } from "./useSessionController";
 
 export function SessionPage() {
   const model = useSessionController();
+  const visibleError = model.error;
 
   return (
     <div className="sessionShell">
@@ -13,9 +14,9 @@ export function SessionPage() {
       <main className="sessionMain">
         <SessionMobileHeader model={model} />
 
-        {model.error ? (
+        {visibleError ? (
           <div role="alert" className="alert">
-            {model.error}
+            {visibleError}
           </div>
         ) : null}
 
@@ -24,4 +25,3 @@ export function SessionPage() {
     </div>
   );
 }
-

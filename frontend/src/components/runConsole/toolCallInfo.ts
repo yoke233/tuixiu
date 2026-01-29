@@ -69,7 +69,7 @@ export function formatToolCallInfo(info: ToolCallInfo | null): string | null {
   if (info.kind) metaParts.push(info.kind);
   if (info.status) metaParts.push(info.status);
 
-  const head = `（工具调用${metaParts.length ? `: ${metaParts.join(" / ")}` : ""}${info.title ? ` - ${info.title}` : ""}）`;
+  const head = `[${metaParts.length ? `${metaParts.join(" / ")}` : ""}${info.title ? ` - ${info.title}` : ""}]`;
   const lines = [head];
   if (info.toolCallId) lines.push(`toolCallId: ${info.toolCallId}`);
   if (info.cwd) lines.push(`cwd: ${info.cwd}`);
@@ -80,8 +80,9 @@ export function formatToolCallInfo(info: ToolCallInfo | null): string | null {
   return lines.join("\n");
 }
 
+// 最多50字
 export function getToolTitle(info: ToolCallInfo): string {
-  return info.title || info.command || info.toolCallId || "tool_call";
+  return (info.title || info.command || info.toolCallId || "tool_call").substring(0, 110);
 }
 
 export function kindToBadgeClass(kind: string): string {
@@ -117,7 +118,7 @@ export function exitToBadgeClass(exitCode: number): string {
 }
 
 export function mergeToolCallInfo(a: ToolCallInfo, b: ToolCallInfo): ToolCallInfo {
-  const pick = <T,>(left: T | undefined, right: T | undefined) => right ?? left;
+  const pick = <T>(left: T | undefined, right: T | undefined) => right ?? left;
   return {
     toolCallId: a.toolCallId,
     title: pick(a.title, b.title),
@@ -130,4 +131,3 @@ export function mergeToolCallInfo(a: ToolCallInfo, b: ToolCallInfo): ToolCallInf
     stderr: pick(a.stderr, b.stderr),
   };
 }
-

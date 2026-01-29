@@ -3,8 +3,16 @@ import { Outlet } from "react-router-dom";
 import type { IssueListController } from "../useIssueListController";
 
 export function IssueDetailOverlay(props: { model: IssueListController }) {
-  const { closeDetail, hasDetail, outletContext } = props.model;
+  const { closeDetail, hasDetail, outletContext, isMobile } = props.model;
   if (!hasDetail) return null;
+
+  if (isMobile) {
+    return (
+      <div className="issueDetailFull">
+        <Outlet context={outletContext} />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -20,4 +28,3 @@ export function IssueDetailOverlay(props: { model: IssueListController }) {
     </div>
   );
 }
-
