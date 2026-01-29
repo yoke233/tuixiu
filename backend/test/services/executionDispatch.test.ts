@@ -4,16 +4,16 @@ vi.mock("../../src/executors/acpAgentExecutor.js", () => ({ startAcpAgentExecuti
 vi.mock("../../src/executors/ciExecutor.js", () => ({ startCiExecution: vi.fn() }));
 vi.mock("../../src/executors/humanExecutor.js", () => ({ startHumanExecution: vi.fn() }));
 vi.mock("../../src/executors/systemExecutor.js", () => ({ startSystemExecution: vi.fn() }));
-vi.mock("../../src/services/workflow/taskProgress.js", () => ({ advanceTaskFromRunTerminal: vi.fn() }));
-vi.mock("../../src/services/workflow/taskAutoAdvance.js", () => ({ triggerTaskAutoAdvance: vi.fn() }));
+vi.mock("../../src/modules/workflow/taskProgress.js", () => ({ advanceTaskFromRunTerminal: vi.fn() }));
+vi.mock("../../src/modules/workflow/taskAutoAdvance.js", () => ({ triggerTaskAutoAdvance: vi.fn() }));
 
 const { dispatchExecutionForRun } = await import("../../src/services/workflow/executionDispatch.js");
 const { startAcpAgentExecution } = await import("../../src/executors/acpAgentExecutor.js");
 const { startCiExecution } = await import("../../src/executors/ciExecutor.js");
 const { startHumanExecution } = await import("../../src/executors/humanExecutor.js");
 const { startSystemExecution } = await import("../../src/executors/systemExecutor.js");
-const { advanceTaskFromRunTerminal } = await import("../../src/services/workflow/taskProgress.js");
-const { triggerTaskAutoAdvance } = await import("../../src/services/workflow/taskAutoAdvance.js");
+const { advanceTaskFromRunTerminal } = await import("../../src/modules/workflow/taskProgress.js");
+const { triggerTaskAutoAdvance } = await import("../../src/modules/workflow/taskAutoAdvance.js");
 
 describe("executionDispatch", () => {
   beforeEach(() => {
