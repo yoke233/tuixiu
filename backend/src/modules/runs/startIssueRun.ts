@@ -26,7 +26,11 @@ export type CreateWorkspaceResult = {
 
 type StartIssueRunResult =
   | { success: true; data: { run: any } }
-  | { success: false; error: { code: string; message: string; details?: string }; data?: any };
+  | {
+      success: false;
+      error: { code: string; message: string; details?: string };
+      data?: any;
+    };
 
 function toPublicIssue<T extends { project?: unknown }>(issue: T): T {
   const anyIssue = issue as any;
@@ -39,7 +43,11 @@ function toPublicIssue<T extends { project?: unknown }>(issue: T): T {
 export async function startIssueRun(opts: {
   prisma: PrismaDeps;
   acp: AcpTunnel;
-  createWorkspace?: (opts: { runId: string; baseBranch: string; name: string }) => Promise<CreateWorkspaceResult>;
+  createWorkspace?: (opts: {
+    runId: string;
+    baseBranch: string;
+    name: string;
+  }) => Promise<CreateWorkspaceResult>;
   issueId: string;
   agentId?: string;
   roleKey?: string;
@@ -54,42 +62,64 @@ export async function startIssueRun(opts: {
     include: { project: true, runs: { orderBy: { createdAt: "desc" } } },
   });
   if (!issue) {
-    return { success: false, error: { code: "NOT_FOUND", message: "Issue 不存在" } };
+    return {
+      success: false,
+      error: { code: "NOT_FOUND", message: "Issue 不存在" },
+    };
   }
   if ((issue as any).status === "running") {
-    return { success: false, error: { code: "ALREADY_RUNNING", message: "Issue 正在运行中" } };
+    return {
+      success: false,
+      error: { code: "ALREADY_RUNNING", message: "Issue 正在运行中" },
+    };
   }
 
   const selectedAgent = agentId
     ? await opts.prisma.agent.findUnique({ where: { id: agentId } })
-    : (
+    : ((
         await opts.prisma.agent.findMany({
           where: { status: "online" },
           orderBy: { createdAt: "asc" },
         })
-      ).find((a: { currentLoad: number; maxConcurrentRuns: number }) => a.currentLoad < a.maxConcurrentRuns) ?? null;
+      ).find(
+        (a: { currentLoad: number; maxConcurrentRuns: number }) =>
+          a.currentLoad < a.maxConcurrentRuns,
+      ) ?? null);
 
   if (!selectedAgent || (selectedAgent as any).status !== "online") {
-    return { success: false, error: { code: "NO_AGENT", message: "没有可用的 Agent" } };
+    return {
+      success: false,
+      error: { code: "NO_AGENT", message: "没有可用的 Agent" },
+    };
   }
   if ((selectedAgent as any).currentLoad >= (selectedAgent as any).maxConcurrentRuns) {
-    return { success: false, error: { code: "AGENT_BUSY", message: "该 Agent 正忙" } };
+    return {
+      success: false,
+      error: { code: "AGENT_BUSY", message: "该 Agent 正忙" },
+    };
   }
 
   const effectiveRoleKey = roleKey?.trim()
     ? roleKey.trim()
-    : ((issue as any).project as any)?.defaultRoleKey?.trim() ?? "";
+    : (((issue as any).project as any)?.defaultRoleKey?.trim() ?? "");
   const role = effectiveRoleKey
-    ? await opts.prisma.roleTemplate.findFirst({ where: { projectId: (issue as any).projectId, key: effectiveRoleKey } })
+    ? await opts.prisma.roleTemplate.findFirst({
+        where: { projectId: (issue as any).projectId, key: effectiveRoleKey },
+      })
     : null;
 
   if (effectiveRoleKey && !role) {
-    return { success: false, error: { code: "NO_ROLE", message: "RoleTemplate 不存在" } };
+    return {
+      success: false,
+      error: { code: "NO_ROLE", message: "RoleTemplate 不存在" },
+    };
   }
 
   const requestedTtl = normalizeKeepaliveTtlSeconds(opts.keepaliveTtlSeconds);
   const keepaliveTtlSeconds =
-    requestedTtl === null ? DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS : Math.min(86_400, Math.max(60, requestedTtl));
+    requestedTtl === null
+      ? DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS
+      : Math.min(86_400, Math.max(60, requestedTtl));
 
   const runId = uuidv7();
   const run = await opts.prisma.run.create({
@@ -135,7 +165,8 @@ export async function startIssueRun(opts: {
 
   let workspacePath = "";
   let branchName = "";
-  let baseBranchForRun = String(((issue as any).project as any).defaultBranch ?? "").trim() || "main";
+  let baseBranchForRun =
+    String(((issue as any).project as any).defaultBranch ?? "").trim() || "main";
   let workspaceMode: WorkspaceMode = "worktree";
   try {
     const baseBranch = ((issue as any).project as any).defaultBranch || "main";
@@ -152,12 +183,25 @@ export async function startIssueRun(opts: {
 
     const createWorkspace =
       opts.createWorkspace ??
-      (async (args: { runId: string; baseBranch: string; name: string }): Promise<CreateWorkspaceResult> => {
+      (async (args: {
+        runId: string;
+        baseBranch: string;
+        name: string;
+      }): Promise<CreateWorkspaceResult> => {
         const legacy = await createRunWorktree(args);
-        return { ...legacy, workspaceMode: "worktree", baseBranch: args.baseBranch, timingsMs: {} };
+        return {
+          ...legacy,
+          workspaceMode: "worktree",
+          baseBranch: args.baseBranch,
+          timingsMs: {},
+        };
       });
 
-    const ws = await createWorkspace({ runId: (run as any).id, baseBranch, name });
+    const ws = await createWorkspace({
+      runId: (run as any).id,
+      baseBranch,
+      name,
+    });
 
     workspacePath = ws.workspacePath;
     branchName = ws.branchName;
@@ -168,7 +212,10 @@ export async function startIssueRun(opts: {
 
     const caps = (selectedAgent as any)?.capabilities;
     const sandboxProvider =
-      caps && typeof caps === "object" && (caps as any).sandbox && typeof (caps as any).sandbox === "object"
+      caps &&
+      typeof caps === "object" &&
+      (caps as any).sandbox &&
+      typeof (caps as any).sandbox === "object"
         ? (caps as any).sandbox.provider
         : null;
 
@@ -195,11 +242,20 @@ export async function startIssueRun(opts: {
   } catch (error) {
     await opts.prisma.run.update({
       where: { id: (run as any).id },
-      data: { status: "failed", completedAt: new Date(), errorMessage: `创建 workspace 失败: ${String(error)}` },
+      data: {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: `创建 workspace 失败: ${String(error)}`,
+      },
     });
-    await opts.prisma.issue.update({ where: { id: (issue as any).id }, data: { status: "failed" } }).catch(() => {});
+    await opts.prisma.issue
+      .update({ where: { id: (issue as any).id }, data: { status: "failed" } })
+      .catch(() => {});
     await opts.prisma.agent
-      .update({ where: { id: (selectedAgent as any).id }, data: { currentLoad: { decrement: 1 } } })
+      .update({
+        where: { id: (selectedAgent as any).id },
+        data: { currentLoad: { decrement: 1 } },
+      })
       .catch(() => {});
 
     return {
@@ -213,10 +269,20 @@ export async function startIssueRun(opts: {
     };
   }
 
+  const caps = (selectedAgent as any)?.capabilities;
+  const sandboxProvider =
+    caps &&
+    typeof caps === "object" &&
+    (caps as any).sandbox &&
+    typeof (caps as any).sandbox === "object"
+      ? (caps as any).sandbox.provider
+      : null;
+  const agentWorkspacePath = sandboxProvider === "container_oci" ? "/workspace" : workspacePath;
+
   const promptParts: string[] = [];
   const projectForPrompt: any = (issue as any).project;
   const workspaceNoticeVars = {
-    workspace: String(workspacePath),
+    workspace: String(agentWorkspacePath),
     branch: String(branchName),
     workspaceMode: String(workspaceMode),
     repoUrl: String(projectForPrompt?.repoUrl ?? ""),
@@ -237,8 +303,10 @@ export async function startIssueRun(opts: {
       : renderTextTemplate(String(noticeTemplate), workspaceNoticeVars).trim();
   promptParts.push(
     [
-      workspaceMode === "clone" ? "你正在一个独立的 Git clone 工作区中执行任务：" : "你正在一个独立的 Git worktree 中执行任务：",
-      `- workspace: ${workspacePath}`,
+      workspaceMode === "clone"
+        ? "你正在一个独立的 Git clone 工作区中执行任务："
+        : "你正在一个独立的 Git worktree 中执行任务：",
+      `- workspace: ${agentWorkspacePath}`,
       `- branch: ${branchName}`,
       ...(workspaceNotice ? ["", workspaceNotice] : []),
     ].join("\n"),
@@ -246,7 +314,7 @@ export async function startIssueRun(opts: {
 
   if (role?.promptTemplate?.trim()) {
     const rendered = renderTextTemplate((role as any).promptTemplate, {
-      workspace: workspacePath,
+      workspace: agentWorkspacePath,
       branch: branchName,
       repoUrl: String(((issue as any).project as any).repoUrl ?? ""),
       defaultBranch: String(((issue as any).project as any).defaultBranch ?? ""),
@@ -271,7 +339,9 @@ export async function startIssueRun(opts: {
   promptParts.push(`任务标题: ${(issue as any).title}`);
   if ((issue as any).description) promptParts.push(`任务描述:\n${(issue as any).description}`);
 
-  const acceptance = Array.isArray((issue as any).acceptanceCriteria) ? (issue as any).acceptanceCriteria : [];
+  const acceptance = Array.isArray((issue as any).acceptanceCriteria)
+    ? (issue as any).acceptanceCriteria
+    : [];
   if (acceptance.length) {
     promptParts.push(`验收标准:\n${acceptance.map((x: unknown) => `- ${String(x)}`).join("\n")}`);
   }
@@ -295,10 +365,16 @@ export async function startIssueRun(opts: {
 
     const initEnv: Record<string, string> = {
       ...(project?.githubAccessToken
-        ? { GH_TOKEN: String(project.githubAccessToken), GITHUB_TOKEN: String(project.githubAccessToken) }
+        ? {
+            GH_TOKEN: String(project.githubAccessToken),
+            GITHUB_TOKEN: String(project.githubAccessToken),
+          }
         : {}),
       ...(project?.gitlabAccessToken
-        ? { GITLAB_TOKEN: String(project.gitlabAccessToken), GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken) }
+        ? {
+            GITLAB_TOKEN: String(project.gitlabAccessToken),
+            GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken),
+          }
         : {}),
       ...roleEnv,
       TUIXIU_PROJECT_ID: String((issue as any).projectId),
@@ -309,7 +385,7 @@ export async function startIssueRun(opts: {
       TUIXIU_BASE_BRANCH: String(baseBranchForRun),
       TUIXIU_RUN_ID: String((run as any).id),
       TUIXIU_RUN_BRANCH: String(branchName),
-      TUIXIU_WORKSPACE: String(workspacePath),
+      TUIXIU_WORKSPACE: String(agentWorkspacePath),
       TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String((issue as any).projectId)}`,
     };
     if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
@@ -323,7 +399,7 @@ export async function startIssueRun(opts: {
     await opts.acp.promptRun({
       proxyId: String((selectedAgent as any).proxyId ?? ""),
       runId: String((run as any).id),
-      cwd: workspacePath,
+      cwd: agentWorkspacePath,
       sessionId: (run as any).acpSessionId ?? null,
       prompt: [{ type: "text", text: promptParts.join("\n\n") }],
       init,
@@ -346,14 +422,21 @@ export async function startIssueRun(opts: {
   } catch (error) {
     await opts.prisma.run.update({
       where: { id: (run as any).id },
-      data: { status: "failed", completedAt: new Date(), errorMessage: String(error) },
+      data: {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: String(error),
+      },
     });
     await opts.prisma.issue.update({
       where: { id: (issue as any).id },
       data: { status: "failed" },
     });
     await opts.prisma.agent
-      .update({ where: { id: (selectedAgent as any).id }, data: { currentLoad: { decrement: 1 } } })
+      .update({
+        where: { id: (selectedAgent as any).id },
+        data: { currentLoad: { decrement: 1 } },
+      })
       .catch(() => {});
 
     return {
