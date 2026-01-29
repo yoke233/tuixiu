@@ -8,10 +8,7 @@ import path from "node:path";
 import type { AcpTransport, AgentLauncher } from "./launchers/types.js";
 import type { SandboxProvider } from "./sandbox/types.js";
 
-type SessionUpdateFn = (
-  sessionId: string,
-  update: acp.SessionNotification["update"],
-) => void;
+type SessionUpdateFn = (sessionId: string, update: acp.SessionNotification["update"]) => void;
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
 
@@ -34,10 +31,7 @@ function isAuthRequiredError(err: unknown): boolean {
   return code === -32000;
 }
 
-function trimToByteLimit(
-  value: string,
-  limit: number,
-): { value: string; truncated: boolean } {
+function trimToByteLimit(value: string, limit: number): { value: string; truncated: boolean } {
   if (limit <= 0) return { value: "", truncated: true };
   const bytes = Buffer.byteLength(value, "utf8");
   if (bytes <= limit) return { value, truncated: false };
@@ -61,10 +55,7 @@ function trimToByteLimit(
   return { value: trimmed, truncated: true };
 }
 
-function resolveWorkspacePath(
-  workspaceRoot: string,
-  requestedPath: string,
-): string {
+function resolveWorkspacePath(workspaceRoot: string, requestedPath: string): string {
   const base = path.resolve(workspaceRoot);
   const resolved = path.isAbsolute(requestedPath)
     ? path.resolve(requestedPath)
@@ -142,8 +133,7 @@ export class AcpBridge {
     try {
       content = await fs.readFile(resolved, "utf8");
     } catch (err: any) {
-      if (err?.code === "ENOENT")
-        throw acp.RequestError.resourceNotFound(params.path);
+      if (err?.code === "ENOENT") throw acp.RequestError.resourceNotFound(params.path);
       throw err;
     }
 
@@ -151,18 +141,12 @@ export class AcpBridge {
     const limitRaw = params.limit ?? null;
     if (lineRaw == null && limitRaw == null) return { content };
 
-    const start = Math.max(
-      0,
-      Number.isFinite(lineRaw) ? Math.max(0, (lineRaw as number) - 1) : 0,
-    );
-    const limit = Number.isFinite(limitRaw)
-      ? Math.max(0, limitRaw as number)
-      : null;
+    const start = Math.max(0, Number.isFinite(lineRaw) ? Math.max(0, (lineRaw as number) - 1) : 0);
+    const limit = Number.isFinite(limitRaw) ? Math.max(0, limitRaw as number) : null;
     if (limit === 0) return { content: "" };
 
     const lines = content.split(/\r?\n/g);
-    const end =
-      limit == null ? lines.length : Math.min(lines.length, start + limit);
+    const end = limit == null ? lines.length : Math.min(lines.length, start + limit);
     return { content: lines.slice(start, end).join("\n") };
   }
 
@@ -190,17 +174,13 @@ export class AcpBridge {
 
     const outputByteLimitRaw = params.outputByteLimit ?? null;
     const outputByteLimit = Number.isFinite(outputByteLimitRaw as number)
-      ? Math.max(
-          4_096,
-          Math.min(64 * 1024 * 1024, outputByteLimitRaw as number),
-        )
+      ? Math.max(4_096, Math.min(64 * 1024 * 1024, outputByteLimitRaw as number))
       : 2 * 1024 * 1024;
 
     const command = [params.command, ...(params.args ?? [])].filter(
       (x) => typeof x === "string" && x.length,
     );
-    if (!command.length)
-      throw acp.RequestError.invalidParams({ command: "command is required" });
+    if (!command.length) throw acp.RequestError.invalidParams({ command: "command is required" });
 
     const handle = await this.opts.sandbox.runProcess({
       command,
@@ -372,11 +352,9 @@ export class AcpBridge {
         writeTextFile: async (params) => await this.writeTextFileImpl(params),
         createTerminal: async (params) => await this.createTerminalImpl(params),
         terminalOutput: async (params) => await this.terminalOutputImpl(params),
-        waitForTerminalExit: async (params) =>
-          await this.waitForTerminalExitImpl(params),
+        waitForTerminalExit: async (params) => await this.waitForTerminalExitImpl(params),
         killTerminal: async (params) => await this.killTerminalImpl(params),
-        releaseTerminal: async (params) =>
-          await this.releaseTerminalImpl(params),
+        releaseTerminal: async (params) => await this.releaseTerminalImpl(params),
         extMethod: async (method, params) => {
           this.opts.log("acp extMethod (unhandled)", { method, params });
           return {};
@@ -387,7 +365,7 @@ export class AcpBridge {
       };
 
       this.transport = transport;
-      this.conn = new acp.ClientSideConnection((_agent) => clientImpl, stream);
+      this.conn = new acp.ClientSideConnection(() => clientImpl, stream);
     })();
 
     this.connecting = p;
@@ -432,9 +410,7 @@ export class AcpBridge {
     await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
-    const res = await this.withAuthRetry(() =>
-      this.conn!.newSession({ cwd, mcpServers: [] }),
-    );
+    const res = await this.withAuthRetry(() => this.conn!.newSession({ cwd, mcpServers: [] }));
 
     // Auto-switch to "code" mode if available
     if (res.modes && res.modes.availableModes.some((m) => m.id === "code")) {
@@ -450,10 +426,7 @@ export class AcpBridge {
     return res;
   }
 
-  async loadSession(
-    sessionId: string,
-    cwd: string,
-  ): Promise<acp.LoadSessionResponse | null> {
+  async loadSession(sessionId: string, cwd: string): Promise<acp.LoadSessionResponse | null> {
     await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
@@ -491,18 +464,14 @@ export class AcpBridge {
     await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
-    await this.withAuthRetry(() =>
-      this.conn!.setSessionMode({ sessionId, modeId }),
-    );
+    await this.withAuthRetry(() => this.conn!.setSessionMode({ sessionId, modeId }));
   }
 
   async setSessionModel(sessionId: string, modelId: string): Promise<void> {
     await this.ensureConnected();
     if (!this.conn) throw new Error("ACP connection not ready");
     await this.ensureInitialized();
-    await this.withAuthRetry(() =>
-      this.conn!.setSessionModel({ sessionId, modelId }),
-    );
+    await this.withAuthRetry(() => this.conn!.setSessionModel({ sessionId, modelId }));
   }
 
   close(): void {

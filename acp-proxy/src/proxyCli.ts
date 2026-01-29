@@ -378,13 +378,13 @@ export async function runProxyCli() {
         "  fi",
         "  code=$?",
         "  if [ $code -ne 0 ]; then",
-        '    printf "%s%s\\n" "$marker" "{\"ok\":false,\"exitCode\":$code}" >&2',
+        '    printf "%s%s\\n" "$marker" \'{"ok":false,"exitCode":\'"$code"\'}\' >&2',
         "    exit $code",
         "  fi",
-        '  printf "%s%s\\n" "$marker" "{\"ok\":true}" >&2',
+        '  printf "%s%s\\n" "$marker" \'{"ok":true}\' >&2',
         '  rm -f "$init_script" "$init_env" >/dev/null 2>&1 || true',
         "else",
-        '  printf "%s%s\\n" "$marker" "{\"ok\":true,\"skipped\":true}" >&2',
+        '  printf "%s%s\\n" "$marker" \'{"ok":true,"skipped":true}\' >&2',
         "fi",
         "",
         'exec "$@"',
@@ -602,8 +602,8 @@ export async function runProxyCli() {
         } catch {}
         const rest = redact(buf);
         if (rest.trim()) {
-          if (!initPending && rest.startsWith(initMarkerPrefix)) return;
-          if (initPending && rest.startsWith(initMarkerPrefix)) {
+          const startsWithMarker = rest.startsWith(initMarkerPrefix);
+          if (startsWithMarker && initPending) {
             const payloadRaw = rest.slice(initMarkerPrefix.length).trim();
             try {
               const parsed = JSON.parse(payloadRaw) as any;
@@ -621,7 +621,7 @@ export async function runProxyCli() {
               type: "text",
               text: `[init:stderr] ${rest}`,
             });
-          } else {
+          } else if (!startsWithMarker) {
             log("agent stderr", { runId: run.runId, text: rest });
             sendUpdate(run.runId, {
               type: "text",

@@ -9,12 +9,13 @@ export default [
   ...tseslint.configs.recommended,
   prettier,
   {
+    files: ["**/*.ts"],
     languageOptions: {
       globals: {
         ...globals.node,
       },
       parserOptions: {
-        project: "./tsconfig.json",
+        project: "./tsconfig.eslint.json",
         tsconfigRootDir: import.meta.dirname,
       },
     },

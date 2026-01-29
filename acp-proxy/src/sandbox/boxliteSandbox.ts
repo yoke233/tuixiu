@@ -64,11 +64,11 @@ async function assertBoxliteSupportedPlatform(): Promise<void> {
 async function importBoxliteModule(): Promise<any> {
   try {
     return await import("@boxlite-ai/boxlite");
-  } catch (errA) {
+  } catch {
     try {
       const legacyPkgName: string = "boxlite";
       return await import(legacyPkgName);
-    } catch (errB) {
+    } catch {
       throw new Error(
         "未安装 BoxLite Node SDK。请先运行 pnpm install（或 pnpm -C acp-proxy install）；如仍缺失可手动安装：pnpm -C acp-proxy add @boxlite-ai/boxlite（或 pnpm -C acp-proxy add boxlite）",
       );
@@ -85,9 +85,7 @@ async function importSimpleBoxClass(): Promise<any> {
   return SimpleBox;
 }
 
-function toEnvArray(
-  env: Record<string, string> | undefined,
-): Array<[string, string]> | undefined {
+function toEnvArray(env: Record<string, string> | undefined): Array<[string, string]> | undefined {
   if (!env) return undefined;
   const entries = Object.entries(env).filter(([k]) => k.trim());
   if (!entries.length) return undefined;
@@ -108,9 +106,7 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
   private box: any | null = null;
   private boxMeta: { image: string; workingDir: string; instanceName: string } | null = null;
 
-  constructor(
-    private readonly opts: { log: Logger; config: BoxliteSandboxConfig },
-  ) {}
+  constructor(private readonly opts: { log: Logger; config: BoxliteSandboxConfig }) {}
 
   private async ensureBox(opts: {
     instanceName: string;
@@ -119,16 +115,13 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
     await assertBoxliteSupportedPlatform();
 
     const cfg = this.opts.config;
-    if (!cfg.image.trim())
-      throw new Error("BoxLite 配置缺失：sandbox.boxlite.image");
+    if (!cfg.image.trim()) throw new Error("BoxLite 配置缺失：sandbox.boxlite.image");
 
     const SimpleBox = await importSimpleBoxClass();
 
     const envForProc = opts.envForProc;
 
-    const workingDir = cfg.workingDir?.trim()
-      ? cfg.workingDir.trim()
-      : "/workspace";
+    const workingDir = cfg.workingDir?.trim() ? cfg.workingDir.trim() : "/workspace";
     if (workingDir !== "/workspace" && !workingDir.startsWith("/workspace/")) {
       throw new Error("sandbox.boxlite.workingDir 必须位于 /workspace 下");
     }
@@ -172,9 +165,7 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
     return { instanceName: name, status: "running", createdAt: null };
   }
 
-  async ensureInstanceRunning(
-    opts: EnsureInstanceRunningOpts,
-  ): Promise<SandboxInstanceInfo> {
+  async ensureInstanceRunning(opts: EnsureInstanceRunningOpts): Promise<SandboxInstanceInfo> {
     const instanceName = opts.instanceName.trim();
     if (!instanceName) throw new Error("instanceName 为空");
 
@@ -200,9 +191,7 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
   }
 
   async listInstances(opts?: ListInstancesOpts): Promise<SandboxInstanceInfo[]> {
-    const info = this.boxMeta
-      ? await this.inspectInstance(this.boxMeta.instanceName)
-      : null;
+    const info = this.boxMeta ? await this.inspectInstance(this.boxMeta.instanceName) : null;
     if (!info || info.status === "missing") return [];
 
     const prefix = opts?.namePrefix?.trim() ? opts.namePrefix.trim() : null;
@@ -232,13 +221,8 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
     const stdoutHandle = await exec.stdout();
     const stderrHandle = await exec.stderr().catch(() => null);
 
-    const exitListeners = new Set<
-      (info: { code: number | null; signal: string | null }) => void
-    >();
-    const notifyExit = (info: {
-      code: number | null;
-      signal: string | null;
-    }) => {
+    const exitListeners = new Set<(info: { code: number | null; signal: string | null }) => void>();
+    const notifyExit = (info: { code: number | null; signal: string | null }) => {
       for (const cb of exitListeners) cb(info);
     };
 
@@ -355,13 +339,8 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
     const stdoutHandle = await exec.stdout();
     const stderrHandle = await exec.stderr().catch(() => null);
 
-    const exitListeners = new Set<
-      (info: { code: number | null; signal: string | null }) => void
-    >();
-    const notifyExit = (info: {
-      code: number | null;
-      signal: string | null;
-    }) => {
+    const exitListeners = new Set<(info: { code: number | null; signal: string | null }) => void>();
+    const notifyExit = (info: { code: number | null; signal: string | null }) => {
       for (const cb of exitListeners) cb(info);
     };
 
@@ -394,15 +373,15 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
         "set -e",
         'pid_file="$1"',
         "for _i in 1 2 3 4 5 6 7 8 9 10; do",
-        "  [ -f \"$pid_file\" ] && break",
+        '  [ -f "$pid_file" ] && break',
         "  sleep 0.05",
         "done",
-        "if [ -f \"$pid_file\" ]; then",
-        '  pid="$(cat \"$pid_file\" 2>/dev/null | tr -cd \"0-9\")"',
-        "  if [ -n \"$pid\" ]; then",
-        '    kill -TERM \"$pid\" 2>/dev/null || true',
+        'if [ -f "$pid_file" ]; then',
+        '  pid="$(cat "$pid_file" 2>/dev/null | tr -cd "0-9")"',
+        '  if [ -n "$pid" ]; then',
+        '    kill -TERM "$pid" 2>/dev/null || true',
         "    sleep 0.2",
-        '    kill -KILL \"$pid\" 2>/dev/null || true',
+        '    kill -KILL "$pid" 2>/dev/null || true',
         "  fi",
         "fi",
       ].join("\n");

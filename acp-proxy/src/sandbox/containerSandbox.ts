@@ -111,9 +111,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
     return raw ? raw : "docker";
   }
 
-  constructor(
-    private readonly opts: { log: Logger; config: ContainerSandboxConfig },
-  ) {}
+  constructor(private readonly opts: { log: Logger; config: ContainerSandboxConfig }) {}
 
   async inspectInstance(instanceName: string): Promise<SandboxInstanceInfo> {
     const name = instanceName.trim();
@@ -144,9 +142,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
     return { instanceName: name, status, createdAt };
   }
 
-  async ensureInstanceRunning(
-    opts: EnsureInstanceRunningOpts,
-  ): Promise<SandboxInstanceInfo> {
+  async ensureInstanceRunning(opts: EnsureInstanceRunningOpts): Promise<SandboxInstanceInfo> {
     const cfg = this.opts.config;
     const runtime = this.runtime;
 
@@ -161,9 +157,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
       this.opts.log("container start", { runtime, name: instanceName });
       const started = await spawnCapture(runtime, ["start", instanceName]);
       if (started.code !== 0) {
-        throw new Error(
-          `container start 失败：${`${started.stdout}\n${started.stderr}`.trim()}`,
-        );
+        throw new Error(`container start 失败：${`${started.stdout}\n${started.stderr}`.trim()}`);
       }
       return await this.inspectInstance(instanceName);
     }
@@ -183,8 +177,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
 
     args.push(...(cfg.extraRunArgs ?? []));
     if (typeof cfg.cpus === "number") args.push("--cpus", String(cfg.cpus));
-    if (typeof cfg.memoryMib === "number")
-      args.push("--memory", `${cfg.memoryMib}m`);
+    if (typeof cfg.memoryMib === "number") args.push("--memory", `${cfg.memoryMib}m`);
 
     args.push(...toEnvArgs(envForContainer));
     args.push(...toVolumeArgs(volumes));
@@ -208,9 +201,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
 
     const created = await spawnCapture(runtime, args);
     if (created.code !== 0) {
-      throw new Error(
-        `container run 失败：${`${created.stdout}\n${created.stderr}`.trim()}`,
-      );
+      throw new Error(`container run 失败：${`${created.stdout}\n${created.stderr}`.trim()}`);
     }
 
     return await this.inspectInstance(instanceName);
@@ -265,9 +256,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
       this.opts.log("container start", { runtime, name: instanceName });
       const started = await spawnCapture(runtime, ["start", instanceName]);
       if (started.code !== 0) {
-        throw new Error(
-          `container start 失败：${`${started.stdout}\n${started.stderr}`.trim()}`,
-        );
+        throw new Error(`container start 失败：${`${started.stdout}\n${started.stderr}`.trim()}`);
       }
       return await this.inspectInstance(instanceName);
     }
@@ -285,13 +274,11 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
     if (opts.openStdin !== false) args.push("-i");
     args.push("--name", instanceName, "-w", workingDir);
     args.push("--label", "acp-proxy.managed=1");
-    if (opts.runId.trim())
-      args.push("--label", `acp-proxy.run_id=${opts.runId.trim()}`);
+    if (opts.runId.trim()) args.push("--label", `acp-proxy.run_id=${opts.runId.trim()}`);
 
     args.push(...(cfg.extraRunArgs ?? []));
     if (typeof cfg.cpus === "number") args.push("--cpus", String(cfg.cpus));
-    if (typeof cfg.memoryMib === "number")
-      args.push("--memory", `${cfg.memoryMib}m`);
+    if (typeof cfg.memoryMib === "number") args.push("--memory", `${cfg.memoryMib}m`);
 
     args.push(...toEnvArgs(envForContainer));
     args.push(...toVolumeArgs(volumes));
@@ -307,9 +294,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
 
     const created = await spawnCapture(runtime, args);
     if (created.code !== 0) {
-      throw new Error(
-        `container run 失败：${`${created.stdout}\n${created.stderr}`.trim()}`,
-      );
+      throw new Error(`container run 失败：${`${created.stdout}\n${created.stderr}`.trim()}`);
     }
 
     return await this.inspectInstance(instanceName);
@@ -340,13 +325,11 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
     args.push("--name", instanceName, "-w", workingDir);
     args.push("--label", "acp-proxy.managed=1");
     args.push("--label", "acp-proxy.agent_mode=entrypoint");
-    if (opts.runId.trim())
-      args.push("--label", `acp-proxy.run_id=${opts.runId.trim()}`);
+    if (opts.runId.trim()) args.push("--label", `acp-proxy.run_id=${opts.runId.trim()}`);
 
     args.push(...(cfg.extraRunArgs ?? []));
     if (typeof cfg.cpus === "number") args.push("--cpus", String(cfg.cpus));
-    if (typeof cfg.memoryMib === "number")
-      args.push("--memory", `${cfg.memoryMib}m`);
+    if (typeof cfg.memoryMib === "number") args.push("--memory", `${cfg.memoryMib}m`);
 
     args.push(...toEnvArgs(envForContainer));
     args.push(...toVolumeArgs(volumes));
@@ -361,9 +344,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
 
     const created = await spawnCapture(runtime, args);
     if (created.code !== 0) {
-      throw new Error(
-        `container create 失败：${`${created.stdout}\n${created.stderr}`.trim()}`,
-      );
+      throw new Error(`container create 失败：${`${created.stdout}\n${created.stderr}`.trim()}`);
     }
   }
 
@@ -375,9 +356,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
     this.opts.log("container start", { runtime, name });
     const started = await spawnCapture(runtime, ["start", name]);
     if (started.code !== 0) {
-      throw new Error(
-        `container start 失败：${`${started.stdout}\n${started.stderr}`.trim()}`,
-      );
+      throw new Error(`container start 失败：${`${started.stdout}\n${started.stderr}`.trim()}`);
     }
   }
 
@@ -399,11 +378,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
       name: instanceName,
       guestPath,
     });
-    const res = await spawnCapture(runtime, [
-      "cp",
-      hostPath,
-      `${instanceName}:${guestPath}`,
-    ]);
+    const res = await spawnCapture(runtime, ["cp", hostPath, `${instanceName}:${guestPath}`]);
     if (res.code !== 0) {
       throw new Error(`container cp 失败：${`${res.stdout}\n${res.stderr}`.trim()}`);
     }
@@ -497,13 +472,8 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
       });
     });
 
-    const exitListeners = new Set<
-      (info: { code: number | null; signal: string | null }) => void
-    >();
-    const notifyExit = (info: {
-      code: number | null;
-      signal: string | null;
-    }) => {
+    const exitListeners = new Set<(info: { code: number | null; signal: string | null }) => void>();
+    const notifyExit = (info: { code: number | null; signal: string | null }) => {
       for (const cb of exitListeners) cb(info);
     };
 
@@ -532,15 +502,15 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
             "set -e",
             'pid_file="$1"',
             "for _i in 1 2 3 4 5 6 7 8 9 10; do",
-            "  [ -f \"$pid_file\" ] && break",
+            '  [ -f "$pid_file" ] && break',
             "  sleep 0.05",
             "done",
-            "if [ -f \"$pid_file\" ]; then",
-            '  pid="$(cat \"$pid_file\" 2>/dev/null | tr -cd \"0-9\")"',
-            "  if [ -n \"$pid\" ]; then",
-            '    kill -TERM \"$pid\" 2>/dev/null || true',
+            'if [ -f "$pid_file" ]; then',
+            '  pid="$(cat "$pid_file" 2>/dev/null | tr -cd "0-9")"',
+            '  if [ -n "$pid" ]; then',
+            '    kill -TERM "$pid" 2>/dev/null || true',
             "    sleep 0.2",
-            '    kill -KILL \"$pid\" 2>/dev/null || true',
+            '    kill -KILL "$pid" 2>/dev/null || true',
             "  fi",
             "fi",
           ].join("\n");
@@ -575,9 +545,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
 
     const res = await spawnCapture(runtime, args);
     if (res.code !== 0) {
-      throw new Error(
-        `container ps 失败：${`${res.stdout}\n${res.stderr}`.trim()}`,
-      );
+      throw new Error(`container ps 失败：${`${res.stdout}\n${res.stderr}`.trim()}`);
     }
 
     const names = res.stdout
@@ -607,9 +575,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
     if (!cfg.image.trim()) throw new Error("Container 配置缺失：sandbox.image");
     if (!opts.command.length) throw new Error("command 为空");
 
-    const workingDir = cfg.workingDir?.trim()
-      ? cfg.workingDir.trim()
-      : "/workspace";
+    const workingDir = cfg.workingDir?.trim() ? cfg.workingDir.trim() : "/workspace";
 
     const envForProc = { ...cfg.env, ...opts.env };
     const volumes: ContainerVolume[] = [...(cfg.volumes ?? [])];
@@ -626,8 +592,7 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
       ...(cfg.extraRunArgs ?? []),
     ];
     if (typeof cfg.cpus === "number") args.push("--cpus", String(cfg.cpus));
-    if (typeof cfg.memoryMib === "number")
-      args.push("--memory", `${cfg.memoryMib}m`);
+    if (typeof cfg.memoryMib === "number") args.push("--memory", `${cfg.memoryMib}m`);
     args.push(...toEnvArgs(envForProc));
     args.push(...toVolumeArgs(volumes));
     args.push(cfg.image, ...opts.command);
@@ -655,13 +620,8 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
       });
     });
 
-    const exitListeners = new Set<
-      (info: { code: number | null; signal: string | null }) => void
-    >();
-    const notifyExit = (info: {
-      code: number | null;
-      signal: string | null;
-    }) => {
+    const exitListeners = new Set<(info: { code: number | null; signal: string | null }) => void>();
+    const notifyExit = (info: { code: number | null; signal: string | null }) => {
       for (const cb of exitListeners) cb(info);
     };
 
@@ -724,13 +684,8 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
       });
     });
 
-    const exitListeners = new Set<
-      (info: { code: number | null; signal: string | null }) => void
-    >();
-    const notifyExit = (info: {
-      code: number | null;
-      signal: string | null;
-    }) => {
+    const exitListeners = new Set<(info: { code: number | null; signal: string | null }) => void>();
+    const notifyExit = (info: { code: number | null; signal: string | null }) => {
       for (const cb of exitListeners) cb(info);
     };
 
@@ -785,13 +740,8 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
       });
     });
 
-    const exitListeners = new Set<
-      (info: { code: number | null; signal: string | null }) => void
-    >();
-    const notifyExit = (info: {
-      code: number | null;
-      signal: string | null;
-    }) => {
+    const exitListeners = new Set<(info: { code: number | null; signal: string | null }) => void>();
+    const notifyExit = (info: { code: number | null; signal: string | null }) => {
       for (const cb of exitListeners) cb(info);
     };
 

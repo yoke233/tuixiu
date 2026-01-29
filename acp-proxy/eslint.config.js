@@ -6,9 +6,19 @@ import prettier from "eslint-config-prettier";
 export default [
   { ignores: ["dist/**", "coverage/**", "node_modules/**"] },
   js.configs.recommended,
+  {
+    files: ["**/*.{js,cjs,mjs}"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        fetch: "readonly",
+      },
+    },
+  },
   ...tseslint.configs.recommended,
   prettier,
   {
+    files: ["**/*.ts"],
     languageOptions: {
       globals: {
         ...globals.node,
@@ -20,6 +30,7 @@ export default [
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      "no-empty": ["error", { allowEmptyCatch: true }],
     },
   },
 ];
