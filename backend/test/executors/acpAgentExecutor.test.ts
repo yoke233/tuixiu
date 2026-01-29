@@ -133,7 +133,7 @@ describe("acpAgentExecutor", () => {
       expect.objectContaining({
         proxyId: "proxy-1",
         runId: "r1",
-        cwd: "C:/ws",
+        cwd: "/workspace",
         init: expect.objectContaining({
           script: "echo hi",
           timeout_seconds: 10,

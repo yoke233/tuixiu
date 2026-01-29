@@ -3,7 +3,7 @@ import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { PrismaDeps, SendToAgent } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { toApprovalSummary, type ApprovalStatus } from "../modules/approvals/approvalRequests.js";
 import type { CreateWorkspace } from "../executors/types.js";

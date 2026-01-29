@@ -1,4 +1,4 @@
-import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { PrismaDeps, SendToAgent } from "../db.js";
 
 export type WorkspaceMode = "worktree" | "clone";
 

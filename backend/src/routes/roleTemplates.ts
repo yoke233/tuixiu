@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { listEnvKeys } from "../utils/envText.js";
 

@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 
 import type { GitAuthMode, GitAuthProject } from "./gitAuth.js";
 import { createGitProcessEnv } from "./gitAuth.js";
-import { createRunWorktree, defaultRunBranchName } from "./gitWorkspace.js";
+import { defaultRunBranchName } from "./gitWorkspace.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -45,20 +45,7 @@ export async function createRunWorkspace(opts: {
   const baseBranch = String(opts.baseBranch ?? "").trim() ? String(opts.baseBranch).trim() : "main";
   const branchName = defaultRunBranchName(opts.name);
 
-  const workspaceMode: WorkspaceMode =
-    String(opts.project.workspaceMode ?? "").trim().toLowerCase() === "clone" ? "clone" : "worktree";
-
-  if (workspaceMode === "worktree") {
-    const ws = await createRunWorktree({ runId: opts.runId, baseBranch, name: opts.name });
-    return {
-      workspaceMode,
-      workspacePath: ws.workspacePath,
-      branchName: ws.branchName,
-      baseBranch,
-      repoRoot: ws.repoRoot,
-      timingsMs: {},
-    };
-  }
+  const workspaceMode: WorkspaceMode = "clone";
 
   const timingsMs: Record<string, number> = {};
   const t0 = Date.now();

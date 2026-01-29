@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 
 const approvalActionSchema = z.enum(["merge_pr", "create_pr", "publish_artifact"]);
 
@@ -96,4 +96,3 @@ export async function setPmPolicyForProject(deps: { prisma: PrismaDeps }, opts: 
 
   return { success: true, data: { projectId: project.id, policy: validated.data } };
 }
-

@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
 import { startIssueRun, type CreateWorkspaceResult } from "../modules/runs/startIssueRun.js";
 import { uuidv7 } from "../utils/uuid.js";
@@ -220,7 +220,6 @@ export function makeIssueRoutes(deps: {
           select: {
             id: true,
             acpSessionId: true,
-            workspacePath: true,
             agent: { select: { proxyId: true } }
           }
         });
@@ -229,9 +228,10 @@ export function makeIssueRoutes(deps: {
           runs.map(async (run) => {
             const proxyId = String((run as any).agent?.proxyId ?? "").trim();
             const sessionId = String((run as any).acpSessionId ?? "").trim();
-            const cwd = String((run as any).workspacePath ?? "").trim();
-            if (!proxyId || !sessionId || !cwd) return;
-            await deps.acp.cancelSession({ proxyId, runId: run.id, cwd, sessionId }).catch(() => {});
+            if (!proxyId || !sessionId) return;
+            await deps.acp
+              .cancelSession({ proxyId, runId: run.id, cwd: "/workspace", sessionId })
+              .catch(() => {});
           })
         );
       }

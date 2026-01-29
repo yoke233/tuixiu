@@ -127,7 +127,7 @@ describe("Runs routes", () => {
     expect(acp.cancelSession).toHaveBeenCalledWith({
       proxyId: "proxy-2",
       runId: "00000000-0000-0000-0000-000000000002",
-      cwd: "C:/repo/.worktrees/run-2",
+      cwd: "/workspace",
       sessionId: "s2",
     });
     await server.close();
@@ -389,7 +389,7 @@ describe("Runs routes", () => {
     expect(acp.cancelSession).toHaveBeenCalledWith({
       proxyId: "proxy-1",
       runId,
-      cwd: "C:/repo/.worktrees/run-1",
+      cwd: "/workspace",
       sessionId: "s1",
     });
     await server.close();

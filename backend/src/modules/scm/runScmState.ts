@@ -1,4 +1,4 @@
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 
 export type ScmProvider = "github" | "gitlab";
 export type ScmPrState = "open" | "closed" | "merged";
@@ -119,4 +119,3 @@ export async function updateRunScmState(
   if (!Object.keys(data).length) return;
   await deps.prisma.run.update({ where: { id: runId }, data: data as any } as any);
 }
-

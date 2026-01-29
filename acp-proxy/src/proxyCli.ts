@@ -73,6 +73,31 @@ function isJsonRpcRequest(v: unknown): v is JsonRpcRequest {
   );
 }
 
+type JsonRpcError = { code: number; message: string; data?: unknown };
+
+function isJsonRpcResponse(v: unknown): v is {
+  jsonrpc: "2.0";
+  id: string | number;
+  result?: unknown;
+  error?: JsonRpcError;
+} {
+  if (!isRecord(v) || v.jsonrpc !== "2.0") return false;
+  const id = (v as any).id;
+  if (!(typeof id === "string" || typeof id === "number")) return false;
+  return "result" in v || "error" in v;
+}
+
+function isJsonRpcNotification(v: unknown): v is {
+  jsonrpc: "2.0";
+  method: string;
+  params?: unknown;
+} {
+  if (!isRecord(v) || v.jsonrpc !== "2.0") return false;
+  if (typeof (v as any).method !== "string") return false;
+  const id = (v as any).id;
+  return id === undefined || id === null;
+}
+
 function validateRunId(v: unknown): string {
   const runId = String(v ?? "").trim();
   if (!runId) throw new Error("run_id 为空");
@@ -111,6 +136,13 @@ type RunRuntime = {
   suppressNextAcpExit: boolean;
   lastUsedAt: number;
   acpClient: AcpClientFacade;
+  nextRpcId: number;
+  pendingRpc: Map<string | number, { resolve: (v: unknown) => void; reject: (err: unknown) => void }>;
+  initialized: boolean;
+  initResult: unknown | null;
+  seenSessionIds: Set<string>;
+  opQueue: Promise<void>;
+  activePromptId: string | null;
 };
 
 export async function runProxyCli() {
@@ -244,11 +276,20 @@ export async function runProxyCli() {
     }
 
     run.agent = null;
-    try {
-      agent.reader.releaseLock();
-    } catch {
-      // ignore
+    run.initialized = false;
+    run.initResult = null;
+    run.seenSessionIds.clear();
+    run.activePromptId = null;
+    run.nextRpcId = 1;
+    const pendingError = new Error(`agent closed: ${reason}`);
+    for (const pending of run.pendingRpc.values()) {
+      try {
+        pending.reject(pendingError);
+      } catch {
+        // ignore
+      }
     }
+    run.pendingRpc.clear();
     await agent.close().catch(() => {});
     log("agent closed", { runId: run.runId, reason });
   };
@@ -269,6 +310,213 @@ export async function runProxyCli() {
         log("acp write failed", { runId: run.runId, err: String(err) });
       });
     await agent.writeQueue;
+  };
+
+  const enqueueRunOp = <T>(run: RunRuntime, task: () => Promise<T>): Promise<T> => {
+    const next = run.opQueue.then(task, task);
+    run.opQueue = next.then(
+      () => {},
+      () => {},
+    );
+    return next;
+  };
+
+  const toRpcError = (payload: unknown): (Error & { code?: number; data?: unknown }) => {
+    if (payload instanceof Error) return payload as any;
+    if (payload && typeof payload === "object") {
+      const code = (payload as any).code;
+      const message = (payload as any).message;
+      const data = (payload as any).data;
+      const err = new Error(typeof message === "string" ? message : String(payload)) as any;
+      if (typeof code === "number") err.code = code;
+      if (data !== undefined) err.data = data;
+      return err;
+    }
+    return new Error(String(payload)) as any;
+  };
+
+  const sendRpc = async <T>(
+    run: RunRuntime,
+    method: string,
+    params: unknown,
+    opts?: { timeoutMs?: number },
+  ): Promise<T> => {
+    const id = run.nextRpcId++;
+    const timeoutMs =
+      typeof opts?.timeoutMs === "number" && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0
+        ? opts.timeoutMs
+        : 300_000;
+
+    const promise = new Promise<unknown>((resolve, reject) => {
+      run.pendingRpc.set(id, { resolve, reject });
+    });
+
+    await writeToAgent(run, { jsonrpc: "2.0", id, method, params } as any);
+
+    return (await Promise.race([
+      promise,
+      delay(timeoutMs).then(() => {
+        run.pendingRpc.delete(id);
+        throw new Error(`rpc timeout after ${timeoutMs}ms: ${method}`);
+      }),
+    ])) as T;
+  };
+
+  const isAuthRequiredError = (err: unknown): boolean => {
+    if (!err || typeof err !== "object") return false;
+    return (err as any).code === -32000;
+  };
+
+  const shouldRecreateSession = (err: unknown): boolean => {
+    const msg = String(err ?? "").toLowerCase();
+    return msg.includes("session") || msg.includes("sessionid");
+  };
+
+  const withAuthRetry = async <T>(run: RunRuntime, fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isAuthRequiredError(err)) throw err;
+      const initResult = run.initResult as any;
+      const methodId = initResult?.authMethods?.[0]?.id ?? "";
+      if (!methodId) throw err;
+      await sendRpc(run, "authenticate", { methodId });
+      return await fn();
+    }
+  };
+
+  type PromptCapabilities = { image?: boolean; audio?: boolean; embeddedContext?: boolean };
+
+  const getPromptCapabilities = (initResult: unknown | null): PromptCapabilities => {
+    const caps = isRecord(initResult) ? (initResult as any).agentCapabilities?.promptCapabilities : null;
+    return isRecord(caps) ? (caps as PromptCapabilities) : {};
+  };
+
+  const assertPromptBlocksSupported = (
+    prompt: readonly any[],
+    promptCapabilities: PromptCapabilities,
+  ) => {
+    for (const block of prompt) {
+      const type = block?.type;
+      switch (type) {
+        case "text":
+        case "resource_link":
+          break;
+        case "image":
+          if (!promptCapabilities.image) {
+            throw new Error("Agent 未启用 promptCapabilities.image，无法发送 image 类型内容");
+          }
+          break;
+        case "audio":
+          if (!promptCapabilities.audio) {
+            throw new Error("Agent 未启用 promptCapabilities.audio，无法发送 audio 类型内容");
+          }
+          break;
+        case "resource":
+          if (!promptCapabilities.embeddedContext) {
+            throw new Error(
+              "Agent 未启用 promptCapabilities.embeddedContext，无法发送 resource(embedded) 类型内容",
+            );
+          }
+          break;
+        default:
+          throw new Error(`未知的 ACP content block type: ${String(type)}`);
+      }
+    }
+  };
+
+  const composePromptWithContext = (
+    context: string | undefined,
+    prompt: any[],
+    promptCapabilities: PromptCapabilities,
+  ): any[] => {
+    const ctx = context?.trim();
+    if (!ctx) return prompt;
+
+    const prelude = [
+      "你正在接手一个可能因为进程重启导致 ACP session 丢失的任务。",
+      "下面是系统保存的上下文（Issue 信息 + 最近对话节选）。请先阅读、恢复当前进度，然后继续响应用户的新消息。",
+      "",
+      "=== 上下文开始 ===",
+    ].join("\n");
+    const suffix = ["=== 上下文结束 ===", "", "用户消息："].join("\n");
+
+    if (promptCapabilities.embeddedContext) {
+      return [
+        { type: "text", text: prelude },
+        {
+          type: "resource",
+          resource: { uri: "tuixiu://context", mimeType: "text/markdown", text: ctx },
+        },
+        { type: "text", text: suffix },
+        ...prompt,
+      ];
+    }
+
+    return [{ type: "text", text: [prelude, ctx, suffix].join("\n") }, ...prompt];
+  };
+
+  const ensureInitialized = async (run: RunRuntime): Promise<unknown> => {
+    if (run.initialized && run.initResult) return run.initResult;
+
+    const raw = (acp as any).PROTOCOL_VERSION;
+    const protocolVersion =
+      typeof raw === "number" ? raw : Number.isFinite(Number(raw)) ? Number(raw) : 1;
+
+    const initResult = await sendRpc(run, "initialize", {
+      protocolVersion,
+      clientInfo: { name: "acp-proxy", title: "tuixiu acp-proxy", version: "0.0.0" },
+      clientCapabilities: {
+        fs: { readTextFile: true, writeTextFile: true },
+        terminal: cfg.sandbox.terminalEnabled === true,
+      },
+    });
+
+    run.initialized = true;
+    run.initResult = initResult;
+    return initResult;
+  };
+
+  const ensureSessionForPrompt = async (run: RunRuntime, opts: {
+    cwd: string;
+    sessionId?: string | null;
+    context?: string;
+    prompt: any[];
+  }): Promise<{ sessionId: string; prompt: any[]; created: boolean }> => {
+    const initResult = await ensureInitialized(run);
+    const promptCapabilities = getPromptCapabilities(initResult);
+
+    let sessionId = typeof opts.sessionId === "string" ? opts.sessionId.trim() : "";
+    let prompt = opts.prompt;
+
+    if (!sessionId) {
+      const created = await withAuthRetry(run, () =>
+        sendRpc<any>(run, "session/new", { cwd: opts.cwd, mcpServers: [] }),
+      );
+      const createdSessionId = String((created as any)?.sessionId ?? "").trim();
+      if (!createdSessionId) throw new Error("session/new 未返回 sessionId");
+      run.seenSessionIds.add(createdSessionId);
+      prompt = composePromptWithContext(opts.context, prompt, promptCapabilities);
+      return { sessionId: createdSessionId, prompt, created: true };
+    }
+
+    if (!run.seenSessionIds.has(sessionId)) {
+      run.seenSessionIds.add(sessionId);
+      const canLoad = !!(initResult as any)?.agentCapabilities?.loadSession;
+      if (canLoad) {
+        await withAuthRetry(run, () =>
+          sendRpc<any>(run, "session/load", {
+            sessionId,
+            cwd: opts.cwd,
+            mcpServers: [],
+          }),
+        ).catch((err) => {
+          log("session/load failed", { runId: run.runId, err: String(err) });
+        });
+      }
+    }
+
+    return { sessionId, prompt, created: false };
   };
 
   const startAgent = async (
@@ -294,7 +542,51 @@ export async function runProxyCli() {
 
     const initMarkerPrefix = "__ACP_PROXY_INIT_RESULT__:";
     const initScriptGuestPath = "/tmp/acp-proxy-init.sh";
-    const initEnvGuestPath = "/tmp/acp-proxy-init-env.json";
+    const initEnvGuestPath = "/tmp/acp-proxy-init-env.sh";
+    const wrapperScriptGuestPath = "/tmp/acp-proxy-wrapper.sh";
+
+    const bashAnsiCString = (value: string): string => {
+      let out = "$'";
+      for (const ch of value) {
+        if (ch === "\\") {
+          out += "\\\\";
+          continue;
+        }
+        if (ch === "'") {
+          out += "\\'";
+          continue;
+        }
+        if (ch === "\n") {
+          out += "\\n";
+          continue;
+        }
+        if (ch === "\r") {
+          out += "\\r";
+          continue;
+        }
+        if (ch === "\t") {
+          out += "\\t";
+          continue;
+        }
+        const code = ch.codePointAt(0) ?? 0;
+        if (code < 0x20 || code === 0x7f) {
+          out += `\\x${code.toString(16).padStart(2, "0")}`;
+          continue;
+        }
+        out += ch;
+      }
+      out += "'";
+      return out;
+    };
+
+    const renderInitEnvScript = (env: Record<string, string>): string => {
+      const lines: string[] = [];
+      for (const [key, value] of Object.entries(env)) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+        lines.push(`export ${key}=${bashAnsiCString(String(value ?? ""))}`);
+      }
+      return lines.join("\n");
+    };
 
     type InitResult = {
       ok: boolean;
@@ -356,41 +648,30 @@ export async function runProxyCli() {
         `marker="${initMarkerPrefix}"`,
         "",
         'if [ -s "$init_script" ]; then',
-        `  timeout_seconds="${timeoutSeconds}"`,
-        "  run_node_init() {",
-        '    node -e \'const fs=require("fs"); const cp=require("child_process");',
-        'const script=fs.readFileSync(process.env.ACP_PROXY_INIT_SCRIPT_PATH,"utf8");',
-        "let envExtra={};",
-        'try{ envExtra=JSON.parse(fs.readFileSync(process.env.ACP_PROXY_INIT_ENV_PATH,"utf8")); }catch{}',
-        "const filtered={};",
-        "for(const [k,v] of Object.entries(envExtra||{})){",
-        "  if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) continue;",
-        '  filtered[k]=String(v??"");',
-        "}",
-        'const res=cp.spawnSync("bash",["-lc",script],{env:{...process.env,...filtered},stdio:["ignore",2,2]});',
-        'process.exit(typeof res.status==="number"?res.status:1);\'',
-        "  }",
-        "  if command -v timeout >/dev/null 2>&1; then",
-        '    timeout --preserve-status -k 5s "${timeout_seconds}s" \\',
-        `      ACP_PROXY_INIT_SCRIPT_PATH="$init_script" ACP_PROXY_INIT_ENV_PATH="$init_env" run_node_init`,
-        "  else",
-        `    ACP_PROXY_INIT_SCRIPT_PATH="$init_script" ACP_PROXY_INIT_ENV_PATH="$init_env" run_node_init`,
+        '  if [ -s "$init_env" ]; then',
+        '    source "$init_env"',
         "  fi",
+        "  set +e",
+        '  bash "$init_script" 1>&2',
         "  code=$?",
+        "  set -e",
         "  if [ $code -ne 0 ]; then",
-        '    printf "%s%s\\n" "$marker" \'{"ok":false,"exitCode":\'"$code"\'}\' >&2',
+        '    printf \'%s{"ok":false,"exitCode":%s}\\n\' "$marker" "$code" >&2',
         "    exit $code",
         "  fi",
         '  printf "%s%s\\n" "$marker" \'{"ok":true}\' >&2',
+        '  printf \'%s{"ok":true}\\n\' "$marker" >&2',
         '  rm -f "$init_script" "$init_env" >/dev/null 2>&1 || true',
         "else",
-        '  printf "%s%s\\n" "$marker" \'{"ok":true,"skipped":true}\' >&2',
+        '  printf \'%s{"ok":true,"skipped":true}\\n\' "$marker" >&2',
         "fi",
         "",
         'exec "$@"',
       ].join("\n");
 
-      const command = ["bash", "-lc", wrapperScript, "bash", ...cfg.agent_command];
+      const command = initScript
+        ? ["bash", wrapperScriptGuestPath, ...cfg.agent_command]
+        : cfg.agent_command;
 
       const created = before.status === "missing";
 
@@ -420,6 +701,14 @@ export async function runProxyCli() {
 
             const tmp = await mkdtemp(path.join(tmpdir(), "acp-proxy-init-"));
             try {
+              const wrapperPath = path.join(tmp, "wrapper.sh");
+              await writeFile(wrapperPath, `${wrapperScript}\n`, "utf8");
+              await containerSandbox.copyToInstance({
+                instanceName: run.instanceName,
+                hostPath: wrapperPath,
+                guestPath: wrapperScriptGuestPath,
+              });
+
               const scriptPath = path.join(tmp, "init.sh");
               await writeFile(scriptPath, initScript, "utf8");
               await containerSandbox.copyToInstance({
@@ -429,13 +718,16 @@ export async function runProxyCli() {
               });
 
               if (initEnv && Object.keys(initEnv).length) {
-                const envPath = path.join(tmp, "init-env.json");
-                await writeFile(envPath, JSON.stringify(initEnv), "utf8");
-                await containerSandbox.copyToInstance({
-                  instanceName: run.instanceName,
-                  hostPath: envPath,
-                  guestPath: initEnvGuestPath,
-                });
+                const envScript = renderInitEnvScript(initEnv);
+                if (envScript.trim()) {
+                  const envPath = path.join(tmp, "init-env.sh");
+                  await writeFile(envPath, `${envScript}\n`, "utf8");
+                  await containerSandbox.copyToInstance({
+                    instanceName: run.instanceName,
+                    hostPath: envPath,
+                    guestPath: initEnvGuestPath,
+                  });
+                }
               }
             } finally {
               await rm(tmp, { recursive: true, force: true }).catch(() => {});
@@ -573,7 +865,11 @@ export async function runProxyCli() {
                   initPending = false;
                   if (ok) run.suppressNextAcpExit = false;
                 } catch (err) {
-                  initDeferred?.reject(err);
+                  initDeferred?.reject(
+                    new Error(
+                      `init marker JSON parse failed: ${String(err)}; payload=${JSON.stringify(payloadRaw)}`,
+                    ),
+                  );
                   initPending = false;
                 }
                 continue;
@@ -612,7 +908,11 @@ export async function runProxyCli() {
               initDeferred?.resolve({ ok, exitCode });
               if (ok) run.suppressNextAcpExit = false;
             } catch (err) {
-              initDeferred?.reject(err);
+              initDeferred?.reject(
+                new Error(
+                  `init marker JSON parse failed: ${String(err)}; payload=${JSON.stringify(payloadRaw)}`,
+                ),
+              );
             } finally {
               initPending = false;
             }
@@ -648,14 +948,48 @@ export async function runProxyCli() {
             }
           }
 
-          try {
-            send({ type: "acp_message", run_id: run.runId, message: value });
-          } catch (err) {
-            log("failed to forward acp message", {
-              runId: run.runId,
-              err: String(err),
-            });
+          if (isJsonRpcResponse(value)) {
+            const pending = run.pendingRpc.get(value.id);
+            if (pending) {
+              run.pendingRpc.delete(value.id);
+              if (value.error) pending.reject(toRpcError(value.error));
+              else pending.resolve((value as any).result);
+            } else {
+              log("unexpected jsonrpc response", { runId: run.runId, id: value.id });
+            }
+            continue;
           }
+
+          if (isJsonRpcNotification(value)) {
+            if (value.method === "session/update") {
+              const params = value.params;
+              const sessionId =
+                isRecord(params) && typeof (params as any).sessionId === "string"
+                  ? String((params as any).sessionId)
+                  : "";
+              const update = isRecord(params) ? (params as any).update : undefined;
+
+              try {
+                send({
+                  type: "prompt_update",
+                  run_id: run.runId,
+                  prompt_id: run.activePromptId,
+                  session_id: sessionId || null,
+                  update,
+                });
+              } catch (err) {
+                log("failed to send prompt_update", { runId: run.runId, err: String(err) });
+              }
+            } else {
+              log("jsonrpc notification (unhandled)", {
+                runId: run.runId,
+                method: value.method,
+              });
+            }
+            continue;
+          }
+
+          log("agent stdout message ignored", { runId: run.runId });
         }
       } catch (err) {
         log("acp stream read failed", { runId: run.runId, err: String(err) });
@@ -749,6 +1083,13 @@ export async function runProxyCli() {
           sandbox,
           log,
         }),
+        nextRpcId: 1,
+        pendingRpc: new Map(),
+        initialized: false,
+        initResult: null,
+        seenSessionIds: new Set(),
+        opQueue: Promise.resolve(),
+        activePromptId: null,
       } satisfies RunRuntime);
 
     run.keepaliveTtlSeconds = keepaliveTtlSeconds;
@@ -905,22 +1246,18 @@ export async function runProxyCli() {
       const run = await ensureRuntime(msg);
       const init = isRecord(msg.init) ? (msg.init as any) : undefined;
 
-      const entrypointMode = sandbox.provider === "container_oci";
-      if (!entrypointMode) {
-        const initOk = await runInitScript({ run, init });
-        if (!initOk) {
-          send({
-            type: "acp_opened",
-            run_id: runId,
-            ok: false,
-            error: "init_failed",
-          });
-          return;
+      await enqueueRunOp(run, async () => {
+        const entrypointMode = sandbox.provider === "container_oci";
+        if (!entrypointMode) {
+          const initOk = await runInitScript({ run, init });
+          if (!initOk) throw new Error("init_failed");
+          await startAgent(run);
+        } else {
+          await startAgent(run, init);
         }
-        await startAgent(run);
-      } else {
-        await startAgent(run, init);
-      }
+
+        await ensureInitialized(run);
+      });
       send({ type: "acp_opened", run_id: runId, ok: true });
     } catch (err) {
       send({
@@ -929,6 +1266,123 @@ export async function runProxyCli() {
         ok: false,
         error: String(err),
       });
+    }
+  };
+
+  const handlePromptSend = async (msg: any) => {
+    const runId = String(msg.run_id ?? "").trim();
+    if (!runId) return;
+    const promptIdRaw = String(msg.prompt_id ?? "").trim();
+
+    const reply = (payload: Record<string, unknown>) => {
+      try {
+        send({ type: "prompt_result", run_id: runId, prompt_id: promptIdRaw || null, ...payload });
+      } catch (err) {
+        log("failed to send prompt_result", { runId, err: String(err) });
+      }
+    };
+
+    try {
+      if (!promptIdRaw) {
+        reply({ ok: false, error: "prompt_id 为空" });
+        return;
+      }
+
+      const prompt = Array.isArray(msg.prompt) ? msg.prompt : null;
+      if (!prompt) {
+        reply({ ok: false, error: "prompt 必须是数组" });
+        return;
+      }
+
+      const run = await ensureRuntime(msg);
+      const init = isRecord(msg.init) ? (msg.init as any) : undefined;
+
+      const cwd =
+        typeof msg.cwd === "string" && msg.cwd.trim() ? msg.cwd.trim() : WORKSPACE_GUEST_PATH;
+      const sessionId =
+        typeof msg.session_id === "string" && msg.session_id.trim() ? msg.session_id.trim() : null;
+      const context = typeof msg.context === "string" ? msg.context : undefined;
+
+      const promptTimeoutMsRaw = msg.timeout_ms ?? null;
+      const promptTimeoutMs = Number.isFinite(promptTimeoutMsRaw as number)
+        ? Math.max(5_000, Math.min(24 * 3600 * 1000, Number(promptTimeoutMsRaw)))
+        : 3600_000;
+
+      await enqueueRunOp(run, async () => {
+        const entrypointMode = sandbox.provider === "container_oci";
+        if (!entrypointMode) {
+          const initOk = await runInitScript({ run, init });
+          if (!initOk) throw new Error("init_failed");
+          await startAgent(run);
+        } else {
+          await startAgent(run, init);
+        }
+
+        await ensureInitialized(run);
+
+        run.activePromptId = promptIdRaw;
+        try {
+          const ensured = await ensureSessionForPrompt(run, { cwd, sessionId, context, prompt });
+          const caps = getPromptCapabilities(run.initResult);
+          assertPromptBlocksSupported(ensured.prompt, caps);
+
+          let usedSessionId = ensured.sessionId;
+          let created = ensured.created;
+          let recreatedFrom: string | null = null;
+
+          let res: any;
+          try {
+            res = await withAuthRetry(run, () =>
+              sendRpc<any>(
+                run,
+                "session/prompt",
+                { sessionId: usedSessionId, prompt: ensured.prompt },
+                { timeoutMs: promptTimeoutMs },
+              ),
+            );
+          } catch (err) {
+            if (shouldRecreateSession(err)) {
+              recreatedFrom = usedSessionId;
+              const createdRes = await withAuthRetry(run, () =>
+                sendRpc<any>(run, "session/new", { cwd, mcpServers: [] }),
+              );
+              const newSessionId = String((createdRes as any)?.sessionId ?? "").trim();
+              if (!newSessionId) throw err;
+              run.seenSessionIds.add(newSessionId);
+              usedSessionId = newSessionId;
+              created = true;
+
+              const replayCaps = getPromptCapabilities(run.initResult);
+              const replay = composePromptWithContext(context, prompt, replayCaps);
+              assertPromptBlocksSupported(replay, replayCaps);
+              res = await withAuthRetry(run, () =>
+                sendRpc<any>(
+                  run,
+                  "session/prompt",
+                  { sessionId: usedSessionId, prompt: replay },
+                  { timeoutMs: promptTimeoutMs },
+                ),
+              );
+            } else {
+              throw err;
+            }
+          }
+
+          const stopReason = typeof res?.stopReason === "string" ? res.stopReason : "";
+
+          reply({
+            ok: true,
+            session_id: usedSessionId,
+            stop_reason: stopReason || null,
+            session_created: created,
+            session_recreated_from: recreatedFrom,
+          });
+        } finally {
+          run.activePromptId = null;
+        }
+      });
+    } catch (err) {
+      reply({ ok: false, error: String(err) });
     }
   };
 
@@ -1175,6 +1629,10 @@ export async function runProxyCli() {
 
             if (msg.type === "acp_open") {
               void handleAcpOpen(msg);
+              return;
+            }
+            if (msg.type === "prompt_send") {
+              void handlePromptSend(msg);
               return;
             }
             if (msg.type === "acp_message") {

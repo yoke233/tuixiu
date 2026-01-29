@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { redactText, scanForSecrets } from "../security/redaction.js";
 
@@ -206,4 +206,3 @@ export async function publishArtifact(
 
   return { success: true, data: { path: relPath, commitSha } };
 }
-

@@ -1,5 +1,5 @@
 import * as github from "../../integrations/github.js";
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import { renderTextTemplateFromDb } from "../templates/textTemplates.js";
 
 type CommentKind = "assigned" | "started";

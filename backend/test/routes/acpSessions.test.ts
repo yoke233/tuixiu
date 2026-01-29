@@ -220,7 +220,7 @@ describe("ACP session admin routes", () => {
     expect(acp.cancelSession).toHaveBeenCalledWith({
       proxyId: "proxy-1",
       runId,
-      cwd: "C:/repo/.worktrees/run-1",
+      cwd: "/workspace",
       sessionId: "s1",
     });
 

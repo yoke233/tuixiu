@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
 import { buildContextFromRun } from "../modules/runs/runContext.js";
 import { triggerPmAutoAdvance } from "../modules/pm/pmAutoAdvance.js";

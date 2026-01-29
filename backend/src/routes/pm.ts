@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import type { PmAutomation } from "../modules/pm/pmAutomation.js";
 import { autoReviewRunForPm } from "../modules/pm/pmAutoReviewRun.js";
 import { getPmNextActionForIssue } from "../modules/pm/pmNextAction.js";

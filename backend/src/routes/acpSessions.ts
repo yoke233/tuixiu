@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 import type { AuthHelpers } from "../auth.js";
-import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { PrismaDeps, SendToAgent } from "../db.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
 import type { CreateWorkspace } from "../executors/types.js";
 import { dispatchExecutionForRun } from "../modules/workflow/executionDispatch.js";
@@ -220,13 +220,9 @@ export function makeAcpSessionRoutes(deps: {
         if (!(run as any).agent) {
           return { success: false, error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法关闭 session" } };
         }
-        const cwd = String((run as any).workspacePath ?? "").trim();
-        if (!cwd) {
-          return { success: false, error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法关闭 session" } };
-        }
 
         try {
-          await deps.acp.cancelSession({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId });
+          await deps.acp.cancelSession({ proxyId: (run as any).agent.proxyId, runId, cwd: "/workspace", sessionId });
         } catch (error) {
           return {
             success: false,
@@ -269,13 +265,9 @@ export function makeAcpSessionRoutes(deps: {
         if (!(run as any).agent) {
           return { success: false, error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法设置 mode" } };
         }
-        const cwd = String((run as any).workspacePath ?? "").trim();
-        if (!cwd) {
-          return { success: false, error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法设置 mode" } };
-        }
 
         try {
-          await deps.acp.setSessionMode({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId, modeId });
+          await deps.acp.setSessionMode({ proxyId: (run as any).agent.proxyId, runId, cwd: "/workspace", sessionId, modeId });
         } catch (error) {
           return {
             success: false,
@@ -318,13 +310,9 @@ export function makeAcpSessionRoutes(deps: {
         if (!(run as any).agent) {
           return { success: false, error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法设置 model" } };
         }
-        const cwd = String((run as any).workspacePath ?? "").trim();
-        if (!cwd) {
-          return { success: false, error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法设置 model" } };
-        }
 
         try {
-          await deps.acp.setSessionModel({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId, modelId });
+          await deps.acp.setSessionModel({ proxyId: (run as any).agent.proxyId, runId, cwd: "/workspace", sessionId, modelId });
         } catch (error) {
           return {
             success: false,

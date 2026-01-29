@@ -1,4 +1,4 @@
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import { suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
 import { parseEnvText } from "../utils/envText.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
@@ -9,7 +9,9 @@ import { renderTextTemplate } from "../utils/textTemplate.js";
 import type { CreateWorkspace, CreateWorkspaceResult } from "./types.js";
 
 function normalizeWorkspaceMode(mode: unknown): "worktree" | "clone" {
-  return String(mode ?? "").trim().toLowerCase() === "clone" ? "clone" : "worktree";
+  const v = String(mode ?? "").trim().toLowerCase();
+  if (v === "worktree") return "worktree";
+  return "clone";
 }
 
 function stepTitle(step: any): string {
@@ -21,7 +23,8 @@ function stepTitle(step: any): string {
 function inferTestCommand(step: any, issue: any): string {
   const fromParams = (step?.params as any)?.command;
   if (typeof fromParams === "string" && fromParams.trim()) return fromParams.trim();
-  const fromIssue = typeof issue?.testRequirements === "string" ? issue.testRequirements.trim() : "";
+  const fromIssue =
+    typeof issue?.testRequirements === "string" ? issue.testRequirements.trim() : "";
   if (fromIssue) return fromIssue;
   return "pnpm -r test";
 }
@@ -29,14 +32,24 @@ function inferTestCommand(step: any, issue: any): string {
 async function buildStepInstruction(prisma: PrismaDeps, step: any, issue: any): Promise<string> {
   const kind = String(step?.kind ?? "").trim();
   const params = step?.params ?? {};
-  const mode = typeof (params as any).mode === "string" ? String((params as any).mode).trim().toLowerCase() : "";
+  const mode =
+    typeof (params as any).mode === "string"
+      ? String((params as any).mode)
+          .trim()
+          .toLowerCase()
+      : "";
 
   const feedbackRaw = (params as any)?.feedback;
   const feedbackMessage =
-    feedbackRaw && typeof feedbackRaw === "object" && typeof (feedbackRaw as any).message === "string"
+    feedbackRaw &&
+    typeof feedbackRaw === "object" &&
+    typeof (feedbackRaw as any).message === "string"
       ? String((feedbackRaw as any).message).trim()
       : "";
-  const feedbackClamped = feedbackMessage.length > 2000 ? `${feedbackMessage.slice(0, 1800)}\n\n…（截断）` : feedbackMessage;
+  const feedbackClamped =
+    feedbackMessage.length > 2000
+      ? `${feedbackMessage.slice(0, 1800)}\n\n…（截断）`
+      : feedbackMessage;
 
   if (kind === "prd.generate") {
     return await renderTextTemplateFromDb(
@@ -67,13 +80,26 @@ async function buildStepInstruction(prisma: PrismaDeps, step: any, issue: any): 
       githubPr && typeof githubPr === "object" && Number.isFinite((githubPr as any).number)
         ? Number((githubPr as any).number)
         : 0;
-    const prUrl = githubPr && typeof githubPr === "object" ? String((githubPr as any).url ?? "").trim() : "";
-    const baseBranch = githubPr && typeof githubPr === "object" ? String((githubPr as any).baseBranch ?? "").trim() : "";
-    const headBranch = githubPr && typeof githubPr === "object" ? String((githubPr as any).headBranch ?? "").trim() : "";
+    const prUrl =
+      githubPr && typeof githubPr === "object" ? String((githubPr as any).url ?? "").trim() : "";
+    const baseBranch =
+      githubPr && typeof githubPr === "object"
+        ? String((githubPr as any).baseBranch ?? "").trim()
+        : "";
+    const headBranch =
+      githubPr && typeof githubPr === "object"
+        ? String((githubPr as any).headBranch ?? "").trim()
+        : "";
     const headShaShort =
-      githubPr && typeof githubPr === "object" ? String((githubPr as any).headSha ?? "").trim().slice(0, 12) : "";
+      githubPr && typeof githubPr === "object"
+        ? String((githubPr as any).headSha ?? "")
+            .trim()
+            .slice(0, 12)
+        : "";
     const fetchBaseCommand = baseBranch ? `git fetch origin ${baseBranch}` : "";
-    const diffCommand = baseBranch ? `git diff ${baseBranch}...HEAD` : "git diff <base-branch>...HEAD";
+    const diffCommand = baseBranch
+      ? `git diff ${baseBranch}...HEAD`
+      : "git diff <base-branch>...HEAD";
 
     return await renderTextTemplateFromDb(
       { prisma },
@@ -97,20 +123,36 @@ async function buildStepInstruction(prisma: PrismaDeps, step: any, issue: any): 
   if (kind === "dev.implement") {
     return await renderTextTemplateFromDb(
       { prisma },
-      { key: "acp.stepInstruction.dev.implement", projectId: issue?.projectId, vars: { feedback: feedbackClamped } },
+      {
+        key: "acp.stepInstruction.dev.implement",
+        projectId: issue?.projectId,
+        vars: { feedback: feedbackClamped },
+      },
     );
   }
 
   return await renderTextTemplateFromDb(
     { prisma },
-    { key: "acp.stepInstruction.default", projectId: issue?.projectId, vars: { stepTitle: stepTitle(step) } },
+    {
+      key: "acp.stepInstruction.default",
+      projectId: issue?.projectId,
+      vars: { stepTitle: stepTitle(step) },
+    },
   );
 }
 
-async function selectAvailableAgent(prisma: PrismaDeps, preferredAgentId?: string | null): Promise<any | null> {
+async function selectAvailableAgent(
+  prisma: PrismaDeps,
+  preferredAgentId?: string | null,
+): Promise<any | null> {
   if (preferredAgentId) {
     const a = await prisma.agent.findUnique({ where: { id: preferredAgentId } });
-    if (a && (a as any).status === "online" && (a as any).currentLoad < (a as any).maxConcurrentRuns) return a;
+    if (
+      a &&
+      (a as any).status === "online" &&
+      (a as any).currentLoad < (a as any).maxConcurrentRuns
+    )
+      return a;
   }
 
   const agents = await prisma.agent.findMany({
@@ -118,9 +160,7 @@ async function selectAvailableAgent(prisma: PrismaDeps, preferredAgentId?: strin
     orderBy: { createdAt: "asc" },
   });
 
-  return (
-    (agents as any[]).find((a) => Number(a.currentLoad) < Number(a.maxConcurrentRuns)) ?? null
-  );
+  return (agents as any[]).find((a) => Number(a.currentLoad) < Number(a.maxConcurrentRuns)) ?? null;
 }
 
 async function ensureWorkspace(opts: {
@@ -130,19 +170,27 @@ async function ensureWorkspace(opts: {
   task: any;
   issue: any;
 }): Promise<{ workspace: CreateWorkspaceResult; mode: "worktree" | "clone" }> {
-  const existingPath = typeof opts.task?.workspacePath === "string" ? opts.task.workspacePath.trim() : "";
-  const existingBranch = typeof opts.task?.branchName === "string" ? opts.task.branchName.trim() : "";
+  const existingPath =
+    typeof opts.task?.workspacePath === "string" ? opts.task.workspacePath.trim() : "";
+  const existingBranch =
+    typeof opts.task?.branchName === "string" ? opts.task.branchName.trim() : "";
   const existingMode = normalizeWorkspaceMode(opts.task?.workspaceType);
   const baseBranch =
     typeof opts.task?.baseBranch === "string" && opts.task.baseBranch.trim()
       ? opts.task.baseBranch.trim()
-      : typeof opts.issue?.project?.defaultBranch === "string" && opts.issue.project.defaultBranch.trim()
+      : typeof opts.issue?.project?.defaultBranch === "string" &&
+          opts.issue.project.defaultBranch.trim()
         ? opts.issue.project.defaultBranch.trim()
         : "main";
 
   if (existingPath && existingBranch) {
     return {
-      workspace: { workspacePath: existingPath, branchName: existingBranch, workspaceMode: existingMode, baseBranch },
+      workspace: {
+        workspacePath: existingPath,
+        branchName: existingBranch,
+        workspaceMode: existingMode,
+        baseBranch,
+      },
       mode: existingMode,
     };
   }
@@ -189,11 +237,14 @@ async function ensureWorkspace(opts: {
   return { workspace: { ...ws, baseBranch }, mode };
 }
 
-export async function startAcpAgentExecution(deps: {
-  prisma: PrismaDeps;
-  acp: AcpTunnel;
-  createWorkspace?: CreateWorkspace;
-}, runId: string): Promise<void> {
+export async function startAcpAgentExecution(
+  deps: {
+    prisma: PrismaDeps;
+    acp: AcpTunnel;
+    createWorkspace?: CreateWorkspace;
+  },
+  runId: string,
+): Promise<void> {
   if (!deps.acp) throw new Error("acpTunnel 未配置");
 
   const run = await deps.prisma.run.findUnique({
@@ -233,20 +284,30 @@ export async function startAcpAgentExecution(deps: {
         ? project.defaultRoleKey.trim()
         : "";
 
-  const role =
-    roleKey
-      ? await deps.prisma.roleTemplate.findFirst({ where: { projectId: issue.projectId, key: roleKey } })
-      : null;
+  const role = roleKey
+    ? await deps.prisma.roleTemplate.findFirst({
+        where: { projectId: issue.projectId, key: roleKey },
+      })
+    : null;
   if (roleKey && !role) throw new Error("RoleTemplate 不存在");
 
-  await deps.prisma.run.update({ where: { id: run.id }, data: { agentId: agent.id } as any }).catch(() => {});
-  await deps.prisma.issue
-    .update({ where: { id: issue.id }, data: { status: "running", assignedAgentId: agent.id } as any })
+  await deps.prisma.run
+    .update({ where: { id: run.id }, data: { agentId: agent.id } as any })
     .catch(() => {});
-  await deps.prisma.agent.update({ where: { id: agent.id }, data: { currentLoad: { increment: 1 } } }).catch(() => {});
+  await deps.prisma.issue
+    .update({
+      where: { id: issue.id },
+      data: { status: "running", assignedAgentId: agent.id } as any,
+    })
+    .catch(() => {});
+  await deps.prisma.agent
+    .update({ where: { id: agent.id }, data: { currentLoad: { increment: 1 } } })
+    .catch(() => {});
 
   const promptParts: string[] = [];
-  const baseBranchForPrompt = String(workspace.baseBranch ?? task.baseBranch ?? project.defaultBranch ?? "main");
+  const baseBranchForPrompt = String(
+    workspace.baseBranch ?? task.baseBranch ?? project.defaultBranch ?? "main",
+  );
   const workspaceNoticeVars = {
     workspace: String(workspace.workspacePath),
     branch: String(workspace.branchName),
@@ -269,7 +330,9 @@ export async function startAcpAgentExecution(deps: {
       : renderTextTemplate(String(noticeTemplate), workspaceNoticeVars).trim();
   promptParts.push(
     [
-      mode === "clone" ? "你正在一个独立的 Git clone 工作区中执行任务：" : "你正在一个独立的 Git worktree 中执行任务：",
+      mode === "clone"
+        ? "你正在一个独立的 Git clone 工作区中执行任务："
+        : "你正在一个独立的 Git worktree 中执行任务：",
       `- workspace: ${workspace.workspacePath}`,
       `- branch: ${workspace.branchName}`,
       ...(workspaceNotice ? ["", workspaceNotice] : []),
@@ -327,10 +390,16 @@ export async function startAcpAgentExecution(deps: {
   }
   const initEnv: Record<string, string> = {
     ...(project.githubAccessToken
-      ? { GH_TOKEN: String(project.githubAccessToken), GITHUB_TOKEN: String(project.githubAccessToken) }
+      ? {
+          GH_TOKEN: String(project.githubAccessToken),
+          GITHUB_TOKEN: String(project.githubAccessToken),
+        }
       : {}),
     ...(project.gitlabAccessToken
-      ? { GITLAB_TOKEN: String(project.gitlabAccessToken), GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken) }
+      ? {
+          GITLAB_TOKEN: String(project.gitlabAccessToken),
+          GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken),
+        }
       : {}),
     ...roleEnv,
     TUIXIU_PROJECT_ID: String(issue.projectId),
@@ -355,7 +424,7 @@ export async function startAcpAgentExecution(deps: {
   await deps.acp.promptRun({
     proxyId: String(agent.proxyId ?? ""),
     runId: run.id,
-    cwd: workspace.workspacePath,
+    cwd: "/workspace",
     sessionId: (run as any).acpSessionId ?? null,
     prompt: [{ type: "text", text: promptParts.join("\n\n") }],
     init,

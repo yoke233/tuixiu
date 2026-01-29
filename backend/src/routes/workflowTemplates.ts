@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import { taskTemplateOverridesSchema } from "../modules/workflow/taskTemplateResolver.js";
 import { getTaskTemplatesForProject, setTaskTemplatesForProject } from "../modules/workflow/taskTemplatePolicy.js";
 

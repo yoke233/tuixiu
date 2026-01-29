@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 
 export function makeAgentRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
   return async (server) => {

@@ -1,4 +1,4 @@
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
 
 export async function startHumanExecution(deps: { prisma: PrismaDeps }, runId: string): Promise<void> {

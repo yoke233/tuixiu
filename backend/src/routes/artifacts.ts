@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import { planArtifactPublish, publishArtifact } from "../modules/artifacts/artifactPublish.js";
 import { requestPublishArtifactApproval } from "../modules/approvals/approvalRequests.js";
 import { getPmPolicyFromBranchProtection } from "../modules/pm/pmPolicy.js";
@@ -65,4 +65,3 @@ export function makeArtifactRoutes(deps: { prisma: PrismaDeps }): FastifyPluginA
     });
   };
 }
-
