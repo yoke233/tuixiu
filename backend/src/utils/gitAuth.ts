@@ -84,12 +84,17 @@ export async function createGitProcessEnv(project: GitAuthProject): Promise<{
 }> {
   const gitAuthMode = inferGitAuthMode(project);
   if (gitAuthMode !== "https_pat") {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+    };
+    // 以 SSH 模式工作时，尽量避免宿主机注入的 askpass 影响 git 行为/弹窗。
+    delete env.GIT_ASKPASS;
+    delete env.SSH_ASKPASS;
+    delete env.GIT_SSH_ASKPASS;
     return {
       gitAuthMode,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: "0",
-      },
+      env,
       cleanup: async () => {},
     };
   }

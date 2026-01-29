@@ -1,4 +1,4 @@
-import type { PrismaDeps, SendToAgent } from "../../deps.js";
+import type { PrismaDeps, SendToAgent } from "../../db.js";
 import type { CreateWorkspace } from "../../executors/types.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { dispatchExecutionForRun } from "./executionDispatch.js";

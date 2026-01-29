@@ -1,4 +1,4 @@
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import { toApprovalSummary, type ApprovalSummary } from "../approvals/approvalRequests.js";
 
 type NextActionSource = "approval" | "task" | "auto_review" | "issue" | "fallback";

@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { promisify } from "node:util";
 
-import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { PrismaDeps, SendToAgent } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { buildContextFromRun } from "../modules/runs/runContext.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
@@ -602,16 +602,11 @@ export function makeRunRoutes(deps: {
         };
       }
 
-      const cwd = run.workspacePath ?? "";
-      if (!cwd) {
-        return { success: false, error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法暂停" } };
-      }
-
       try {
         await deps.acp.cancelSession({
           proxyId: run.agent.proxyId,
           runId: id,
-          cwd,
+          cwd: "/workspace",
           sessionId: run.acpSessionId,
         });
       } catch (error) {
@@ -642,9 +637,8 @@ export function makeRunRoutes(deps: {
       if (deps.acp) {
         const proxyId = run.agent?.proxyId ?? null;
         const sessionId = run.acpSessionId ?? null;
-        const cwd = run.workspacePath ?? "";
-        if (proxyId && sessionId && cwd) {
-          await deps.acp.cancelSession({ proxyId, runId: id, cwd, sessionId }).catch(() => {});
+        if (proxyId && sessionId) {
+          await deps.acp.cancelSession({ proxyId, runId: id, cwd: "/workspace", sessionId }).catch(() => {});
         }
       }
 

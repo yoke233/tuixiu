@@ -38,6 +38,22 @@ export type AcpMessageMessage = {
   message: unknown;
 };
 
+export type PromptSendMessage = {
+  type: "prompt_send";
+  run_id: string;
+  prompt_id: string;
+  cwd?: string;
+  session_id?: string | null;
+  context?: string;
+  prompt: unknown[];
+  timeout_ms?: number;
+  init?: {
+    script: string;
+    timeout_seconds?: number;
+    env?: Record<string, string>;
+  };
+};
+
 export type AgentUpdateMessage = {
   type: "agent_update";
   run_id: string;
@@ -55,5 +71,6 @@ export type IncomingMessage =
   | AcpOpenMessage
   | AcpCloseMessage
   | AcpMessageMessage
+  | PromptSendMessage
   | SandboxControlMessage
   | { type: string; [k: string]: unknown };

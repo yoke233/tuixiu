@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
 import { createReviewRequestForRun } from "../modules/scm/runReviewRequest.js";
 import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";

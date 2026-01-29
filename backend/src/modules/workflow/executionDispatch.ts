@@ -1,4 +1,4 @@
-import type { PrismaDeps, SendToAgent } from "../../deps.js";
+import type { PrismaDeps, SendToAgent } from "../../db.js";
 import type { CreateWorkspace } from "../../executors/types.js";
 import { startAcpAgentExecution } from "../../executors/acpAgentExecutor.js";
 import type { AcpTunnel } from "../acp/acpTunnel.js";

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import { callPmLlmJson, isPmLlmEnabled } from "./pmLlm.js";
 import { renderTextTemplateFromDb } from "../templates/textTemplates.js";
 

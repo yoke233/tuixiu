@@ -182,7 +182,7 @@ describe("acpTunnel (full)", () => {
     const res = await tunnel.promptRun({
       proxyId: "proxy-1",
       runId: "r1",
-      cwd: "C:/ws",
+      cwd: "/workspace",
       context: "CTX",
       prompt: [{ type: "text", text: "hello" }],
     });
@@ -193,7 +193,7 @@ describe("acpTunnel (full)", () => {
       expect.objectContaining({
         type: "acp_open",
         run_id: "r1",
-        cwd: "C:/ws",
+        cwd: "/workspace",
         instance_name: expect.any(String),
         keepalive_ttl_seconds: expect.any(Number),
       }),
@@ -238,7 +238,7 @@ describe("acpTunnel (full)", () => {
     tunnelRef.current = tunnel;
 
     (acp as any).__testing.nextPromptError = { code: -32000 };
-    const p = tunnel.promptRun({ proxyId: "proxy-1", runId: "r1", cwd: "C:/ws", prompt: [{ type: "text", text: "hi" }] });
+    const p = tunnel.promptRun({ proxyId: "proxy-1", runId: "r1", cwd: "/workspace", prompt: [{ type: "text", text: "hi" }] });
 
     // first call fails with auth required; second call succeeds after authenticate
     await expect(p).resolves.toEqual({ sessionId: "s1", stopReason: "end" });
@@ -278,7 +278,7 @@ describe("acpTunnel (full)", () => {
     const res = await tunnel.promptRun({
       proxyId: "proxy-1",
       runId: "r1",
-      cwd: "C:/ws",
+      cwd: "/workspace",
       context: "CTX",
       prompt: [{ type: "text", text: "hello" }],
     });
@@ -311,9 +311,9 @@ describe("acpTunnel (full)", () => {
     const tunnel = createAcpTunnel({ prisma, sendToAgent });
     tunnelRef.current = tunnel;
 
-    await tunnel.cancelSession({ proxyId: "proxy-1", runId: "r1", cwd: "C:/ws", sessionId: "s1" });
-    await tunnel.setSessionMode({ proxyId: "proxy-1", runId: "r1", cwd: "C:/ws", sessionId: "s1", modeId: "m2" });
-    await tunnel.setSessionModel({ proxyId: "proxy-1", runId: "r1", cwd: "C:/ws", sessionId: "s1", modelId: "gpt" });
+    await tunnel.cancelSession({ proxyId: "proxy-1", runId: "r1", cwd: "/workspace", sessionId: "s1" });
+    await tunnel.setSessionMode({ proxyId: "proxy-1", runId: "r1", cwd: "/workspace", sessionId: "s1", modeId: "m2" });
+    await tunnel.setSessionModel({ proxyId: "proxy-1", runId: "r1", cwd: "/workspace", sessionId: "s1", modelId: "gpt" });
 
     expect((acp as any).__testing.cancelCalls).toEqual([{ sessionId: "s1" }]);
     expect((acp as any).__testing.setModeCalls).toEqual([{ sessionId: "s1", modeId: "m2" }]);
@@ -345,7 +345,7 @@ describe("acpTunnel (full)", () => {
 
     const tunnel = createAcpTunnel({ prisma, sendToAgent });
     tunnelRef.current = tunnel;
-    await tunnel.promptRun({ proxyId: "proxy-1", runId: "r1", cwd: "C:/ws", prompt: [{ type: "text", text: "hi" }] });
+    await tunnel.promptRun({ proxyId: "proxy-1", runId: "r1", cwd: "/workspace", prompt: [{ type: "text", text: "hi" }] });
 
     const state = tunnel.__testing.runStates.get("r1");
     expect(state).toBeTruthy();
@@ -366,7 +366,7 @@ describe("acpTunnel (full)", () => {
 
     const { terminalId } = await client.createTerminal({
       sessionId: "s1",
-      cwd: "C:/ws",
+      cwd: "/workspace",
       command: "pnpm",
       args: ["test"],
       env: [{ name: "A", value: "1" }],

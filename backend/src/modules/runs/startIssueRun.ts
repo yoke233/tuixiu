@@ -1,7 +1,7 @@
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { toPublicProject } from "../../utils/publicProject.js";
-import { createRunWorktree, suggestRunKeyWithLlm } from "../../utils/gitWorkspace.js";
+import { suggestRunKeyWithLlm } from "../../utils/gitWorkspace.js";
 import { parseEnvText } from "../../utils/envText.js";
 import {
   DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS,
@@ -167,7 +167,7 @@ export async function startIssueRun(opts: {
   let branchName = "";
   let baseBranchForRun =
     String(((issue as any).project as any).defaultBranch ?? "").trim() || "main";
-  let workspaceMode: WorkspaceMode = "worktree";
+  let workspaceMode: WorkspaceMode = "clone";
   try {
     const baseBranch = ((issue as any).project as any).defaultBranch || "main";
     const runNumber = (Array.isArray((issue as any).runs) ? (issue as any).runs.length : 0) + 1;
@@ -181,21 +181,10 @@ export async function startIssueRun(opts: {
             runNumber,
           });
 
-    const createWorkspace =
-      opts.createWorkspace ??
-      (async (args: {
-        runId: string;
-        baseBranch: string;
-        name: string;
-      }): Promise<CreateWorkspaceResult> => {
-        const legacy = await createRunWorktree(args);
-        return {
-          ...legacy,
-          workspaceMode: "worktree",
-          baseBranch: args.baseBranch,
-          timingsMs: {},
-        };
-      });
+    const createWorkspace = opts.createWorkspace;
+    if (!createWorkspace) {
+      throw new Error("createWorkspace 未配置，无法创建 workspace");
+    }
 
     const ws = await createWorkspace({
       runId: (run as any).id,
@@ -205,7 +194,7 @@ export async function startIssueRun(opts: {
 
     workspacePath = ws.workspacePath;
     branchName = ws.branchName;
-    workspaceMode = ws.workspaceMode === "clone" ? "clone" : "worktree";
+    workspaceMode = ws.workspaceMode === "worktree" ? "worktree" : "clone";
     const resolvedBaseBranch = ws.baseBranch?.trim() ? ws.baseBranch.trim() : baseBranch;
     baseBranchForRun = resolvedBaseBranch;
     const timingsMsSnapshot = ws.timingsMs && typeof ws.timingsMs === "object" ? ws.timingsMs : {};
@@ -269,15 +258,7 @@ export async function startIssueRun(opts: {
     };
   }
 
-  const caps = (selectedAgent as any)?.capabilities;
-  const sandboxProvider =
-    caps &&
-    typeof caps === "object" &&
-    (caps as any).sandbox &&
-    typeof (caps as any).sandbox === "object"
-      ? (caps as any).sandbox.provider
-      : null;
-  const agentWorkspacePath = sandboxProvider === "container_oci" ? "/workspace" : workspacePath;
+  const agentWorkspacePath = "/workspace";
 
   const promptParts: string[] = [];
   const projectForPrompt: any = (issue as any).project;

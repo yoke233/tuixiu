@@ -32,7 +32,6 @@ vi.mock("../../src/utils/gitAuth.js", () => ({
 }));
 
 vi.mock("../../src/utils/gitWorkspace.js", () => ({
-  createRunWorktree: vi.fn(),
   defaultRunBranchName: vi.fn(),
 }));
 
@@ -40,39 +39,14 @@ const { createRunWorkspace } = await import("../../src/utils/runWorkspace.js");
 const { execFile } = await import("node:child_process");
 const { access, rm } = await import("node:fs/promises");
 const { createGitProcessEnv } = await import("../../src/utils/gitAuth.js");
-const { createRunWorktree, defaultRunBranchName } = await import("../../src/utils/gitWorkspace.js");
+const { defaultRunBranchName } = await import("../../src/utils/gitWorkspace.js");
 
 describe("runWorkspace", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("createRunWorkspace uses worktree mode by default", async () => {
-    (defaultRunBranchName as any).mockReturnValue("run-branch");
-    (createRunWorktree as any).mockResolvedValue({ workspacePath: "/ws", branchName: "run-branch", repoRoot: "/repo" });
-
-    const res = await createRunWorkspace({
-      runId: "r1",
-      baseBranch: "",
-      name: "Demo",
-      project: { id: "p1", repoUrl: "https://example.com/repo.git" },
-      workspacesRoot: "/workspaces",
-      repoCacheRoot: "/cache",
-    });
-
-    expect(res).toEqual({
-      workspaceMode: "worktree",
-      workspacePath: "/ws",
-      branchName: "run-branch",
-      baseBranch: "main",
-      repoRoot: "/repo",
-      timingsMs: {},
-    });
-    expect(createRunWorktree).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "Demo" });
-    expect(createGitProcessEnv).not.toHaveBeenCalled();
-  });
-
-  it("createRunWorkspace clone mode uses mirror cache when available and removes existing workspace", async () => {
+  it("createRunWorkspace uses mirror cache when available and removes existing workspace", async () => {
     (defaultRunBranchName as any).mockReturnValue("run-branch");
     (createGitProcessEnv as any).mockResolvedValue({
       env: { GIT_TERMINAL_PROMPT: "0" },
@@ -97,7 +71,7 @@ describe("runWorkspace", () => {
       runId,
       baseBranch: " develop ",
       name: "Demo",
-      project: { id: "p1", repoUrl: "https://example.com/repo.git", workspaceMode: "clone" },
+      project: { id: "p1", repoUrl: "https://example.com/repo.git" },
       workspacesRoot,
       repoCacheRoot,
     });
@@ -140,7 +114,7 @@ describe("runWorkspace", () => {
     expect(res.timingsMs.totalMs).toEqual(expect.any(Number));
   });
 
-  it("createRunWorkspace clone mode continues without mirror when mirror update fails", async () => {
+  it("createRunWorkspace continues without mirror when mirror update fails", async () => {
     (defaultRunBranchName as any).mockReturnValue("run-branch");
     const cleanup = vi.fn().mockResolvedValue(undefined);
     (createGitProcessEnv as any).mockResolvedValue({
@@ -169,7 +143,7 @@ describe("runWorkspace", () => {
       runId,
       baseBranch: "main",
       name: "Demo",
-      project: { id: "p2", repoUrl: "https://example.com/repo.git", workspaceMode: "clone" },
+      project: { id: "p2", repoUrl: "https://example.com/repo.git" },
       workspacesRoot,
       repoCacheRoot,
     });
@@ -192,4 +166,3 @@ describe("runWorkspace", () => {
     expect(cleanup).toHaveBeenCalled();
   });
 });
-

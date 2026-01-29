@@ -1,4 +1,4 @@
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import { taskTemplateOverridesSchema } from "./taskTemplateResolver.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -56,4 +56,3 @@ export async function setTaskTemplatesForProject(
 
   return { success: true, data: { projectId: project.id, taskTemplates: validated.data } };
 }
-

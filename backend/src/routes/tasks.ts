@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
-import type { PrismaDeps, SendToAgent } from "../deps.js";
+import type { PrismaDeps, SendToAgent } from "../db.js";
 import type { CreateWorkspace } from "../executors/types.js";
 import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
 import {
@@ -77,4 +77,3 @@ export function makeTaskRoutes(deps: {
     });
   };
 }
-

@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 
 import type { AuthHelpers, UserRole } from "../auth.js";
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
 
 function normalizeUsername(input: unknown): string {

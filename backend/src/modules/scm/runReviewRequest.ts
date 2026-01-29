@@ -1,4 +1,4 @@
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import * as gitlab from "../../integrations/gitlab.js";
 import * as github from "../../integrations/github.js";
 import type { GitAuthProject } from "../../utils/gitAuth.js";

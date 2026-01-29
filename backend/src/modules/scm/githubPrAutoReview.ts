@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import * as github from "../../integrations/github.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { parseEnvText } from "../../utils/envText.js";

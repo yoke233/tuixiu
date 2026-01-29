@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import crypto from "node:crypto";
 import { z } from "zod";
 
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
 
 function getHeader(headers: Record<string, unknown>, name: string): string | undefined {

@@ -1,4 +1,4 @@
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { startIssueRun, type CreateWorkspaceResult } from "../runs/startIssueRun.js";
 import type { AcpTunnel } from "../acp/acpTunnel.js";

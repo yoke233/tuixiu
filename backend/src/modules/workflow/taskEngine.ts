@@ -1,4 +1,4 @@
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS, deriveSandboxInstanceName } from "../../utils/sandbox.js";
 import { TASK_TEMPLATES } from "./taskTemplates.js";
@@ -309,4 +309,3 @@ export async function startStep(
 
   return { task: updatedTask, step: updatedStep, run };
 }
-

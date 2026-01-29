@@ -3,7 +3,7 @@ import { z } from "zod";
 import Handlebars from "handlebars";
 
 import type { AuthHelpers } from "../auth.js";
-import type { PrismaDeps } from "../deps.js";
+import type { PrismaDeps } from "../db.js";
 import {
   listPlatformTextTemplates,
   listProjectTextTemplates,

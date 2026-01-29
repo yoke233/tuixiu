@@ -1,7 +1,7 @@
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
-import type { PrismaDeps } from "../../deps.js";
+import type { PrismaDeps } from "../../db.js";
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
 
@@ -142,4 +142,3 @@ export function startWorkspaceCleanupLoop(opts: {
   const timer = setInterval(() => void runOnce(), intervalMs);
   timer.unref?.();
 }
-

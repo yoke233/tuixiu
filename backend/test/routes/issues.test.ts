@@ -245,7 +245,7 @@ describe("Issues routes", () => {
     expect(promptCall.proxyId).toBe("proxy-1");
     expect(promptCall.runId).toBe("r1");
     expect(promptCall.sessionId).toBeNull();
-    expect(promptCall.cwd).toBe("D:\\xyad\\tuixiu\\.worktrees\\run-t1-r1");
+    expect(promptCall.cwd).toBe("/workspace");
     const promptText = extractPromptText(promptCall.prompt);
     expect(promptText).toContain("任务标题: t1");
     expect(promptText).toContain("- workspace:");
@@ -869,14 +869,13 @@ describe("Issues routes", () => {
       select: {
         id: true,
         acpSessionId: true,
-        workspacePath: true,
         agent: { select: { proxyId: true } }
       }
     });
     expect(acp.cancelSession).toHaveBeenCalledWith({
       proxyId: "proxy-1",
       runId: "r1",
-      cwd: "C:/repo/.worktrees/run-1",
+      cwd: "/workspace",
       sessionId: "s1"
     });
 
@@ -915,7 +914,7 @@ describe("Issues routes", () => {
     expect(acp.cancelSession).toHaveBeenCalledWith({
       proxyId: "proxy-1",
       runId: "r1",
-      cwd: "C:/repo/.worktrees/run-1",
+      cwd: "/workspace",
       sessionId: "s1"
     });
 
