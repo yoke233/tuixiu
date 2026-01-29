@@ -8,7 +8,10 @@ import { ThemeProvider } from "../theme";
 
 function mockFetchJsonOnce(body: unknown) {
   (globalThis.fetch as any).mockResolvedValueOnce(
-    new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
   );
 }
 
@@ -16,7 +19,10 @@ describe("IssueListPage", () => {
   beforeEach(() => {
     localStorage.removeItem("showArchivedIssues");
     localStorage.setItem("authToken", "test-token");
-    localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "admin", role: "admin" }));
+    localStorage.setItem(
+      "authUser",
+      JSON.stringify({ id: "u1", username: "admin", role: "admin" }),
+    );
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -37,10 +43,10 @@ describe("IssueListPage", () => {
             defaultBranch: "main",
             workspaceMode: "worktree",
             gitAuthMode: "https_pat",
-            createdAt: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
+            createdAt: "2026-01-25T00:00:00.000Z",
+          },
+        ],
+      },
     });
     mockFetchJsonOnce({
       success: true,
@@ -52,13 +58,13 @@ describe("IssueListPage", () => {
             title: "Fix README",
             status: "pending",
             createdAt: "2026-01-25T00:00:00.000Z",
-            runs: []
-          }
+            runs: [],
+          },
         ],
         total: 1,
         limit: 50,
-        offset: 0
-      }
+        offset: 0,
+      },
     });
 
     render(
@@ -72,14 +78,14 @@ describe("IssueListPage", () => {
             </Routes>
           </MemoryRouter>
         </ThemeProvider>
-      </AuthProvider>
+      </AuthProvider>,
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
     expect(screen.getByText("看板")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建 Issue" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "GitHub 导入" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ACP Proxies" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "管理" })).toBeInTheDocument();
   });
 
@@ -96,10 +102,10 @@ describe("IssueListPage", () => {
             defaultBranch: "main",
             workspaceMode: "worktree",
             gitAuthMode: "https_pat",
-            createdAt: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
+            createdAt: "2026-01-25T00:00:00.000Z",
+          },
+        ],
+      },
     });
     mockFetchJsonOnce({
       success: true,
@@ -111,13 +117,13 @@ describe("IssueListPage", () => {
             title: "Fix README",
             status: "pending",
             createdAt: "2026-01-25T00:00:00.000Z",
-            runs: []
-          }
+            runs: [],
+          },
         ],
         total: 1,
         limit: 50,
-        offset: 0
-      }
+        offset: 0,
+      },
     });
 
     render(
@@ -131,7 +137,7 @@ describe("IssueListPage", () => {
             </Routes>
           </MemoryRouter>
         </ThemeProvider>
-      </AuthProvider>
+      </AuthProvider>,
     );
 
     expect(await screen.findByText("Fix README")).toBeInTheDocument();
@@ -151,10 +157,10 @@ describe("IssueListPage", () => {
             defaultBranch: "main",
             workspaceMode: "worktree",
             gitAuthMode: "https_pat",
-            createdAt: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
+            createdAt: "2026-01-25T00:00:00.000Z",
+          },
+        ],
+      },
     });
     mockFetchJsonOnce({
       success: true,
@@ -167,7 +173,7 @@ describe("IssueListPage", () => {
             status: "done",
             archivedAt: null,
             createdAt: "2026-01-25T00:00:00.000Z",
-            runs: []
+            runs: [],
           },
           {
             id: "i2",
@@ -176,13 +182,13 @@ describe("IssueListPage", () => {
             status: "done",
             archivedAt: "2026-01-25T00:00:00.000Z",
             createdAt: "2026-01-25T00:00:00.000Z",
-            runs: []
-          }
+            runs: [],
+          },
         ],
         total: 2,
         limit: 50,
-        offset: 0
-      }
+        offset: 0,
+      },
     });
 
     render(
@@ -196,7 +202,7 @@ describe("IssueListPage", () => {
             </Routes>
           </MemoryRouter>
         </ThemeProvider>
-      </AuthProvider>
+      </AuthProvider>,
     );
 
     expect(await screen.findByText("Visible")).toBeInTheDocument();
@@ -218,10 +224,10 @@ describe("IssueListPage", () => {
             defaultBranch: "main",
             workspaceMode: "worktree",
             gitAuthMode: "https_pat",
-            createdAt: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
+            createdAt: "2026-01-25T00:00:00.000Z",
+          },
+        ],
+      },
     });
     mockFetchJsonOnce({
       success: true,
@@ -234,7 +240,7 @@ describe("IssueListPage", () => {
             status: "done",
             archivedAt: null,
             createdAt: "2026-01-25T00:00:00.000Z",
-            runs: []
+            runs: [],
           },
           {
             id: "i2",
@@ -243,13 +249,13 @@ describe("IssueListPage", () => {
             status: "done",
             archivedAt: "2026-01-25T00:00:00.000Z",
             createdAt: "2026-01-25T00:00:00.000Z",
-            runs: []
-          }
+            runs: [],
+          },
         ],
         total: 2,
         limit: 50,
-        offset: 0
-      }
+        offset: 0,
+      },
     });
 
     render(
@@ -263,7 +269,7 @@ describe("IssueListPage", () => {
             </Routes>
           </MemoryRouter>
         </ThemeProvider>
-      </AuthProvider>
+      </AuthProvider>,
     );
 
     expect(await screen.findByText("Archived")).toBeInTheDocument();
@@ -284,10 +290,10 @@ describe("IssueListPage", () => {
             defaultBranch: "main",
             workspaceMode: "worktree",
             gitAuthMode: "https_pat",
-            createdAt: "2026-01-25T00:00:00.000Z"
-          }
-        ]
-      }
+            createdAt: "2026-01-25T00:00:00.000Z",
+          },
+        ],
+      },
     });
     mockFetchJsonOnce({
       success: true,
@@ -301,7 +307,7 @@ describe("IssueListPage", () => {
             archivedAt: "2026-01-25T00:00:00.000Z",
             labels: ["_session"],
             createdAt: "2026-01-25T00:00:00.000Z",
-            runs: []
+            runs: [],
           },
           {
             id: "i2",
@@ -310,13 +316,13 @@ describe("IssueListPage", () => {
             status: "done",
             archivedAt: "2026-01-25T00:00:00.000Z",
             createdAt: "2026-01-25T00:00:00.000Z",
-            runs: []
-          }
+            runs: [],
+          },
         ],
         total: 2,
         limit: 50,
-        offset: 0
-      }
+        offset: 0,
+      },
     });
 
     render(
@@ -330,7 +336,7 @@ describe("IssueListPage", () => {
             </Routes>
           </MemoryRouter>
         </ThemeProvider>
-      </AuthProvider>
+      </AuthProvider>,
     );
 
     expect(await screen.findByText("Archived")).toBeInTheDocument();

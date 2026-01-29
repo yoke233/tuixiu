@@ -75,7 +75,13 @@ export type Run = {
   artifacts?: Artifact[];
 };
 
-export type AcpSessionActivity = "unknown" | "idle" | "busy" | "loading" | "cancel_requested" | "closed";
+export type AcpSessionActivity =
+  | "unknown"
+  | "idle"
+  | "busy"
+  | "loading"
+  | "cancel_requested"
+  | "closed";
 
 export type AcpSessionState = {
   sessionId: string;
@@ -180,7 +186,13 @@ export type Artifact = {
 
 export type ApprovalAction = "merge_pr" | "create_pr" | "publish_artifact";
 
-export type ApprovalStatus = "pending" | "approved" | "rejected" | "executing" | "executed" | "failed";
+export type ApprovalStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "executing"
+  | "executed"
+  | "failed";
 
 export type Approval = {
   id: string;
@@ -209,7 +221,28 @@ export type Agent = {
   capabilities?: unknown;
   currentLoad: number;
   maxConcurrentRuns: number;
+  lastHeartbeat?: string | null;
+  healthCheckInterval?: number;
+  stats?: unknown;
   createdAt: string;
+  updatedAt?: string;
+};
+
+export type SandboxStatus = "creating" | "running" | "stopped" | "missing" | "error";
+
+export type SandboxSummary = {
+  proxyId: string;
+  runId: string | null;
+  instanceName: string;
+  provider: string | null;
+  runtime: string | null;
+  sandboxStatus: SandboxStatus | null;
+  sandboxLastSeenAt: string | null;
+  keepaliveTtlSeconds: number | null;
+  issueId: string | null;
+  taskId: string | null;
+  stepId: string | null;
+  sandboxLastError: string | null;
 };
 
 export type RoleTemplate = {
@@ -261,7 +294,13 @@ export type PmNextAction = {
   reason: string;
   source: PmNextActionSource;
   taskId: string | null;
-  step: { id: string; key: string; kind: string; status: StepStatus; executorType: ExecutorType } | null;
+  step: {
+    id: string;
+    key: string;
+    kind: string;
+    status: StepStatus;
+    executorType: ExecutorType;
+  } | null;
   run: { id: string; status: RunStatus } | null;
   approval: Approval | null;
 };

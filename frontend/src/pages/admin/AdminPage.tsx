@@ -29,7 +29,9 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvalBusyId, setApprovalBusyId] = useState<string>("");
-  const [activeSection, setActiveSection] = useState<AdminSectionKey>(() => getSectionFromSearch(location.search) ?? "projects");
+  const [activeSection, setActiveSection] = useState<AdminSectionKey>(
+    () => getSectionFromSearch(location.search) ?? "projects",
+  );
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
 
   const [acpSessionsReloadToken, setAcpSessionsReloadToken] = useState(0);
@@ -43,7 +45,7 @@ export function AdminPage() {
   }, [projects, selectedProjectId]);
 
   const effectiveProject = useMemo(() => {
-    return effectiveProjectId ? projects.find((p) => p.id === effectiveProjectId) ?? null : null;
+    return effectiveProjectId ? (projects.find((p) => p.id === effectiveProjectId) ?? null) : null;
   }, [effectiveProjectId, projects]);
 
   const refresh = useCallback(async () => {
@@ -57,7 +59,7 @@ export function AdminPage() {
       ]);
       setProjects(ps);
       setApprovals(aps);
-      setSelectedProjectId((prev) => (prev ? prev : ps[0]?.id ?? ""));
+      setSelectedProjectId((prev) => (prev ? prev : (ps[0]?.id ?? "")));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -161,7 +163,11 @@ export function AdminPage() {
           {loading ? (
             <div className="muted">加载中…</div>
           ) : projects.length ? (
-            <select aria-label="选择 Project" value={effectiveProjectId} onChange={(e) => setSelectedProjectId(e.target.value)}>
+            <select
+              aria-label="选择 Project"
+              value={effectiveProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+            >
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -195,7 +201,7 @@ export function AdminPage() {
             className={`adminNavItem ${activeSection === "acpSessions" ? "active" : ""}`}
             onClick={() => setActiveSectionWithUrl("acpSessions")}
           >
-            <span>ACP Sessions</span>
+            <span>ACP Proxies</span>
           </button>
           <button
             type="button"
@@ -275,7 +281,11 @@ export function AdminPage() {
                 <button
                   type="button"
                   className="buttonSecondary"
-                  onClick={() => navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`)}
+                  onClick={() =>
+                    navigate(
+                      `/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`,
+                    )
+                  }
                 >
                   登录
                 </button>

@@ -52,10 +52,18 @@ export function IssuesTopBar(props: { model: IssueListController }) {
                 >
                   GitHub 导入
                 </button>
-                <button type="button" className="buttonSecondary" onClick={() => navigate("/admin?section=acpSessions")}>
-                  Sessions
+                <button
+                  type="button"
+                  className="buttonSecondary"
+                  onClick={() => navigate("/admin?section=acpSessions")}
+                >
+                  ACP Proxies
                 </button>
-                <button type="button" className="buttonSecondary" onClick={() => navigate("/admin")}>
+                <button
+                  type="button"
+                  className="buttonSecondary"
+                  onClick={() => navigate("/admin")}
+                >
                   管理
                 </button>
               </>
@@ -76,4 +84,3 @@ export function IssuesTopBar(props: { model: IssueListController }) {
     </div>
   );
 }
-
