@@ -17,6 +17,7 @@ import { PolicySection } from "./sections/PolicySection";
 import { ProjectsSection } from "./sections/ProjectsSection";
 import { RolesSection } from "./sections/RolesSection";
 import { SettingsSection } from "./sections/SettingsSection";
+import { TextTemplatesSection } from "./sections/TextTemplatesSection";
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -33,6 +34,8 @@ export function AdminPage() {
 
   const [acpSessionsReloadToken, setAcpSessionsReloadToken] = useState(0);
   const [acpSessionsLoading, setAcpSessionsLoading] = useState(false);
+  const [textTemplatesReloadToken, setTextTemplatesReloadToken] = useState(0);
+  const [textTemplatesLoading, setTextTemplatesLoading] = useState(false);
 
   const effectiveProjectId = useMemo(() => {
     if (selectedProjectId) return selectedProjectId;
@@ -132,6 +135,10 @@ export function AdminPage() {
   const onRefreshClick = useCallback(() => {
     if (activeSection === "acpSessions") {
       setAcpSessionsReloadToken((v) => v + 1);
+      return;
+    }
+    if (activeSection === "textTemplates") {
+      setTextTemplatesReloadToken((v) => v + 1);
       return;
     }
     void refresh();
@@ -235,6 +242,13 @@ export function AdminPage() {
           </button>
           <button
             type="button"
+            className={`adminNavItem ${activeSection === "textTemplates" ? "active" : ""}`}
+            onClick={() => setActiveSectionWithUrl("textTemplates")}
+          >
+            <span>文本模板</span>
+          </button>
+          <button
+            type="button"
             className={`adminNavItem ${activeSection === "archive" ? "active" : ""}`}
             onClick={() => setActiveSectionWithUrl("archive")}
           >
@@ -271,7 +285,16 @@ export function AdminPage() {
                   退出
                 </button>
               ) : null}
-              <button onClick={onRefreshClick} disabled={activeSection === "acpSessions" ? acpSessionsLoading : loading}>
+              <button
+                onClick={onRefreshClick}
+                disabled={
+                  activeSection === "acpSessions"
+                    ? acpSessionsLoading
+                    : activeSection === "textTemplates"
+                      ? textTemplatesLoading
+                      : loading
+                }
+              >
                 刷新
               </button>
             </div>
@@ -311,13 +334,24 @@ export function AdminPage() {
             setError={setError}
           />
 
+          <TextTemplatesSection
+            active={activeSection === "textTemplates"}
+            effectiveProjectId={effectiveProjectId}
+            effectiveProject={effectiveProject}
+            reloadToken={textTemplatesReloadToken}
+            requireAdmin={requireAdmin}
+            setError={setError}
+            onLoadingChange={setTextTemplatesLoading}
+          />
+
           <div
             className="grid2"
             hidden={
               activeSection === "approvals" ||
               activeSection === "settings" ||
               activeSection === "acpSessions" ||
-              activeSection === "policy"
+              activeSection === "policy" ||
+              activeSection === "textTemplates"
             }
           >
             <ProjectsSection
