@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { StatusBadge } from "../../../components/StatusBadge";
@@ -5,7 +6,24 @@ import { ThemeToggle } from "../../../components/ThemeToggle";
 import type { SessionController } from "../useSessionController";
 
 export function SessionSidebar(props: { model: SessionController }) {
-  const { issue, loading, refreshing, refresh, run, runId, sessionId, sessionState, ws } = props.model;
+  const {
+    issue,
+    loading,
+    refreshing,
+    refresh,
+    run,
+    runId,
+    sessionId,
+    sessionState,
+    ws,
+    settingMode,
+    settingModel,
+    onSetMode,
+    onSetModel,
+  } = props.model;
+
+  const [modeDraft, setModeDraft] = useState("");
+  const [modelDraft, setModelDraft] = useState("");
 
   return (
     <aside className="sessionSide">
@@ -101,14 +119,81 @@ export function SessionSidebar(props: { model: SessionController }) {
             {sessionState ? <StatusBadge status={sessionState.activity as any} /> : <span className="muted">-</span>}
           </div>
           {sessionState ? (
-            <div className="muted" style={{ marginTop: 10 }}>
-              {sessionState.inFlight ? `inFlight=${sessionState.inFlight} · ` : ""}
-              {sessionState.currentModeId ? `mode=${sessionState.currentModeId} · ` : ""}
-              {sessionState.currentModelId ? `model=${sessionState.currentModelId} · ` : ""}
-              {sessionState.lastStopReason ? `stop=${sessionState.lastStopReason} · ` : ""}
-              {sessionState.updatedAt ? new Date(sessionState.updatedAt).toLocaleString() : ""}
-              {sessionState.note ? ` · ${sessionState.note}` : ""}
-            </div>
+            <>
+              <div className="muted" style={{ marginTop: 10 }}>
+                {sessionState.inFlight ? `inFlight=${sessionState.inFlight} · ` : ""}
+                {sessionState.currentModeId ? `mode=${sessionState.currentModeId} · ` : ""}
+                {sessionState.currentModelId ? `model=${sessionState.currentModelId} · ` : ""}
+                {sessionState.lastStopReason ? `stop=${sessionState.lastStopReason} · ` : ""}
+                {sessionState.updatedAt ? new Date(sessionState.updatedAt).toLocaleString() : ""}
+                {sessionState.note ? ` · ${sessionState.note}` : ""}
+              </div>
+
+              {sessionId ? (
+                <details style={{ marginTop: 12 }}>
+                  <summary>设置 mode / model</summary>
+                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                    <div className="row gap" style={{ alignItems: "flex-end" }}>
+                      <label className="label" style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}>
+                        modeId
+                        <input
+                          value={modeDraft}
+                          onChange={(e) => setModeDraft(e.target.value)}
+                          placeholder={sessionState.currentModeId ? `当前：${sessionState.currentModeId}` : "例如：balanced"}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="buttonSecondary"
+                        onClick={() => setModeDraft(sessionState.currentModeId ?? "")}
+                        disabled={settingMode || settingModel}
+                        title="把当前 mode 填入输入框"
+                      >
+                        填入当前
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void onSetMode(modeDraft)}
+                        disabled={!modeDraft.trim() || settingMode || settingModel}
+                      >
+                        {settingMode ? "设置中…" : "设置 mode"}
+                      </button>
+                    </div>
+
+                    <div className="row gap" style={{ alignItems: "flex-end" }}>
+                      <label className="label" style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}>
+                        modelId
+                        <input
+                          value={modelDraft}
+                          onChange={(e) => setModelDraft(e.target.value)}
+                          placeholder={sessionState.currentModelId ? `当前：${sessionState.currentModelId}` : "例如：gpt-4.1"}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="buttonSecondary"
+                        onClick={() => setModelDraft(sessionState.currentModelId ?? "")}
+                        disabled={settingMode || settingModel}
+                        title="把当前 model 填入输入框"
+                      >
+                        填入当前
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void onSetModel(modelDraft)}
+                        disabled={!modelDraft.trim() || settingMode || settingModel}
+                      >
+                        {settingModel ? "设置中…" : "设置 model"}
+                      </button>
+                    </div>
+
+                    <div className="muted">
+                      后端接口：<code>POST /api/admin/acp-sessions/set-mode</code>、<code>POST /api/admin/acp-sessions/set-model</code>。
+                    </div>
+                  </div>
+                </details>
+              ) : null}
+            </>
           ) : (
             <div className="muted" style={{ marginTop: 10 }}>
               暂无 session_state（等待 Agent 上报）
@@ -119,4 +204,3 @@ export function SessionSidebar(props: { model: SessionController }) {
     </aside>
   );
 }
-
