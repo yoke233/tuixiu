@@ -11,40 +11,34 @@ import {
   priorityToBadgeClass,
   statusToBadgeClass,
 } from "./runConsole/toolCallInfo";
+import { parseSandboxInstanceStatusText } from "../utils/sandboxStatus";
 
-function getSandboxSummary(text: string): { status: string } | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
-  if (!trimmed.includes('"sandbox_instance_status"')) return null;
-  try {
-    const parsed = JSON.parse(trimmed) as { type?: string; status?: string };
-    if (!parsed || parsed.type !== "sandbox_instance_status") return null;
-    const status =
-      typeof parsed.status === "string" && parsed.status.trim() ? parsed.status.trim() : "unknown";
-    return { status };
-  } catch {
-    return null;
-  }
-}
-
-export function RunConsole(props: { events: Event[] }) {
+export function RunConsole(props: { events: Event[]; liveEventIds?: Set<string> }) {
   const defaultVisibleCount = 160;
   const loadMoreStep = 200;
 
   const items = useMemo(() => {
-    return buildConsoleItems(props.events);
-  }, [props.events]);
+    return buildConsoleItems(props.events, { liveEventIds: props.liveEventIds });
+  }, [props.events, props.liveEventIds]);
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      if (item.role !== "system") return true;
+      if (item.detailsTitle && item.detailsTitle.startsWith("可用命令")) return false;
+      if (!item.text) return true;
+      return !parseSandboxInstanceStatusText(item.text);
+    });
+  }, [items]);
 
   const [visibleCount, setVisibleCount] = useState(defaultVisibleCount);
   const [showAll, setShowAll] = useState(false);
   const pendingScrollRestoreRef = useRef<{ height: number; top: number } | null>(null);
 
   const visibleItems = useMemo(() => {
-    if (showAll) return items;
-    if (items.length <= visibleCount) return items;
-    return items.slice(items.length - visibleCount);
-  }, [items, showAll, visibleCount]);
-  const hiddenCount = items.length - visibleItems.length;
+    if (showAll) return filteredItems;
+    if (filteredItems.length <= visibleCount) return filteredItems;
+    return filteredItems.slice(filteredItems.length - visibleCount);
+  }, [filteredItems, showAll, visibleCount]);
+  const hiddenCount = filteredItems.length - visibleItems.length;
 
   const ref = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
@@ -97,7 +91,7 @@ export function RunConsole(props: { events: Event[] }) {
     }
   }, [visibleItems]);
 
-  if (!items.length) return <div className="muted">暂无输出（无日志）</div>;
+  if (!filteredItems.length) return <div className="muted">暂无输出（无日志）</div>;
 
   return (
     <div ref={ref} className="console" role="log" aria-label="运行输出">
@@ -111,7 +105,7 @@ export function RunConsole(props: { events: Event[] }) {
               const el = ref.current;
               if (el)
                 pendingScrollRestoreRef.current = { height: el.scrollHeight, top: el.scrollTop };
-              setVisibleCount((prev) => Math.min(items.length, prev + loadMoreStep));
+              setVisibleCount((prev) => Math.min(filteredItems.length, prev + loadMoreStep));
             }}
           >
             显示更多
@@ -129,9 +123,9 @@ export function RunConsole(props: { events: Event[] }) {
             显示全部
           </button>
         </div>
-      ) : showAll && items.length > defaultVisibleCount ? (
+      ) : showAll && filteredItems.length > defaultVisibleCount ? (
         <div className="consoleTrimBar">
-          <span className="consoleTrimText">已显示全部 {items.length} 条日志</span>
+          <span className="consoleTrimText">已显示全部 {filteredItems.length} 条日志</span>
           <button
             type="button"
             className="buttonSecondary"
@@ -196,17 +190,12 @@ export function RunConsole(props: { events: Event[] }) {
         }
         if (item.role === "user" && item.kind === "chunk" && item.chunkType === "user_message") {
           return (
-            <ConsoleDetailsBlock
-              key={item.id}
-              className={`consoleItem ${item.role}`}
-              summary={
-                <>
-                  <span className="badge gray">New Session</span>
-                  <span className="toolSummaryTitle"></span>
-                </>
-              }
-              body={item.text}
-            />
+            <div key={item.id} className={`consoleItem ${item.role}`}>
+              <span className="consoleNewTag" title="new" aria-label="new">
+                !
+              </span>
+              <span>{item.text}</span>
+            </div>
           );
         }
         if (item.role === "agent" && item.kind === "chunk" && item.chunkType === "agent_thought") {
@@ -215,6 +204,7 @@ export function RunConsole(props: { events: Event[] }) {
               key={item.id}
               className={`consoleItem ${item.role}`}
               bordered
+              defaultOpen={Boolean(item.live)}
               summary={
                 <>
                   <span className="badge gray">THINK</span>
@@ -241,22 +231,8 @@ export function RunConsole(props: { events: Event[] }) {
           );
         }
         if (item.role === "system") {
-          const sandbox = getSandboxSummary(item.text);
-          if (sandbox) {
-            return (
-              <ConsoleDetailsBlock
-                key={item.id}
-                className={`consoleItem ${item.role}`}
-                summary={
-                  <>
-                    <span className="badge gray">SANDBOX</span>
-                    <span className="toolSummaryTitle">({sandbox.status})</span>
-                  </>
-                }
-                body={item.text}
-              />
-            );
-          }
+          const sandbox = parseSandboxInstanceStatusText(item.text);
+          if (sandbox) return null;
         }
         if (item.role === "system" && item.toolCallInfo) {
           return (

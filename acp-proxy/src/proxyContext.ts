@@ -1,4 +1,4 @@
-import type { LoadedProxyConfig } from "../config.js";
+import type { LoadedProxyConfig } from "./config.js";
 
 import type { RunManager } from "./runs/runManager.js";
 import type { ProxySandbox } from "./sandbox/ProxySandbox.js";

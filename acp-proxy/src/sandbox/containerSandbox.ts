@@ -70,6 +70,11 @@ function isNoSuchContainer(text: string): boolean {
   );
 }
 
+function isNoSuchImage(text: string): boolean {
+  const t = text.toLowerCase();
+  return t.includes("no such image") || t.includes("image not found") || t.includes("not found");
+}
+
 async function spawnCapture(
   runtime: string,
   args: string[],
@@ -185,12 +190,17 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
     const guestWorkspace = opts.workspaceGuestPath.trim()
       ? opts.workspaceGuestPath.trim()
       : "/workspace";
-    args.push(
-      cfg.image,
-      "sh",
-      "-c",
-      `mkdir -p '${guestWorkspace.replace(/'/g, "'\\''")}'\nwhile true; do sleep 3600; done`,
-    );
+    const guestWorkspaceSafe = guestWorkspace.replace(/'/g, "'\\''");
+    const ensureWorkspaceScript = [
+      "set -e",
+      `ws='${guestWorkspaceSafe}'`,
+      'if [ "$ws" != "/" ]; then',
+      '  if [ -L "$ws" ] || [ -f "$ws" ]; then rm -rf "$ws"; fi',
+      '  mkdir -p "$ws"',
+      "fi",
+      "while true; do sleep 3600; done",
+    ].join("\n");
+    args.push(cfg.image, "sh", "-c", ensureWorkspaceScript);
 
     this.opts.log("container ensure running (create)", {
       runtime,
@@ -406,6 +416,18 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
     const text = `${res.stdout}\n${res.stderr}`;
     if (isNoSuchContainer(text)) return;
     throw new Error(`container remove 失败：${text.trim()}`);
+  }
+
+  async removeImage(image: string): Promise<void> {
+    const target = image.trim();
+    if (!target) return;
+    const runtime = this.runtime;
+    this.opts.log("container remove image", { runtime, image: target });
+    const res = await spawnCapture(runtime, ["image", "rm", "-f", target]);
+    if (res.code === 0) return;
+    const text = `${res.stdout}\n${res.stderr}`;
+    if (isNoSuchImage(text)) return;
+    throw new Error(`container image rm 失败：${text.trim()}`);
   }
 
   async execProcess(opts: ExecProcessInInstanceOpts): Promise<ProcessHandle> {

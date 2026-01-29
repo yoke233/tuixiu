@@ -4,7 +4,7 @@ import type {
   ProcessHandle,
   SandboxInstanceInfo,
   SandboxProviderKind,
-} from "../../sandbox/types.js";
+} from "./types.js";
 
 export type AgentInit = {
   script?: string;
@@ -28,6 +28,7 @@ export interface ProxySandbox {
   listInstances(opts?: ListInstancesOpts): Promise<SandboxInstanceInfo[]>;
   stopInstance(instanceName: string): Promise<void>;
   removeInstance(instanceName: string): Promise<void>;
+  removeImage(image: string): Promise<void>;
   execProcess(opts: {
     instanceName: string;
     command: string[];

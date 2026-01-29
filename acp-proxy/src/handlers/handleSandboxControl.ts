@@ -5,11 +5,39 @@ import { WORKSPACE_GUEST_PATH, nowIso } from "../proxyContext.js";
 import { closeAgent, sendSandboxInstanceStatus } from "../runs/runRuntime.js";
 import { validateInstanceName, validateRunId } from "../utils/validate.js";
 
-async function reportInventory(ctx: ProxyContext): Promise<void> {
+type ExpectedInstance = {
+  instance_name: string;
+  run_id: string;
+};
+
+function parseExpectedInstances(ctx: ProxyContext, raw: unknown): ExpectedInstance[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ExpectedInstance[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    try {
+      const instanceName = validateInstanceName(record.instance_name);
+      const runId = validateRunId(record.run_id);
+      out.push({ instance_name: instanceName, run_id: runId });
+    } catch (err) {
+      ctx.log("invalid expected_instances entry", { err: String(err) });
+    }
+  }
+  return out;
+}
+
+async function reportInventory(ctx: ProxyContext, expectedRaw?: unknown): Promise<void> {
   const capturedAt = nowIso();
   const inventoryId = randomUUID();
   const instances = await ctx.sandbox.listInstances({ managedOnly: true });
-  ctx.send({
+  const expectedInstances = parseExpectedInstances(ctx, expectedRaw);
+  const knownNames = new Set(instances.map((i) => i.instanceName));
+  const missingInstances = expectedInstances
+    .filter((i) => !knownNames.has(i.instance_name))
+    .map((i) => ({ instance_name: i.instance_name, run_id: i.run_id }));
+
+  const payload: Record<string, unknown> = {
     type: "sandbox_inventory",
     inventory_id: inventoryId,
     provider: ctx.sandbox.provider,
@@ -27,7 +55,13 @@ async function reportInventory(ctx: ProxyContext): Promise<void> {
         last_seen_at: capturedAt,
       };
     }),
-  });
+  };
+
+  if (Array.isArray(expectedRaw)) {
+    payload.missing_instances = missingInstances;
+  }
+
+  ctx.send(payload);
 }
 
 export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise<void> {
@@ -51,7 +85,18 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
 
   try {
     if (action === "report_inventory") {
-      await reportInventory(ctx);
+      await reportInventory(ctx, msg?.expected_instances);
+      reply({ ok: true });
+      return;
+    }
+
+    if (action === "remove_image") {
+      const image = String(msg?.image ?? "").trim();
+      if (!image) {
+        reply({ ok: false, error: "image 为空" });
+        return;
+      }
+      await ctx.sandbox.removeImage(image);
       reply({ ok: true });
       return;
     }

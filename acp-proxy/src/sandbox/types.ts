@@ -49,7 +49,7 @@ export interface SandboxInstanceProvider {
   ensureInstanceRunning(opts: EnsureInstanceRunningOpts): Promise<SandboxInstanceInfo>;
   stopInstance(instanceName: string): Promise<void>;
   removeInstance(instanceName: string): Promise<void>;
+  removeImage(image: string): Promise<void>;
   execProcess(opts: ExecProcessInInstanceOpts): Promise<ProcessHandle>;
   listInstances(opts?: ListInstancesOpts): Promise<SandboxInstanceInfo[]>;
 }
-

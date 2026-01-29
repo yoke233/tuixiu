@@ -2,8 +2,8 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import * as acp from "@agentclientprotocol/sdk";
 
-import { AcpClientFacade } from "../../acpClientFacade.js";
-import type { JsonRpcRequest } from "../../acpClientFacade.js";
+import { AcpClientFacade } from "../acpClientFacade.js";
+import type { JsonRpcRequest } from "../acpClientFacade.js";
 import type { AgentInit } from "../sandbox/ProxySandbox.js";
 import { DEFAULT_KEEPALIVE_TTL_SECONDS, WORKSPACE_GUEST_PATH, nowIso } from "../proxyContext.js";
 import type { ProxyContext } from "../proxyContext.js";
@@ -185,7 +185,7 @@ export async function runInitScript(
   };
 
   const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
-    proc.onExit?.((info) => resolve(info));
+    proc.onExit?.((info: { code: number | null; signal: string | null }) => resolve(info));
     if (!proc.onExit) resolve({ code: null, signal: null });
   });
   const outP = readLines(proc.stdout, "stdout");

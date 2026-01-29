@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 
 import { RunConsole } from "../../../components/RunConsole";
 import { apiUrl } from "../../../api/client";
+import { findLatestSandboxInstanceStatus } from "../../../utils/sandboxStatus";
 import type { SessionController } from "../useSessionController";
 
 export function SessionConsoleCard(props: { model: SessionController }) {
@@ -9,6 +10,7 @@ export function SessionConsoleCard(props: { model: SessionController }) {
     auth,
     chatText,
     events,
+    liveEventIds,
     issue,
     onDropFiles,
     onPause,
@@ -22,6 +24,37 @@ export function SessionConsoleCard(props: { model: SessionController }) {
     setChatText,
     uploadingImages,
   } = props.model;
+
+  const sandboxStatus = useMemo(() => findLatestSandboxInstanceStatus(events), [events]);
+  const sandboxHint = useMemo(() => {
+    if (!sandboxStatus) return null;
+    const status = sandboxStatus.status;
+    if (status === "running") {
+      return { label: "容器已启动（工具可用）", tone: "ok" as const };
+    }
+    if (status === "creating" || status === "missing") {
+      return { label: "容器启动中…", tone: "pending" as const };
+    }
+    if (status === "stopped") {
+      return { label: "容器已停止", tone: "muted" as const };
+    }
+    if (status === "error") {
+      return { label: "容器异常", tone: "error" as const };
+    }
+    return { label: `容器状态：${status}`, tone: "muted" as const };
+  }, [sandboxStatus]);
+
+  const sandboxTitle = useMemo(() => {
+    if (!sandboxStatus) return "";
+    const parts = [
+      sandboxStatus.instanceName ? `实例: ${sandboxStatus.instanceName}` : "",
+      sandboxStatus.runtime ? `运行时: ${sandboxStatus.runtime}` : "",
+      sandboxStatus.provider ? `provider: ${sandboxStatus.provider}` : "",
+      sandboxStatus.lastSeenAt ? `last_seen_at: ${sandboxStatus.lastSeenAt}` : "",
+      sandboxStatus.lastError ? `last_error: ${sandboxStatus.lastError}` : "",
+    ].filter(Boolean);
+    return parts.join(" | ");
+  }, [sandboxStatus]);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [commandIndex, setCommandIndex] = useState(0);
@@ -147,7 +180,7 @@ export function SessionConsoleCard(props: { model: SessionController }) {
           if (e.dataTransfer.files?.length) void onDropFiles(e.dataTransfer.files);
         }}
       >
-        <RunConsole events={events} />
+        <RunConsole events={events} liveEventIds={liveEventIds} />
       </div>
 
       {pendingImages.length ? (
@@ -278,6 +311,12 @@ export function SessionConsoleCard(props: { model: SessionController }) {
           </button>
         </div>
       </form>
+      {sandboxHint ? (
+        <div className={`consoleSendStatus ${sandboxHint.tone}`} title={sandboxTitle}>
+          <span className="consoleSendDot" aria-hidden="true" />
+          <span>{sandboxHint.label}</span>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -3,9 +3,22 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { listAgents } from "../../api/agents";
 import { getIssue, startIssue } from "../../api/issues";
-import { analyzeIssue as analyzePmIssue, dispatchIssue as dispatchPmIssue, getIssueNextAction } from "../../api/pm";
+import {
+  analyzeIssue as analyzePmIssue,
+  dispatchIssue as dispatchPmIssue,
+  getIssueNextAction,
+} from "../../api/pm";
 import { listRoles } from "../../api/roles";
-import { cancelRun, completeRun, getRun, listRunEvents, pauseRun, promptRun, submitRun, uploadRunAttachment } from "../../api/runs";
+import {
+  cancelRun,
+  completeRun,
+  getRun,
+  listRunEvents,
+  pauseRun,
+  promptRun,
+  submitRun,
+  uploadRunAttachment,
+} from "../../api/runs";
 import { startStep as startTaskStep, rollbackTask as rollbackTaskToStep } from "../../api/steps";
 import { createIssueTask, listIssueTasks, listTaskTemplates } from "../../api/tasks";
 import { useAuth } from "../../auth/AuthContext";
@@ -36,7 +49,10 @@ import type { IssuesOutletContext } from "./types";
 
 export type IssueDetailController = ReturnType<typeof useIssueDetailController>;
 
-export function useIssueDetailController(opts: { issueId: string; outlet: IssuesOutletContext | null }) {
+export function useIssueDetailController(opts: {
+  issueId: string;
+  outlet: IssuesOutletContext | null;
+}) {
   const issueId = opts.issueId;
   const outlet = opts.outlet;
 
@@ -53,7 +69,9 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
   const [run, setRun] = useState<Run | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const [events, setEvents] = useState<Event[]>([]);
+  const [liveEventIds, setLiveEventIds] = useState<Set<string>>(new Set());
   const issueRef = useRef<Issue | null>(null);
+  const wsStatusRef = useRef<"connecting" | "open" | "closed">("connecting");
 
   const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>([]);
   const [taskTemplatesLoaded, setTaskTemplatesLoaded] = useState(false);
@@ -70,7 +88,12 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
   const [humanForms, setHumanForms] = useState<
     Record<
       string,
-      { verdict: "approve" | "changes_requested"; comment: string; squash?: boolean; mergeCommitMessage?: string }
+      {
+        verdict: "approve" | "changes_requested";
+        comment: string;
+        squash?: boolean;
+        mergeCommitMessage?: string;
+      }
     >
   >({});
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -121,10 +144,16 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     }
   }, [issueId]);
 
-  const currentRunId = useMemo(() => selectedRunId || run?.id || issue?.runs?.[0]?.id || "", [issue, run, selectedRunId]);
-  const currentAgentId = useMemo(() => run?.agentId ?? issue?.runs?.[0]?.agentId ?? "", [issue, run]);
+  const currentRunId = useMemo(
+    () => selectedRunId || run?.id || issue?.runs?.[0]?.id || "",
+    [issue, run, selectedRunId],
+  );
+  const currentAgentId = useMemo(
+    () => run?.agentId ?? issue?.runs?.[0]?.agentId ?? "",
+    [issue, run],
+  );
   const currentAgent = useMemo(
-    () => (currentAgentId ? agents.find((a) => a.id === currentAgentId) ?? null : null),
+    () => (currentAgentId ? (agents.find((a) => a.id === currentAgentId) ?? null) : null),
     [agents, currentAgentId],
   );
   const agentOnline = currentAgent ? currentAgent.status === "online" : true;
@@ -132,7 +161,7 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
   const currentAgentSandbox = useMemo(() => getAgentSandboxLabel(currentAgent), [currentAgent]);
 
   const selectedAgent = useMemo(
-    () => (selectedAgentId ? agents.find((a) => a.id === selectedAgentId) ?? null : null),
+    () => (selectedAgentId ? (agents.find((a) => a.id === selectedAgentId) ?? null) : null),
     [agents, selectedAgentId],
   );
   const selectedAgentEnvLabel = useMemo(() => getAgentEnvLabel(selectedAgent), [selectedAgent]);
@@ -144,7 +173,8 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
   const runArtifacts = run?.artifacts ?? [];
   const showArtifacts = runArtifacts.length > 0;
   const showChanges =
-    Boolean(run?.branchName) || runArtifacts.some((a) => a.type === "branch" || a.type === "pr" || a.type === "patch");
+    Boolean(run?.branchName) ||
+    runArtifacts.some((a) => a.type === "branch" || a.type === "pr" || a.type === "patch");
 
   const pmFromArtifact = useMemo(() => {
     const artifacts = run?.artifacts ?? [];
@@ -164,7 +194,10 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
         analysis: analysis as PmAnalysis,
         meta: ((content as any).meta ?? null) as PmAnalysisMeta | null,
         reason: typeof (content as any).reason === "string" ? (content as any).reason : null,
-        createdAt: typeof (content as any).createdAt === "string" ? (content as any).createdAt : (art as any).createdAt,
+        createdAt:
+          typeof (content as any).createdAt === "string"
+            ? (content as any).createdAt
+            : (art as any).createdAt,
         artifact: art as Artifact,
       };
     }
@@ -281,6 +314,7 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     if (!issueId) return;
     setSelectedRunId("");
     selectedRunIdRef.current = "";
+    setLiveEventIds(new Set());
     setNextAction(null);
     setNextActionError(null);
     refresh();
@@ -345,7 +379,11 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
 
   const onWs = useCallback(
     (msg: WsMessage) => {
-      if (msg.type === "task_created" || msg.type === "task_updated" || msg.type === "step_updated") {
+      if (
+        msg.type === "task_created" ||
+        msg.type === "task_updated" ||
+        msg.type === "step_updated"
+      ) {
         if (msg.issue_id && msg.issue_id === issueId) {
           void refreshTasksOnly();
         }
@@ -360,14 +398,31 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
           const next = [...prev, msg.event!];
           return next.length > 600 ? next.slice(next.length - 600) : next;
         });
+        setLiveEventIds((prev) => {
+          const next = new Set(prev);
+          next.add(msg.event!.id);
+          return next;
+        });
 
         const payload = (msg.event as any).payload;
         if (payload?.type === "prompt_result") {
-          setRun((r) => (r ? { ...r, status: "completed", completedAt: r.completedAt ?? new Date().toISOString() } : r));
+          setRun((r) =>
+            r
+              ? {
+                  ...r,
+                  status: "completed",
+                  completedAt: r.completedAt ?? new Date().toISOString(),
+                }
+              : r,
+          );
           void refresh({ silent: true });
         }
         if (payload?.type === "init_result" && payload?.ok === false) {
-          setRun((r) => (r ? { ...r, status: "failed", completedAt: r.completedAt ?? new Date().toISOString() } : r));
+          setRun((r) =>
+            r
+              ? { ...r, status: "failed", completedAt: r.completedAt ?? new Date().toISOString() }
+              : r,
+          );
           void refresh({ silent: true });
         }
         if (payload?.type === "session_created" && typeof payload.session_id === "string") {
@@ -382,7 +437,10 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
           const artifacts = [...(r.artifacts ?? [])];
           if (!artifacts.some((a) => a.id === msg.artifact!.id)) artifacts.unshift(msg.artifact!);
 
-          const branch = (msg.artifact as any)?.type === "branch" ? (msg.artifact as any)?.content?.branch : undefined;
+          const branch =
+            (msg.artifact as any)?.type === "branch"
+              ? (msg.artifact as any)?.content?.branch
+              : undefined;
           const branchName = typeof branch === "string" ? branch : r.branchName;
 
           return { ...r, artifacts, branchName };
@@ -393,16 +451,24 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     [currentRunId, issueId, refresh, refreshTasksOnly],
   );
   const ws = useWsClient(onWs);
+  useEffect(() => {
+    wsStatusRef.current = ws.status;
+  }, [ws.status]);
 
   const availableAgents = useMemo(
     () => agents.filter((a) => a.status === "online" && a.currentLoad < a.maxConcurrentRuns),
     [agents],
   );
-  const selectedAgentReady = selectedAgent ? selectedAgent.status === "online" && selectedAgent.currentLoad < selectedAgent.maxConcurrentRuns : false;
+  const selectedAgentReady = selectedAgent
+    ? selectedAgent.status === "online" &&
+      selectedAgent.currentLoad < selectedAgent.maxConcurrentRuns
+    : false;
   const canStartRun =
     allowRunActions &&
     Boolean(issueId) &&
-    (selectedAgentId ? selectedAgentReady : !agentsLoaded || !!agentsError || availableAgents.length > 0);
+    (selectedAgentId
+      ? selectedAgentReady
+      : !agentsLoaded || !!agentsError || availableAgents.length > 0);
 
   function requireLogin(): boolean {
     if (auth.user) return true;
@@ -571,16 +637,22 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     const text = chatText.trim();
     const prompt = [
       ...(text ? [{ type: "text" as const, text }] : []),
-      ...pendingImages.map((img) => ({ type: "image" as const, mimeType: img.mimeType, uri: img.uri })),
+      ...pendingImages.map((img) => ({
+        type: "image" as const,
+        mimeType: img.mimeType,
+        uri: img.uri,
+      })),
     ];
     if (!prompt.length) return;
     setError(null);
     setSending(true);
+    setChatText("");
+    setPendingImages([]);
     try {
       await promptRun(currentRunId, prompt);
-      setChatText("");
-      setPendingImages([]);
-      await refresh({ silent: true });
+      if (wsStatusRef.current !== "open") {
+        await refresh({ silent: true });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -604,7 +676,9 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     }
 
     const files = Array.isArray(filesLike) ? filesLike : Array.from(filesLike);
-    const images = files.filter((f) => f && typeof f.type === "string" && f.type.startsWith("image/"));
+    const images = files.filter(
+      (f) => f && typeof f.type === "string" && f.type.startsWith("image/"),
+    );
     if (!images.length) {
       setError("本期只支持图片上传（image/*）");
       return;
@@ -616,10 +690,23 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     try {
       for (const f of images) {
         const base64 = await readFileAsBase64(f);
-        const attachment = await uploadRunAttachment(currentRunId, { mimeType: f.type, base64, name: f.name });
+        const attachment = await uploadRunAttachment(currentRunId, {
+          mimeType: f.type,
+          base64,
+          name: f.name,
+        });
         setPendingImages((prev) => {
           if (prev.some((p) => p.id === attachment.id)) return prev;
-          return [...prev, { id: attachment.id, uri: attachment.uri, mimeType: attachment.mimeType, name: f.name, size: attachment.size }];
+          return [
+            ...prev,
+            {
+              id: attachment.id,
+              uri: attachment.uri,
+              mimeType: attachment.mimeType,
+              name: f.name,
+              size: attachment.size,
+            },
+          ];
         });
       }
     } catch (err) {
@@ -641,7 +728,10 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     return map;
   }, [taskTemplates]);
 
-  const selectableTaskTemplates = useMemo(() => taskTemplates.filter((t) => !t.deprecated), [taskTemplates]);
+  const selectableTaskTemplates = useMemo(
+    () => taskTemplates.filter((t) => !t.deprecated),
+    [taskTemplates],
+  );
 
   const visibleTaskTemplates = useMemo(() => {
     if (!selectedTaskTrack) return selectableTaskTemplates;
@@ -649,7 +739,12 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
   }, [selectableTaskTemplates, selectedTaskTrack]);
 
   const visibleTaskTemplatesByTrack = useMemo(() => {
-    const groups: Record<string, TaskTemplate[]> = { quick: [], planning: [], enterprise: [], other: [] };
+    const groups: Record<string, TaskTemplate[]> = {
+      quick: [],
+      planning: [],
+      enterprise: [],
+      other: [],
+    };
     for (const t of visibleTaskTemplates) {
       if (t.track === "quick") groups.quick.push(t);
       else if (t.track === "planning") groups.planning.push(t);
@@ -659,20 +754,26 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     groups.quick = sortTemplatesByPriority("quick", groups.quick);
     groups.planning = sortTemplatesByPriority("planning", groups.planning);
     groups.enterprise = sortTemplatesByPriority("enterprise", groups.enterprise);
-    groups.other = [...groups.other].sort((a, b) => String(a.displayName ?? "").localeCompare(String(b.displayName ?? ""), "zh-CN"));
+    groups.other = [...groups.other].sort((a, b) =>
+      String(a.displayName ?? "").localeCompare(String(b.displayName ?? ""), "zh-CN"),
+    );
     return groups;
   }, [visibleTaskTemplates]);
 
   const hasNonTerminalTask = useMemo(() => {
     if (!tasksLoaded || tasksError) return false;
-    return tasks.some((t) => t.status !== "completed" && t.status !== "failed" && t.status !== "cancelled");
+    return tasks.some(
+      (t) => t.status !== "completed" && t.status !== "failed" && t.status !== "cancelled",
+    );
   }, [tasks, tasksError, tasksLoaded]);
 
   const canCreateAnotherTask = tasksLoaded && !tasksError && !hasNonTerminalTask;
 
   useEffect(() => {
     if (!taskTemplatesLoaded) return;
-    setSelectedTemplateKey((prev) => pickTemplateKey({ templates: taskTemplates, track: selectedTaskTrack, currentKey: prev }));
+    setSelectedTemplateKey((prev) =>
+      pickTemplateKey({ templates: taskTemplates, track: selectedTaskTrack, currentKey: prev }),
+    );
   }, [selectedTaskTrack, taskTemplates, taskTemplatesLoaded]);
 
   const runsByStepId = useMemo(() => {
@@ -711,7 +812,8 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
 
   function roleAllowsHumanSubmit(stepKind: string, role: UserRole | null): boolean {
     if (!role) return false;
-    if (stepKind === "code.review" || stepKind === "pr.merge") return role === "reviewer" || role === "admin";
+    if (stepKind === "code.review" || stepKind === "pr.merge")
+      return role === "reviewer" || role === "admin";
     if (stepKind === "prd.review") return role === "pm" || role === "admin";
     return true;
   }
@@ -752,7 +854,11 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     try {
       const roleKey =
         step.executorType === "agent"
-          ? (step.roleKey?.trim() ? step.roleKey.trim() : selectedRoleKey?.trim() ? selectedRoleKey.trim() : undefined)
+          ? step.roleKey?.trim()
+            ? step.roleKey.trim()
+            : selectedRoleKey?.trim()
+              ? selectedRoleKey.trim()
+              : undefined
           : undefined;
       const res = await startTaskStep(step.id, { roleKey });
       setSelectedRunId(res.run.id);
@@ -788,6 +894,7 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     if (!runId) return;
     setError(null);
     setRefreshing(true);
+    setLiveEventIds(new Set());
     try {
       const [r, es] = await Promise.all([getRun(runId), listRunEvents(runId)]);
       setRun(r);
@@ -812,7 +919,11 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     const form = getHumanForm(runId);
     const payload =
       step.kind === "pr.merge"
-        ? { verdict: "approve" as const, squash: Boolean(form.squash), mergeCommitMessage: form.mergeCommitMessage?.trim() || undefined }
+        ? {
+            verdict: "approve" as const,
+            squash: Boolean(form.squash),
+            mergeCommitMessage: form.mergeCommitMessage?.trim() || undefined,
+          }
         : { verdict: form.verdict, comment: form.comment?.trim() || undefined };
 
     setSubmittingRunId(runId);
@@ -855,6 +966,7 @@ export function useIssueDetailController(opts: { issueId: string; outlet: Issues
     setSelectedRunId,
     events,
     setEvents,
+    liveEventIds,
 
     // run selection refs
     selectedRunIdRef,

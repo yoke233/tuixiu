@@ -1,4 +1,4 @@
-import type { JsonRpcRequest } from "../../acpClientFacade.js";
+import type { JsonRpcRequest } from "../acpClientFacade.js";
 
 import { isRecord } from "./validate.js";
 

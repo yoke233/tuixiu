@@ -11,7 +11,7 @@ function textEvent(id: string, text: string, timestamp: string): Event {
     source: "acp",
     type: "acp.update.received",
     payload: { type: "text", text },
-    timestamp
+    timestamp,
   };
 }
 
@@ -33,7 +33,7 @@ describe("RunConsole", () => {
       get: () => scrollTop,
       set: (v) => {
         scrollTop = v;
-      }
+      },
     });
     Object.defineProperty(log, "scrollHeight", { configurable: true, get: () => 1000 });
     Object.defineProperty(log, "clientHeight", { configurable: true, get: () => 100 });
@@ -76,12 +76,12 @@ describe("RunConsole plan", () => {
             entries: [
               { status: "in_progress", content: "定位 Issue 同步与数据结构", priority: "medium" },
               { status: "pending", content: "定位 PR 提交流程", priority: "medium" },
-              { status: "completed", content: "补充测试与文档", priority: "low" }
-            ]
-          }
+              { status: "completed", content: "补充测试与文档", priority: "low" },
+            ],
+          },
         },
-        timestamp: "2026-01-25T00:00:00.000Z"
-      }
+        timestamp: "2026-01-25T00:00:00.000Z",
+      },
     ];
 
     render(<RunConsole events={events} />);
@@ -90,5 +90,22 @@ describe("RunConsole plan", () => {
     expect(screen.getByText("定位 Issue 同步与数据结构")).toBeInTheDocument();
     expect(screen.getByText("定位 PR 提交流程")).toBeInTheDocument();
     expect(screen.getByText("补充测试与文档")).toBeInTheDocument();
+  });
+});
+
+describe("RunConsole sandbox", () => {
+  it("hides sandbox_instance_status payloads from console output", async () => {
+    const payload = JSON.stringify({
+      type: "sandbox_instance_status",
+      status: "running",
+      runtime: "docker",
+      provider: "container_oci",
+    });
+    const events = [textEvent("e1", payload, "2026-01-01T00:00:00.000Z")];
+
+    render(<RunConsole events={events} />);
+
+    expect(await screen.findByText("暂无输出（无日志）")).toBeInTheDocument();
+    expect(screen.queryByText(payload)).not.toBeInTheDocument();
   });
 });

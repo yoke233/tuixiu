@@ -190,6 +190,12 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
     await this.stopInstance(instanceName);
   }
 
+  async removeImage(image: string): Promise<void> {
+    const target = image.trim();
+    if (!target) return;
+    throw new Error("BoxLite 暂不支持 remove_image");
+  }
+
   async listInstances(opts?: ListInstancesOpts): Promise<SandboxInstanceInfo[]> {
     const info = this.boxMeta ? await this.inspectInstance(this.boxMeta.instanceName) : null;
     if (!info || info.status === "missing") return [];

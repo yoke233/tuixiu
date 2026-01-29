@@ -8,7 +8,10 @@ function stripSideSpaces(s: string): string {
   return s.trim();
 }
 
-export function buildConsoleItems(events: Event[]): ConsoleItem[] {
+export function buildConsoleItems(
+  events: Event[],
+  opts?: { liveEventIds?: Set<string> },
+): ConsoleItem[] {
   const ordered = [...events];
   // 后端按 timestamp desc 返回 events，这里只做 reverse，避免排序打散 chunk。
   if (ordered.length >= 2) {
@@ -20,12 +23,20 @@ export function buildConsoleItems(events: Event[]): ConsoleItem[] {
   const out: ConsoleItem[] = [];
   for (const e of ordered) {
     const item = eventToConsoleItem(e);
+    if (opts?.liveEventIds?.has(e.id)) item.live = true;
     if (!item.text && !item.plan) continue;
 
     const last = out[out.length - 1];
-    if (last && last.kind === "chunk" && item.kind === "chunk" && last.role === item.role && last.chunkType === item.chunkType) {
+    if (
+      last &&
+      last.kind === "chunk" &&
+      item.kind === "chunk" &&
+      last.role === item.role &&
+      last.chunkType === item.chunkType
+    ) {
       last.text += item.text;
       last.timestamp = item.timestamp;
+      if (item.live) last.live = true;
       continue;
     }
     if (
@@ -51,7 +62,10 @@ export function buildConsoleItems(events: Event[]): ConsoleItem[] {
 
   const finalOut: ConsoleItem[] = [];
   for (const item of out) {
-    if (item.kind === "chunk" && (item.chunkType === "agent_message" || item.chunkType === "agent_thought")) {
+    if (
+      item.kind === "chunk" &&
+      (item.chunkType === "agent_message" || item.chunkType === "agent_thought")
+    ) {
       const text = stripSideSpaces(item.text);
       if (!text) continue;
       item.text = text;
@@ -61,4 +75,3 @@ export function buildConsoleItems(events: Event[]): ConsoleItem[] {
 
   return finalOut;
 }
-

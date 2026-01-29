@@ -2,7 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import WebSocket from "ws";
 
-import type { IncomingMessage } from "../../types.js";
+import type { IncomingMessage } from "../types.js";
 import type { Logger } from "../proxyContext.js";
 import { isRecord } from "../utils/validate.js";
 

@@ -8,7 +8,7 @@ export type RunRuntime = {
 
   agent: import("../acp/agentBridge.js").AgentBridge | null;
   suppressNextAcpExit: boolean;
-  acpClient: import("../../acpClientFacade.js").AcpClientFacade | null;
+  acpClient: import("../acpClientFacade.js").AcpClientFacade | null;
   initialized: boolean;
   initResult: unknown | null;
   seenSessionIds: Set<string>;

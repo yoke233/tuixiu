@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProcessHandle, SandboxInstanceInfo } from "../../sandbox/types.js";
+import type { ProcessHandle, SandboxInstanceInfo } from "./types.js";
 
 import { BoxliteProxySandbox } from "./boxliteProxySandbox.js";
 
@@ -27,6 +27,7 @@ describe("proxy/sandbox/boxliteProxySandbox", () => {
       ensureInstanceRunning: vi.fn(async () => info("running")),
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
+      removeImage: vi.fn(async () => {}),
       execProcess: vi.fn(async () => fakeHandle()),
     };
 
@@ -56,6 +57,7 @@ describe("proxy/sandbox/boxliteProxySandbox", () => {
       ensureInstanceRunning: vi.fn(async () => info("running")),
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
+      removeImage: vi.fn(async () => {}),
       execProcess: vi.fn(async () => fakeHandle()),
     };
 

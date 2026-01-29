@@ -2,7 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
-import type { ProcessHandle } from "../../sandbox/types.js";
+import type { ProcessHandle } from "../sandbox/types.js";
 import { RunManager } from "../runs/runManager.js";
 import type { ProxySandbox } from "../sandbox/ProxySandbox.js";
 
@@ -105,6 +105,7 @@ describe("proxy/handlers", () => {
       listInstances: async () => [],
       stopInstance: async () => {},
       removeInstance: async () => {},
+      removeImage: async () => {},
       execProcess: async () => {
         throw new Error("not implemented");
       },
@@ -157,6 +158,7 @@ describe("proxy/handlers", () => {
       listInstances: async () => [],
       stopInstance: async () => {},
       removeInstance: async () => {},
+      removeImage: async () => {},
       execProcess: async () => {
         throw new Error("not implemented");
       },

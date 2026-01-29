@@ -19,6 +19,7 @@ export type ConsoleItem = {
   kind: ConsoleKind;
   text: string;
   timestamp: string;
+  live?: boolean;
   toolCallId?: string;
   toolCallInfo?: ToolCallInfo;
   detailsTitle?: string;
@@ -31,4 +32,3 @@ export type ConsoleItem = {
     }>;
   };
 };
-

@@ -1,11 +1,11 @@
-import type { LoadedProxyConfig } from "../../config.js";
-import { BoxliteSandbox } from "../../sandbox/boxliteSandbox.js";
+import type { LoadedProxyConfig } from "../config.js";
+import { BoxliteSandbox } from "./boxliteSandbox.js";
 import type {
   EnsureInstanceRunningOpts,
   ListInstancesOpts,
   ProcessHandle,
   SandboxInstanceInfo,
-} from "../../sandbox/types.js";
+} from "./types.js";
 
 import type { ProxySandbox } from "./ProxySandbox.js";
 
@@ -17,6 +17,7 @@ type BoxliteSandboxApi = {
   ensureInstanceRunning(opts: EnsureInstanceRunningOpts): Promise<SandboxInstanceInfo>;
   stopInstance(instanceName: string): Promise<void>;
   removeInstance(instanceName: string): Promise<void>;
+  removeImage(image: string): Promise<void>;
   execProcess(opts: {
     instanceName: string;
     command: string[];
@@ -72,6 +73,10 @@ export class BoxliteProxySandbox implements ProxySandbox {
 
   async removeInstance(instanceName: string): Promise<void> {
     await this.boxlite.removeInstance(instanceName);
+  }
+
+  async removeImage(image: string): Promise<void> {
+    await this.boxlite.removeImage(image);
   }
 
   async execProcess(opts: {

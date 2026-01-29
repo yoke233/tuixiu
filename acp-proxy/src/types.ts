@@ -79,9 +79,11 @@ export type AgentUpdateMessage = {
 
 export type SandboxControlMessage = {
   type: "sandbox_control";
-  run_id: string;
-  instance_name: string;
-  action: "inspect" | "ensure_running" | "stop" | "remove" | "report_inventory";
+  run_id?: string;
+  instance_name?: string;
+  action: "inspect" | "ensure_running" | "stop" | "remove" | "report_inventory" | "remove_image";
+  image?: string;
+  expected_instances?: Array<{ instance_name: string; run_id: string }>;
 };
 
 export type IncomingMessage =

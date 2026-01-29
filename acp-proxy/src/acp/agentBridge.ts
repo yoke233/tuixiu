@@ -2,8 +2,8 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import * as acp from "@agentclientprotocol/sdk";
 
-import type { JsonRpcRequest } from "../../acpClientFacade.js";
-import type { ProcessHandle } from "../../sandbox/types.js";
+import type { JsonRpcRequest } from "../acpClientFacade.js";
+import type { ProcessHandle } from "../sandbox/types.js";
 import { isJsonRpcNotification, isJsonRpcRequest, isJsonRpcResponse } from "../utils/jsonRpc.js";
 
 type JsonRpcId = string | number;

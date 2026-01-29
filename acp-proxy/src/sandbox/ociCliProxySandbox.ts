@@ -1,12 +1,12 @@
-import type { LoadedProxyConfig } from "../../config.js";
-import { ContainerSandbox } from "../../sandbox/containerSandbox.js";
-import type { ContainerCli } from "../../sandbox/cliRuntime.js";
+import type { LoadedProxyConfig } from "../config.js";
+import { ContainerSandbox } from "./containerSandbox.js";
+import type { ContainerCli } from "./cliRuntime.js";
 import type {
   EnsureInstanceRunningOpts,
   ListInstancesOpts,
   ProcessHandle,
   SandboxInstanceInfo,
-} from "../../sandbox/types.js";
+} from "./types.js";
 
 import type { ProxySandbox } from "./ProxySandbox.js";
 import { parseContainerCli, startContainerOciCliAgent } from "./containerOciCliAgent.js";
@@ -19,6 +19,7 @@ type ContainerSandboxApi = {
   ensureInstanceRunning(opts: EnsureInstanceRunningOpts): Promise<SandboxInstanceInfo>;
   stopInstance(instanceName: string): Promise<void>;
   removeInstance(instanceName: string): Promise<void>;
+  removeImage(image: string): Promise<void>;
   execProcess(opts: {
     instanceName: string;
     command: string[];
@@ -118,6 +119,10 @@ export class OciCliProxySandbox implements ProxySandbox {
 
   async removeInstance(instanceName: string): Promise<void> {
     await this.container.removeInstance(instanceName);
+  }
+
+  async removeImage(image: string): Promise<void> {
+    await this.container.removeImage(image);
   }
 
   async execProcess(opts: {

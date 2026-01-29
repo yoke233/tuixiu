@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProcessHandle, SandboxInstanceInfo } from "../../sandbox/types.js";
+import type { ProcessHandle, SandboxInstanceInfo } from "./types.js";
 
 import { OciCliProxySandbox } from "./ociCliProxySandbox.js";
 
@@ -28,6 +28,7 @@ describe("proxy/sandbox/ociCliProxySandbox", () => {
       ensureInstanceRunning: vi.fn(async () => info("running")),
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
+      removeImage: vi.fn(async () => {}),
       execProcess: vi.fn(async () => fakeHandle()),
       attachInstance: vi.fn(async () => fakeHandle()),
       startAndAttachInstance: vi.fn(async () => fakeHandle()),
@@ -63,6 +64,7 @@ describe("proxy/sandbox/ociCliProxySandbox", () => {
       ensureInstanceRunning: vi.fn(async () => info("running")),
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
+      removeImage: vi.fn(async () => {}),
       execProcess: vi.fn(async () => fakeHandle()),
       attachInstance: vi.fn(async () => fakeHandle()),
       startAndAttachInstance: vi.fn(async () => fakeHandle()),
@@ -98,6 +100,7 @@ describe("proxy/sandbox/ociCliProxySandbox", () => {
       ensureInstanceRunning: vi.fn(async () => info("running")),
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
+      removeImage: vi.fn(async () => {}),
       execProcess: vi.fn(async () => fakeHandle()),
       attachInstance: vi.fn(async () => fakeHandle()),
       startAndAttachInstance: vi.fn(async () => fakeHandle()),
@@ -133,6 +136,7 @@ describe("proxy/sandbox/ociCliProxySandbox", () => {
       ensureInstanceRunning: vi.fn(async () => info("running")),
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
+      removeImage: vi.fn(async () => {}),
       execProcess: vi.fn(async () => fakeHandle()),
       attachInstance: vi.fn(async () => fakeHandle()),
       startAndAttachInstance: vi.fn(async () => fakeHandle()),
@@ -167,6 +171,7 @@ describe("proxy/sandbox/ociCliProxySandbox", () => {
       ensureInstanceRunning: vi.fn(async () => info("running")),
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
+      removeImage: vi.fn(async () => {}),
       execProcess: vi.fn(async () => fakeHandle()),
       attachInstance: vi.fn(async () => fakeHandle()),
       startAndAttachInstance: vi.fn(async () => fakeHandle()),

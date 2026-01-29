@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { RunConsole } from "../../../components/RunConsole";
 import { apiUrl } from "../../../api/client";
+import { findLatestSandboxInstanceStatus } from "../../../utils/sandboxStatus";
 import type { IssueDetailController } from "../useIssueDetailController";
 
 export function ConsoleCard(props: { model: IssueDetailController }) {
@@ -14,6 +16,7 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
     currentRunId,
     agentOnline,
     events,
+    liveEventIds,
     onDropFiles,
     onPauseRun,
     onSendPrompt,
@@ -26,6 +29,37 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
     setChatText,
     uploadingImages,
   } = props.model;
+
+  const sandboxStatus = useMemo(() => findLatestSandboxInstanceStatus(events), [events]);
+  const sandboxHint = useMemo(() => {
+    if (!sandboxStatus) return null;
+    const status = sandboxStatus.status;
+    if (status === "running") {
+      return { label: "容器已启动（工具可用）", tone: "ok" as const };
+    }
+    if (status === "creating" || status === "missing") {
+      return { label: "容器启动中…", tone: "pending" as const };
+    }
+    if (status === "stopped") {
+      return { label: "容器已停止", tone: "muted" as const };
+    }
+    if (status === "error") {
+      return { label: "容器异常", tone: "error" as const };
+    }
+    return { label: `容器状态：${status}`, tone: "muted" as const };
+  }, [sandboxStatus]);
+
+  const sandboxTitle = useMemo(() => {
+    if (!sandboxStatus) return "";
+    const parts = [
+      sandboxStatus.instanceName ? `实例: ${sandboxStatus.instanceName}` : "",
+      sandboxStatus.runtime ? `运行时: ${sandboxStatus.runtime}` : "",
+      sandboxStatus.provider ? `provider: ${sandboxStatus.provider}` : "",
+      sandboxStatus.lastSeenAt ? `last_seen_at: ${sandboxStatus.lastSeenAt}` : "",
+      sandboxStatus.lastError ? `last_error: ${sandboxStatus.lastError}` : "",
+    ].filter(Boolean);
+    return parts.join(" | ");
+  }, [sandboxStatus]);
 
   return (
     <section className="card">
@@ -40,8 +74,20 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
           {run?.executorType === "agent" && run?.status === "running" ? (
             <button
               onClick={onPauseRun}
-              disabled={!allowPause || !currentRunId || pausing || !sessionKnown || (currentAgent ? !agentOnline : false)}
-              title={!allowPause ? "需要开发或管理员权限" : !sessionKnown ? "ACP sessionId 尚未建立/同步" : ""}
+              disabled={
+                !allowPause ||
+                !currentRunId ||
+                pausing ||
+                !sessionKnown ||
+                (currentAgent ? !agentOnline : false)
+              }
+              title={
+                !allowPause
+                  ? "需要开发或管理员权限"
+                  : !sessionKnown
+                    ? "ACP sessionId 尚未建立/同步"
+                    : ""
+              }
             >
               {pausing ? "暂停中…" : "暂停 Agent"}
             </button>
@@ -57,7 +103,7 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
           if (e.dataTransfer.files?.length) void onDropFiles(e.dataTransfer.files);
         }}
       >
-        <RunConsole events={events} />
+        <RunConsole events={events} liveEventIds={liveEventIds} />
       </div>
 
       {pendingImages.length ? (
@@ -67,13 +113,25 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
               <img
                 src={apiUrl(img.uri)}
                 alt={img.name ?? img.id}
-                style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)" }}
+                style={{
+                  width: 52,
+                  height: 52,
+                  objectFit: "cover",
+                  borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
               />
               <button
                 type="button"
                 onClick={() => removePendingImage(img.id)}
                 className="buttonSecondary"
-                style={{ position: "absolute", top: -8, right: -8, padding: "2px 6px", borderRadius: 999 }}
+                style={{
+                  position: "absolute",
+                  top: -8,
+                  right: -8,
+                  padding: "2px 6px",
+                  borderRadius: 999,
+                }}
                 aria-label="移除图片"
               >
                 ×
@@ -111,8 +169,8 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
                 ? "当前账号无权限与 Agent 对话"
                 : !currentRunId
                   ? "请先启动 Run"
-                    : run?.executorType !== "agent"
-                      ? "当前 Run 不是 Agent 执行器"
+                  : run?.executorType !== "agent"
+                    ? "当前 Run 不是 Agent 执行器"
                     : "像 CLI 一样继续对话…（支持拖拽图片）"
           }
           disabled={
@@ -140,13 +198,20 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
           发送
         </button>
       </form>
+      {sandboxHint ? (
+        <div className={`consoleSendStatus ${sandboxHint.tone}`} title={sandboxTitle}>
+          <span className="consoleSendDot" aria-hidden="true" />
+          <span>{sandboxHint.label}</span>
+        </div>
+      ) : null}
       {currentRunId && run?.executorType === "agent" && currentAgent && !agentOnline ? (
         <div className="muted" style={{ marginTop: 8 }}>
           当前 Agent 离线：需要等待其重新上线，或重新启动新的 Run。
         </div>
       ) : currentRunId && run?.executorType === "agent" && !sessionKnown ? (
         <div className="muted" style={{ marginTop: 8 }}>
-          ACP sessionId 还未同步到页面：proxy 会优先尝试复用/`session/load` 历史会话；仅在确实无法恢复时才会新建并注入上下文继续。
+          ACP sessionId 还未同步到页面：proxy 会优先尝试复用/`session/load`
+          历史会话；仅在确实无法恢复时才会新建并注入上下文继续。
         </div>
       ) : null}
     </section>

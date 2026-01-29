@@ -1,8 +1,8 @@
 import { Readable, Writable } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
-import { CliRuntime, type ContainerCli, type RunningProcess } from "../../sandbox/cliRuntime.js";
-import type { ProcessHandle } from "../../sandbox/types.js";
+import { CliRuntime, type ContainerCli, type RunningProcess } from "./cliRuntime.js";
+import type { ProcessHandle } from "./types.js";
 
 export function parseContainerCli(value: string): ContainerCli {
   const v = String(value ?? "").trim();
@@ -68,7 +68,10 @@ export function buildContainerEntrypointScript(opts: {
 
   const lines: string[] = ["set -euo pipefail"];
   lines.push(`workspace=${bashSingleQuote(opts.workingDir)}`);
-  lines.push('mkdir -p "$workspace" >/dev/null 2>&1 || true');
+  lines.push('if [ "$workspace" != "/" ]; then');
+  lines.push('  if [ -L "$workspace" ] || [ -f "$workspace" ]; then rm -rf "$workspace"; fi');
+  lines.push('  mkdir -p "$workspace" >/dev/null 2>&1 || true');
+  lines.push("fi");
 
   if (initEnv && Object.keys(initEnv).length) {
     const exports = renderInitEnvExports(initEnv);

@@ -23,10 +23,12 @@ export function useSessionController() {
   const [run, setRun] = useState<Run | null>(null);
   const [issue, setIssue] = useState<Issue | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
+  const [liveEventIds, setLiveEventIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<number | null>(null);
+  const wsStatusRef = useRef<"connecting" | "open" | "closed">("connecting");
   const [chatText, setChatText] = useState("");
   const [pendingImages, setPendingImages] = useState<
     Array<{ id: string; uri: string; mimeType: string; name?: string; size: number }>
@@ -97,6 +99,11 @@ export function useSessionController() {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!runId) return;
+    setLiveEventIds(new Set());
+  }, [runId]);
+
   const onWs = useCallback(
     (msg: WsMessage) => {
       if (!runId) return;
@@ -107,6 +114,11 @@ export function useSessionController() {
           if (prev.some((e) => e.id === msg.event!.id)) return prev;
           const next = [...prev, msg.event!];
           return next.length > 800 ? next.slice(next.length - 800) : next;
+        });
+        setLiveEventIds((prev) => {
+          const next = new Set(prev);
+          next.add(msg.event!.id);
+          return next;
         });
 
         const payload = (msg.event as any).payload;
@@ -155,6 +167,9 @@ export function useSessionController() {
     [refresh, runId],
   );
   const ws = useWsClient(onWs);
+  useEffect(() => {
+    wsStatusRef.current = ws.status;
+  }, [ws.status]);
 
   const onPause = useCallback(async () => {
     if (!runId) return;
@@ -236,11 +251,13 @@ export function useSessionController() {
 
       setTransientError(null);
       setSending(true);
+      setChatText("");
+      setPendingImages([]);
       try {
         await promptRun(runId, prompt);
-        setChatText("");
-        setPendingImages([]);
-        void refresh({ silent: true });
+        if (wsStatusRef.current !== "open") {
+          void refresh({ silent: true });
+        }
       } catch (err) {
         setTransientError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -316,6 +333,7 @@ export function useSessionController() {
     run,
     issue,
     events,
+    liveEventIds,
 
     // derived
     sessionState,
