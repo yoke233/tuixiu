@@ -107,6 +107,7 @@ backend/src/
 **Step 1: 确认当前 main 基线与测试通过**
 
 Run:
+
 ```powershell
 Set-Location -LiteralPath D:\xyad\tuixiu-backend
 git fetch origin
@@ -122,6 +123,7 @@ Expected: 全绿。
 **Step 2: 记录“services 依赖面”**
 
 Run:
+
 ```powershell
 rg -n "from \\\"\\.?\\.?/services/|from '\\.?\\.?/services/" backend/src backend/test
 ```
@@ -133,12 +135,14 @@ Expected: 输出作为后续收敛 import 的清单参考（无需提交）。
 ### Task 1: 创建 `modules/` 目录与空壳入口（不搬代码）
 
 **Files:**
+
 - Create: `backend/src/modules/README.md`（可选：写模块约束与导出规则）
 - Create: `backend/src/modules/{acp,approvals,artifacts,attachments,pm,runs,scm,security,templates,workflow,workspace}/.gitkeep`（或用真实文件替代）
 
 **Step 1: 创建目录结构**
 
 Run:
+
 ```powershell
 Set-Location -LiteralPath D:\xyad\tuixiu-backend
 New-Item -ItemType Directory -Force -Path backend/src/modules | Out-Null
@@ -149,6 +153,7 @@ Expected: `backend/src/modules` 存在。
 **Step 2: 提交一个纯结构 PR（可选）**
 
 Run:
+
 ```powershell
 git status
 ```
@@ -160,12 +165,14 @@ Expected: 仅新增目录/README。
 ### Task 2: 迁移 SCM 模块（`services/scm` → `modules/scm`）
 
 **Files:**
+
 - Move: `backend/src/services/scm/*` → `backend/src/modules/scm/*`
 - Modify: `backend/src/services/scm/*`（改为 re-export）
 
 **Step 1: 使用 `git mv` 搬迁实现文件**
 
 Run:
+
 ```powershell
 Set-Location -LiteralPath D:\xyad\tuixiu-backend
 git mv backend/src/services/scm backend/src/modules/scm
@@ -181,6 +188,7 @@ Expected: `backend/src/modules/scm/*.ts` 出现，旧路径消失。
 **Step 3: 跑测试 + 提交**
 
 Run:
+
 ```powershell
 pnpm -C backend test
 pnpm -C backend typecheck
@@ -193,12 +201,14 @@ Expected: 全绿。
 ### Task 3: 迁移 Workflow 模块（`services/workflow` → `modules/workflow`）
 
 **Files:**
+
 - Move: `backend/src/services/workflow/*` → `backend/src/modules/workflow/*`
 - Modify: `backend/src/services/workflow/*`（改为 re-export）
 
 **Step 1: `git mv` 搬迁**
 
 Run:
+
 ```powershell
 Set-Location -LiteralPath D:\xyad\tuixiu-backend
 git mv backend/src/services/workflow backend/src/modules/workflow
@@ -211,6 +221,7 @@ git mv backend/src/services/workflow backend/src/modules/workflow
 **Step 3: 跑测试**
 
 Run:
+
 ```powershell
 pnpm -C backend test
 pnpm -C backend typecheck
@@ -221,6 +232,7 @@ pnpm -C backend typecheck
 ### Task 4: 迁移 PM 与 Attachments 模块（同样策略）
 
 **Files:**
+
 - Move: `backend/src/services/pm` → `backend/src/modules/pm`
 - Move: `backend/src/services/attachments` → `backend/src/modules/attachments`
 - Modify: `backend/src/services/pm/*`、`backend/src/services/attachments/*`（改为 re-export）
@@ -228,6 +240,7 @@ pnpm -C backend typecheck
 **Step 1: 分别 `git mv`**
 
 Run:
+
 ```powershell
 Set-Location -LiteralPath D:\xyad\tuixiu-backend
 git mv backend/src/services/pm backend/src/modules/pm
@@ -237,6 +250,7 @@ git mv backend/src/services/attachments backend/src/modules/attachments
 **Step 2: 重建兼容层并跑测试**
 
 Run:
+
 ```powershell
 pnpm -C backend test
 pnpm -C backend typecheck
@@ -251,12 +265,14 @@ pnpm -C backend typecheck
 #### 5.1 ACP 域
 
 **Files:**
+
 - Move: `backend/src/services/{acpContent,acpTunnel,contextPack}.ts` → `backend/src/modules/acp/*.ts`
 - Modify: `backend/src/services/{acpContent,acpTunnel,contextPack}.ts`（保留为 re-export）
 
 **Step 1: `git mv` + 修正相对 import**
 
 Run:
+
 ```powershell
 Set-Location -LiteralPath D:\xyad\tuixiu-backend
 git mv backend/src/services/acpContent.ts backend/src/modules/acp/acpContent.ts
@@ -267,6 +283,7 @@ git mv backend/src/services/contextPack.ts backend/src/modules/acp/contextPack.t
 **Step 2: 修复 import 深度并跑测试**
 
 Run:
+
 ```powershell
 pnpm -C backend test
 pnpm -C backend typecheck
@@ -275,6 +292,7 @@ pnpm -C backend typecheck
 #### 5.2 Runs 域（run 生命周期/上下文）
 
 **Files:**
+
 - Move: `backend/src/services/{startIssueRun,runContext,agentOutput}.ts` → `backend/src/modules/runs/*.ts`
 - Modify: `backend/src/services/{startIssueRun,runContext,agentOutput}.ts`（re-export）
 
@@ -293,12 +311,14 @@ pnpm -C backend typecheck
 ### Task 6: 引用收敛（从 `services/*` 迁到 `modules/*`）
 
 **Files:**
+
 - Modify: `backend/src/**`（routes/executors/websocket/index）
 - Modify: `backend/test/**`
 
 **Step 1: 逐模块替换 import**
 
 Run:
+
 ```powershell
 rg -n \"from \\\"\\.?\\.?/services/|from '\\.?\\.?/services/\" backend/src backend/test
 ```
@@ -308,6 +328,7 @@ rg -n \"from \\\"\\.?\\.?/services/|from '\\.?\\.?/services/\" backend/src backe
 **Step 2: 全量测试**
 
 Run:
+
 ```powershell
 pnpm -C backend test
 pnpm -C backend typecheck
@@ -322,11 +343,13 @@ pnpm lint
 **Option B（保守）：** 保留 `services`，但强制只允许 re-export（通过 lint/CI 或简单脚本校验）。
 
 **Files:**
+
 - Delete/Modify: `backend/src/services/**`
 
 **Step 1: 执行删除并跑测试**
 
 Run:
+
 ```powershell
 pnpm -C backend test
 pnpm -C backend typecheck
@@ -342,4 +365,3 @@ pnpm -C backend typecheck
 - `workflow/taskTemplatePolicy.ts`（策略/约束）
 
 逐步迁移为“平台默认 + 项目覆盖”的运行时配置（DB/配置中心），让控制权更多在运行时而不是代码里。
-

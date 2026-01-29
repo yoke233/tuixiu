@@ -328,6 +328,19 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
+  '@boxlite-ai/boxlite-darwin-arm64@0.2.4':
+    resolution: {integrity: sha512-/44tm23hFu56skm9cW1+mojG8ua5SE1B2y/2Tge6ig8sxwRcaBj0vdG/EJYI2eHy+0Isw8oUsXEsw05y59gtrg==}
+    engines: {node: '>=18.0.0'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@boxlite-ai/boxlite-linux-x64-gnu@0.2.4':
+    resolution: {integrity: sha512-d1Tw0S25GV+g9kAWUHfQsuzcsrlaDZLBmGXRf+prFgGE5ACH81vveRFqBK49Duc1kFoj0aFTuPWgYTrAZBmvBg==}
+    engines: {node: '>=18.0.0'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
   '@boxlite-ai/boxlite@0.2.4':
     resolution: {integrity: sha512-Id45w703zUScTK6nFHzO18gfSr82Oi916zoI0YYygk/jzvel80UvxmcKbUG0WgxFc39Tt4GqC6vwVSdTzlpmPw==}
     engines: {node: '>=18.0.0'}
@@ -2548,7 +2561,16 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@boxlite-ai/boxlite@0.2.4': {}
+  '@boxlite-ai/boxlite-darwin-arm64@0.2.4':
+    optional: true
+
+  '@boxlite-ai/boxlite-linux-x64-gnu@0.2.4':
+    optional: true
+
+  '@boxlite-ai/boxlite@0.2.4':
+    optionalDependencies:
+      '@boxlite-ai/boxlite-darwin-arm64': 0.2.4
+      '@boxlite-ai/boxlite-linux-x64-gnu': 0.2.4
 
   '@csstools/color-helpers@5.1.0': {}
 
