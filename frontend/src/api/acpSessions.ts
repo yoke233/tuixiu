@@ -29,3 +29,13 @@ export async function startAcpSession(input: {
   );
   return data;
 }
+
+export async function setAcpSessionMode(runId: string, sessionId: string, modeId: string): Promise<{ ok: true }> {
+  const data = await apiPost<{ ok: true }>(`/admin/acp-sessions/set-mode`, { runId, sessionId, modeId });
+  return data;
+}
+
+export async function setAcpSessionModel(runId: string, sessionId: string, modelId: string): Promise<{ ok: true }> {
+  const data = await apiPost<{ ok: true }>(`/admin/acp-sessions/set-model`, { runId, sessionId, modelId });
+  return data;
+}

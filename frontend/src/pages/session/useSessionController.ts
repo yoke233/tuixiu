@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
+import { setAcpSessionMode, setAcpSessionModel } from "../../api/acpSessions";
 import { getIssue } from "../../api/issues";
 import { getRun, listRunEvents, pauseRun, promptRun, uploadRunAttachment } from "../../api/runs";
 import { useAuth } from "../../auth/AuthContext";
@@ -33,6 +34,8 @@ export function useSessionController() {
   const [uploadingImages, setUploadingImages] = useState(false);
   const [sending, setSending] = useState(false);
   const [pausing, setPausing] = useState(false);
+  const [settingMode, setSettingMode] = useState(false);
+  const [settingModel, setSettingModel] = useState(false);
 
   const sessionState = useMemo(() => readSessionState(events), [events]);
   const sessionId = run?.acpSessionId ?? null;
@@ -127,6 +130,52 @@ export function useSessionController() {
       setPausing(false);
     }
   }, [requireLogin, runId]);
+
+  const onSetMode = useCallback(
+    async (modeId: string) => {
+      if (!runId) return;
+      if (!sessionId) return;
+      if (!requireLogin()) return;
+
+      const id = modeId.trim();
+      if (!id) return;
+
+      setError(null);
+      setSettingMode(true);
+      try {
+        await setAcpSessionMode(runId, sessionId, id);
+        void refresh({ silent: true });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSettingMode(false);
+      }
+    },
+    [refresh, requireLogin, runId, sessionId],
+  );
+
+  const onSetModel = useCallback(
+    async (modelId: string) => {
+      if (!runId) return;
+      if (!sessionId) return;
+      if (!requireLogin()) return;
+
+      const id = modelId.trim();
+      if (!id) return;
+
+      setError(null);
+      setSettingModel(true);
+      try {
+        await setAcpSessionModel(runId, sessionId, id);
+        void refresh({ silent: true });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSettingModel(false);
+      }
+    },
+    [refresh, requireLogin, runId, sessionId],
+  );
 
   const onSend = useCallback(
     async (e: React.FormEvent) => {
@@ -224,10 +273,14 @@ export function useSessionController() {
     uploadingImages,
     sending,
     pausing,
+    settingMode,
+    settingModel,
 
     // actions
     refresh,
     onPause,
+    onSetMode,
+    onSetModel,
     onSend,
     onDropFiles,
     removePendingImage,
