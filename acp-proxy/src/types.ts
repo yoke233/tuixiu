@@ -32,12 +32,6 @@ export type AcpCloseMessage = {
   run_id: string;
 };
 
-export type AcpMessageMessage = {
-  type: "acp_message";
-  run_id: string;
-  message: unknown;
-};
-
 export type PromptSendMessage = {
   type: "prompt_send";
   run_id: string;
@@ -52,6 +46,29 @@ export type PromptSendMessage = {
     timeout_seconds?: number;
     env?: Record<string, string>;
   };
+};
+
+export type SessionCancelMessage = {
+  type: "session_cancel";
+  run_id: string;
+  control_id: string;
+  session_id: string;
+};
+
+export type SessionSetModeMessage = {
+  type: "session_set_mode";
+  run_id: string;
+  control_id: string;
+  session_id: string;
+  mode_id: string;
+};
+
+export type SessionSetModelMessage = {
+  type: "session_set_model";
+  run_id: string;
+  control_id: string;
+  session_id: string;
+  model_id: string;
 };
 
 export type AgentUpdateMessage = {
@@ -70,7 +87,9 @@ export type SandboxControlMessage = {
 export type IncomingMessage =
   | AcpOpenMessage
   | AcpCloseMessage
-  | AcpMessageMessage
   | PromptSendMessage
+  | SessionCancelMessage
+  | SessionSetModeMessage
+  | SessionSetModelMessage
   | SandboxControlMessage
   | { type: string; [k: string]: unknown };

@@ -39,10 +39,30 @@ type AcpOpenedMessage = {
   error?: string;
 };
 
-type AcpMessageMessage = {
-  type: "acp_message";
+type PromptUpdateMessage = {
+  type: "prompt_update";
   run_id: string;
-  message: unknown;
+  prompt_id?: string | null;
+  session_id?: string | null;
+  update: unknown;
+};
+
+type PromptResultMessage = {
+  type: "prompt_result";
+  run_id: string;
+  prompt_id?: string | null;
+  ok: boolean;
+  error?: string;
+  session_id?: string | null;
+  stop_reason?: string | null;
+};
+
+type SessionControlResultMessage = {
+  type: "session_control_result";
+  run_id: string;
+  control_id: string;
+  ok: boolean;
+  error?: string;
 };
 
 type BranchCreatedMessage = {
@@ -82,7 +102,9 @@ type AnyAgentMessage =
   | AgentHeartbeatMessage
   | AgentUpdateMessage
   | AcpOpenedMessage
-  | AcpMessageMessage
+  | PromptUpdateMessage
+  | PromptResultMessage
+  | SessionControlResultMessage
   | BranchCreatedMessage
   | AcpExitMessage
   | SandboxInventoryMessage;
@@ -119,7 +141,9 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
     | null
     | {
         handleAcpOpened: (proxyId: string, payload: unknown) => void;
-        handleAcpMessage: (proxyId: string, payload: unknown) => void;
+        handlePromptUpdate: (proxyId: string, payload: unknown) => void;
+        handlePromptResult: (proxyId: string, payload: unknown) => void;
+        handleSessionControlResult: (proxyId: string, payload: unknown) => void;
         handleProxyDisconnected?: (proxyId: string) => void;
       } = null;
 
@@ -343,10 +367,32 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
           return;
         }
 
-        if (message.type === "acp_message") {
+        if (message.type === "prompt_update") {
           if (proxyId && acpTunnelHandlers) {
             try {
-              acpTunnelHandlers.handleAcpMessage(proxyId, message);
+              acpTunnelHandlers.handlePromptUpdate(proxyId, message);
+            } catch (err) {
+              logError(err);
+            }
+          }
+          return;
+        }
+
+        if (message.type === "prompt_result") {
+          if (proxyId && acpTunnelHandlers) {
+            try {
+              acpTunnelHandlers.handlePromptResult(proxyId, message);
+            } catch (err) {
+              logError(err);
+            }
+          }
+          return;
+        }
+
+        if (message.type === "session_control_result") {
+          if (proxyId && acpTunnelHandlers) {
+            try {
+              acpTunnelHandlers.handleSessionControlResult(proxyId, message);
             } catch (err) {
               logError(err);
             }
@@ -813,7 +859,9 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
     },
     setAcpTunnelHandlers: (handlers: {
       handleAcpOpened: (proxyId: string, payload: unknown) => void;
-      handleAcpMessage: (proxyId: string, payload: unknown) => void;
+      handlePromptUpdate: (proxyId: string, payload: unknown) => void;
+      handlePromptResult: (proxyId: string, payload: unknown) => void;
+      handleSessionControlResult: (proxyId: string, payload: unknown) => void;
       handleProxyDisconnected?: (proxyId: string) => void;
     }) => {
       acpTunnelHandlers = handlers;

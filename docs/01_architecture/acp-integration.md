@@ -12,7 +12,7 @@ last_reviewed: "2026-01-27"
 关键结论（务必先读）：
 
 - **Proxy 实现语言**：Node.js + TypeScript（见 `acp-proxy/`），旧版 Go/Python 方案已移除
-- **当前桥接模式**：proxy 作为“纯桥接”转发：WS 的 `acp_open/acp_message/acp_close` ⇄ ACP(JSON-RPC/NDJSON over stdio)
+- **当前桥接模式**：后端不再直接转发 ACP JSON-RPC；由 `acp-proxy` 负责 `initialize`/`session/*`，后端只下发 `acp_open` / `prompt_send` / `sandbox_control` / `acp_close` 等高层指令
 
 官方文档：
 
@@ -65,7 +65,7 @@ proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 worktre
 │  │  WebSocket Client                              │ │
 │  │  - connect/reconnect (/ws/agent)               │ │
 │  │  - heartbeat                                   │ │
-│  │  - handle acp_open / acp_message / acp_close   │ │
+│  │  - handle acp_open / prompt_send / acp_close   │ │
 │  └────────┬──────────────────────────────────────┘ │
 │           │                                         │
 │           ↓                                         │
@@ -83,8 +83,8 @@ proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 worktre
 - `acp-proxy/src/index.ts`：CLI 入口（不放业务逻辑）
 - `acp-proxy/src/proxyCli.ts`
   - WebSocket 连接与重连、心跳
-  - 处理 `acp_open` / `acp_message` / `acp_close`（转发 ACP JSON-RPC over stdio）
-  - 维护 `runId → ACP stream` 的运行态映射（Run 的 cwd 由后端 workspace 决定）
+  - 处理 `acp_open` / `prompt_send` / `acp_close`（由 proxy 负责 `initialize`/`session/*`，后端不直接转发 ACP JSON-RPC）
+  - 维护 `runId → ACP stream` 的运行态映射
   - 沙箱启动模式：`sandbox.agentMode=exec|entrypoint`（`entrypoint` 下如提供 `acp_open.init.script` 会在 agent 启动前执行）
 - `acp-proxy/src/launchers/*`：Agent 启动抽象（Launcher），便于未来切换不同运行方式
 - `acp-proxy/src/sandbox/*`：Sandbox 抽象（当前实现 `BoxliteSandbox` 与 `ContainerSandbox`）
@@ -93,7 +93,10 @@ proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 worktre
 
 ### 3.3 Session 生命周期（当前实现）
 
-Session 的创建/复用/恢复逻辑由 “上游（通常是后端/调度器）” 决定，proxy 只负责进程生命周期与消息转发。
+Session 的创建/复用/恢复由 `acp-proxy` 托管：
+
+- `prompt_send` 未提供 `session_id`：proxy 会 `session/new`
+- `prompt_send` 提供 `session_id`：若 agent 支持 `loadSession`，proxy 会尝试 `session/load`
 
 ---
 
@@ -104,14 +107,14 @@ Session 的创建/复用/恢复逻辑由 “上游（通常是后端/调度器�
 - Agent（proxy）连接：`ws://localhost:3000/ws/agent`
 - Web UI 连接：`ws://localhost:3000/ws/client`
 
-消息协议（以代码为准：`acp-proxy/src/types.ts`）：
+消息协议（以代码为准：`acp-proxy/src/types.ts`（Server → Agent）与 `backend/src/websocket/gateway.ts`（Agent → Server））：
 
 | 方向           | type             | 说明               | 最小 Payload                                      |
 | -------------- | ---------------- | ------------------ | ------------------------------------------------- |
 | Agent → Server | `register_agent` | 注册/上线          | `{agent:{id,name,max_concurrent?,capabilities?}}` |
 | Agent → Server | `heartbeat`      | 心跳               | `{agent_id,timestamp?}`                           |
 | Server → Agent | `acp_open`       | 打开/启动 ACP 进程 | `{run_id,cwd?,init?}`                             |
-| Server → Agent | `acp_message`    | 转发 ACP 消息      | `{run_id,message}`                                |
+| Server → Agent | `prompt_send`    | 发起一次对话回合   | `{run_id,prompt_id,session_id?,context?,prompt}`   |
 | Server → Agent | `acp_close`      | 关闭 Run           | `{run_id}`                                        |
 | Agent → Server | `agent_update`   | 事件流转发         | `{run_id,content:any}`                            |
 
@@ -134,10 +137,10 @@ Session 的创建/复用/恢复逻辑由 “上游（通常是后端/调度器�
 ### 5.1 启动 Run → 输出事件流
 
 ```
-1) backend: WS -> proxy acp_open           -> {run_id,cwd}
-2) proxy:   启动 sandbox 内 ACP agent 进程，并建立 stdio bridge
-3) backend: WS -> proxy acp_message        -> {run_id,message}
-4) proxy:   转发 ACP 输出到 WS             -> {type:\"acp_message\",...}
+1) backend: WS -> proxy acp_open           -> {run_id,instance_name?,init?}
+2) proxy:   启动 sandbox/agent，并完成 initialize
+3) backend: WS -> proxy prompt_send        -> {run_id,prompt_id,session_id?,context?,prompt}
+4) proxy:   session/new|load + session/prompt，并回传 prompt_update / prompt_result
 ```
 
 ### 5.2 关闭 Run

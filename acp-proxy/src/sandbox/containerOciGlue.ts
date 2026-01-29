@@ -16,7 +16,7 @@ export function createContainerOciProvider(cfg: ContainerOciConfig) {
     },
 
     onAcpMessage(msg: any) {
-      // 你的桥接协议大概是：acp_message -> 写入 agent stdin
+      // 示例：把服务端下发的消息写入 agent stdin
       // 你测试里 agentCode 用 readline 按行读 JSON，所以这里必须带 \n
       provider.sendToAgent(String(msg.instance_name), JSON.stringify(msg.message) + "\n");
     },

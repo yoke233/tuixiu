@@ -60,10 +60,6 @@ function pickSecretValues(env: Record<string, string> | undefined): string[] {
   return out;
 }
 
-function isJsonRpcMessage(v: unknown): v is { jsonrpc: "2.0" } {
-  return isRecord(v) && v.jsonrpc === "2.0";
-}
-
 function isJsonRpcRequest(v: unknown): v is JsonRpcRequest {
   return (
     isRecord(v) &&
@@ -1385,27 +1381,152 @@ export async function runProxyCli() {
     }
   };
 
-  const handleAcpMessage = async (msg: any) => {
+  const handleSessionCancel = async (msg: any) => {
     const runId = String(msg.run_id ?? "").trim();
     if (!runId) return;
-    const run = runs.get(runId);
-    if (!run || !run.agent) {
-      send({ type: "acp_error", run_id: runId, error: "run_not_open" });
-      return;
-    }
+    const controlIdRaw = String(msg.control_id ?? "").trim();
+    const sessionId = String(msg.session_id ?? "").trim();
 
-    const message = msg.message;
-    if (!isJsonRpcMessage(message)) {
-      send({
-        type: "acp_error",
-        run_id: runId,
-        error: "invalid_jsonrpc_message",
-      });
-      return;
-    }
+    const reply = (payload: Record<string, unknown>) => {
+      try {
+        send({
+          type: "session_control_result",
+          run_id: runId,
+          control_id: controlIdRaw,
+          ...payload,
+        });
+      } catch (err) {
+        log("failed to send session_control_result", { runId, err: String(err) });
+      }
+    };
 
-    run.lastUsedAt = Date.now();
-    await writeToAgent(run, message as any);
+    try {
+      if (!controlIdRaw) {
+        reply({ ok: false, error: "control_id 为空" });
+        return;
+      }
+      if (!sessionId) {
+        reply({ ok: false, error: "session_id 为空" });
+        return;
+      }
+
+      const run = runs.get(runId);
+      if (!run || !run.agent) {
+        reply({ ok: false, error: "run_not_open" });
+        return;
+      }
+
+      await writeToAgent(
+        run,
+        {
+          jsonrpc: "2.0",
+          method: "session/cancel",
+          params: { sessionId },
+        } as any,
+      );
+
+      reply({ ok: true });
+    } catch (err) {
+      reply({ ok: false, error: String(err) });
+    }
+  };
+
+  const handleSessionSetMode = async (msg: any) => {
+    const runId = String(msg.run_id ?? "").trim();
+    if (!runId) return;
+    const controlIdRaw = String(msg.control_id ?? "").trim();
+    const sessionId = String(msg.session_id ?? "").trim();
+    const modeId = String(msg.mode_id ?? "").trim();
+
+    const reply = (payload: Record<string, unknown>) => {
+      try {
+        send({
+          type: "session_control_result",
+          run_id: runId,
+          control_id: controlIdRaw,
+          ...payload,
+        });
+      } catch (err) {
+        log("failed to send session_control_result", { runId, err: String(err) });
+      }
+    };
+
+    try {
+      if (!controlIdRaw) {
+        reply({ ok: false, error: "control_id 为空" });
+        return;
+      }
+      if (!sessionId) {
+        reply({ ok: false, error: "session_id 为空" });
+        return;
+      }
+      if (!modeId) {
+        reply({ ok: false, error: "mode_id 为空" });
+        return;
+      }
+
+      const run = runs.get(runId);
+      if (!run || !run.agent) {
+        reply({ ok: false, error: "run_not_open" });
+        return;
+      }
+
+      await ensureInitialized(run);
+      await withAuthRetry(run, () => sendRpc(run, "session/set_mode", { sessionId, modeId }));
+
+      reply({ ok: true });
+    } catch (err) {
+      reply({ ok: false, error: String(err) });
+    }
+  };
+
+  const handleSessionSetModel = async (msg: any) => {
+    const runId = String(msg.run_id ?? "").trim();
+    if (!runId) return;
+    const controlIdRaw = String(msg.control_id ?? "").trim();
+    const sessionId = String(msg.session_id ?? "").trim();
+    const modelId = String(msg.model_id ?? "").trim();
+
+    const reply = (payload: Record<string, unknown>) => {
+      try {
+        send({
+          type: "session_control_result",
+          run_id: runId,
+          control_id: controlIdRaw,
+          ...payload,
+        });
+      } catch (err) {
+        log("failed to send session_control_result", { runId, err: String(err) });
+      }
+    };
+
+    try {
+      if (!controlIdRaw) {
+        reply({ ok: false, error: "control_id 为空" });
+        return;
+      }
+      if (!sessionId) {
+        reply({ ok: false, error: "session_id 为空" });
+        return;
+      }
+      if (!modelId) {
+        reply({ ok: false, error: "model_id 为空" });
+        return;
+      }
+
+      const run = runs.get(runId);
+      if (!run || !run.agent) {
+        reply({ ok: false, error: "run_not_open" });
+        return;
+      }
+
+      await ensureInitialized(run);
+      await withAuthRetry(run, () => sendRpc(run, "session/set_model", { sessionId, modelId }));
+
+      reply({ ok: true });
+    } catch (err) {
+      reply({ ok: false, error: String(err) });
+    }
   };
 
   const handleAcpClose = async (msg: any) => {
@@ -1634,8 +1755,16 @@ export async function runProxyCli() {
               void handlePromptSend(msg);
               return;
             }
-            if (msg.type === "acp_message") {
-              void handleAcpMessage(msg);
+            if (msg.type === "session_cancel") {
+              void handleSessionCancel(msg);
+              return;
+            }
+            if (msg.type === "session_set_mode") {
+              void handleSessionSetMode(msg);
+              return;
+            }
+            if (msg.type === "session_set_model") {
+              void handleSessionSetModel(msg);
               return;
             }
             if (msg.type === "acp_close") {
