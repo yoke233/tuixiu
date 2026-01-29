@@ -1,5 +1,5 @@
 import type { PrismaDeps } from "../../deps.js";
-import { toApprovalSummary, type ApprovalSummary } from "../../services/approvalRequests.js";
+import { toApprovalSummary, type ApprovalSummary } from "../approvals/approvalRequests.js";
 
 type NextActionSource = "approval" | "task" | "auto_review" | "issue" | "fallback";
 

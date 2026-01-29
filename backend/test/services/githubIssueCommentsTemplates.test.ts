@@ -5,7 +5,7 @@ import {
   renderGitHubAutoReviewComment,
   renderGitHubIssueComment,
   renderGitHubPrCreatedComment,
-} from "../../src/services/githubIssueComments.js";
+} from "../../src/modules/scm/githubIssueComments.js";
 
 describe("githubIssueComments templates", () => {
   it("renders issue comment via platform template", async () => {
@@ -101,4 +101,3 @@ describe("githubIssueComments templates", () => {
     expect(body).toBe("CI=✅ 通过 next=wait_ci");
   });
 });
-

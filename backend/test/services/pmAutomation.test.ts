@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createPmAutomation } from "../../src/services/pm/pmAutomation.js";
+import { createPmAutomation } from "../../src/modules/pm/pmAutomation.js";
 
 function extractPromptText(prompt: unknown): string {
   if (typeof prompt === "string") return prompt;

@@ -2,11 +2,11 @@ import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 
 import type { PrismaDeps } from "../deps.js";
-import type { AcpTunnel } from "../services/acpTunnel.js";
-import { buildContextFromRun } from "../services/runContext.js";
-import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
-import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
-import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
+import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
+import { buildContextFromRun } from "../modules/runs/runContext.js";
+import { triggerPmAutoAdvance } from "../modules/pm/pmAutoAdvance.js";
+import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
+import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { deriveSandboxInstanceName } from "../utils/sandbox.js";
 

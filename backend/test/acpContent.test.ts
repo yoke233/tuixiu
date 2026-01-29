@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { acpPromptSchema, summarizeAcpContentBlocks, tryParseAcpContentBlocks } from "../src/services/acpContent.js";
+import { acpPromptSchema, summarizeAcpContentBlocks, tryParseAcpContentBlocks } from "../src/modules/acp/acpContent.js";
 
 describe("acpContent", () => {
   it("parses prompt blocks", () => {
@@ -49,4 +49,3 @@ describe("acpContent", () => {
     expect(text).toContain("[resource tuixiu://context");
   });
 });
-

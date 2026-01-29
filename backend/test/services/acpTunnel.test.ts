@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createAcpTunnel } from "../../src/services/acpTunnel.js";
+import { createAcpTunnel } from "../../src/modules/acp/acpTunnel.js";
 
 describe("acpTunnel", () => {
   it("rejects promptRun when acp_open times out", async () => {

@@ -3,9 +3,9 @@ import type { CreateWorkspace } from "../../executors/types.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { dispatchExecutionForRun } from "./executionDispatch.js";
 import { TaskEngineError, startStep } from "./taskEngine.js";
-import { isPmAutomationEnabled } from "../../services/pm/pmLlm.js";
-import { getPmPolicyFromBranchProtection } from "../../services/pm/pmPolicy.js";
-import type { AcpTunnel } from "../../services/acpTunnel.js";
+import { isPmAutomationEnabled } from "../pm/pmLlm.js";
+import { getPmPolicyFromBranchProtection } from "../pm/pmPolicy.js";
+import type { AcpTunnel } from "../acp/acpTunnel.js";
 
 type AutoAdvanceTrigger = "task_created" | "step_completed" | "task_rolled_back" | "ci_completed" | "manual";
 type QueueTask = () => Promise<void>;

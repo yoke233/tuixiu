@@ -2,9 +2,9 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
-import type { PmAutomation } from "../services/pm/pmAutomation.js";
-import { autoReviewRunForPm } from "../services/pm/pmAutoReviewRun.js";
-import { getPmNextActionForIssue } from "../services/pm/pmNextAction.js";
+import type { PmAutomation } from "../modules/pm/pmAutomation.js";
+import { autoReviewRunForPm } from "../modules/pm/pmAutoReviewRun.js";
+import { getPmNextActionForIssue } from "../modules/pm/pmNextAction.js";
 
 export function makePmRoutes(deps: { prisma: PrismaDeps; pm: PmAutomation }): FastifyPluginAsync {
   return async (server) => {

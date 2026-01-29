@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseGateDecision } from "../../src/services/pm/gateDecision.js";
+import { parseGateDecision } from "../../src/modules/pm/gateDecision.js";
 
 describe("gateDecision", () => {
   it("parses valid gate decision and applies defaults", () => {
@@ -28,4 +28,3 @@ describe("gateDecision", () => {
     expect(parseGateDecision({ kind: "gate_decision", gate: "", decision: "PASS" })).toBeNull();
   });
 });
-

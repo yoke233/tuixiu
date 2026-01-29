@@ -2,10 +2,10 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
-import { planArtifactPublish, publishArtifact } from "../services/artifactPublish.js";
-import { requestPublishArtifactApproval } from "../services/approvalRequests.js";
-import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
-import { computeSensitiveHitFromPaths } from "../services/pm/pmSensitivePaths.js";
+import { planArtifactPublish, publishArtifact } from "../modules/artifacts/artifactPublish.js";
+import { requestPublishArtifactApproval } from "../modules/approvals/approvalRequests.js";
+import { getPmPolicyFromBranchProtection } from "../modules/pm/pmPolicy.js";
+import { computeSensitiveHitFromPaths } from "../modules/pm/pmSensitivePaths.js";
 
 export function makeArtifactRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
   return async (server) => {

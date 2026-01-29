@@ -27,12 +27,12 @@ import { makeSandboxRoutes } from "./routes/sandboxes.js";
 import { makeStepRoutes } from "./routes/steps.js";
 import { makeTaskRoutes } from "./routes/tasks.js";
 import { makeTextTemplateRoutes } from "./routes/textTemplates.js";
-import { createPmAutomation } from "./services/pm/pmAutomation.js";
-import { createAcpTunnel } from "./services/acpTunnel.js";
-import { startGitHubPollingLoop } from "./services/githubPolling.js";
-import { createLocalAttachmentStore } from "./services/attachments/localAttachmentStore.js";
+import { createPmAutomation } from "./modules/pm/pmAutomation.js";
+import { createAcpTunnel } from "./modules/acp/acpTunnel.js";
+import { startGitHubPollingLoop } from "./modules/scm/githubPolling.js";
+import { createLocalAttachmentStore } from "./modules/attachments/localAttachmentStore.js";
 import { createRunWorkspace } from "./utils/runWorkspace.js";
-import { startWorkspaceCleanupLoop } from "./services/workspaceCleanup.js";
+import { startWorkspaceCleanupLoop } from "./modules/workspace/workspaceCleanup.js";
 import { createWebSocketGateway } from "./websocket/gateway.js";
 
 const env = loadEnv();

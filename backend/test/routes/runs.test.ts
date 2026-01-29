@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { makeRunRoutes } from "../../src/routes/runs.js";
-import { createLocalAttachmentStore } from "../../src/services/attachments/localAttachmentStore.js";
+import { createLocalAttachmentStore } from "../../src/modules/attachments/localAttachmentStore.js";
 import { createHttpServer } from "../test-utils.js";
 
 describe("Runs routes", () => {

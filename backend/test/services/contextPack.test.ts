@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { buildContextPackPrompt } from "../../src/services/contextPack.js";
+import { buildContextPackPrompt } from "../../src/modules/acp/contextPack.js";
 
 async function makeTempWorkspace(files: Record<string, string>): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tuixiu-context-"));

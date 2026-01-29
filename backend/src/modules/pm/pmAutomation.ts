@@ -1,7 +1,7 @@
 import type { PrismaDeps } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
-import { startIssueRun, type CreateWorkspaceResult } from "../../services/startIssueRun.js";
-import type { AcpTunnel } from "../../services/acpTunnel.js";
+import { startIssueRun, type CreateWorkspaceResult } from "../runs/startIssueRun.js";
+import type { AcpTunnel } from "../acp/acpTunnel.js";
 import { analyzeIssueForPm } from "./pmAnalyzeIssue.js";
 import { isPmAutomationEnabled } from "./pmLlm.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";

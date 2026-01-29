@@ -5,10 +5,10 @@ import * as github from "../../integrations/github.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { parseEnvText } from "../../utils/envText.js";
 import { renderTextTemplate } from "../../utils/textTemplate.js";
-import type { AcpTunnel } from "../../services/acpTunnel.js";
-import { extractAgentTextFromEvents, extractTaggedCodeBlock } from "../../services/agentOutput.js";
-import { callPmLlmJson, isPmLlmEnabled } from "../../services/pm/pmLlm.js";
-import { renderTextTemplateFromDb } from "../../services/textTemplates.js";
+import type { AcpTunnel } from "../acp/acpTunnel.js";
+import { extractAgentTextFromEvents, extractTaggedCodeBlock } from "../runs/agentOutput.js";
+import { callPmLlmJson, isPmLlmEnabled } from "../pm/pmLlm.js";
+import { renderTextTemplateFromDb } from "../templates/textTemplates.js";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 type QueueTask = () => Promise<void>;

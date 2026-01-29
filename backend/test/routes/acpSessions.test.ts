@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../src/services/taskEngine.js", () => {
+vi.mock("../../src/modules/workflow/taskEngine.js", () => {
   class TaskEngineError extends Error {
     code: string;
     details?: string;
@@ -19,13 +19,13 @@ vi.mock("../../src/services/taskEngine.js", () => {
   };
 });
 
-vi.mock("../../src/services/executionDispatch.js", () => ({
+vi.mock("../../src/modules/workflow/executionDispatch.js", () => ({
   dispatchExecutionForRun: vi.fn(),
 }));
 
 import { makeAcpSessionRoutes } from "../../src/routes/acpSessions.js";
-import { dispatchExecutionForRun } from "../../src/services/executionDispatch.js";
-import { createTaskFromTemplate, startStep } from "../../src/services/taskEngine.js";
+import { dispatchExecutionForRun } from "../../src/modules/workflow/executionDispatch.js";
+import { createTaskFromTemplate, startStep } from "../../src/modules/workflow/taskEngine.js";
 import { createHttpServer } from "../test-utils.js";
 
 describe("ACP session admin routes", () => {

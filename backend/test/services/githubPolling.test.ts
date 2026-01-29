@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../src/services/taskEngine.js", () => {
+vi.mock("../../src/modules/workflow/taskEngine.js", () => {
   class TaskEngineError extends Error {
     code: string;
     details?: string;
@@ -18,8 +18,8 @@ vi.mock("../../src/services/taskEngine.js", () => {
   };
 });
 
-import { syncGitHubProjectOnce } from "../../src/services/githubPolling.js";
-import { createTaskFromTemplate } from "../../src/services/taskEngine.js";
+import { syncGitHubProjectOnce } from "../../src/modules/scm/githubPolling.js";
+import { createTaskFromTemplate } from "../../src/modules/workflow/taskEngine.js";
 
 describe("githubPolling", () => {
   beforeEach(() => {

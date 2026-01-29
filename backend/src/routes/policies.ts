@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
-import { getPmPolicyForProject, setPmPolicyForProject, pmPolicyV1Schema } from "../services/pm/pmPolicy.js";
+import { getPmPolicyForProject, setPmPolicyForProject, pmPolicyV1Schema } from "../modules/pm/pmPolicy.js";
 
 export function makePolicyRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
   return async (server) => {

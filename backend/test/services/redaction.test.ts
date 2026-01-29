@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { redactText, scanForSecrets } from "../../src/services/redaction.js";
+import { redactText, scanForSecrets } from "../../src/modules/security/redaction.js";
 
 describe("redaction", () => {
   it("scanForSecrets detects known tokens", () => {
@@ -18,4 +18,3 @@ describe("redaction", () => {
     expect(scanForSecrets(out).ok).toBe(true);
   });
 });
-

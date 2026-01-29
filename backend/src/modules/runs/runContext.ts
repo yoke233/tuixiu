@@ -1,4 +1,4 @@
-import { summarizeAcpContentBlocks, tryParseAcpContentBlocks } from "../../services/acpContent.js";
+import { summarizeAcpContentBlocks, tryParseAcpContentBlocks } from "../acp/acpContent.js";
 
 type ContextEvent = { source?: string; type?: string; payload?: any; timestamp?: any };
 

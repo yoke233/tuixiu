@@ -26,15 +26,15 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../src/services/redaction.js", () => ({
+vi.mock("../../src/modules/security/redaction.js", () => ({
   redactText: vi.fn((t: string) => t),
   scanForSecrets: vi.fn(() => ({ ok: true, matches: [] })),
 }));
 
-const { planArtifactPublish, publishArtifact } = await import("../../src/services/artifactPublish.js");
+const { planArtifactPublish, publishArtifact } = await import("../../src/modules/artifacts/artifactPublish.js");
 const { execFile } = await import("node:child_process");
 const { mkdir, writeFile } = await import("node:fs/promises");
-const { scanForSecrets } = await import("../../src/services/redaction.js");
+const { scanForSecrets } = await import("../../src/modules/security/redaction.js");
 
 describe("artifactPublish", () => {
   it("planArtifactPublish returns NOT_FOUND when artifact missing", async () => {
@@ -175,4 +175,3 @@ describe("artifactPublish", () => {
     });
   });
 });
-

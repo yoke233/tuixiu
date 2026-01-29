@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
-import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
+import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
 
 function getHeader(headers: Record<string, unknown>, name: string): string | undefined {
   const key = name.toLowerCase();

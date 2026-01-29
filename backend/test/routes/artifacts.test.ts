@@ -2,25 +2,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpServer } from "../test-utils.js";
 
-vi.mock("../../src/services/artifactPublish.js", () => ({
+vi.mock("../../src/modules/artifacts/artifactPublish.js", () => ({
   planArtifactPublish: vi.fn(),
   publishArtifact: vi.fn(),
 }));
-vi.mock("../../src/services/approvalRequests.js", () => ({
+vi.mock("../../src/modules/approvals/approvalRequests.js", () => ({
   requestPublishArtifactApproval: vi.fn(),
 }));
-vi.mock("../../src/services/pm/pmPolicy.js", () => ({
+vi.mock("../../src/modules/pm/pmPolicy.js", () => ({
   getPmPolicyFromBranchProtection: vi.fn(),
 }));
-vi.mock("../../src/services/pm/pmSensitivePaths.js", () => ({
+vi.mock("../../src/modules/pm/pmSensitivePaths.js", () => ({
   computeSensitiveHitFromPaths: vi.fn(),
 }));
 
 const { makeArtifactRoutes } = await import("../../src/routes/artifacts.js");
-const { planArtifactPublish, publishArtifact } = await import("../../src/services/artifactPublish.js");
-const { requestPublishArtifactApproval } = await import("../../src/services/approvalRequests.js");
-const { getPmPolicyFromBranchProtection } = await import("../../src/services/pm/pmPolicy.js");
-const { computeSensitiveHitFromPaths } = await import("../../src/services/pm/pmSensitivePaths.js");
+const { planArtifactPublish, publishArtifact } = await import("../../src/modules/artifacts/artifactPublish.js");
+const { requestPublishArtifactApproval } = await import("../../src/modules/approvals/approvalRequests.js");
+const { getPmPolicyFromBranchProtection } = await import("../../src/modules/pm/pmPolicy.js");
+const { computeSensitiveHitFromPaths } = await import("../../src/modules/pm/pmSensitivePaths.js");
 
 function makePolicy(overrides?: Partial<any>) {
   return {
@@ -224,4 +224,3 @@ describe("Artifact routes", () => {
     await server.close();
   });
 });
-

@@ -4,10 +4,10 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
-import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
-import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
-import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
-import { buildRunScmStateUpdate } from "../services/scm/runScmState.js";
+import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
+import { triggerPmAutoAdvance } from "../modules/pm/pmAutoAdvance.js";
+import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
+import { buildRunScmStateUpdate } from "../modules/scm/runScmState.js";
 
 function getHeader(headers: Record<string, unknown>, name: string): string | undefined {
   const key = name.toLowerCase();

@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { autoAdvanceTaskOnce } from "../../src/services/taskAutoAdvance.js";
+import { autoAdvanceTaskOnce } from "../../src/modules/workflow/taskAutoAdvance.js";
 
 describe("Task auto advance", () => {
   const original = {

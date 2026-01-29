@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { autoReviewRunForPm } from "../../src/services/pm/pmAutoReviewRun.js";
+import { autoReviewRunForPm } from "../../src/modules/pm/pmAutoReviewRun.js";
 
 describe("PM auto-review run", () => {
   it("recommends create_pr when no PR exists", async () => {
@@ -84,4 +84,3 @@ describe("PM auto-review run", () => {
     expect((res as any).data.report.recommendation.nextAction).toBe("request_merge_approval");
   });
 });
-

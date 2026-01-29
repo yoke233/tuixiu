@@ -2,17 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpServer } from "../test-utils.js";
 
-vi.mock("../../src/services/artifactPublish.js", () => ({ publishArtifact: vi.fn() }));
-vi.mock("../../src/services/githubIssueComments.js", () => ({
+vi.mock("../../src/modules/artifacts/artifactPublish.js", () => ({ publishArtifact: vi.fn() }));
+vi.mock("../../src/modules/scm/githubIssueComments.js", () => ({
   postGitHubApprovalCommentBestEffort: vi.fn(),
   postGitHubPrCreatedCommentBestEffort: vi.fn(),
 }));
-vi.mock("../../src/services/taskProgress.js", () => ({ advanceTaskFromRunTerminal: vi.fn() }));
-vi.mock("../../src/services/taskAutoAdvance.js", () => ({ triggerTaskAutoAdvance: vi.fn() }));
+vi.mock("../../src/modules/workflow/taskProgress.js", () => ({ advanceTaskFromRunTerminal: vi.fn() }));
+vi.mock("../../src/modules/workflow/taskAutoAdvance.js", () => ({ triggerTaskAutoAdvance: vi.fn() }));
 
 const { makeApprovalRoutes } = await import("../../src/routes/approvals.js");
-const { publishArtifact } = await import("../../src/services/artifactPublish.js");
-const { postGitHubApprovalCommentBestEffort } = await import("../../src/services/githubIssueComments.js");
+const { publishArtifact } = await import("../../src/modules/artifacts/artifactPublish.js");
+const { postGitHubApprovalCommentBestEffort } = await import("../../src/modules/scm/githubIssueComments.js");
 
 describe("Approvals routes (actions)", () => {
   beforeEach(() => {
@@ -261,4 +261,3 @@ describe("Approvals routes (actions)", () => {
     await server.close();
   });
 });
-

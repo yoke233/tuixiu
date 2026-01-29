@@ -6,20 +6,20 @@ import { promisify } from "node:util";
 
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
-import { buildContextFromRun } from "../services/runContext.js";
-import type { AcpTunnel } from "../services/acpTunnel.js";
-import { clientAcpPromptSchema, compactAcpPromptForEvent, type AcpContentBlock, type ClientAcpContentBlock } from "../services/acpContent.js";
+import { buildContextFromRun } from "../modules/runs/runContext.js";
+import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
+import { clientAcpPromptSchema, compactAcpPromptForEvent, type AcpContentBlock, type ClientAcpContentBlock } from "../modules/acp/acpContent.js";
 import {
   createReviewRequestForRun,
   mergeReviewRequestForRun,
   syncReviewRequestForRun,
-} from "../services/runReviewRequest.js";
-import { requestCreatePrApproval, requestMergePrApproval } from "../services/approvalRequests.js";
-import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
-import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
+} from "../modules/scm/runReviewRequest.js";
+import { requestCreatePrApproval, requestMergePrApproval } from "../modules/approvals/approvalRequests.js";
+import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../modules/workflow/taskProgress.js";
+import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
-import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
-import type { AttachmentStore } from "../services/attachments/attachmentStore.js";
+import { getPmPolicyFromBranchProtection } from "../modules/pm/pmPolicy.js";
+import type { AttachmentStore } from "../modules/attachments/attachmentStore.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
 

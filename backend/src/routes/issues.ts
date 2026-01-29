@@ -2,8 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
-import type { AcpTunnel } from "../services/acpTunnel.js";
-import { startIssueRun, type CreateWorkspaceResult } from "../services/startIssueRun.js";
+import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
+import { startIssueRun, type CreateWorkspaceResult } from "../modules/runs/startIssueRun.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { toPublicProject } from "../utils/publicProject.js";
 

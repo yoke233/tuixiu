@@ -3,10 +3,10 @@ import { z } from "zod";
 
 import type { AuthHelpers } from "../auth.js";
 import type { PrismaDeps, SendToAgent } from "../deps.js";
-import type { AcpTunnel } from "../services/acpTunnel.js";
+import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
 import type { CreateWorkspace } from "../executors/types.js";
-import { dispatchExecutionForRun } from "../services/executionDispatch.js";
-import { TaskEngineError, createTaskFromTemplate, startStep } from "../services/taskEngine.js";
+import { dispatchExecutionForRun } from "../modules/workflow/executionDispatch.js";
+import { TaskEngineError, createTaskFromTemplate, startStep } from "../modules/workflow/taskEngine.js";
 import { uuidv7 } from "../utils/uuid.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {

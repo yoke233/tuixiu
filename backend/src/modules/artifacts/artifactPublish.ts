@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 
 import type { PrismaDeps } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
-import { redactText, scanForSecrets } from "../../services/redaction.js";
+import { redactText, scanForSecrets } from "../security/redaction.js";
 
 const execFileAsync = promisify(execFile);
 

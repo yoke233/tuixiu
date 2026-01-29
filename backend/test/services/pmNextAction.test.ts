@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { getPmNextActionForIssue } from "../../src/services/pm/pmNextAction.js";
+import { getPmNextActionForIssue } from "../../src/modules/pm/pmNextAction.js";
 
 function makeBasePrisma(overrides?: Partial<any>) {
   const prisma = {
@@ -314,4 +314,3 @@ describe("pmNextAction", () => {
     });
   });
 });
-

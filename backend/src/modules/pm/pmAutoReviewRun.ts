@@ -1,6 +1,6 @@
 import type { PrismaDeps } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
-import { postGitHubAutoReviewCommentBestEffort } from "../../services/githubIssueComments.js";
+import { postGitHubAutoReviewCommentBestEffort } from "../scm/githubIssueComments.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
 
 type NextAction = "create_pr" | "request_create_pr_approval" | "wait_ci" | "request_merge_approval" | "manual_review" | "none";

@@ -6,7 +6,7 @@ import {
   patchPlatformTextTemplates,
   patchProjectTextTemplates,
   renderTextTemplateFromDb,
-} from "../../src/services/textTemplates.js";
+} from "../../src/modules/templates/textTemplates.js";
 
 describe("textTemplates service", () => {
   it("returns missing when key empty", async () => {
@@ -102,4 +102,3 @@ describe("textTemplates service", () => {
     await expect(patchPlatformTextTemplates({ prisma }, { a: "x" })).rejects.toThrow("platformTextTemplate");
   });
 });
-

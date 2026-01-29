@@ -9,7 +9,7 @@ vi.mock("node:fs/promises", () => ({
   stat: vi.fn(),
 }));
 
-const { startWorkspaceCleanupLoop } = await import("../../src/services/workspaceCleanup.js");
+const { startWorkspaceCleanupLoop } = await import("../../src/modules/workspace/workspaceCleanup.js");
 const { readdir, rm, stat } = await import("node:fs/promises");
 
 describe("workspaceCleanup", () => {

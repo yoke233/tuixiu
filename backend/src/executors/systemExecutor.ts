@@ -3,12 +3,12 @@ import { promisify } from "node:util";
 
 import type { PrismaDeps } from "../deps.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
-import { createReviewRequestForRun } from "../services/runReviewRequest.js";
-import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
-import { planArtifactPublish, publishArtifact } from "../services/artifactPublish.js";
-import { requestCreatePrApproval, requestPublishArtifactApproval } from "../services/approvalRequests.js";
-import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
-import { computeSensitiveHitFromPaths } from "../services/pm/pmSensitivePaths.js";
+import { createReviewRequestForRun } from "../modules/scm/runReviewRequest.js";
+import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
+import { planArtifactPublish, publishArtifact } from "../modules/artifacts/artifactPublish.js";
+import { requestCreatePrApproval, requestPublishArtifactApproval } from "../modules/approvals/approvalRequests.js";
+import { getPmPolicyFromBranchProtection } from "../modules/pm/pmPolicy.js";
+import { computeSensitiveHitFromPaths } from "../modules/pm/pmSensitivePaths.js";
 
 const execFileAsync = promisify(execFile);
 

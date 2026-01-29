@@ -2,8 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 import type { PrismaDeps } from "../deps.js";
-import { taskTemplateOverridesSchema } from "../services/workflow/taskTemplateResolver.js";
-import { getTaskTemplatesForProject, setTaskTemplatesForProject } from "../services/workflow/taskTemplatePolicy.js";
+import { taskTemplateOverridesSchema } from "../modules/workflow/taskTemplateResolver.js";
+import { getTaskTemplatesForProject, setTaskTemplatesForProject } from "../modules/workflow/taskTemplatePolicy.js";
 
 export function makeWorkflowTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
   return async (server) => {
@@ -23,4 +23,3 @@ export function makeWorkflowTemplateRoutes(deps: { prisma: PrismaDeps }): Fastif
     });
   };
 }
-

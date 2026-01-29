@@ -21,25 +21,25 @@ vi.mock("node:child_process", () => {
 });
 
 vi.mock("../../src/utils/gitAuth.js", () => ({ createGitProcessEnv: vi.fn() }));
-vi.mock("../../src/services/runReviewRequest.js", () => ({ createReviewRequestForRun: vi.fn() }));
-vi.mock("../../src/services/taskProgress.js", () => ({ advanceTaskFromRunTerminal: vi.fn() }));
-vi.mock("../../src/services/artifactPublish.js", () => ({ planArtifactPublish: vi.fn(), publishArtifact: vi.fn() }));
-vi.mock("../../src/services/approvalRequests.js", () => ({
+vi.mock("../../src/modules/scm/runReviewRequest.js", () => ({ createReviewRequestForRun: vi.fn() }));
+vi.mock("../../src/modules/workflow/taskProgress.js", () => ({ advanceTaskFromRunTerminal: vi.fn() }));
+vi.mock("../../src/modules/artifacts/artifactPublish.js", () => ({ planArtifactPublish: vi.fn(), publishArtifact: vi.fn() }));
+vi.mock("../../src/modules/approvals/approvalRequests.js", () => ({
   requestCreatePrApproval: vi.fn(),
   requestPublishArtifactApproval: vi.fn(),
 }));
-vi.mock("../../src/services/pm/pmPolicy.js", () => ({ getPmPolicyFromBranchProtection: vi.fn() }));
-vi.mock("../../src/services/pm/pmSensitivePaths.js", () => ({ computeSensitiveHitFromPaths: vi.fn() }));
+vi.mock("../../src/modules/pm/pmPolicy.js", () => ({ getPmPolicyFromBranchProtection: vi.fn() }));
+vi.mock("../../src/modules/pm/pmSensitivePaths.js", () => ({ computeSensitiveHitFromPaths: vi.fn() }));
 
 const { startSystemExecution } = await import("../../src/executors/systemExecutor.js");
 const { execFile } = await import("node:child_process");
 const { createGitProcessEnv } = await import("../../src/utils/gitAuth.js");
-const { createReviewRequestForRun } = await import("../../src/services/runReviewRequest.js");
-const { advanceTaskFromRunTerminal } = await import("../../src/services/taskProgress.js");
-const { planArtifactPublish, publishArtifact } = await import("../../src/services/artifactPublish.js");
-const { requestCreatePrApproval, requestPublishArtifactApproval } = await import("../../src/services/approvalRequests.js");
-const { getPmPolicyFromBranchProtection } = await import("../../src/services/pm/pmPolicy.js");
-const { computeSensitiveHitFromPaths } = await import("../../src/services/pm/pmSensitivePaths.js");
+const { createReviewRequestForRun } = await import("../../src/modules/scm/runReviewRequest.js");
+const { advanceTaskFromRunTerminal } = await import("../../src/modules/workflow/taskProgress.js");
+const { planArtifactPublish, publishArtifact } = await import("../../src/modules/artifacts/artifactPublish.js");
+const { requestCreatePrApproval, requestPublishArtifactApproval } = await import("../../src/modules/approvals/approvalRequests.js");
+const { getPmPolicyFromBranchProtection } = await import("../../src/modules/pm/pmPolicy.js");
+const { computeSensitiveHitFromPaths } = await import("../../src/modules/pm/pmSensitivePaths.js");
 
 function makePolicy(opts?: Partial<any>) {
   return {
@@ -252,4 +252,3 @@ describe("systemExecutor", () => {
     await expect(startSystemExecution({ prisma }, "r1")).rejects.toThrow("不支持的 system step");
   });
 });
-
