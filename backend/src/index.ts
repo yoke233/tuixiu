@@ -36,12 +36,15 @@ import { startWorkspaceCleanupLoop } from "./modules/workspace/workspaceCleanup.
 import { createWebSocketGateway } from "./websocket/gateway.js";
 
 const env = loadEnv();
-const attachments = createLocalAttachmentStore({ rootDir: env.ATTACHMENTS_ROOT, maxBytes: env.ATTACHMENTS_MAX_BYTES });
+const attachments = createLocalAttachmentStore({
+  rootDir: env.ATTACHMENTS_ROOT,
+  maxBytes: env.ATTACHMENTS_MAX_BYTES,
+});
 
 const server = Fastify({
   logger: {
-    level: env.LOG_LEVEL
-  }
+    level: env.LOG_LEVEL,
+  },
 });
 
 await server.register(cors, { origin: true });
@@ -72,20 +75,34 @@ server.addHook("preHandler", async (request, reply) => {
   const role = String(((request as any).user as any)?.role ?? "");
 
   const isProjectCreate = request.method === "POST" && pathOnly === "/api/projects";
-  const isProjectUpdate = request.method === "PATCH" && /^\/api\/projects\/[0-9a-f-]{36}$/i.test(pathOnly);
-  const isRoleTemplateMutation = /^\/api\/projects\/[0-9a-f-]{36}\/roles(\/|$)/i.test(pathOnly) && request.method !== "GET";
+  const isProjectUpdate =
+    request.method === "PATCH" && /^\/api\/projects\/[0-9a-f-]{36}$/i.test(pathOnly);
+  const isRoleTemplateMutation =
+    /^\/api\/projects\/[0-9a-f-]{36}\/roles(\/|$)/i.test(pathOnly) && request.method !== "GET";
   const isPolicyMutation = pathOnly === "/api/policies";
   const isWorkflowTemplateMutation = pathOnly === "/api/workflow-templates";
 
   if (
-    (isProjectCreate || isProjectUpdate || isRoleTemplateMutation || isPolicyMutation || isWorkflowTemplateMutation) &&
+    (isProjectCreate ||
+      isProjectUpdate ||
+      isRoleTemplateMutation ||
+      isPolicyMutation ||
+      isWorkflowTemplateMutation) &&
     role !== "admin"
   ) {
-    reply.code(403).send({ success: false, error: { code: "FORBIDDEN", message: "仅 admin 可修改 Project/Role/Policy 配置" } });
+    reply
+      .code(403)
+      .send({
+        success: false,
+        error: { code: "FORBIDDEN", message: "仅 admin 可修改 Project/Role/Policy 配置" },
+      });
   }
 });
 
-const wsGateway = createWebSocketGateway({ prisma });
+const wsGateway = createWebSocketGateway({
+  prisma,
+  log: (msg, extra) => server.log.debug(extra ? { ...extra, msg } : { msg }),
+});
 wsGateway.init(server);
 
 startGitHubPollingLoop({
@@ -102,7 +119,15 @@ const acpTunnel = createAcpTunnel({
 wsGateway.setAcpTunnelHandlers(acpTunnel.gatewayHandlers);
 wsGateway.setAcpTunnel(acpTunnel);
 
-const createWorkspace = async ({ runId, baseBranch, name }: { runId: string; baseBranch: string; name: string }) => {
+const createWorkspace = async ({
+  runId,
+  baseBranch,
+  name,
+}: {
+  runId: string;
+  baseBranch: string;
+  name: string;
+}) => {
   const run = await prisma.run.findUnique({
     where: { id: runId },
     include: { issue: { include: { project: true } } },
@@ -136,7 +161,7 @@ server.register(
     onIssueCreated: pm.triggerAutoStart,
   }),
   {
-    prefix: "/api/issues"
+    prefix: "/api/issues",
   },
 );
 server.register(
@@ -163,7 +188,9 @@ server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makePolicyRoutes({ prisma }), { prefix: "/api" });
 server.register(makeWorkflowTemplateRoutes({ prisma }), { prefix: "/api" });
-server.register(makeGitHubIssueRoutes({ prisma, onIssueUpserted: pm.triggerAutoStart }), { prefix: "/api/projects" });
+server.register(makeGitHubIssueRoutes({ prisma, onIssueUpserted: pm.triggerAutoStart }), {
+  prefix: "/api/projects",
+});
 server.register(
   makeGitHubWebhookRoutes({
     prisma,
@@ -184,11 +211,19 @@ server.register(
   { prefix: "/api/webhooks" },
 );
 server.register(
-  makeCodeupWebhookRoutes({ prisma, webhookSecret: env.CODEUP_WEBHOOK_SECRET, broadcastToClients: wsGateway.broadcastToClients }),
+  makeCodeupWebhookRoutes({
+    prisma,
+    webhookSecret: env.CODEUP_WEBHOOK_SECRET,
+    broadcastToClients: wsGateway.broadcastToClients,
+  }),
   { prefix: "/api/webhooks" },
 );
 server.register(
-  makeMessageInboundRoutes({ prisma, webhookSecret: env.MESSAGE_WEBHOOK_SECRET, onIssueUpserted: pm.triggerAutoStart }),
+  makeMessageInboundRoutes({
+    prisma,
+    webhookSecret: env.MESSAGE_WEBHOOK_SECRET,
+    onIssueUpserted: pm.triggerAutoStart,
+  }),
   { prefix: "/api/integrations" },
 );
 server.register(makePmRoutes({ prisma, pm }), { prefix: "/api/pm" });
@@ -202,7 +237,13 @@ server.register(
   { prefix: "/api" },
 );
 server.register(
-  makeStepRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, createWorkspace, autoDispatch: true, broadcastToClients: wsGateway.broadcastToClients }),
+  makeStepRoutes({
+    prisma,
+    sendToAgent: wsGateway.sendToAgent,
+    createWorkspace,
+    autoDispatch: true,
+    broadcastToClients: wsGateway.broadcastToClients,
+  }),
   { prefix: "/api" },
 );
 server.register(makeArtifactRoutes({ prisma }), { prefix: "/api" });
@@ -217,7 +258,9 @@ server.register(
   }),
   { prefix: "/api/admin" },
 );
-server.register(makeSandboxRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, auth }), { prefix: "/api/admin" });
+server.register(makeSandboxRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, auth }), {
+  prefix: "/api/admin",
+});
 server.register(makeTextTemplateRoutes({ prisma, auth }), { prefix: "/api/admin" });
 
 startWorkspaceCleanupLoop({

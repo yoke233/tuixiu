@@ -95,6 +95,14 @@ type SandboxInventoryMessage = {
     provider?: string;
     runtime?: string;
   }>;
+  missing_instances?: Array<{
+    instance_name: string;
+    run_id?: string | null;
+    last_seen_at?: string;
+    last_error?: string | null;
+    provider?: string;
+    runtime?: string;
+  }>;
 };
 
 type AnyAgentMessage =
@@ -122,8 +130,12 @@ function parseTimestamp(value: unknown): Date | null {
   return d;
 }
 
-function normalizeSandboxStatus(value: unknown): "creating" | "running" | "stopped" | "missing" | "error" | null {
-  const v = String(value ?? "").trim().toLowerCase();
+function normalizeSandboxStatus(
+  value: unknown,
+): "creating" | "running" | "stopped" | "missing" | "error" | null {
+  const v = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (!v) return null;
   if (v === "creating" || v === "created" || v === "starting") return "creating";
   if (v === "running") return "running";
@@ -133,40 +145,69 @@ function normalizeSandboxStatus(value: unknown): "creating" | "running" | "stopp
   return null;
 }
 
-export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
+function describePromptUpdate(update: unknown): {
+  sessionUpdate?: string;
+  contentType?: string;
+  textLength?: number;
+} {
+  if (!isRecord(update)) return {};
+  const sessionUpdate =
+    typeof update.sessionUpdate === "string" && update.sessionUpdate.trim()
+      ? update.sessionUpdate.trim()
+      : undefined;
+  const content = update.content;
+  const contentType =
+    isRecord(content) && typeof content.type === "string" && content.type.trim()
+      ? content.type.trim()
+      : undefined;
+  const textLength =
+    isRecord(content) && typeof content.text === "string" ? content.text.length : undefined;
+  return { sessionUpdate, contentType, textLength };
+}
+
+export function createWebSocketGateway(deps: {
+  prisma: PrismaDeps;
+  log?: (msg: string, extra?: Record<string, unknown>) => void;
+}) {
   const agentConnections = new Map<string, WebSocket>();
   const clientConnections = new Set<WebSocket>();
   let acpTunnel: AcpTunnel | null = null;
-  let acpTunnelHandlers:
-    | null
-    | {
-        handleAcpOpened: (proxyId: string, payload: unknown) => void;
-        handlePromptUpdate: (proxyId: string, payload: unknown) => void;
-        handlePromptResult: (proxyId: string, payload: unknown) => void;
-        handleSessionControlResult: (proxyId: string, payload: unknown) => void;
-        handleProxyDisconnected?: (proxyId: string) => void;
-      } = null;
+  let acpTunnelHandlers: null | {
+    handleAcpOpened: (proxyId: string, payload: unknown) => void;
+    handlePromptUpdate: (proxyId: string, payload: unknown) => void;
+    handlePromptResult: (proxyId: string, payload: unknown) => void;
+    handleSessionControlResult: (proxyId: string, payload: unknown) => void;
+    handleProxyDisconnected?: (proxyId: string) => void;
+  } = null;
 
-  async function resumeRunningRuns(opts: { proxyId: string; agentId: string; logError: (err: unknown) => void }) {
+  async function resumeRunningRuns(opts: {
+    proxyId: string;
+    agentId: string;
+    logError: (err: unknown) => void;
+  }) {
     if (!acpTunnel) return;
 
     const runs = await deps.prisma.run.findMany({
       where: { agentId: opts.agentId, status: "running" },
       include: { issue: true, artifacts: true },
-      orderBy: { startedAt: "asc" }
+      orderBy: { startedAt: "asc" },
     });
 
     for (const run of runs as any[]) {
       try {
+        const sandboxStatus =
+          typeof (run as any).sandboxStatus === "string" ? String((run as any).sandboxStatus) : "";
+        if (sandboxStatus === "stopped" || sandboxStatus === "missing") continue;
+
         const events = await deps.prisma.event.findMany({
           where: { runId: run.id },
           orderBy: { timestamp: "desc" },
-          take: 200
+          take: 200,
         });
         const context = buildContextFromRun({
           run,
           issue: run.issue,
-          events
+          events,
         });
 
         const cwd = String(run.workspacePath ?? "").trim();
@@ -204,7 +245,11 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
     ws.send(JSON.stringify(payload));
   }
 
-  const CHUNK_SESSION_UPDATES = new Set(["agent_message_chunk", "agent_thought_chunk", "user_message_chunk"]);
+  const CHUNK_SESSION_UPDATES = new Set([
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "user_message_chunk",
+  ]);
   const CHUNK_FLUSH_INTERVAL_MS = 800;
   const CHUNK_MAX_BUFFER_CHARS = 16_000;
   type BufferedChunkSegment = {
@@ -270,24 +315,26 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             session: seg.session ?? undefined,
             update: {
               sessionUpdate: seg.sessionUpdate,
-              content: { type: "text", text: seg.text }
-            }
-          } as any
-        }
+              content: { type: "text", text: seg.text },
+            },
+          } as any,
+        },
       });
       broadcastToClients({ type: "event_added", run_id: runId, event: createdEvent });
     }
   }
 
-  async function bufferChunkSegment(runId: string, seg: BufferedChunkSegment, logError: (err: unknown) => void): Promise<void> {
+  async function bufferChunkSegment(
+    runId: string,
+    seg: BufferedChunkSegment,
+    logError: (err: unknown) => void,
+  ): Promise<void> {
     const existing = chunkBuffersByRun.get(runId);
-    const buf: RunChunkBuffer =
-      existing ??
-      {
-        segments: [],
-        totalChars: 0,
-        timer: null
-      };
+    const buf: RunChunkBuffer = existing ?? {
+      segments: [],
+      totalChars: 0,
+      timer: null,
+    };
 
     const last = buf.segments.length ? buf.segments[buf.segments.length - 1] : null;
     if (last && last.session === seg.session && last.sessionUpdate === seg.sessionUpdate) {
@@ -331,27 +378,29 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
               status: "online",
               currentLoad: 0,
               maxConcurrentRuns: message.agent.max_concurrent ?? 1,
-              capabilities: message.agent.capabilities ?? {}
+              capabilities: message.agent.capabilities ?? {},
             },
             update: {
               name: message.agent.name,
               status: "online",
               maxConcurrentRuns: message.agent.max_concurrent ?? 1,
               capabilities: message.agent.capabilities ?? {},
-              lastHeartbeat: new Date()
-            }
+              lastHeartbeat: new Date(),
+            },
           });
 
           socket.send(JSON.stringify({ type: "register_ack", success: true }));
 
-          void resumeRunningRuns({ proxyId, agentId: (agentRecord as any).id, logError }).catch(logError);
+          void resumeRunningRuns({ proxyId, agentId: (agentRecord as any).id, logError }).catch(
+            logError,
+          );
           return;
         }
 
         if (message.type === "heartbeat") {
           await deps.prisma.agent.update({
             where: { proxyId: message.agent_id },
-            data: { lastHeartbeat: new Date(), status: "online" }
+            data: { lastHeartbeat: new Date(), status: "online" },
           });
           return;
         }
@@ -368,12 +417,40 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
         }
 
         if (message.type === "prompt_update") {
+          const traceEnabled = process.env.ACP_WS_TRACE === "1";
+          if (traceEnabled && deps.log) {
+            const summary = describePromptUpdate(message.update);
+            deps.log("acp prompt_update received", {
+              runId: message.run_id,
+              promptId: message.prompt_id ?? null,
+              sessionId: message.session_id ?? null,
+              ...summary,
+              clientCount: clientConnections.size,
+              proxyId,
+            });
+          }
           if (proxyId && acpTunnelHandlers) {
             try {
               acpTunnelHandlers.handlePromptUpdate(proxyId, message);
             } catch (err) {
               logError(err);
             }
+          }
+          broadcastToClients({
+            type: "acp.prompt_update",
+            run_id: message.run_id,
+            prompt_id: message.prompt_id ?? null,
+            session_id: message.session_id ?? null,
+            update: message.update,
+          });
+          if (traceEnabled && deps.log) {
+            deps.log("acp prompt_update broadcasted", {
+              runId: message.run_id,
+              promptId: message.prompt_id ?? null,
+              sessionId: message.session_id ?? null,
+              clientCount: clientConnections.size,
+              proxyId,
+            });
           }
           return;
         }
@@ -407,12 +484,18 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             typeof message.instance_name === "string" && message.instance_name.trim()
               ? message.instance_name.trim()
               : deriveSandboxInstanceName(message.run_id);
-          const code = typeof message.code === "number" && Number.isFinite(message.code) ? message.code : null;
-          const signal = typeof message.signal === "string" && message.signal.trim() ? message.signal.trim() : null;
+          const code =
+            typeof message.code === "number" && Number.isFinite(message.code) ? message.code : null;
+          const signal =
+            typeof message.signal === "string" && message.signal.trim()
+              ? message.signal.trim()
+              : null;
           const ok = code === null ? true : code === 0 && !signal;
           const status = ok ? "stopped" : "error";
           const now = new Date();
-          const lastError = ok ? null : `acp_exit: code=${code ?? "unknown"}${signal ? ` signal=${signal}` : ""}`;
+          const lastError = ok
+            ? null
+            : `acp_exit: code=${code ?? "unknown"}${signal ? ` signal=${signal}` : ""}`;
 
           await enqueueRunTask(message.run_id, async () => {
             await flushRunChunkBuffer(message.run_id);
@@ -467,7 +550,11 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
               .catch(() => {});
 
             if (createdEvent) {
-              broadcastToClients({ type: "event_added", run_id: message.run_id, event: createdEvent });
+              broadcastToClients({
+                type: "event_added",
+                run_id: message.run_id,
+                event: createdEvent,
+              });
             }
           });
           return;
@@ -477,22 +564,42 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
           if (!proxyId) return;
 
           const instances = Array.isArray(message.instances) ? message.instances : [];
+          const missingInstances = Array.isArray(message.missing_instances)
+            ? message.missing_instances
+            : [];
           const capturedAt = parseTimestamp(message.captured_at) ?? new Date();
-          const providerDefault = typeof message.provider === "string" && message.provider.trim() ? message.provider.trim() : null;
-          const runtimeDefault = typeof message.runtime === "string" && message.runtime.trim() ? message.runtime.trim() : null;
+          const providerDefault =
+            typeof message.provider === "string" && message.provider.trim()
+              ? message.provider.trim()
+              : null;
+          const runtimeDefault =
+            typeof message.runtime === "string" && message.runtime.trim()
+              ? message.runtime.trim()
+              : null;
 
           for (const inst of instances) {
             if (!inst || typeof inst !== "object") continue;
-            const instanceName = typeof inst.instance_name === "string" ? inst.instance_name.trim() : "";
+            const instanceName =
+              typeof inst.instance_name === "string" ? inst.instance_name.trim() : "";
             if (!instanceName) continue;
 
-            const runId = typeof inst.run_id === "string" && inst.run_id.trim() ? inst.run_id.trim() : null;
+            const runId =
+              typeof inst.run_id === "string" && inst.run_id.trim() ? inst.run_id.trim() : null;
             const status = normalizeSandboxStatus(inst.status);
             const createdAt = parseTimestamp(inst.created_at);
             const lastSeenAt = parseTimestamp(inst.last_seen_at) ?? capturedAt;
-            const lastError = typeof inst.last_error === "string" && inst.last_error.trim() ? inst.last_error.trim() : null;
-            const provider = typeof inst.provider === "string" && inst.provider.trim() ? inst.provider.trim() : providerDefault;
-            const runtime = typeof inst.runtime === "string" && inst.runtime.trim() ? inst.runtime.trim() : runtimeDefault;
+            const lastError =
+              typeof inst.last_error === "string" && inst.last_error.trim()
+                ? inst.last_error.trim()
+                : null;
+            const provider =
+              typeof inst.provider === "string" && inst.provider.trim()
+                ? inst.provider.trim()
+                : providerDefault;
+            const runtime =
+              typeof inst.runtime === "string" && inst.runtime.trim()
+                ? inst.runtime.trim()
+                : runtimeDefault;
 
             const upsert = async (opts: { runExists: boolean }) => {
               await deps.prisma.sandboxInstance
@@ -545,6 +652,78 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             await upsert({ runExists: false });
           }
 
+          for (const inst of missingInstances) {
+            if (!inst || typeof inst !== "object") continue;
+            const instanceName =
+              typeof inst.instance_name === "string" ? inst.instance_name.trim() : "";
+            if (!instanceName) continue;
+
+            const runId =
+              typeof inst.run_id === "string" && inst.run_id.trim() ? inst.run_id.trim() : null;
+            const status = "missing";
+            const lastSeenAt = parseTimestamp(inst.last_seen_at) ?? capturedAt;
+            const lastError =
+              typeof inst.last_error === "string" && inst.last_error.trim()
+                ? inst.last_error.trim()
+                : "inventory_missing";
+            const provider =
+              typeof inst.provider === "string" && inst.provider.trim()
+                ? inst.provider.trim()
+                : providerDefault;
+            const runtime =
+              typeof inst.runtime === "string" && inst.runtime.trim()
+                ? inst.runtime.trim()
+                : runtimeDefault;
+
+            const upsert = async (opts: { runExists: boolean }) => {
+              await deps.prisma.sandboxInstance
+                .upsert({
+                  where: { proxyId_instanceName: { proxyId, instanceName } } as any,
+                  create: {
+                    id: uuidv7(),
+                    proxyId,
+                    instanceName,
+                    ...(opts.runExists && runId ? { runId } : {}),
+                    provider,
+                    runtime,
+                    status: status as any,
+                    lastSeenAt,
+                    lastError,
+                  } as any,
+                  update: {
+                    ...(opts.runExists && runId ? { runId } : {}),
+                    provider,
+                    runtime,
+                    status: status as any,
+                    lastSeenAt,
+                    lastError,
+                  } as any,
+                } as any)
+                .catch(() => {});
+            };
+
+            if (runId) {
+              await enqueueRunTask(runId, async () => {
+                const runRes = await deps.prisma.run
+                  .updateMany({
+                    where: { id: runId },
+                    data: {
+                      sandboxInstanceName: instanceName,
+                      sandboxStatus: status as any,
+                      sandboxLastSeenAt: lastSeenAt,
+                      sandboxLastError: lastError,
+                    } as any,
+                  } as any)
+                  .catch(() => ({ count: 0 }));
+
+                await upsert({ runExists: runRes.count > 0 });
+              });
+              continue;
+            }
+
+            await upsert({ runExists: false });
+          }
+
           return;
         }
 
@@ -566,8 +745,8 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                 runId: message.run_id,
                 source: "acp",
                 type: "acp.update.received",
-                payload: message.content as any
-              }
+                payload: message.content as any,
+              },
             });
 
             const contentType = isRecord(message.content) ? message.content.type : undefined;
@@ -577,11 +756,18 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                 typeof raw.instance_name === "string" && raw.instance_name.trim()
                   ? raw.instance_name.trim()
                   : deriveSandboxInstanceName(message.run_id);
-              const provider = typeof raw.provider === "string" && raw.provider.trim() ? raw.provider.trim() : null;
-              const runtime = typeof raw.runtime === "string" && raw.runtime.trim() ? raw.runtime.trim() : null;
+              const provider =
+                typeof raw.provider === "string" && raw.provider.trim()
+                  ? raw.provider.trim()
+                  : null;
+              const runtime =
+                typeof raw.runtime === "string" && raw.runtime.trim() ? raw.runtime.trim() : null;
               const status = normalizeSandboxStatus(raw.status);
               const lastSeenAt = parseTimestamp(raw.last_seen_at) ?? new Date();
-              const lastError = typeof raw.last_error === "string" && raw.last_error.trim() ? raw.last_error.trim() : null;
+              const lastError =
+                typeof raw.last_error === "string" && raw.last_error.trim()
+                  ? raw.last_error.trim()
+                  : null;
 
               const runData: any = {
                 sandboxInstanceName: instanceName,
@@ -627,7 +813,7 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                 await deps.prisma.run
                   .update({
                     where: { id: message.run_id },
-                    data: { acpSessionId: sessionId }
+                    data: { acpSessionId: sessionId },
                   })
                   .catch(() => {});
               }
@@ -639,18 +825,25 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
               const activity = typeof raw.activity === "string" ? raw.activity : "";
               const inFlightRaw = raw.in_flight;
               const inFlight =
-                typeof inFlightRaw === "number" && Number.isFinite(inFlightRaw) ? Math.max(0, inFlightRaw) : 0;
-              const updatedAt = typeof raw.updated_at === "string" ? raw.updated_at : new Date().toISOString();
-              const currentModeId = typeof raw.current_mode_id === "string" ? raw.current_mode_id : null;
-              const currentModelId = typeof raw.current_model_id === "string" ? raw.current_model_id : null;
-              const lastStopReason = typeof raw.last_stop_reason === "string" ? raw.last_stop_reason : null;
+                typeof inFlightRaw === "number" && Number.isFinite(inFlightRaw)
+                  ? Math.max(0, inFlightRaw)
+                  : 0;
+              const updatedAt =
+                typeof raw.updated_at === "string" ? raw.updated_at : new Date().toISOString();
+              const currentModeId =
+                typeof raw.current_mode_id === "string" ? raw.current_mode_id : null;
+              const currentModelId =
+                typeof raw.current_model_id === "string" ? raw.current_model_id : null;
+              const lastStopReason =
+                typeof raw.last_stop_reason === "string" ? raw.last_stop_reason : null;
               const note = typeof raw.note === "string" ? raw.note : null;
 
               if (sessionId) {
                 const run = await deps.prisma.run
                   .findUnique({ where: { id: message.run_id }, select: { metadata: true } })
                   .catch(() => null);
-                const prev = run && isRecord(run.metadata) ? (run.metadata as Record<string, unknown>) : {};
+                const prev =
+                  run && isRecord(run.metadata) ? (run.metadata as Record<string, unknown>) : {};
                 const next = {
                   ...prev,
                   acpSessionState: {
@@ -673,18 +866,27 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             if (contentType === "prompt_result") {
               const run = await deps.prisma.run.findUnique({
                 where: { id: message.run_id },
-                select: { id: true, status: true, issueId: true, agentId: true, taskId: true, stepId: true }
+                select: {
+                  id: true,
+                  status: true,
+                  issueId: true,
+                  agentId: true,
+                  taskId: true,
+                  stepId: true,
+                },
               });
 
               if (run && run.status === "running") {
                 await deps.prisma.run.update({
                   where: { id: run.id },
-                  data: { status: "completed", completedAt: new Date() }
+                  data: { status: "completed", completedAt: new Date() },
                 });
 
-                const advanced = await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(
-                  () => ({ handled: false }),
-                );
+                const advanced = await advanceTaskFromRunTerminal(
+                  { prisma: deps.prisma },
+                  run.id,
+                  "completed",
+                ).catch(() => ({ handled: false }));
 
                 if (advanced.handled && run.taskId) {
                   broadcastToClients({
@@ -700,7 +902,7 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                   await deps.prisma.issue
                     .updateMany({
                       where: { id: run.issueId, status: "running" },
-                      data: { status: "reviewing" }
+                      data: { status: "reviewing" },
                     })
                     .catch(() => {});
                 }
@@ -728,8 +930,12 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
             if (contentType === "init_result") {
               const ok = isRecord(message.content) ? (message.content as any).ok : undefined;
               if (ok === false) {
-                const exitCode = isRecord(message.content) ? (message.content as any).exitCode : undefined;
-                const errText = isRecord(message.content) ? (message.content as any).error : undefined;
+                const exitCode = isRecord(message.content)
+                  ? (message.content as any).exitCode
+                  : undefined;
+                const errText = isRecord(message.content)
+                  ? (message.content as any).error
+                  : undefined;
                 const details =
                   typeof errText === "string" && errText.trim()
                     ? errText.trim()
@@ -739,7 +945,14 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
 
                 const run = await deps.prisma.run.findUnique({
                   where: { id: message.run_id },
-                  select: { id: true, status: true, issueId: true, agentId: true, taskId: true, stepId: true }
+                  select: {
+                    id: true,
+                    status: true,
+                    issueId: true,
+                    agentId: true,
+                    taskId: true,
+                    stepId: true,
+                  },
                 });
 
                 if (run && run.status === "running") {
@@ -750,8 +963,8 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                         status: "failed",
                         completedAt: new Date(),
                         failureReason: "init_failed",
-                        errorMessage: `initScript 失败: ${details}`
-                      }
+                        errorMessage: `initScript 失败: ${details}`,
+                      },
                     })
                     .catch(() => {});
 
@@ -776,21 +989,28 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
                     await deps.prisma.issue
                       .updateMany({
                         where: { id: run.issueId, status: "running" },
-                        data: { status: "failed" }
+                        data: { status: "failed" },
                       })
                       .catch(() => {});
                   }
 
                   if (run.agentId) {
                     await deps.prisma.agent
-                      .update({ where: { id: run.agentId }, data: { currentLoad: { decrement: 1 } } })
+                      .update({
+                        where: { id: run.agentId },
+                        data: { currentLoad: { decrement: 1 } },
+                      })
                       .catch(() => {});
                   }
                 }
               }
             }
 
-            broadcastToClients({ type: "event_added", run_id: message.run_id, event: createdEvent });
+            broadcastToClients({
+              type: "event_added",
+              run_id: message.run_id,
+              event: createdEvent,
+            });
           });
           return;
         }
@@ -813,7 +1033,11 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
               .update({ where: { id: message.run_id }, data: { branchName: message.branch } })
               .catch(() => {});
             if (createdEvent) {
-              broadcastToClients({ type: "event_added", run_id: message.run_id, event: createdEvent });
+              broadcastToClients({
+                type: "event_added",
+                run_id: message.run_id,
+                event: createdEvent,
+              });
             }
           });
           return;
@@ -870,7 +1094,7 @@ export function createWebSocketGateway(deps: { prisma: PrismaDeps }) {
       agentConnections,
       clientConnections,
       handleAgentConnection,
-      handleClientConnection
-    }
+      handleClientConnection,
+    },
   };
 }

@@ -6,16 +6,28 @@ import { promisify } from "node:util";
 
 import type { PrismaDeps, SendToAgent } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
-import { buildContextFromRun } from "../modules/runs/runContext.js";
+import { buildChatContextFromEvents } from "../modules/runs/runContext.js";
+import { buildRecoveryInit } from "../modules/runs/runRecovery.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
-import { clientAcpPromptSchema, compactAcpPromptForEvent, type AcpContentBlock, type ClientAcpContentBlock } from "../modules/acp/acpContent.js";
+import {
+  clientAcpPromptSchema,
+  compactAcpPromptForEvent,
+  type AcpContentBlock,
+  type ClientAcpContentBlock,
+} from "../modules/acp/acpContent.js";
 import {
   createReviewRequestForRun,
   mergeReviewRequestForRun,
   syncReviewRequestForRun,
 } from "../modules/scm/runReviewRequest.js";
-import { requestCreatePrApproval, requestMergePrApproval } from "../modules/approvals/approvalRequests.js";
-import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../modules/workflow/taskProgress.js";
+import {
+  requestCreatePrApproval,
+  requestMergePrApproval,
+} from "../modules/approvals/approvalRequests.js";
+import {
+  advanceTaskFromRunTerminal,
+  setTaskBlockedFromRun,
+} from "../modules/workflow/taskProgress.js";
 import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
 import { getPmPolicyFromBranchProtection } from "../modules/pm/pmPolicy.js";
@@ -104,10 +116,16 @@ export function makeRunRoutes(deps: {
       const body = bodySchema.parse(request.body ?? {});
 
       if (!deps.attachments) {
-        return { success: false, error: { code: "ATTACHMENTS_DISABLED", message: "附件存储未配置" } };
+        return {
+          success: false,
+          error: { code: "ATTACHMENTS_DISABLED", message: "附件存储未配置" },
+        };
       }
       if (!body.mimeType.startsWith("image/")) {
-        return { success: false, error: { code: "UNSUPPORTED_MIME", message: "本期仅支持图片上传" } };
+        return {
+          success: false,
+          error: { code: "UNSUPPORTED_MIME", message: "本期仅支持图片上传" },
+        };
       }
 
       const run = await deps.prisma.run.findUnique({ where: { id }, select: { id: true } });
@@ -138,17 +156,26 @@ export function makeRunRoutes(deps: {
         if (code === "EMPTY_FILE") {
           return { success: false, error: { code: "EMPTY_FILE", message: "文件为空" } };
         }
-        return { success: false, error: { code: "UPLOAD_FAILED", message: "上传失败", details: String(error) } };
+        return {
+          success: false,
+          error: { code: "UPLOAD_FAILED", message: "上传失败", details: String(error) },
+        };
       }
     });
 
     server.get("/:id/attachments/:attachmentId", async (request, reply) => {
-      const paramsSchema = z.object({ id: z.string().uuid(), attachmentId: z.string().min(1).max(200) });
+      const paramsSchema = z.object({
+        id: z.string().uuid(),
+        attachmentId: z.string().min(1).max(200),
+      });
       const { id, attachmentId } = paramsSchema.parse(request.params);
 
       if (!deps.attachments) {
         reply.code(404);
-        return { success: false, error: { code: "ATTACHMENTS_DISABLED", message: "附件存储未配置" } };
+        return {
+          success: false,
+          error: { code: "ATTACHMENTS_DISABLED", message: "附件存储未配置" },
+        };
       }
 
       const info = await deps.attachments.getInfo({ runId: id, id: attachmentId });
@@ -179,11 +206,11 @@ export function makeRunRoutes(deps: {
       if (!run) return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
 
       const project = (run as any)?.issue?.project;
-      if (!project) return { success: false, error: { code: "BAD_RUN", message: "Run 缺少 project" } };
+      if (!project)
+        return { success: false, error: { code: "BAD_RUN", message: "Run 缺少 project" } };
 
       const { policy } = getPmPolicyFromBranchProtection(project.branchProtection);
-      const requireApproval =
-        policy.approvals.requireForActions.includes("create_pr");
+      const requireApproval = policy.approvals.requireForActions.includes("create_pr");
 
       if (requireApproval) {
         const req = await requestCreatePrApproval({
@@ -202,7 +229,8 @@ export function makeRunRoutes(deps: {
           success: false,
           error: {
             code: "APPROVAL_REQUIRED",
-            message: "创建 PR 属于受控动作，需要审批。已创建审批请求，请在 /api/approvals 中批准后执行。",
+            message:
+              "创建 PR 属于受控动作，需要审批。已创建审批请求，请在 /api/approvals 中批准后执行。",
           },
           data: req.data,
         };
@@ -242,7 +270,8 @@ export function makeRunRoutes(deps: {
         success: false,
         error: {
           code: "APPROVAL_REQUIRED",
-          message: "合并 PR 属于高危动作，需要审批。已创建审批请求，请在 /api/approvals 中批准后执行合并。",
+          message:
+            "合并 PR 属于高危动作，需要审批。已创建审批请求，请在 /api/approvals 中批准后执行合并。",
         },
         data: req.data,
       };
@@ -287,7 +316,9 @@ export function makeRunRoutes(deps: {
       const { id } = paramsSchema.parse(request.params);
       const { prompt: clientPrompt } = bodySchema.parse(request.body);
 
-      const materializePrompt = async (prompt: readonly ClientAcpContentBlock[]): Promise<AcpContentBlock[] | { error: any }> => {
+      const materializePrompt = async (
+        prompt: readonly ClientAcpContentBlock[],
+      ): Promise<AcpContentBlock[] | { error: any }> => {
         const out: AcpContentBlock[] = [];
         for (const block of prompt) {
           if (block.type !== "image") {
@@ -306,7 +337,12 @@ export function makeRunRoutes(deps: {
             return { error: { code: "BAD_PROMPT", message: "image 缺少 data/uri" } };
           }
           if (!deps.attachments) {
-            return { error: { code: "ATTACHMENTS_DISABLED", message: "附件存储未配置，无法从 uri 物化图片" } };
+            return {
+              error: {
+                code: "ATTACHMENTS_DISABLED",
+                message: "附件存储未配置，无法从 uri 物化图片",
+              },
+            };
           }
 
           let attachmentId = "";
@@ -314,7 +350,11 @@ export function makeRunRoutes(deps: {
             const u = new URL(uri, "http://localhost");
             const parts = u.pathname.split("/").filter(Boolean);
             const runsIdx = parts.indexOf("runs");
-            if (runsIdx >= 0 && parts.length >= runsIdx + 4 && parts[runsIdx + 2] === "attachments") {
+            if (
+              runsIdx >= 0 &&
+              parts.length >= runsIdx + 4 &&
+              parts[runsIdx + 2] === "attachments"
+            ) {
               const runIdFromUri = parts[runsIdx + 1] ?? "";
               const attachmentFromUri = parts[runsIdx + 3] ?? "";
               if (runIdFromUri === id) attachmentId = attachmentFromUri;
@@ -324,7 +364,12 @@ export function makeRunRoutes(deps: {
           }
 
           if (!attachmentId) {
-            return { error: { code: "BAD_PROMPT", message: "image.uri 非法（仅支持 /runs/:id/attachments/:attachmentId）" } };
+            return {
+              error: {
+                code: "BAD_PROMPT",
+                message: "image.uri 非法（仅支持 /runs/:id/attachments/:attachmentId）",
+              },
+            };
           }
 
           const bytes = await deps.attachments.getBytes({ runId: id, id: attachmentId });
@@ -347,7 +392,7 @@ export function makeRunRoutes(deps: {
         where: { id },
         include: {
           agent: true,
-          issue: true,
+          issue: { include: { project: true } },
           artifacts: { orderBy: { createdAt: "desc" } },
         },
       });
@@ -371,16 +416,27 @@ export function makeRunRoutes(deps: {
         };
       }
 
-      const recentEvents = await deps.prisma.event.findMany({
-        where: { runId: id },
-        orderBy: { timestamp: "desc" },
-        take: 200,
-      });
-      const context = buildContextFromRun({
-        run,
-        issue: run.issue,
-        events: recentEvents,
-      });
+      const sandboxStatus = typeof run.sandboxStatus === "string" ? run.sandboxStatus : "";
+      let context: string | undefined;
+      let init:
+        | { script: string; timeout_seconds?: number; env?: Record<string, string> }
+        | undefined;
+
+      if (sandboxStatus === "missing") {
+        const recentEvents = await deps.prisma.event.findMany({
+          where: { runId: id },
+          orderBy: { timestamp: "desc" },
+          take: 200,
+        });
+        const chatContext = buildChatContextFromEvents(recentEvents);
+        context = chatContext || undefined;
+        init = (await buildRecoveryInit({
+          prisma: deps.prisma,
+          run,
+          issue: run.issue,
+          project: run.issue?.project,
+        })) as any;
+      }
 
       const cwd = run.workspacePath ?? "";
       if (!cwd) {
@@ -391,28 +447,10 @@ export function makeRunRoutes(deps: {
       }
 
       const createdAt = new Date();
+      let eventPersisted = false;
+      let createdEvent: any = null;
       try {
-        await deps.acp.promptRun({
-          proxyId: run.agent.proxyId,
-          runId: id,
-          cwd,
-          sessionId: run.acpSessionId ?? null,
-          context,
-          prompt,
-        });
-      } catch (error) {
-        return {
-          success: false,
-          error: {
-            code: "AGENT_SEND_FAILED",
-            message: "发送消息到 Agent 失败",
-            details: String(error),
-          },
-        };
-      }
-
-      try {
-        await deps.prisma.event.create({
+        createdEvent = await deps.prisma.event.create({
           data: {
             id: uuidv7(),
             runId: id,
@@ -422,11 +460,50 @@ export function makeRunRoutes(deps: {
             timestamp: createdAt,
           },
         });
+        eventPersisted = true;
+        if (createdEvent) {
+          deps.broadcastToClients?.({ type: "event_added", run_id: id, event: createdEvent });
+        }
       } catch (error) {
-        server.log.warn({ err: error, runId: id }, "persist user.message failed after prompt sent");
+        server.log.warn({ err: error, runId: id }, "persist user.message failed before prompt");
+      }
+
+      try {
+        await deps.acp.promptRun({
+          proxyId: run.agent.proxyId,
+          runId: id,
+          cwd,
+          sessionId: run.acpSessionId ?? null,
+          context,
+          prompt,
+          init,
+        });
+      } catch (error) {
+        return {
+          success: false,
+          error: {
+            code: "AGENT_SEND_FAILED",
+            message: "发送消息到 Agent 失败",
+            details: String(error),
+          },
+          ...(eventPersisted
+            ? {}
+            : {
+                warning: {
+                  code: "EVENT_PERSIST_FAILED",
+                  message: "消息发送失败且写入事件失败",
+                },
+              }),
+        };
+      }
+
+      if (!eventPersisted) {
         return {
           success: true,
-          data: { ok: true, warning: { code: "EVENT_PERSIST_FAILED", message: "消息已发送，但写入事件失败" } },
+          data: {
+            ok: true,
+            warning: { code: "EVENT_PERSIST_FAILED", message: "消息已发送，但写入事件失败" },
+          },
         };
       }
 
@@ -458,7 +535,10 @@ export function makeRunRoutes(deps: {
       }
 
       if (run.executorType !== "human") {
-        return { success: false, error: { code: "BAD_EXECUTOR", message: "该 Run 不是 human executor" } };
+        return {
+          success: false,
+          error: { code: "BAD_EXECUTOR", message: "该 Run 不是 human executor" },
+        };
       }
 
       const stepKind = typeof (run as any).step?.kind === "string" ? (run as any).step.kind : "";
@@ -506,8 +586,15 @@ export function makeRunRoutes(deps: {
         );
         if (!mergeRes.success) return mergeRes;
 
-        await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed", completedAt: new Date() } as any }).catch(() => {});
-        await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(() => {});
+        await deps.prisma.run
+          .update({
+            where: { id: run.id },
+            data: { status: "completed", completedAt: new Date() } as any,
+          })
+          .catch(() => {});
+        await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(
+          () => {},
+        );
         if ((run as any).taskId) {
           deps.broadcastToClients?.({
             type: "task_updated",
@@ -517,14 +604,28 @@ export function makeRunRoutes(deps: {
             run_id: run.id,
           });
           triggerTaskAutoAdvance(
-            { prisma: deps.prisma, sendToAgent: deps.sendToAgent, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
-            { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
+            {
+              prisma: deps.prisma,
+              sendToAgent: deps.sendToAgent,
+              acp: deps.acp,
+              broadcastToClients: deps.broadcastToClients,
+            },
+            {
+              issueId: (run as any).issueId,
+              taskId: (run as any).taskId,
+              trigger: "step_completed",
+            },
           );
         }
         return { success: true, data: { ok: true } };
       }
 
-      await deps.prisma.run.update({ where: { id: run.id }, data: { status: "completed", completedAt: new Date() } as any }).catch(() => {});
+      await deps.prisma.run
+        .update({
+          where: { id: run.id },
+          data: { status: "completed", completedAt: new Date() } as any,
+        })
+        .catch(() => {});
 
       if (verdict === "changes_requested") {
         if ((run as any).stepId) {
@@ -532,11 +633,10 @@ export function makeRunRoutes(deps: {
             .update({ where: { id: (run as any).stepId }, data: { status: "completed" } as any })
             .catch(() => {});
         }
-        await setTaskBlockedFromRun(
-          { prisma: deps.prisma },
-          run.id,
-          { code: "CHANGES_REQUESTED", message: comment || "changes requested" },
-        ).catch(() => {});
+        await setTaskBlockedFromRun({ prisma: deps.prisma }, run.id, {
+          code: "CHANGES_REQUESTED",
+          message: comment || "changes requested",
+        }).catch(() => {});
         if ((run as any).taskId) {
           deps.broadcastToClients?.({
             type: "task_updated",
@@ -550,7 +650,9 @@ export function makeRunRoutes(deps: {
         return { success: true, data: { ok: true, blocked: true } };
       }
 
-      await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(() => {});
+      await advanceTaskFromRunTerminal({ prisma: deps.prisma }, run.id, "completed").catch(
+        () => {},
+      );
       if ((run as any).taskId) {
         deps.broadcastToClients?.({
           type: "task_updated",
@@ -560,7 +662,12 @@ export function makeRunRoutes(deps: {
           run_id: run.id,
         });
         triggerTaskAutoAdvance(
-          { prisma: deps.prisma, sendToAgent: deps.sendToAgent, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
+          {
+            prisma: deps.prisma,
+            sendToAgent: deps.sendToAgent,
+            acp: deps.acp,
+            broadcastToClients: deps.broadcastToClients,
+          },
           { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
         );
       }
@@ -623,7 +730,6 @@ export function makeRunRoutes(deps: {
       return { success: true, data: { ok: true } };
     });
 
-
     server.post("/:id/cancel", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const { id } = paramsSchema.parse(request.params);
@@ -638,7 +744,9 @@ export function makeRunRoutes(deps: {
         const proxyId = run.agent?.proxyId ?? null;
         const sessionId = run.acpSessionId ?? null;
         if (proxyId && sessionId) {
-          await deps.acp.cancelSession({ proxyId, runId: id, cwd: "/workspace", sessionId }).catch(() => {});
+          await deps.acp
+            .cancelSession({ proxyId, runId: id, cwd: "/workspace", sessionId })
+            .catch(() => {});
         }
       }
 

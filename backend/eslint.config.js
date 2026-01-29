@@ -2,9 +2,10 @@ import js from "@eslint/js";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 import prettier from "eslint-config-prettier";
+import { defineConfig, globalIgnores } from "eslint/config";
 
-export default [
-  { ignores: ["dist/**", "coverage/**", "node_modules/**"] },
+export default defineConfig([
+  globalIgnores(["dist", "coverage"]),
   js.configs.recommended,
   ...tseslint.configs.recommended,
   prettier,
@@ -22,4 +23,4 @@ export default [
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
-];
+]);

@@ -12,12 +12,15 @@ describe("Runs routes", () => {
   it("GET /api/runs/:id returns run", async () => {
     const server = createHttpServer();
     const prisma = {
-      run: { findUnique: vi.fn().mockResolvedValue({ id: "r1" }) }
+      run: { findUnique: vi.fn().mockResolvedValue({ id: "r1" }) },
     } as any;
 
     await server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
 
-    const res = await server.inject({ method: "GET", url: "/api/runs/00000000-0000-0000-0000-000000000001" });
+    const res = await server.inject({
+      method: "GET",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001",
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { run: { id: "r1" } } });
     await server.close();
@@ -26,16 +29,19 @@ describe("Runs routes", () => {
   it("GET /api/runs/:id returns NOT_FOUND when missing", async () => {
     const server = createHttpServer();
     const prisma = {
-      run: { findUnique: vi.fn().mockResolvedValue(null) }
+      run: { findUnique: vi.fn().mockResolvedValue(null) },
     } as any;
 
     await server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
 
-    const res = await server.inject({ method: "GET", url: "/api/runs/00000000-0000-0000-0000-000000000001" });
+    const res = await server.inject({
+      method: "GET",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001",
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: false,
-      error: { code: "NOT_FOUND", message: "Run 不存在" }
+      error: { code: "NOT_FOUND", message: "Run 不存在" },
     });
     await server.close();
   });
@@ -43,21 +49,21 @@ describe("Runs routes", () => {
   it("GET /api/runs/:id/events returns events", async () => {
     const server = createHttpServer();
     const prisma = {
-      event: { findMany: vi.fn().mockResolvedValue([{ id: "e1" }]) }
+      event: { findMany: vi.fn().mockResolvedValue([{ id: "e1" }]) },
     } as any;
 
     await server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
 
     const res = await server.inject({
       method: "GET",
-      url: "/api/runs/00000000-0000-0000-0000-000000000001/events?limit=3"
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/events?limit=3",
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { events: [{ id: "e1" }] } });
     expect(prisma.event.findMany).toHaveBeenCalledWith({
       where: { runId: "00000000-0000-0000-0000-000000000001" },
       orderBy: { timestamp: "desc" },
-      take: 3
+      take: 3,
     });
     await server.close();
   });
@@ -68,7 +74,10 @@ describe("Runs routes", () => {
 
     await server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
 
-    const res = await server.inject({ method: "GET", url: "/api/runs/00000000-0000-0000-0000-000000000001/changes" });
+    const res = await server.inject({
+      method: "GET",
+      url: "/api/runs/00000000-0000-0000-0000-000000000001/changes",
+    });
     expect(res.statusCode).toBe(404);
     await server.close();
   });
@@ -98,11 +107,11 @@ describe("Runs routes", () => {
           agentId: "a2",
           acpSessionId: "s2",
           workspacePath: "C:/repo/.worktrees/run-2",
-          agent: { proxyId: "proxy-2" }
-        })
+          agent: { proxyId: "proxy-2" },
+        }),
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
-      agent: { update: vi.fn().mockResolvedValue({}) }
+      agent: { update: vi.fn().mockResolvedValue({}) },
     } as any;
 
     const acp = { cancelSession: vi.fn().mockResolvedValue(undefined) } as any;
@@ -111,7 +120,7 @@ describe("Runs routes", () => {
 
     const res = await server.inject({
       method: "POST",
-      url: "/api/runs/00000000-0000-0000-0000-000000000002/cancel"
+      url: "/api/runs/00000000-0000-0000-0000-000000000002/cancel",
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -136,16 +145,20 @@ describe("Runs routes", () => {
   it("POST /api/runs/:id/complete marks completed", async () => {
     const server = createHttpServer();
     const prisma = {
-      run: { update: vi.fn().mockResolvedValue({ id: "r2", status: "completed", issueId: "i2", agentId: "a2" }) },
+      run: {
+        update: vi
+          .fn()
+          .mockResolvedValue({ id: "r2", status: "completed", issueId: "i2", agentId: "a2" }),
+      },
       issue: { update: vi.fn().mockResolvedValue({}) },
-      agent: { update: vi.fn().mockResolvedValue({}) }
+      agent: { update: vi.fn().mockResolvedValue({}) },
     } as any;
 
     await server.register(makeRunRoutes({ prisma }), { prefix: "/api/runs" });
 
     const res = await server.inject({
       method: "POST",
-      url: "/api/runs/00000000-0000-0000-0000-000000000002/complete"
+      url: "/api/runs/00000000-0000-0000-0000-000000000002/complete",
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -171,24 +184,45 @@ describe("Runs routes", () => {
           acpSessionId: null,
           agent: { proxyId: "proxy-1" },
           issue: { title: "t1" },
-          artifacts: []
-        })
+          artifacts: [],
+        }),
       },
-      event: { create: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([]) }
+      event: {
+        create: vi.fn().mockResolvedValue({
+          id: "e1",
+          runId: "00000000-0000-0000-0000-000000000001",
+          source: "user",
+          type: "user.message",
+          payload: { prompt: [{ type: "text", text: "hello" }] },
+          timestamp: new Date(),
+        }),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
     } as any;
 
-    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
-    await server.register(makeRunRoutes({ prisma, acp }), { prefix: "/api/runs" });
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }),
+    } as any;
+    const broadcastToClients = vi.fn();
+    await server.register(makeRunRoutes({ prisma, acp, broadcastToClients }), {
+      prefix: "/api/runs",
+    });
 
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/prompt",
-      payload: { prompt: [{ type: "text", text: "hello" }] }
+      payload: { prompt: [{ type: "text", text: "hello" }] },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { ok: true } });
 
     expect(prisma.event.create).toHaveBeenCalled();
+    expect(broadcastToClients).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "event_added",
+        run_id: "00000000-0000-0000-0000-000000000001",
+      }),
+    );
     expect(acp.promptRun).toHaveBeenCalledWith(
       expect.objectContaining({
         proxyId: "proxy-1",
@@ -196,7 +230,6 @@ describe("Runs routes", () => {
         cwd: "C:/repo/.worktrees/run-1",
         sessionId: null,
         prompt: [{ type: "text", text: "hello" }],
-        context: expect.any(String),
       }),
     );
     await server.close();
@@ -215,24 +248,30 @@ describe("Runs routes", () => {
           acpSessionId: null,
           agent: { proxyId: "proxy-1" },
           issue: { title: "t1" },
-          artifacts: []
-        })
+          artifacts: [],
+        }),
       },
-      event: { create: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([]) }
+      event: { create: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([]) },
     } as any;
 
     const attachments = createLocalAttachmentStore({ rootDir: tmp, maxBytes: 1024 * 1024 });
     const bytes = Buffer.from("hello-image");
-    const stored = await attachments.putFromBase64({ runId, mimeType: "image/png", base64: bytes.toString("base64") });
+    const stored = await attachments.putFromBase64({
+      runId,
+      mimeType: "image/png",
+      base64: bytes.toString("base64"),
+    });
 
-    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }),
+    } as any;
     await server.register(makeRunRoutes({ prisma, acp, attachments }), { prefix: "/api/runs" });
 
     try {
       const res = await server.inject({
         method: "POST",
         url: `/api/runs/${runId}/prompt`,
-        payload: { prompt: [{ type: "image", mimeType: "image/png", uri: stored.uri }] }
+        payload: { prompt: [{ type: "image", mimeType: "image/png", uri: stored.uri }] },
       });
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ success: true, data: { ok: true } });
@@ -296,7 +335,7 @@ describe("Runs routes", () => {
     await server.close();
   });
 
-  it("POST /api/runs/:id/prompt does not persist user message when sending fails", async () => {
+  it("POST /api/runs/:id/prompt persists user message even when sending fails", async () => {
     const server = createHttpServer();
     const prisma = {
       run: {
@@ -324,7 +363,7 @@ describe("Runs routes", () => {
     const body = res.json();
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("AGENT_SEND_FAILED");
-    expect(prisma.event.create).not.toHaveBeenCalled();
+    expect(prisma.event.create).toHaveBeenCalled();
     await server.close();
   });
 
@@ -341,10 +380,15 @@ describe("Runs routes", () => {
           artifacts: [],
         }),
       },
-      event: { create: vi.fn().mockRejectedValue(new Error("db down")), findMany: vi.fn().mockResolvedValue([]) },
+      event: {
+        create: vi.fn().mockRejectedValue(new Error("db down")),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
     } as any;
 
-    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }) } as any;
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end_turn" }),
+    } as any;
     await server.register(makeRunRoutes({ prisma, acp }), { prefix: "/api/runs" });
 
     const res = await server.inject({
@@ -355,7 +399,10 @@ describe("Runs routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: true,
-      data: { ok: true, warning: { code: "EVENT_PERSIST_FAILED", message: "消息已发送，但写入事件失败" } },
+      data: {
+        ok: true,
+        warning: { code: "EVENT_PERSIST_FAILED", message: "消息已发送，但写入事件失败" },
+      },
     });
 
     expect(acp.promptRun).toHaveBeenCalled();
@@ -372,8 +419,8 @@ describe("Runs routes", () => {
           acpSessionId: "s1",
           workspacePath: "C:/repo/.worktrees/run-1",
           agent: { proxyId: "proxy-1" },
-        })
-      }
+        }),
+      },
     } as any;
 
     const acp = { cancelSession: vi.fn().mockResolvedValue(undefined) } as any;
@@ -382,7 +429,7 @@ describe("Runs routes", () => {
     const runId = "00000000-0000-0000-0000-000000000001";
     const res = await server.inject({
       method: "POST",
-      url: `/api/runs/${runId}/pause`
+      url: `/api/runs/${runId}/pause`,
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { ok: true } });
@@ -394,7 +441,6 @@ describe("Runs routes", () => {
     });
     await server.close();
   });
-
 
   it("POST /api/runs/:id/create-pr pushes branch and updates Run.scm fields", async () => {
     const server = createHttpServer();
@@ -414,12 +460,12 @@ describe("Runs routes", () => {
               scmType: "gitlab",
               defaultBranch: "main",
               gitlabProjectId: 123,
-              gitlabAccessToken: "tok"
-            }
+              gitlabAccessToken: "tok",
+            },
           },
-          artifacts: []
+          artifacts: [],
         }),
-        update: vi.fn().mockResolvedValue({})
+        update: vi.fn().mockResolvedValue({}),
       },
     } as any;
 
@@ -431,7 +477,7 @@ describe("Runs routes", () => {
       state: "opened",
       web_url: "https://gitlab.example.com/group/repo/-/merge_requests/7",
       source_branch: "run/r1",
-      target_branch: "main"
+      target_branch: "main",
     });
 
     await server.register(
@@ -442,16 +488,16 @@ describe("Runs routes", () => {
           inferBaseUrl: () => "https://gitlab.example.com",
           createMergeRequest,
           mergeMergeRequest: vi.fn(),
-          getMergeRequest: vi.fn()
-        }
+          getMergeRequest: vi.fn(),
+        },
       }),
-      { prefix: "/api/runs" }
+      { prefix: "/api/runs" },
     );
 
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/create-pr",
-      payload: {}
+      payload: {},
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -488,9 +534,9 @@ describe("Runs routes", () => {
             project: {
               repoUrl: "https://gitlab.example.com/group/repo.git",
               scmType: "gitlab",
-            }
+            },
           },
-          artifacts: []
+          artifacts: [],
         }),
       },
       approval: {
@@ -509,15 +555,15 @@ describe("Runs routes", () => {
 
     await server.register(
       makeRunRoutes({
-        prisma
+        prisma,
       }),
-      { prefix: "/api/runs" }
+      { prefix: "/api/runs" },
     );
 
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/merge-pr",
-      payload: {}
+      payload: {},
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -548,12 +594,12 @@ describe("Runs routes", () => {
               repoUrl: "https://github.com/octo-org/octo-repo.git",
               scmType: "github",
               defaultBranch: "main",
-              githubAccessToken: "ghp_xxx"
-            }
+              githubAccessToken: "ghp_xxx",
+            },
           },
-          artifacts: []
+          artifacts: [],
         }),
-        update: vi.fn().mockResolvedValue({})
+        update: vi.fn().mockResolvedValue({}),
       },
     } as any;
 
@@ -565,7 +611,7 @@ describe("Runs routes", () => {
       state: "open",
       html_url: "https://github.com/octo-org/octo-repo/pull/12",
       head: { ref: "run/r1" },
-      base: { ref: "main" }
+      base: { ref: "main" },
     });
 
     await server.register(
@@ -578,20 +624,20 @@ describe("Runs routes", () => {
             owner: "octo-org",
             repo: "octo-repo",
             webBaseUrl: "https://github.com/octo-org/octo-repo",
-            apiBaseUrl: "https://api.github.com"
+            apiBaseUrl: "https://api.github.com",
           }),
           createPullRequest,
           mergePullRequest: vi.fn(),
-          getPullRequest: vi.fn()
-        }
+          getPullRequest: vi.fn(),
+        },
       }),
-      { prefix: "/api/runs" }
+      { prefix: "/api/runs" },
     );
 
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/create-pr",
-      payload: {}
+      payload: {},
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -628,10 +674,10 @@ describe("Runs routes", () => {
             project: {
               repoUrl: "https://github.com/octo-org/octo-repo.git",
               scmType: "github",
-              githubAccessToken: "ghp_xxx"
-            }
+              githubAccessToken: "ghp_xxx",
+            },
           },
-          artifacts: []
+          artifacts: [],
         }),
       },
       approval: {
@@ -650,15 +696,15 @@ describe("Runs routes", () => {
 
     await server.register(
       makeRunRoutes({
-        prisma
+        prisma,
       }),
-      { prefix: "/api/runs" }
+      { prefix: "/api/runs" },
     );
 
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/merge-pr",
-      payload: {}
+      payload: {},
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -682,12 +728,12 @@ describe("Runs routes", () => {
             project: {
               repoUrl: "https://github.com/octo-org/octo-repo.git",
               scmType: "github",
-              githubAccessToken: "ghp_xxx"
-            }
+              githubAccessToken: "ghp_xxx",
+            },
           },
-          artifacts: []
+          artifacts: [],
         }),
-        update: vi.fn().mockResolvedValue({})
+        update: vi.fn().mockResolvedValue({}),
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
     } as any;
@@ -702,7 +748,7 @@ describe("Runs routes", () => {
       base: { ref: "main" },
       merged_at: null,
       mergeable: false,
-      mergeable_state: "dirty"
+      mergeable_state: "dirty",
     });
 
     await server.register(
@@ -714,20 +760,20 @@ describe("Runs routes", () => {
             owner: "octo-org",
             repo: "octo-repo",
             webBaseUrl: "https://github.com/octo-org/octo-repo",
-            apiBaseUrl: "https://api.github.com"
+            apiBaseUrl: "https://api.github.com",
           }),
           createPullRequest: vi.fn(),
           mergePullRequest: vi.fn(),
-          getPullRequest
-        }
+          getPullRequest,
+        },
       }),
-      { prefix: "/api/runs" }
+      { prefix: "/api/runs" },
     );
 
     const res = await server.inject({
       method: "POST",
       url: "/api/runs/00000000-0000-0000-0000-000000000001/sync-pr",
-      payload: {}
+      payload: {},
     });
 
     expect(res.statusCode).toBe(200);
@@ -736,7 +782,7 @@ describe("Runs routes", () => {
 
     expect(getPullRequest).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ pullNumber: 12 })
+      expect.objectContaining({ pullNumber: 12 }),
     );
 
     expect(prisma.run.update).toHaveBeenCalledWith(

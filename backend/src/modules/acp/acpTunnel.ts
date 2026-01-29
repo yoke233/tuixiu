@@ -450,12 +450,29 @@ export function createAcpTunnel(deps: {
     prompt: AcpContentBlock[];
     init?: AcpOpenPayload;
   }): Promise<{ sessionId: string; stopReason: string }> {
+    let init = opts.init;
+    if (init) {
+      const runStatus = await deps.prisma.run
+        .findUnique({
+          where: { id: opts.runId },
+          select: { sandboxStatus: true },
+        } as any)
+        .catch(() => null);
+      const sandboxStatus =
+        runStatus && typeof (runStatus as any).sandboxStatus === "string"
+          ? String((runStatus as any).sandboxStatus)
+          : "";
+      if (sandboxStatus && sandboxStatus !== "missing" && sandboxStatus !== "creating") {
+        init = undefined;
+      }
+    }
+
     const cwd = "/workspace";
     const state = await ensureOpen({
       proxyId: opts.proxyId,
       runId: opts.runId,
       cwd,
-      init: opts.init,
+      init,
     });
 
     const promptId = uuidv7();
