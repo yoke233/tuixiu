@@ -153,7 +153,7 @@ describe("acpTunnel (full)", () => {
   });
 
   it("promptRun opens session, creates sessionId, and persists prompt_result", async () => {
-    let tunnel: any;
+    const tunnelRef = { current: null as any };
     const prisma = {
       run: {
         findUnique: vi.fn().mockImplementation(async (args: any) => {
@@ -172,11 +172,12 @@ describe("acpTunnel (full)", () => {
 
     const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
       if (payload.type === "acp_open") {
-        tunnel.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
       }
     });
 
-    tunnel = createAcpTunnel({ prisma, sendToAgent, broadcastToClients: vi.fn() });
+    const tunnel = createAcpTunnel({ prisma, sendToAgent, broadcastToClients: vi.fn() });
+    tunnelRef.current = tunnel;
 
     const res = await tunnel.promptRun({
       proxyId: "proxy-1",
@@ -210,7 +211,7 @@ describe("acpTunnel (full)", () => {
   });
 
   it("withAuthRetry authenticates and retries when code=-32000", async () => {
-    let tunnel: any;
+    const tunnelRef = { current: null as any };
     const prisma = {
       run: {
         findUnique: vi.fn().mockImplementation(async (args: any) => {
@@ -229,11 +230,12 @@ describe("acpTunnel (full)", () => {
 
     const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
       if (payload.type === "acp_open") {
-        tunnel.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
       }
     });
 
-    tunnel = createAcpTunnel({ prisma, sendToAgent });
+    const tunnel = createAcpTunnel({ prisma, sendToAgent });
+    tunnelRef.current = tunnel;
 
     (acp as any).__testing.nextPromptError = { code: -32000 };
     const p = tunnel.promptRun({ proxyId: "proxy-1", runId: "r1", cwd: "C:/ws", prompt: [{ type: "text", text: "hi" }] });
@@ -245,7 +247,7 @@ describe("acpTunnel (full)", () => {
   });
 
   it("recreates session when prompt throws session error", async () => {
-    let tunnel: any;
+    const tunnelRef = { current: null as any };
     const prisma = {
       run: {
         findUnique: vi.fn().mockImplementation(async (args: any) => {
@@ -264,11 +266,12 @@ describe("acpTunnel (full)", () => {
 
     const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
       if (payload.type === "acp_open") {
-        tunnel.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
       }
     });
 
-    tunnel = createAcpTunnel({ prisma, sendToAgent });
+    const tunnel = createAcpTunnel({ prisma, sendToAgent });
+    tunnelRef.current = tunnel;
 
     (acp as any).__testing.nextPromptError = new Error("Session not found");
 
@@ -286,7 +289,7 @@ describe("acpTunnel (full)", () => {
   });
 
   it("supports cancelSession / setSessionMode / setSessionModel", async () => {
-    let tunnel: any;
+    const tunnelRef = { current: null as any };
     const prisma = {
       run: {
         findUnique: vi.fn().mockImplementation(async (args: any) => {
@@ -301,11 +304,12 @@ describe("acpTunnel (full)", () => {
 
     const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
       if (payload.type === "acp_open") {
-        tunnel.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
       }
     });
 
-    tunnel = createAcpTunnel({ prisma, sendToAgent });
+    const tunnel = createAcpTunnel({ prisma, sendToAgent });
+    tunnelRef.current = tunnel;
 
     await tunnel.cancelSession({ proxyId: "proxy-1", runId: "r1", cwd: "C:/ws", sessionId: "s1" });
     await tunnel.setSessionMode({ proxyId: "proxy-1", runId: "r1", cwd: "C:/ws", sessionId: "s1", modeId: "m2" });
@@ -317,7 +321,7 @@ describe("acpTunnel (full)", () => {
   });
 
   it("exposes client fs/terminal helpers through runStates", async () => {
-    let tunnel: any;
+    const tunnelRef = { current: null as any };
     const prisma = {
       run: {
         findUnique: vi.fn().mockImplementation(async (args: any) => {
@@ -335,11 +339,12 @@ describe("acpTunnel (full)", () => {
 
     const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
       if (payload.type === "acp_open") {
-        tunnel.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
       }
     });
 
-    tunnel = createAcpTunnel({ prisma, sendToAgent });
+    const tunnel = createAcpTunnel({ prisma, sendToAgent });
+    tunnelRef.current = tunnel;
     await tunnel.promptRun({ proxyId: "proxy-1", runId: "r1", cwd: "C:/ws", prompt: [{ type: "text", text: "hi" }] });
 
     const state = tunnel.__testing.runStates.get("r1");
