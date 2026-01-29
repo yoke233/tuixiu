@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeSensitiveHitFromFiles, computeSensitiveHitFromPaths } from "../../src/services/pm/pmSensitivePaths.js";
+import { computeSensitiveHitFromFiles, computeSensitiveHitFromPaths } from "../../src/modules/pm/pmSensitivePaths.js";
 
 describe("pmSensitivePaths", () => {
   it("returns null when patterns empty", () => {

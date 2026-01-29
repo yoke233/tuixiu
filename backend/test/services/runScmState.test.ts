@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRunScmStateUpdate } from "../../src/services/scm/runScmState.js";
+import { buildRunScmStateUpdate } from "../../src/modules/scm/runScmState.js";
 
 describe("runScmState", () => {
   it("buildRunScmStateUpdate normalizes values and sets scmUpdatedAt", () => {
@@ -37,4 +37,3 @@ describe("runScmState", () => {
     expect(buildRunScmStateUpdate({ scmUpdatedAt: at })).toEqual({ scmUpdatedAt: at });
   });
 });
-

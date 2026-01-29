@@ -3,10 +3,10 @@ import { z } from "zod";
 
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import type { CreateWorkspace } from "../executors/types.js";
-import type { AcpTunnel } from "../services/acpTunnel.js";
-import { dispatchExecutionForRun } from "../services/executionDispatch.js";
-import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
-import { RollbackTaskBody, StartStepBody, TaskEngineError, rollbackTaskToStep, startStep } from "../services/taskEngine.js";
+import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
+import { dispatchExecutionForRun } from "../modules/workflow/executionDispatch.js";
+import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
+import { RollbackTaskBody, StartStepBody, TaskEngineError, rollbackTaskToStep, startStep } from "../modules/workflow/taskEngine.js";
 
 export function makeStepRoutes(deps: {
   prisma: PrismaDeps;

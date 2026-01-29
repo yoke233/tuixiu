@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../../src/services/taskProgress.js";
+import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../../src/modules/workflow/taskProgress.js";
 
 describe("taskProgress", () => {
   it("advanceTaskFromRunTerminal returns handled:false for legacy run", async () => {

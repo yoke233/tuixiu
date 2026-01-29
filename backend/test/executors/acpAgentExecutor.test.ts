@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/utils/gitWorkspace.js", () => ({ suggestRunKeyWithLlm: vi.fn() }));
-vi.mock("../../src/services/contextPack.js", () => ({ buildContextPackPrompt: vi.fn() }));
-vi.mock("../../src/services/textTemplates.js", () => ({ renderTextTemplateFromDb: vi.fn() }));
+vi.mock("../../src/modules/acp/contextPack.js", () => ({ buildContextPackPrompt: vi.fn() }));
+vi.mock("../../src/modules/templates/textTemplates.js", () => ({ renderTextTemplateFromDb: vi.fn() }));
 
 const { startAcpAgentExecution } = await import("../../src/executors/acpAgentExecutor.js");
 const { suggestRunKeyWithLlm } = await import("../../src/utils/gitWorkspace.js");
-const { buildContextPackPrompt } = await import("../../src/services/contextPack.js");
-const { renderTextTemplateFromDb } = await import("../../src/services/textTemplates.js");
+const { buildContextPackPrompt } = await import("../../src/modules/acp/contextPack.js");
+const { renderTextTemplateFromDb } = await import("../../src/modules/templates/textTemplates.js");
 
 function makeAgent(overrides?: Partial<any>) {
   return {

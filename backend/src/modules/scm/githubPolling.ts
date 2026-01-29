@@ -2,7 +2,7 @@ import type { PrismaDeps } from "../../deps.js";
 import * as github from "../../integrations/github.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { buildRunScmStateUpdate } from "./runScmState.js";
-import { TaskEngineError, createTaskFromTemplate } from "../../services/taskEngine.js";
+import { TaskEngineError, createTaskFromTemplate } from "../workflow/taskEngine.js";
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
 

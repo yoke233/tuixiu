@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../../deps.js";
 import { callPmLlmJson, isPmLlmEnabled } from "./pmLlm.js";
-import { renderTextTemplateFromDb } from "../../services/textTemplates.js";
+import { renderTextTemplateFromDb } from "../templates/textTemplates.js";
 
 export const pmRiskSchema = z.enum(["low", "medium", "high"]);
 

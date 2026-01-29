@@ -7,7 +7,7 @@ vi.mock("../../src/executors/systemExecutor.js", () => ({ startSystemExecution: 
 vi.mock("../../src/modules/workflow/taskProgress.js", () => ({ advanceTaskFromRunTerminal: vi.fn() }));
 vi.mock("../../src/modules/workflow/taskAutoAdvance.js", () => ({ triggerTaskAutoAdvance: vi.fn() }));
 
-const { dispatchExecutionForRun } = await import("../../src/services/workflow/executionDispatch.js");
+const { dispatchExecutionForRun } = await import("../../src/modules/workflow/executionDispatch.js");
 const { startAcpAgentExecution } = await import("../../src/executors/acpAgentExecutor.js");
 const { startCiExecution } = await import("../../src/executors/ciExecutor.js");
 const { startHumanExecution } = await import("../../src/executors/humanExecutor.js");

@@ -6,14 +6,14 @@ import { z } from "zod";
 import type { PrismaDeps } from "../deps.js";
 import * as github from "../integrations/github.js";
 import { uuidv7 } from "../utils/uuid.js";
-import type { AcpTunnel } from "../services/acpTunnel.js";
-import { buildRunScmStateUpdate } from "../services/scm/runScmState.js";
-import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../services/taskProgress.js";
-import { rollbackTaskToStep } from "../services/taskEngine.js";
-import { triggerPmAutoAdvance } from "../services/pm/pmAutoAdvance.js";
-import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
-import { isPmAutomationEnabled } from "../services/pm/pmLlm.js";
-import { getPmPolicyFromBranchProtection } from "../services/pm/pmPolicy.js";
+import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
+import { buildRunScmStateUpdate } from "../modules/scm/runScmState.js";
+import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../modules/workflow/taskProgress.js";
+import { rollbackTaskToStep } from "../modules/workflow/taskEngine.js";
+import { triggerPmAutoAdvance } from "../modules/pm/pmAutoAdvance.js";
+import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
+import { isPmAutomationEnabled } from "../modules/pm/pmLlm.js";
+import { getPmPolicyFromBranchProtection } from "../modules/pm/pmPolicy.js";
 
 function getHeader(headers: Record<string, unknown>, name: string): string | undefined {
   const key = name.toLowerCase();

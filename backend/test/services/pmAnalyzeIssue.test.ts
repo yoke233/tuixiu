@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeIssueForPm } from "../../src/services/pm/pmAnalyzeIssue.js";
+import { analyzeIssueForPm } from "../../src/modules/pm/pmAnalyzeIssue.js";
 
 describe("PM analyzeIssueForPm", () => {
   const originalEnv = {

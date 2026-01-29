@@ -9,8 +9,8 @@ import {
   normalizeKeepaliveTtlSeconds,
 } from "../../utils/sandbox.js";
 import { renderTextTemplate } from "../../utils/textTemplate.js";
-import { postGitHubIssueCommentBestEffort } from "../../services/githubIssueComments.js";
-import type { AcpTunnel } from "../../services/acpTunnel.js";
+import { postGitHubIssueCommentBestEffort } from "../scm/githubIssueComments.js";
+import type { AcpTunnel } from "../acp/acpTunnel.js";
 
 export type WorkspaceMode = "worktree" | "clone";
 

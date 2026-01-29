@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createHttpServer } from "../test-utils.js";
 
-vi.mock("../../src/services/pm/pmAutoReviewRun.js", () => ({
+vi.mock("../../src/modules/pm/pmAutoReviewRun.js", () => ({
   autoReviewRunForPm: vi.fn().mockResolvedValue({
     success: true,
     data: { runId: "00000000-0000-0000-0000-000000000001", artifactId: "art-1", report: { kind: "auto_review" } },
@@ -10,7 +10,7 @@ vi.mock("../../src/services/pm/pmAutoReviewRun.js", () => ({
 }));
 
 const { makePmRoutes } = await import("../../src/routes/pm.js");
-const { autoReviewRunForPm } = await import("../../src/services/pm/pmAutoReviewRun.js");
+const { autoReviewRunForPm } = await import("../../src/modules/pm/pmAutoReviewRun.js");
 
 describe("PM auto-review route", () => {
   it("POST /api/pm/runs/:id/auto-review calls autoReviewRunForPm", async () => {

@@ -111,14 +111,14 @@ vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
 }));
 
-vi.mock("../../src/services/taskProgress.js", () => ({ advanceTaskFromRunTerminal: vi.fn() }));
-vi.mock("../../src/services/pm/pmAutoAdvance.js", () => ({ triggerPmAutoAdvance: vi.fn() }));
+vi.mock("../../src/modules/workflow/taskProgress.js", () => ({ advanceTaskFromRunTerminal: vi.fn() }));
+vi.mock("../../src/modules/pm/pmAutoAdvance.js", () => ({ triggerPmAutoAdvance: vi.fn() }));
 
-const { createAcpTunnel } = await import("../../src/services/acpTunnel.js");
+const { createAcpTunnel } = await import("../../src/modules/acp/acpTunnel.js");
 const acp = await import("@agentclientprotocol/sdk");
 const { spawn } = await import("node:child_process");
 const fs = await import("node:fs");
-const { advanceTaskFromRunTerminal } = await import("../../src/services/taskProgress.js");
+const { advanceTaskFromRunTerminal } = await import("../../src/modules/workflow/taskProgress.js");
 
 describe("acpTunnel (full)", () => {
   beforeEach(() => {

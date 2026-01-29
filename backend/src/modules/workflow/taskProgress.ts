@@ -1,7 +1,7 @@
 import type { PrismaDeps } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
 
-import { extractAgentTextFromEvents, extractTaggedCodeBlock } from "../../services/agentOutput.js";
+import { extractAgentTextFromEvents, extractTaggedCodeBlock } from "../runs/agentOutput.js";
 
 type TerminalOutcome = "completed" | "failed" | "cancelled";
 

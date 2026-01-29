@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { PrismaDeps } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
-import { postGitHubApprovalCommentBestEffort } from "../../services/githubIssueComments.js";
+import { postGitHubApprovalCommentBestEffort } from "../scm/githubIssueComments.js";
 
 const approvalActionSchema = z.enum(["merge_pr", "create_pr", "publish_artifact"]);
 export type ApprovalAction = z.infer<typeof approvalActionSchema>;

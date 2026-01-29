@@ -5,14 +5,14 @@ import { promisify } from "node:util";
 
 import type { PrismaDeps, SendToAgent } from "../deps.js";
 import { uuidv7 } from "../utils/uuid.js";
-import { toApprovalSummary, type ApprovalStatus } from "../services/approvalRequests.js";
+import { toApprovalSummary, type ApprovalStatus } from "../modules/approvals/approvalRequests.js";
 import type { CreateWorkspace } from "../executors/types.js";
-import { mergeReviewRequestForRun, createReviewRequestForRun } from "../services/runReviewRequest.js";
-import { postGitHubApprovalCommentBestEffort } from "../services/githubIssueComments.js";
+import { mergeReviewRequestForRun, createReviewRequestForRun } from "../modules/scm/runReviewRequest.js";
+import { postGitHubApprovalCommentBestEffort } from "../modules/scm/githubIssueComments.js";
 import { createGitProcessEnv } from "../utils/gitAuth.js";
-import { publishArtifact } from "../services/artifactPublish.js";
-import { advanceTaskFromRunTerminal } from "../services/taskProgress.js";
-import { triggerTaskAutoAdvance } from "../services/taskAutoAdvance.js";
+import { publishArtifact } from "../modules/artifacts/artifactPublish.js";
+import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
+import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
 
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";

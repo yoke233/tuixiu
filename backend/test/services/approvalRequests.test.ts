@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/utils/uuid.js", () => ({ uuidv7: () => "uuid-1" }));
-vi.mock("../../src/services/githubIssueComments.js", () => ({ postGitHubApprovalCommentBestEffort: vi.fn() }));
+vi.mock("../../src/modules/scm/githubIssueComments.js", () => ({ postGitHubApprovalCommentBestEffort: vi.fn() }));
 
-const { postGitHubApprovalCommentBestEffort } = await import("../../src/services/githubIssueComments.js");
+const { postGitHubApprovalCommentBestEffort } = await import("../../src/modules/scm/githubIssueComments.js");
 const {
   requestCreatePrApproval,
   requestMergePrApproval,
   requestPublishArtifactApproval,
   toApprovalSummary,
-} = await import("../../src/services/approvalRequests.js");
+} = await import("../../src/modules/approvals/approvalRequests.js");
 
 describe("approvalRequests", () => {
   beforeEach(() => {
@@ -128,4 +128,3 @@ describe("approvalRequests", () => {
     expect((res as any).error.code).toBe("NO_RUN");
   });
 });
-

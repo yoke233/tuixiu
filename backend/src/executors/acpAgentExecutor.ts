@@ -1,9 +1,9 @@
 import type { PrismaDeps } from "../deps.js";
 import { suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
 import { parseEnvText } from "../utils/envText.js";
-import type { AcpTunnel } from "../services/acpTunnel.js";
-import { buildContextPackPrompt } from "../services/contextPack.js";
-import { renderTextTemplateFromDb } from "../services/textTemplates.js";
+import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
+import { buildContextPackPrompt } from "../modules/acp/contextPack.js";
+import { renderTextTemplateFromDb } from "../modules/templates/textTemplates.js";
 import { renderTextTemplate } from "../utils/textTemplate.js";
 
 import type { CreateWorkspace, CreateWorkspaceResult } from "./types.js";

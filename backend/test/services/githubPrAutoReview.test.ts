@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { triggerGitHubPrAutoReview } from "../../src/services/githubPrAutoReview.js";
+import { triggerGitHubPrAutoReview } from "../../src/modules/scm/githubPrAutoReview.js";
 
 describe("githubPrAutoReview", () => {
   const envBackup = { ...process.env };

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createReviewRequestForRun, mergeReviewRequestForRun, syncReviewRequestForRun } from "../src/services/runReviewRequest.js";
+import { createReviewRequestForRun, mergeReviewRequestForRun, syncReviewRequestForRun } from "../src/modules/scm/runReviewRequest.js";
 
 function makeDeps(overrides: {
   issue?: Record<string, unknown>;

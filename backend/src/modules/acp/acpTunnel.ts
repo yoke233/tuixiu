@@ -9,8 +9,8 @@ import * as acp from "@agentclientprotocol/sdk";
 import type { PrismaDeps, SendToAgent } from "../../deps.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS, deriveSandboxInstanceName } from "../../utils/sandbox.js";
-import { advanceTaskFromRunTerminal } from "../../services/taskProgress.js";
-import { triggerPmAutoAdvance } from "../../services/pm/pmAutoAdvance.js";
+import { advanceTaskFromRunTerminal } from "../workflow/taskProgress.js";
+import { triggerPmAutoAdvance } from "../pm/pmAutoAdvance.js";
 import type { AcpContentBlock } from "./acpContent.js";
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;

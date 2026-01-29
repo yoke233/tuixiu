@@ -9,7 +9,7 @@ import {
   listProjectTextTemplates,
   patchPlatformTextTemplates,
   patchProjectTextTemplates,
-} from "../services/textTemplates.js";
+} from "../modules/templates/textTemplates.js";
 import { normalizeTemplateText } from "../utils/textTemplate.js";
 
 export function makeTextTemplateRoutes(deps: { prisma: PrismaDeps; auth: AuthHelpers }): FastifyPluginAsync {
