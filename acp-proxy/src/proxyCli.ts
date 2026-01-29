@@ -127,8 +127,7 @@ export async function runProxyCli() {
   };
 
   const isWsl =
-    process.platform === "linux" &&
-    !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
+    process.platform === "linux" && !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
 
   const sandbox: SandboxInstanceProvider =
     cfg.sandbox.provider === "container_oci"
@@ -162,8 +161,7 @@ export async function runProxyCli() {
   let ws: WebSocket | null = null;
 
   const send = (payload: unknown) => {
-    if (!ws || ws.readyState !== WebSocket.OPEN)
-      throw new Error("ws not connected");
+    if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error("ws not connected");
     ws.send(JSON.stringify(payload));
   };
 
@@ -185,8 +183,7 @@ export async function runProxyCli() {
       type: "sandbox_instance_status",
       instance_name: opts.instanceName,
       provider: sandbox.provider,
-      runtime:
-        sandbox.provider === "container_oci" ? (sandbox.runtime ?? null) : null,
+      runtime: sandbox.provider === "container_oci" ? (sandbox.runtime ?? null) : null,
       status: opts.status,
       last_seen_at: nowIso(),
       last_error: opts.lastError ?? null,
@@ -197,12 +194,8 @@ export async function runProxyCli() {
     const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities)
       ? cfg.agent.capabilities
       : {};
-    const baseSandbox: Record<string, unknown> = isRecord(baseCaps.sandbox)
-      ? baseCaps.sandbox
-      : {};
-    const baseRuntime: Record<string, unknown> = isRecord(baseCaps.runtime)
-      ? baseCaps.runtime
-      : {};
+    const baseSandbox: Record<string, unknown> = isRecord(baseCaps.sandbox) ? baseCaps.sandbox : {};
+    const baseRuntime: Record<string, unknown> = isRecord(baseCaps.runtime) ? baseCaps.runtime : {};
 
     const runtime: Record<string, unknown> = {
       ...baseRuntime,
@@ -216,7 +209,7 @@ export async function runProxyCli() {
       ...baseSandbox,
       provider: cfg.sandbox.provider,
       terminalEnabled: cfg.sandbox.terminalEnabled,
-      agentMode: cfg.sandbox.agentMode,
+      agentMode: cfg.sandbox.provider === "container_oci" ? "entrypoint" : "exec",
       image: cfg.sandbox.image ?? null,
       workingDir: cfg.sandbox.workingDir ?? null,
     };
@@ -245,8 +238,7 @@ export async function runProxyCli() {
     const agent = run.agent;
     if (!agent) return;
 
-    const entrypointMode =
-      sandbox.provider === "container_oci" && cfg.sandbox.agentMode === "entrypoint";
+    const entrypointMode = sandbox.provider === "container_oci";
     if (entrypointMode && reason !== "agent_exit") {
       run.suppressNextAcpExit = true;
     }
@@ -288,9 +280,7 @@ export async function runProxyCli() {
     },
   ) => {
     if (run.agent) return;
-
-    const entrypointMode =
-      sandbox.provider === "container_oci" && cfg.sandbox.agentMode === "entrypoint";
+    const entrypointMode = sandbox.provider === "container_oci";
 
     const initScript = init?.script?.trim() ?? "";
     const timeoutSecondsRaw = init?.timeout_seconds ?? 300;
@@ -306,7 +296,11 @@ export async function runProxyCli() {
     const initScriptGuestPath = "/tmp/acp-proxy-init.sh";
     const initEnvGuestPath = "/tmp/acp-proxy-init-env.json";
 
-    type InitResult = { ok: boolean; exitCode?: number | null; skipped?: boolean };
+    type InitResult = {
+      ok: boolean;
+      exitCode?: number | null;
+      skipped?: boolean;
+    };
 
     let handle: Awaited<ReturnType<typeof sandbox.execProcess>>;
     let initPending = false;
@@ -336,13 +330,17 @@ export async function runProxyCli() {
       // 因此需要一个“全新容器实例”来执行 init 并最终 exec agent。
       if (initScript && before.status !== "missing") {
         await containerSandbox.removeInstance(run.instanceName).catch(() => {});
-        before = { instanceName: run.instanceName, status: "missing", createdAt: null };
+        before = {
+          instanceName: run.instanceName,
+          status: "missing",
+          createdAt: null,
+        };
       }
 
       if (before.status !== "missing") {
         const labels = await containerSandbox.getInstanceLabels(run.instanceName);
         const agentModeLabel = labels["acp-proxy.agent_mode"] ?? "";
-        if (agentModeLabel !== "entrypoint") {
+        if (agentModeLabel && agentModeLabel !== "entrypoint") {
           throw new Error(
             `发现既有容器但不是 entrypoint 模式（acp-proxy.agent_mode=${JSON.stringify(agentModeLabel)}）。请先 remove sandbox 实例（instance_name=${run.instanceName}）后重试。`,
           );
@@ -360,17 +358,17 @@ export async function runProxyCli() {
         'if [ -s "$init_script" ]; then',
         `  timeout_seconds="${timeoutSeconds}"`,
         "  run_node_init() {",
-        "    node -e 'const fs=require(\"fs\"); const cp=require(\"child_process\");",
-        "const script=fs.readFileSync(process.env.ACP_PROXY_INIT_SCRIPT_PATH,\"utf8\");",
+        '    node -e \'const fs=require("fs"); const cp=require("child_process");',
+        'const script=fs.readFileSync(process.env.ACP_PROXY_INIT_SCRIPT_PATH,"utf8");',
         "let envExtra={};",
-        "try{ envExtra=JSON.parse(fs.readFileSync(process.env.ACP_PROXY_INIT_ENV_PATH,\"utf8\")); }catch{}",
+        'try{ envExtra=JSON.parse(fs.readFileSync(process.env.ACP_PROXY_INIT_ENV_PATH,"utf8")); }catch{}',
         "const filtered={};",
         "for(const [k,v] of Object.entries(envExtra||{})){",
         "  if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) continue;",
-        "  filtered[k]=String(v??\"\");",
+        '  filtered[k]=String(v??"");',
         "}",
-        "const res=cp.spawnSync(\"bash\",[\"-lc\",script],{env:{...process.env,...filtered},stdio:[\"ignore\",2,2]});",
-        "process.exit(typeof res.status===\"number\"?res.status:1);'",
+        'const res=cp.spawnSync("bash",["-lc",script],{env:{...process.env,...filtered},stdio:["ignore",2,2]});',
+        'process.exit(typeof res.status==="number"?res.status:1);\'',
         "  }",
         "  if command -v timeout >/dev/null 2>&1; then",
         '    timeout --preserve-status -k 5s "${timeout_seconds}s" \\',
@@ -468,7 +466,10 @@ export async function runProxyCli() {
       try {
         handle = (await connectWithRetry()) as any;
       } catch (err) {
-        log("start agent failed (attach)", { runId: run.runId, err: String(err) });
+        log("start agent failed (attach)", {
+          runId: run.runId,
+          err: String(err),
+        });
         throw err;
       }
 
@@ -567,8 +568,7 @@ export async function runProxyCli() {
                 try {
                   const parsed = JSON.parse(payloadRaw) as any;
                   const ok = !!parsed?.ok;
-                  const exitCode =
-                    typeof parsed?.exitCode === "number" ? parsed.exitCode : null;
+                  const exitCode = typeof parsed?.exitCode === "number" ? parsed.exitCode : null;
                   initDeferred?.resolve({ ok, exitCode });
                   initPending = false;
                   if (ok) run.suppressNextAcpExit = false;
@@ -608,8 +608,7 @@ export async function runProxyCli() {
             try {
               const parsed = JSON.parse(payloadRaw) as any;
               const ok = !!parsed?.ok;
-              const exitCode =
-                typeof parsed?.exitCode === "number" ? parsed.exitCode : null;
+              const exitCode = typeof parsed?.exitCode === "number" ? parsed.exitCode : null;
               initDeferred?.resolve({ ok, exitCode });
               if (ok) run.suppressNextAcpExit = false;
             } catch (err) {
@@ -757,8 +756,7 @@ export async function runProxyCli() {
     run.lastUsedAt = Date.now();
     runs.set(runId, run);
 
-    const entrypointMode =
-      sandbox.provider === "container_oci" && cfg.sandbox.agentMode === "entrypoint";
+    const entrypointMode = sandbox.provider === "container_oci";
     if (entrypointMode) {
       const info = await sandbox.inspectInstance(instanceName);
       sendSandboxInstanceStatus({
@@ -861,11 +859,9 @@ export async function runProxyCli() {
       }
     };
 
-    const exitP = new Promise<{ code: number | null; signal: string | null }>(
-      (resolve) => {
-        proc.onExit?.((info) => resolve(info));
-      },
-    );
+    const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+      proc.onExit?.((info) => resolve(info));
+    });
     const outP = readLines(proc.stdout, "stdout");
     const errP = readLines(proc.stderr, "stderr");
 
@@ -909,8 +905,7 @@ export async function runProxyCli() {
       const run = await ensureRuntime(msg);
       const init = isRecord(msg.init) ? (msg.init as any) : undefined;
 
-      const entrypointMode =
-        sandbox.provider === "container_oci" && cfg.sandbox.agentMode === "entrypoint";
+      const entrypointMode = sandbox.provider === "container_oci";
       if (!entrypointMode) {
         const initOk = await runInitScript({ run, init });
         if (!initOk) {
@@ -984,8 +979,7 @@ export async function runProxyCli() {
       type: "sandbox_inventory",
       inventory_id: inventoryId,
       provider: sandbox.provider,
-      runtime:
-        sandbox.provider === "container_oci" ? (sandbox.runtime ?? null) : null,
+      runtime: sandbox.provider === "container_oci" ? (sandbox.runtime ?? null) : null,
       captured_at: capturedAt,
       instances: instances.map((i) => {
         const runId = i.instanceName.startsWith("tuixiu-run-")

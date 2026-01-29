@@ -12,10 +12,10 @@ agent_command = ["codex-acp"]
 # 统一沙箱配置：provider + image + 运行参数
 terminalEnabled = true
 
-# ACP agent 启动模式：
-# - "exec"（默认）：容器常驻（sleep），acp-proxy 用 `docker exec` 启动 agent（历史模式）
-# - "entrypoint"：容器主进程为 agent（PID1=codex-acp），acp-proxy 通过 stdio 与其通讯
-agentMode = "exec"
+# ACP agent 启动模式（内部固定）：
+# - container_oci: 强制使用 "entrypoint" 模式（容器主进程为 agent）
+# - boxlite_oci: 使用 "exec" 模式
+
 
 # provider: "container_oci" | "boxlite_oci"
 provider = "container_oci"

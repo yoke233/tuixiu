@@ -38,7 +38,6 @@ const volumeSchema = z.preprocess(
 const sandboxSchema = z
   .object({
     terminalEnabled: z.boolean().default(false),
-    agentMode: z.enum(["exec", "entrypoint"]).default("exec"),
     provider: z.enum(["boxlite_oci", "container_oci"]),
     image: z.string().min(1),
     workingDir: z.string().min(1).optional(),
@@ -65,9 +64,7 @@ const configCoreSchema = z.object({
   heartbeat_seconds: z.coerce.number().int().positive().default(30),
   mock_mode: z.boolean().default(false),
   sandbox: sandboxSchema,
-  agent_command: z
-    .array(z.string().min(1))
-    .default(["npx", "--yes", "@zed-industries/codex-acp"]),
+  agent_command: z.array(z.string().min(1)).default(["npx", "--yes", "@zed-industries/codex-acp"]),
   agent: agentSchema,
 });
 
@@ -79,7 +76,6 @@ const configOverrideSchema = z.object({
   sandbox: z
     .object({
       terminalEnabled: z.boolean().optional(),
-      agentMode: z.enum(["exec", "entrypoint"]).optional(),
       provider: z.enum(["boxlite_oci", "container_oci"]).optional(),
       image: z.string().min(1).optional(),
       workingDir: z.string().min(1).optional(),
@@ -116,13 +112,9 @@ function mergeSandbox(
   return { ...base, ...override };
 }
 
-function mergeConfig(
-  base: ProxyConfig,
-  override: Partial<ProxyConfig>,
-): ProxyConfig {
+function mergeConfig(base: ProxyConfig, override: Partial<ProxyConfig>): ProxyConfig {
   const merged: any = { ...base, ...override };
-  if (override.sandbox)
-    merged.sandbox = mergeSandbox(base.sandbox, override.sandbox as any);
+  if (override.sandbox) merged.sandbox = mergeSandbox(base.sandbox, override.sandbox as any);
   if (override.agent) merged.agent = { ...base.agent, ...override.agent };
   return merged;
 }
@@ -131,14 +123,9 @@ export async function loadConfig(
   configPath: string,
   opts?: { profile?: string },
 ): Promise<LoadedProxyConfig> {
-  const abs = path.isAbsolute(configPath)
-    ? configPath
-    : path.join(process.cwd(), configPath);
+  const abs = path.isAbsolute(configPath) ? configPath : path.join(process.cwd(), configPath);
   const raw = await readFile(abs, "utf8");
-  const data =
-    path.extname(abs).toLowerCase() === ".toml"
-      ? parseToml(raw)
-      : JSON.parse(raw);
+  const data = path.extname(abs).toLowerCase() === ".toml" ? parseToml(raw) : JSON.parse(raw);
   const parsed = configSchema.parse(data);
 
   const profile = opts?.profile?.trim() ? opts.profile.trim() : null;
@@ -149,29 +136,25 @@ export async function loadConfig(
   const envOverride: Partial<ProxyConfig> = {};
   const envSandboxOverride: Partial<ProxyConfig["sandbox"]> = {};
   if (process.env.ACP_PROXY_ORCHESTRATOR_URL?.trim()) {
-    envOverride.orchestrator_url =
-      process.env.ACP_PROXY_ORCHESTRATOR_URL.trim();
+    envOverride.orchestrator_url = process.env.ACP_PROXY_ORCHESTRATOR_URL.trim();
   }
   if (process.env.ACP_PROXY_AUTH_TOKEN?.trim()) {
     envOverride.auth_token = process.env.ACP_PROXY_AUTH_TOKEN.trim();
   }
   const terminalEnabledRaw = process.env.ACP_PROXY_TERMINAL_ENABLED?.trim();
   if (terminalEnabledRaw) {
-    const enabled =
-      terminalEnabledRaw === "1" || terminalEnabledRaw.toLowerCase() === "true";
+    const enabled = terminalEnabledRaw === "1" || terminalEnabledRaw.toLowerCase() === "true";
     envSandboxOverride.terminalEnabled = enabled;
   }
   if (process.env.ACP_PROXY_SANDBOX_PROVIDER?.trim()) {
     const raw = process.env.ACP_PROXY_SANDBOX_PROVIDER.trim();
-    if (raw === "boxlite_oci" || raw === "container_oci")
-      envSandboxOverride.provider = raw;
+    if (raw === "boxlite_oci" || raw === "container_oci") envSandboxOverride.provider = raw;
   }
   if (process.env.ACP_PROXY_SANDBOX_IMAGE?.trim()) {
     envSandboxOverride.image = process.env.ACP_PROXY_SANDBOX_IMAGE.trim();
   }
   if (process.env.ACP_PROXY_SANDBOX_WORKING_DIR?.trim()) {
-    envSandboxOverride.workingDir =
-      process.env.ACP_PROXY_SANDBOX_WORKING_DIR.trim();
+    envSandboxOverride.workingDir = process.env.ACP_PROXY_SANDBOX_WORKING_DIR.trim();
   }
   if (process.env.ACP_PROXY_CONTAINER_RUNTIME?.trim()) {
     envSandboxOverride.runtime = process.env.ACP_PROXY_CONTAINER_RUNTIME.trim();
@@ -181,17 +164,13 @@ export async function loadConfig(
   }
 
   const effective = configCoreSchema.parse(
-    Object.keys(envOverride).length
-      ? mergeConfig(merged, envOverride as any)
-      : merged,
+    Object.keys(envOverride).length ? mergeConfig(merged, envOverride as any) : merged,
   );
   return {
     ...effective,
     agent: {
       ...effective.agent,
-      name: effective.agent.name?.trim()
-        ? effective.agent.name.trim()
-        : effective.agent.id,
+      name: effective.agent.name?.trim() ? effective.agent.name.trim() : effective.agent.id,
       capabilities: effective.agent.capabilities ?? {},
     },
   };

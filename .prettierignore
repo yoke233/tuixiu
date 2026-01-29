@@ -1,0 +1,12 @@
+# Ignore artifacts:
+dist
+build
+coverage
+.worktrees
+.turbo
+node_modules
+
+# Ignore generated files:
+pnpm-lock.yaml
+*.min.js
+*.map
