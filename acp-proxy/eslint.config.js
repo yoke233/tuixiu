@@ -13,10 +13,6 @@ export default [
       globals: {
         ...globals.node,
       },
-      parserOptions: {
-        project: "./tsconfig.json",
-        tsconfigRootDir: import.meta.dirname,
-      },
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",

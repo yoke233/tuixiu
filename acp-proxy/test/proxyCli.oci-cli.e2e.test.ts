@@ -155,7 +155,9 @@ exec node /tmp/agent.js
       const cleanup = async () => {
         try {
           run.kill();
-        } catch {}
+        } catch {
+          // ignore
+        }
         await rmForce(cli, name).catch(() => {});
       };
 
@@ -165,7 +167,9 @@ exec node /tmp/agent.js
           try {
             const o = JSON.parse(l);
             if (o?.jsonrpc === "2.0") jsonMsgs.push(o);
-          } catch {}
+          } catch {
+            // ignore
+          }
         });
         readLines(run.proc.stderr, (l) => stderrLines.push(l));
 

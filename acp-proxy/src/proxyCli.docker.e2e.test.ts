@@ -203,15 +203,21 @@ describe("proxyCli (docker e2e)", () => {
       const cleanup = async () => {
         try {
           agentWs?.close();
-        } catch {}
+        } catch {
+          // ignore
+        }
         try {
           wss.close();
-        } catch {}
+        } catch {
+          // ignore
+        }
         try {
           if (proxyProc && proxyProc.exitCode === null) {
             proxyProc.kill();
           }
-        } catch {}
+        } catch {
+          // ignore
+        }
         await dockerRmForce(instanceName);
         await rm(tmp, { recursive: true, force: true }).catch(() => {});
       };
@@ -352,7 +358,9 @@ describe("proxyCli (docker e2e)", () => {
 
         const promptRes = await waitForMessage(
           messages,
-          (m): m is {
+          (
+            m,
+          ): m is {
             type: "prompt_result";
             run_id: string;
             prompt_id: string;

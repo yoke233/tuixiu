@@ -55,9 +55,7 @@ function resolveWorkspaceGuestPath(opts: {
   throw new Error("path is outside workspace root");
 }
 
-async function readAllText(
-  stream: ReadableStream<Uint8Array> | undefined,
-): Promise<string> {
+async function readAllText(stream: ReadableStream<Uint8Array> | undefined): Promise<string> {
   if (!stream) return "";
   const decoder = new TextDecoder();
   const reader = stream.getReader();
@@ -76,10 +74,7 @@ async function readAllText(
   return out;
 }
 
-function trimToByteLimit(
-  value: string,
-  limit: number,
-): { value: string; truncated: boolean } {
+function trimToByteLimit(value: string, limit: number): { value: string; truncated: boolean } {
   if (limit <= 0) return { value: "", truncated: true };
   const bytes = Buffer.byteLength(value, "utf8");
   if (bytes <= limit) return { value, truncated: false };
@@ -173,7 +168,9 @@ export class AcpClientFacade {
     } catch {
       try {
         stdinWriter.releaseLock();
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
 
     const [stdout, stderr, exit] = await Promise.all([
@@ -194,18 +191,14 @@ export class AcpClientFacade {
           ? ((params as any).options as any[])
           : [];
         const preferred =
-          options.find((o) => isRecord(o) && o.kind === "allow_once") ??
-          options[0] ??
-          null;
+          options.find((o) => isRecord(o) && o.kind === "allow_once") ?? options[0] ?? null;
         const optionId =
           preferred && isRecord(preferred) && typeof preferred.optionId === "string"
             ? preferred.optionId
             : null;
 
         return okResponse(req.id, {
-          outcome: optionId
-            ? { outcome: "selected", optionId }
-            : { outcome: "cancelled" },
+          outcome: optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" },
         });
       }
 
@@ -236,10 +229,7 @@ export class AcpClientFacade {
         const limitRaw = (req.params as any).limit ?? null;
         if (lineRaw == null && limitRaw == null) return okResponse(req.id, { content });
 
-        const start = Math.max(
-          0,
-          Number.isFinite(lineRaw) ? Math.max(0, Number(lineRaw) - 1) : 0,
-        );
+        const start = Math.max(0, Number.isFinite(lineRaw) ? Math.max(0, Number(lineRaw) - 1) : 0);
         const limit = Number.isFinite(limitRaw) ? Math.max(0, Number(limitRaw)) : null;
         if (limit === 0) return okResponse(req.id, { content: "" });
 
@@ -257,9 +247,7 @@ export class AcpClientFacade {
           requestedPath: req.params.path,
         });
         const content =
-          typeof (req.params as any).content === "string"
-            ? (req.params as any).content
-            : "";
+          typeof (req.params as any).content === "string" ? (req.params as any).content : "";
 
         const res = await this.execToText({
           command: [

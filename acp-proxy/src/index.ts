@@ -1,4 +1,4 @@
-import { runProxyCli } from "./proxyCli.js";
+import { runProxyCli } from "./proxy/index.js";
 
 runProxyCli().catch((err) => {
   console.error(err);

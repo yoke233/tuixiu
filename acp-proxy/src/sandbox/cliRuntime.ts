@@ -7,9 +7,12 @@ export type CliRunSpec = {
   cli: ContainerCli;
   name: string;
   image: string;
+  autoRemove?: boolean; // default true
   workingDir?: string; // container working dir
   env?: Record<string, string>;
   entrypoint?: string;
+  labels?: Record<string, string>;
+  extraArgs?: string[];
   mounts?: string[]; // ["host:container:ro", ...]
   ports?: Array<{ host: number; container: number; proto?: "tcp" | "udp" }>;
   // the container command
@@ -74,7 +77,9 @@ export class CliRuntime {
   runInteractive(spec: Omit<CliRunSpec, "cli">): RunningProcess {
     const cli = this.cli;
 
-    const args: string[] = ["run", "--rm", "-i", "--name", spec.name];
+    const args: string[] = ["run"];
+    if (spec.autoRemove !== false) args.push("--rm");
+    args.push("-i", "--name", spec.name);
 
     // ✅ 覆盖 entrypoint（关键）
     if (spec.entrypoint) {
@@ -84,6 +89,19 @@ export class CliRuntime {
     // working dir
     if (spec.workingDir) {
       args.push("-w", spec.workingDir);
+    }
+
+    // labels
+    if (spec.labels) {
+      for (const [k, v] of Object.entries(spec.labels)) {
+        if (!k) continue;
+        args.push("--label", `${k}=${v ?? ""}`);
+      }
+    }
+
+    // extra args
+    if (spec.extraArgs?.length) {
+      args.push(...spec.extraArgs);
     }
 
     // env
@@ -116,14 +134,13 @@ export class CliRuntime {
       env: process.env, // keep host env; container env is in args
     });
 
-    proc.stdout.setEncoding("utf8");
-    proc.stderr.setEncoding("utf8");
-
     const kill = () => {
       try {
         // kill the cli process; container will exit and --rm removes it
         proc.kill();
-      } catch {}
+      } catch {
+        // ignore
+      }
     };
 
     return { proc, kill };
