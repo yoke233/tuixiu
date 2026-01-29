@@ -61,7 +61,7 @@ export function SessionSidebar(props: { model: SessionController }) {
               </Link>
             ) : null}
             <Link className="buttonSecondary" to="/admin?section=acpSessions">
-              Sessions 列表
+              ACP Proxies
             </Link>
           </div>
         </section>
@@ -87,11 +87,19 @@ export function SessionSidebar(props: { model: SessionController }) {
               </div>
               <div className="kvItem">
                 <div className="muted">sessionId</div>
-                {sessionId ? <code title={sessionId}>{sessionId}</code> : <span className="muted">未建立</span>}
+                {sessionId ? (
+                  <code title={sessionId}>{sessionId}</code>
+                ) : (
+                  <span className="muted">未建立</span>
+                )}
               </div>
               <div className="kvItem">
                 <div className="muted">branch</div>
-                {run.branchName ? <code title={run.branchName}>{run.branchName}</code> : <span className="muted">-</span>}
+                {run.branchName ? (
+                  <code title={run.branchName}>{run.branchName}</code>
+                ) : (
+                  <span className="muted">-</span>
+                )}
               </div>
               <div className="kvItem">
                 <div className="muted">workspace</div>
@@ -103,7 +111,11 @@ export function SessionSidebar(props: { model: SessionController }) {
               </div>
               <div className="kvItem">
                 <div className="muted">agentId</div>
-                {run.agentId ? <code title={run.agentId}>{run.agentId}</code> : <span className="muted">-</span>}
+                {run.agentId ? (
+                  <code title={run.agentId}>{run.agentId}</code>
+                ) : (
+                  <span className="muted">-</span>
+                )}
               </div>
             </div>
           ) : (
@@ -116,7 +128,11 @@ export function SessionSidebar(props: { model: SessionController }) {
         <section className="card">
           <div className="row spaceBetween" style={{ alignItems: "baseline" }}>
             <div style={{ fontWeight: 800 }}>Session 状态</div>
-            {sessionState ? <StatusBadge status={sessionState.activity as any} /> : <span className="muted">-</span>}
+            {sessionState ? (
+              <StatusBadge status={sessionState.activity as any} />
+            ) : (
+              <span className="muted">-</span>
+            )}
           </div>
           {sessionState ? (
             <>
@@ -134,12 +150,19 @@ export function SessionSidebar(props: { model: SessionController }) {
                   <summary>设置 mode / model</summary>
                   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                     <div className="row gap" style={{ alignItems: "flex-end" }}>
-                      <label className="label" style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}>
+                      <label
+                        className="label"
+                        style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}
+                      >
                         modeId
                         <input
                           value={modeDraft}
                           onChange={(e) => setModeDraft(e.target.value)}
-                          placeholder={sessionState.currentModeId ? `当前：${sessionState.currentModeId}` : "例如：balanced"}
+                          placeholder={
+                            sessionState.currentModeId
+                              ? `当前：${sessionState.currentModeId}`
+                              : "例如：balanced"
+                          }
                         />
                       </label>
                       <button
@@ -161,12 +184,19 @@ export function SessionSidebar(props: { model: SessionController }) {
                     </div>
 
                     <div className="row gap" style={{ alignItems: "flex-end" }}>
-                      <label className="label" style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}>
+                      <label
+                        className="label"
+                        style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}
+                      >
                         modelId
                         <input
                           value={modelDraft}
                           onChange={(e) => setModelDraft(e.target.value)}
-                          placeholder={sessionState.currentModelId ? `当前：${sessionState.currentModelId}` : "例如：gpt-4.1"}
+                          placeholder={
+                            sessionState.currentModelId
+                              ? `当前：${sessionState.currentModelId}`
+                              : "例如：gpt-4.1"
+                          }
                         />
                       </label>
                       <button
@@ -188,7 +218,8 @@ export function SessionSidebar(props: { model: SessionController }) {
                     </div>
 
                     <div className="muted">
-                      后端接口：<code>POST /api/admin/acp-sessions/set-mode</code>、<code>POST /api/admin/acp-sessions/set-model</code>。
+                      后端接口：<code>POST /api/admin/acp-sessions/set-mode</code>、
+                      <code>POST /api/admin/acp-sessions/set-model</code>。
                     </div>
                   </div>
                 </details>

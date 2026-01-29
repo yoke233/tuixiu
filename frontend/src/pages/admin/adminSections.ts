@@ -21,7 +21,10 @@ export const ADMIN_SECTION_META: Record<AdminSectionKey, { title: string; desc: 
   issues: { title: "Issue 管理", desc: "创建需求或导入外部 Issue" },
   roles: { title: "角色模板", desc: "创建/维护 RoleTemplate（Prompt / initScript 等）" },
   archive: { title: "Issue 归档", desc: "管理已完成/失败/取消的 Issue 归档状态" },
-  acpSessions: { title: "ACP Sessions", desc: "查看/关闭 ACP session，并可快速启动独立的交互式 Session" },
+  acpSessions: {
+    title: "ACP Proxies / Sessions",
+    desc: "查看 acp-proxy 注册状态与实例存活，并可管理 ACP session / 启动独立交互 Session",
+  },
 };
 
 export function getSectionFromSearch(search: string): AdminSectionKey | null {

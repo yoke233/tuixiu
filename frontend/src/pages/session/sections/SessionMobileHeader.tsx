@@ -19,7 +19,7 @@ export function SessionMobileHeader(props: { model: SessionController }) {
             </Link>
           ) : null}
           <Link className="buttonSecondary" to="/admin?section=acpSessions">
-            Sessions
+            ACP Proxies
           </Link>
         </div>
         <div className="row gap" style={{ justifyContent: "flex-end" }}>
@@ -33,4 +33,3 @@ export function SessionMobileHeader(props: { model: SessionController }) {
     </section>
   );
 }
-
