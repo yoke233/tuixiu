@@ -78,6 +78,8 @@ const sandboxSchema = z
 
 const configCoreSchema = z.object({
   orchestrator_url: z.string().min(1),
+  register_url: z.string().min(1).optional(),
+  bootstrap_token: z.string().min(1).optional(),
   auth_token: z.string().optional(),
   heartbeat_seconds: z.coerce.number().int().positive().default(30),
   mock_mode: z.boolean().default(false),
@@ -88,6 +90,8 @@ const configCoreSchema = z.object({
 
 const configOverrideSchema = z.object({
   orchestrator_url: z.string().min(1).optional(),
+  register_url: z.string().min(1).optional(),
+  bootstrap_token: z.string().min(1).optional(),
   auth_token: z.string().optional(),
   heartbeat_seconds: z.coerce.number().int().positive().optional(),
   mock_mode: z.boolean().optional(),
@@ -164,6 +168,12 @@ export async function loadConfig(
   const envSandboxOverride: Partial<ProxyConfig["sandbox"]> = {};
   if (process.env.ACP_PROXY_ORCHESTRATOR_URL?.trim()) {
     envOverride.orchestrator_url = process.env.ACP_PROXY_ORCHESTRATOR_URL.trim();
+  }
+  if (process.env.ACP_PROXY_REGISTER_URL?.trim()) {
+    envOverride.register_url = process.env.ACP_PROXY_REGISTER_URL.trim();
+  }
+  if (process.env.ACP_PROXY_BOOTSTRAP_TOKEN?.trim()) {
+    envOverride.bootstrap_token = process.env.ACP_PROXY_BOOTSTRAP_TOKEN.trim();
   }
   if (process.env.ACP_PROXY_AUTH_TOKEN?.trim()) {
     envOverride.auth_token = process.env.ACP_PROXY_AUTH_TOKEN.trim();

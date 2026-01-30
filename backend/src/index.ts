@@ -1,7 +1,10 @@
 import "dotenv/config";
 import cors from "@fastify/cors";
+import cookie from "@fastify/cookie";
+import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
+import path from "node:path";
 
 import { loadEnv } from "./config.js";
 import { prisma } from "./db.js";
@@ -9,6 +12,7 @@ import { registerAuth } from "./auth.js";
 import { makeAgentRoutes } from "./routes/agents.js";
 import { makeApprovalRoutes } from "./routes/approvals.js";
 import { makeAcpSessionRoutes } from "./routes/acpSessions.js";
+import { makeAcpProxyRoutes } from "./routes/acpProxy.js";
 import { makeArtifactRoutes } from "./routes/artifacts.js";
 import { makeAuthRoutes } from "./routes/auth.js";
 import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
@@ -51,8 +55,11 @@ const server = Fastify({
   },
 });
 
-await server.register(cors, { origin: true });
+await server.register(cors, { origin: true, credentials: true });
+await server.register(cookie);
 await server.register(websocket);
+const frontendRoot = path.resolve(process.cwd(), "public");
+await server.register(staticPlugin, { root: frontendRoot });
 
 const auth = await registerAuth(server, { jwtSecret: env.JWT_SECRET });
 server.register(
@@ -60,6 +67,7 @@ server.register(
     prisma,
     auth,
     bootstrap: { username: env.BOOTSTRAP_ADMIN_USERNAME, password: env.BOOTSTRAP_ADMIN_PASSWORD },
+    cookie: { secure: env.COOKIE_SECURE === "1" || env.COOKIE_SECURE === "true" },
   }),
   { prefix: "/api/auth" },
 );
@@ -320,5 +328,18 @@ server.register(makeSandboxRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, 
   prefix: "/api/admin",
 });
 server.register(makeTextTemplateRoutes({ prisma, auth }), { prefix: "/api/admin" });
+server.register(makeAcpProxyRoutes({ bootstrapToken: env.ACP_PROXY_BOOTSTRAP_TOKEN }), {
+  prefix: "/api/admin/acp-proxy",
+});
+
+server.setNotFoundHandler(async (request, reply) => {
+  const url = String(request.url ?? "");
+  const pathOnly = url.split("?")[0] ?? url;
+  if (pathOnly.startsWith("/api/")) {
+    reply.code(404).send({ success: false, error: { code: "NOT_FOUND", message: "接口不存在" } });
+    return;
+  }
+  reply.sendFile("index.html");
+});
 
 await server.listen({ port: env.PORT, host: env.HOST });

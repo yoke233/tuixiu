@@ -8,8 +8,7 @@
     "test:coverage": "pnpm -r test:coverage",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "format": "prettier --write .",
-    "prepare": "husky"
+    "format": "prettier --write ."
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json,md,html,css,scss}": [
@@ -21,7 +20,6 @@
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^16.5.0",
-    "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "prettier": "^3.8.1",
     "typescript-eslint": "^8.54.0"

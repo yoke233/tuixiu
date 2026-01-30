@@ -17,7 +17,6 @@ function mockFetchJsonOnce(body: unknown) {
 
 describe("IssueDetailPage", () => {
   beforeEach(() => {
-    localStorage.setItem("authToken", "test-token");
     localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "dev", role: "dev" }));
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -27,6 +26,7 @@ describe("IssueDetailPage", () => {
   });
 
   it("renders run, events, artifacts and refreshes on WS message", async () => {
+    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "dev", role: "dev" } } });
     // task templates
     mockFetchJsonOnce({ success: true, data: { templates: [] } });
 

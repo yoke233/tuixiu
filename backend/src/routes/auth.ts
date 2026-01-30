@@ -18,9 +18,18 @@ export function makeAuthRoutes(deps: {
   prisma: PrismaDeps;
   auth: AuthHelpers;
   bootstrap?: { username?: string; password?: string };
+  cookie?: { secure?: boolean };
 }): FastifyPluginAsync {
+  const cookieName = "tuixiu_token";
+  const cookieOptions = (secure?: boolean) => ({
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: !!secure,
+  });
+
   return async (server) => {
-    server.post("/bootstrap", async (request) => {
+    server.post("/bootstrap", async (request, reply) => {
       const bodySchema = z.object({
         username: z.string().min(1).max(100).optional(),
         password: z.string().min(6).max(200).optional(),
@@ -44,10 +53,11 @@ export function makeAuthRoutes(deps: {
       });
 
       const token = deps.auth.sign({ userId: user.id, username: user.username, role: user.role });
+      reply.setCookie(cookieName, token, cookieOptions(deps.cookie?.secure));
       return { success: true, data: { token, user: toPublicUser(user) } };
     });
 
-    server.post("/login", async (request) => {
+    server.post("/login", async (request, reply) => {
       const bodySchema = z.object({
         username: z.string().min(1).max(100),
         password: z.string().min(1).max(200),
@@ -66,7 +76,13 @@ export function makeAuthRoutes(deps: {
       }
 
       const token = deps.auth.sign({ userId: user.id, username: user.username, role: user.role });
+      reply.setCookie(cookieName, token, cookieOptions(deps.cookie?.secure));
       return { success: true, data: { token, user: toPublicUser(user) } };
+    });
+
+    server.post("/logout", async (_request, reply) => {
+      reply.clearCookie(cookieName, cookieOptions(deps.cookie?.secure));
+      return { success: true, data: { ok: true } };
     });
 
     server.get("/me", { preHandler: deps.auth.authenticate }, async (request) => {
@@ -75,4 +91,3 @@ export function makeAuthRoutes(deps: {
     });
   };
 }
-

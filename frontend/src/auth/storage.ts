@@ -1,25 +1,6 @@
 import type { User } from "../types";
 
-const TOKEN_KEY = "authToken";
 const USER_KEY = "authUser";
-
-export function getStoredToken(): string | null {
-  try {
-    const v = localStorage.getItem(TOKEN_KEY);
-    return v && v.trim() ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-export function setStoredToken(token: string | null) {
-  try {
-    if (token && token.trim()) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    // ignore
-  }
-}
 
 export function getStoredUser(): User | null {
   try {
@@ -46,7 +27,6 @@ export function setStoredUser(user: User | null) {
 }
 
 export function clearStoredAuth() {
-  setStoredToken(null);
   setStoredUser(null);
 }
 

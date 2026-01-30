@@ -1,9 +1,13 @@
 import type { ApiEnvelope } from "../types";
-import { getStoredToken } from "../auth/storage";
-
 export function getApiBaseUrl(): string {
   const base = import.meta.env.VITE_API_URL as string | undefined;
-  return (base ?? "http://localhost:3000/api").replace(/\/+$/, "");
+  if (base && base.trim()) {
+    return base.replace(/\/+$/, "");
+  }
+  if (typeof window !== "undefined" && window.location) {
+    return new URL("/api", window.location.href).toString().replace(/\/+$/, "");
+  }
+  return "http://localhost:3000/api";
 }
 
 export function apiUrl(path: string): string {
@@ -13,13 +17,12 @@ export function apiUrl(path: string): string {
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${getApiBaseUrl()}${path.startsWith("/") ? "" : "/"}${path}`;
-  const token = getStoredToken();
 
   const res = await fetch(url, {
     ...init,
+    credentials: "include",
     headers: {
       "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {})
     }
   });

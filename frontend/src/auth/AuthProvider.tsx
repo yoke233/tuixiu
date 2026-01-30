@@ -1,58 +1,54 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { bootstrapAuth, loginAuth, meAuth } from "../api/auth";
+import { bootstrapAuth, loginAuth, logoutAuth, meAuth } from "../api/auth";
 import type { User, UserRole } from "../types";
 import { AuthContext, type AuthState } from "./AuthContext";
-import { clearStoredAuth, getStoredToken, getStoredUser, setStoredToken, setStoredUser } from "./storage";
+import { clearStoredAuth, getStoredUser, setStoredUser } from "./storage";
 
 export function AuthProvider(props: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => getStoredToken());
-  const [user, setUser] = useState<User | null>(() => (getStoredToken() ? getStoredUser() : null));
-  const status: AuthState["status"] = token ? (user ? "authenticated" : "loading") : "anonymous";
+  const [user, setUser] = useState<User | null>(() => getStoredUser());
+  const [status, setStatus] = useState<AuthState["status"]>("loading");
 
   useEffect(() => {
-    if (!token) return;
-    if (user) return;
-
     let cancelled = false;
     meAuth()
       .then((u) => {
         if (cancelled) return;
         setUser(u);
         setStoredUser(u);
+        setStatus("authenticated");
       })
       .catch(() => {
         if (cancelled) return;
         clearStoredAuth();
-        setToken(null);
         setUser(null);
+        setStatus("anonymous");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [token, user]);
+  }, []);
 
   const login = useCallback(async (input: { username: string; password: string }) => {
     const res = await loginAuth(input);
-    setStoredToken(res.token);
     setStoredUser(res.user);
-    setToken(res.token);
     setUser(res.user);
+    setStatus("authenticated");
   }, []);
 
   const bootstrap = useCallback(async (input: { username?: string; password?: string }) => {
     const res = await bootstrapAuth(input);
-    setStoredToken(res.token);
     setStoredUser(res.user);
-    setToken(res.token);
     setUser(res.user);
+    setStatus("authenticated");
   }, []);
 
   const logout = useCallback(() => {
+    void logoutAuth().catch(() => {});
     clearStoredAuth();
-    setToken(null);
     setUser(null);
+    setStatus("anonymous");
   }, []);
 
   const hasRole = useCallback(
@@ -65,8 +61,8 @@ export function AuthProvider(props: { children: ReactNode }) {
   );
 
   const value = useMemo<AuthState>(
-    () => ({ status, token, user, login, bootstrap, logout, hasRole }),
-    [bootstrap, hasRole, login, logout, status, token, user],
+    () => ({ status, token: null, user, login, bootstrap, logout, hasRole }),
+    [bootstrap, hasRole, login, logout, status, user],
   );
 
   return <AuthContext.Provider value={value}>{props.children}</AuthContext.Provider>;

@@ -18,3 +18,7 @@ export async function meAuth(): Promise<User> {
   return data.user;
 }
 
+export async function logoutAuth(): Promise<void> {
+  await apiPost("/auth/logout", {});
+}
+

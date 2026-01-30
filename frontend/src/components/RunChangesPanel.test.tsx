@@ -24,8 +24,8 @@ describe("RunChangesPanel", () => {
   });
 
   it("shows conflict button and sends prompt to agent", async () => {
-    localStorage.setItem("authToken", "test-token");
     localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "admin", role: "admin" }));
+    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "admin", role: "admin" } } });
 
     const project: Project = {
       id: "p1",
@@ -97,6 +97,7 @@ describe("RunChangesPanel", () => {
   });
 
   it("shows PR link even when API is disabled (no token)", async () => {
+    mockFetchJsonOnce({ success: false, error: { code: "UNAUTHORIZED", message: "未登录" } });
     const project: Project = {
       id: "p1",
       name: "demo",
@@ -150,4 +151,3 @@ describe("RunChangesPanel", () => {
     expect(screen.queryByRole("button", { name: "发起合并审批" })).toBeNull();
   });
 });
-

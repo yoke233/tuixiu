@@ -18,7 +18,6 @@ function mockFetchJsonOnce(body: unknown) {
 describe("IssueListPage", () => {
   beforeEach(() => {
     localStorage.removeItem("showArchivedIssues");
-    localStorage.setItem("authToken", "test-token");
     localStorage.setItem(
       "authUser",
       JSON.stringify({ id: "u1", username: "admin", role: "admin" }),
@@ -31,6 +30,7 @@ describe("IssueListPage", () => {
   });
 
   it("renders issues list after loading and shows admin quick actions", async () => {
+    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "admin", role: "admin" } } });
     mockFetchJsonOnce({
       success: true,
       data: {

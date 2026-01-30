@@ -52,14 +52,37 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
   const isWsl =
     process.platform === "linux" && !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
 
+  const registerProxyToken = async (): Promise<string | null> => {
+    if (!cfg.register_url?.trim() || !cfg.bootstrap_token?.trim()) return null;
+    const res = await fetch(cfg.register_url.trim(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-acp-proxy-bootstrap": cfg.bootstrap_token.trim(),
+      },
+      body: JSON.stringify({ proxyId: cfg.agent.id, name: cfg.agent.name ?? cfg.agent.id }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`register failed: ${res.status} ${text}`);
+    }
+    const json = (await res.json()) as any;
+    const token = String(json?.data?.token ?? "").trim();
+    return token || null;
+  };
+
+  const authToken = cfg.auth_token?.trim() ? cfg.auth_token.trim() : await registerProxyToken();
+  const runtimeCfg = authToken ? { ...cfg, auth_token: authToken } : cfg;
+
   const client = new OrchestratorClient({
-    url: cfg.orchestrator_url,
-    heartbeatSeconds: cfg.heartbeat_seconds,
+    url: runtimeCfg.orchestrator_url,
+    heartbeatSeconds: runtimeCfg.heartbeat_seconds,
     log,
+    headers: authToken ? { authorization: `Bearer ${authToken}` } : undefined,
   });
 
   const ctx: ProxyContext = {
-    cfg,
+    cfg: runtimeCfg,
     sandbox,
     runs,
     send: client.send.bind(client),

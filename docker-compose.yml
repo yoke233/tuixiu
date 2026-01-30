@@ -1,7 +1,40 @@
 services:
+  app:
+    image: yoke233/tuixiu-server:20260130
+    container_name: tuixiu-app
+    restart: always
+    environment:
+      DATABASE_URL: postgres://acp_user:acp_password@postgres:5432/acp_system
+      HOST: 0.0.0.0
+      PORT: 3000
+      ACP_PROXY_BOOTSTRAP_TOKEN: ${ACP_PROXY_BOOTSTRAP_TOKEN}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tuixiu-network
+  acp-proxy:
+    build:
+      context: .
+      dockerfile: acp-proxy/Dockerfile
+    container_name: acp-proxy
+    restart: always
+    volumes:
+      - "./acp-proxy/config.toml:/config/config.toml:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    environment:
+      ACP_PROXY_REGISTER_URL: http://app:3000/api/admin/acp-proxy/register
+      ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
+    depends_on:
+      - app
+    networks:
+      - tuixiu-network
   postgres:
     image: postgres:14
     container_name: acp-postgres
+    restart: always
     environment:
       POSTGRES_USER: acp_user
       POSTGRES_PASSWORD: acp_password
@@ -10,7 +43,16 @@ services:
       - "5432:5432"
     volumes:
       - acp_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acp_user -d acp_system"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    networks:
+      - tuixiu-network
 
 volumes:
   acp_postgres_data:
 
+networks:
+  tuixiu-network:

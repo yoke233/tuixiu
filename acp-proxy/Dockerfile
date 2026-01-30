@@ -32,6 +32,7 @@ COPY --from=build /app/acp-proxy /app/acp-proxy
 
 WORKDIR /app/acp-proxy
 
+ENV PNPM_REGISTRY=https://registry.npmmirror.com
 RUN npm i -g @openai/codex@0.92.0 @zed-industries/codex-acp@0.9.0 --cache /tmp/npm-cache \
   && npm cache clean --force \
   && rm -rf /tmp/npm-cache \

@@ -16,7 +16,6 @@ function mockFetchJsonOnce(body: unknown) {
 describe("AdminPage", () => {
   beforeEach(() => {
     localStorage.removeItem("showArchivedIssues");
-    localStorage.setItem("authToken", "test-token");
     localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "admin", role: "admin" }));
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -26,6 +25,7 @@ describe("AdminPage", () => {
   });
 
   it("toggles showArchivedIssues setting", async () => {
+    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "admin", role: "admin" } } });
     mockFetchJsonOnce({ success: true, data: { projects: [] } });
     mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
     mockFetchJsonOnce({ success: true, data: { approvals: [] } });
@@ -52,6 +52,7 @@ describe("AdminPage", () => {
   });
 
   it("archives issue from table", async () => {
+    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "admin", role: "admin" } } });
     mockFetchJsonOnce({
       success: true,
       data: {
@@ -226,4 +227,3 @@ describe("AdminPage", () => {
     expect(await screen.findByRole("heading", { name: "Issue 归档", level: 1 })).toBeInTheDocument();
   });
 });
-

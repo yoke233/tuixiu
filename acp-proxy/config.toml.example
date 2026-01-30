@@ -1,6 +1,8 @@
 # 复制为 config.toml 使用
-orchestrator_url = "ws://localhost:3000/ws/agent"
+orchestrator_url = "ws://app:3000/ws/agent"
 auth_token = ""
+register_url = "http://app:3000/api/admin/acp-proxy/register"
+bootstrap_token = ""
 
 heartbeat_seconds = 30
 mock_mode = false

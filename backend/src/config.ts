@@ -36,6 +36,8 @@ const envSchema = z.object({
   GITHUB_WEBHOOK_SECRET: z.string().optional(),
   CODEUP_WEBHOOK_SECRET: z.string().optional(),
   MESSAGE_WEBHOOK_SECRET: z.string().optional(),
+  COOKIE_SECURE: z.string().optional(),
+  ACP_PROXY_BOOTSTRAP_TOKEN: z.string().optional(),
 
   PM_AUTOMATION_ENABLED: z.string().optional(),
   PM_LLM_BASE_URL: z.string().optional(),

@@ -14,8 +14,15 @@ export type WsMessage = {
 
 function getWsUrl(): string {
   const base = import.meta.env.VITE_WS_URL as string | undefined;
-  const normalized = (base ?? "ws://localhost:3000").replace(/\/+$/, "");
-  return `${normalized}/ws/client`;
+  if (base && base.trim()) {
+    return `${base.replace(/\/+$/, "")}/ws/client`;
+  }
+  if (typeof window !== "undefined" && window.location) {
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsBase = `${wsProtocol}//${window.location.host}`;
+    return `${wsBase}/ws/client`;
+  }
+  return "ws://localhost:3000/ws/client";
 }
 
 export function useWsClient(onMessage: (msg: WsMessage) => void) {

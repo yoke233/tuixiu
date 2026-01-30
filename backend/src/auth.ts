@@ -16,7 +16,7 @@ export type AuthHelpers = {
 };
 
 export async function registerAuth(server: FastifyInstance, opts: { jwtSecret: string }): Promise<AuthHelpers> {
-  await server.register(jwt, { secret: opts.jwtSecret });
+  await server.register(jwt, { secret: opts.jwtSecret, cookie: { cookieName: "tuixiu_token" } });
 
   const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
     try {

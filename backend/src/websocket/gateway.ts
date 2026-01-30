@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { JwtPayload } from "@fastify/jwt";
 import type { WebSocket } from "ws";
 
 import type { PrismaDeps } from "../db.js";
@@ -1097,6 +1098,54 @@ export function createWebSocketGateway(deps: {
     });
   }
 
+  function extractToken(request: any): string {
+    const url = new URL(String(request?.url ?? ""), "http://localhost");
+    const tokenFromQuery = url.searchParams.get("token")?.trim() ?? "";
+    const authHeader = String(request?.headers?.authorization ?? "").trim();
+    const tokenFromHeader = authHeader.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7).trim()
+      : "";
+    const tokenFromCookie = String((request as any)?.cookies?.tuixiu_token ?? "").trim();
+    return tokenFromCookie || tokenFromHeader || tokenFromQuery;
+  }
+
+  async function authenticateClientSocket(socket: WebSocket, server: FastifyInstance, request: any) {
+    try {
+      const token = extractToken(request);
+      if (!token) {
+        socket.close(1008, "Unauthorized");
+        return false;
+      }
+      await (server as any).jwt.verify(token) as JwtPayload;
+      return true;
+    } catch {
+      socket.close(1008, "Unauthorized");
+      return false;
+    }
+  }
+
+  async function authenticateAgentSocket(socket: WebSocket, server: FastifyInstance, request: any) {
+    try {
+      const token = extractToken(request);
+      if (!token) {
+        socket.close(1008, "Unauthorized");
+        return false;
+      }
+      const payload = (await (server as any).jwt.verify(token)) as JwtPayload & {
+        type?: string;
+        proxyId?: string;
+      };
+      if (payload?.type !== "acp_proxy") {
+        socket.close(1008, "Unauthorized");
+        return false;
+      }
+      return true;
+    } catch {
+      socket.close(1008, "Unauthorized");
+      return false;
+    }
+  }
+
   function handleClientConnection(socket: WebSocket) {
     clientConnections.add(socket);
     socket.on("close", () => {
@@ -1105,11 +1154,15 @@ export function createWebSocketGateway(deps: {
   }
 
   function init(server: FastifyInstance) {
-    server.get("/ws/agent", { websocket: true }, (socket) => {
+    server.get("/ws/agent", { websocket: true }, async (socket, request) => {
+      const ok = await authenticateAgentSocket(socket, server, request);
+      if (!ok) return;
       handleAgentConnection(socket, (err) => server.log.error(err));
     });
 
-    server.get("/ws/client", { websocket: true }, (socket) => {
+    server.get("/ws/client", { websocket: true }, async (socket, request) => {
+      const ok = await authenticateClientSocket(socket, server, request);
+      if (!ok) return;
       handleClientConnection(socket);
     });
   }

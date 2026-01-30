@@ -75,16 +75,24 @@ async function waitForWsClose(ws: WebSocket, signal: AbortSignal | undefined): P
 export class OrchestratorClient {
   private ws: WebSocket | null = null;
   private readonly url: string;
+  private readonly headers?: Record<string, string>;
   private readonly heartbeatSeconds: number;
   private readonly retryDelayMs: number;
   private readonly log: Logger;
 
-  constructor(opts: { url: string; heartbeatSeconds: number; log: Logger; retryDelayMs?: number }) {
+  constructor(opts: {
+    url: string;
+    heartbeatSeconds: number;
+    log: Logger;
+    retryDelayMs?: number;
+    headers?: Record<string, string>;
+  }) {
     this.url = opts.url;
     this.heartbeatSeconds = opts.heartbeatSeconds;
     this.retryDelayMs =
       typeof opts.retryDelayMs === "number" ? Math.max(0, opts.retryDelayMs) : 1000;
     this.log = opts.log;
+    this.headers = opts.headers;
   }
 
   send(payload: unknown): void {
@@ -132,7 +140,7 @@ export class OrchestratorClient {
       const hb = new AbortController();
       try {
         this.log("connecting", { url: this.url });
-        ws = new WebSocket(this.url);
+        ws = new WebSocket(this.url, this.headers ? { headers: this.headers } : undefined);
         this.ws = ws;
 
         ws.on("message", (data) => {
