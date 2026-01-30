@@ -7,7 +7,7 @@ services:
       DATABASE_URL: postgres://acp_user:acp_password@postgres:5432/acp_system
       HOST: 0.0.0.0
       PORT: 3000
-      ACP_PROXY_BOOTSTRAP_TOKEN: ${ACP_PROXY_BOOTSTRAP_TOKEN}
+      ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
     ports:
       - "3000:3000"
     depends_on:
