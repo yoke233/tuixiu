@@ -73,6 +73,7 @@ export type Run = {
   startedAt: string;
   completedAt?: string | null;
   artifacts?: Artifact[];
+  metadata?: unknown;
 };
 
 export type AcpSessionActivity =

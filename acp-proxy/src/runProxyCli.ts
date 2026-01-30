@@ -19,6 +19,7 @@ import {
   handleSessionCancel,
   handleSessionSetMode,
   handleSessionSetModel,
+  handleSessionSetConfigOption,
 } from "./handlers/handleSessionControl.js";
 import { handleSessionPermission } from "./handlers/handleSessionPermission.js";
 import { handleSandboxControl } from "./handlers/handleSandboxControl.js";
@@ -318,6 +319,10 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       }
       if (msg.type === "session_set_model") {
         void handleSessionSetModel(ctx, msg);
+        return;
+      }
+      if (msg.type === "session_set_config_option") {
+        void handleSessionSetConfigOption(ctx, msg);
         return;
       }
       if (msg.type === "session_permission") {

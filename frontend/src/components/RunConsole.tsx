@@ -35,7 +35,43 @@ function initStatusClass(status: string): string {
   return "badge gray";
 }
 
-export function RunConsole(props: { events: Event[]; liveEventIds?: Set<string> }) {
+function extractPermissionReason(toolCall: unknown): string | null {
+  if (!toolCall || typeof toolCall !== "object") return null;
+
+  const tc = toolCall as any;
+  const content = tc.content;
+  if (!Array.isArray(content) || !content.length) return null;
+
+  const parts: string[] = [];
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    const inner = (item as any).content;
+    if (inner && typeof inner === "object" && typeof inner.text === "string") {
+      const t = inner.text.trim();
+      if (t) parts.push(t);
+    } else if (typeof (item as any).text === "string") {
+      const t = String((item as any).text).trim();
+      if (t) parts.push(t);
+    }
+  }
+
+  if (!parts.length) return null;
+  return parts.join("\n");
+}
+
+type PermissionDecision = { outcome: "selected" | "cancelled"; optionId?: string };
+type PermissionUiProps = {
+  isAdmin?: boolean;
+  resolvingRequestId?: string | null;
+  resolvedRequestIds?: Set<string>;
+  onDecide?: (input: { requestId: string; sessionId: string } & PermissionDecision) => void;
+};
+
+export function RunConsole(props: {
+  events: Event[];
+  liveEventIds?: Set<string>;
+  permission?: PermissionUiProps;
+}) {
   const defaultVisibleCount = 160;
   const loadMoreStep = 200;
 
@@ -221,6 +257,114 @@ export function RunConsole(props: { events: Event[]; liveEventIds?: Set<string> 
               {item.initStep.message ? (
                 <span className="consoleInitMessage">{item.initStep.message}</span>
               ) : null}
+            </div>
+          );
+        }
+        if (item.role === "system" && item.permissionRequest) {
+          const req = item.permissionRequest;
+          const toolCall = req.toolCall as any;
+          const title =
+            typeof toolCall?.title === "string" && toolCall.title.trim()
+              ? toolCall.title.trim()
+              : "工具调用权限";
+          const kind =
+            typeof toolCall?.kind === "string" && toolCall.kind.trim() ? toolCall.kind.trim() : null;
+          const reason = extractPermissionReason(toolCall);
+          const busy = props.permission?.resolvingRequestId === req.requestId;
+          const resolved = props.permission?.resolvedRequestIds?.has(req.requestId) ?? false;
+          const isAdmin = props.permission?.isAdmin ?? false;
+          const canDecide = Boolean(props.permission?.onDecide) && isAdmin && !busy && !resolved;
+          const titleHint = !props.permission?.onDecide
+            ? "当前页面未启用审批操作"
+            : !isAdmin
+              ? "需要管理员权限"
+              : resolved
+                ? "已处理"
+                : busy
+                  ? "处理中…"
+                  : "";
+
+          return (
+            <div
+              key={item.id}
+              className="consoleItem system"
+              style={{ display: "grid", gap: 6, whiteSpace: "normal" }}
+            >
+              <div className="row gap" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+                <span className="badge orange">PERMISSION</span>
+                {kind ? <span className={kindToBadgeClass(kind)}>{kind}</span> : null}
+                {resolved ? (
+                  <span className="badge green">resolved</span>
+                ) : busy ? (
+                  <span className="badge orange">processing</span>
+                ) : (
+                  <span className="badge gray">pending</span>
+                )}
+                <span className="toolSummaryTitle">{title}</span>
+              </div>
+
+              <div className="muted" style={{ fontSize: 12 }}>
+                requestId={req.requestId}
+                {req.promptId ? ` · prompt=${req.promptId}` : ""}
+              </div>
+
+              {reason ? (
+                <div className="pre" style={{ marginTop: 0 }}>
+                  {reason}
+                </div>
+              ) : null}
+
+              <div className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                {req.options.map((o) => {
+                  const label = (o.name ?? "").trim() || (o.kind ?? "").trim() || o.optionId;
+                  const secondary = String(o.kind ?? "").startsWith("reject");
+                  return (
+                    <button
+                      key={o.optionId}
+                      type="button"
+                      className={secondary ? "buttonSecondary" : undefined}
+                      disabled={!canDecide}
+                      title={titleHint}
+                      onClick={() =>
+                        props.permission?.onDecide?.({
+                          requestId: req.requestId,
+                          sessionId: req.sessionId,
+                          outcome: "selected",
+                          optionId: o.optionId,
+                        })
+                      }
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+
+                {!req.options.length ? (
+                  <button
+                    type="button"
+                    className="buttonSecondary"
+                    disabled={!canDecide}
+                    title={titleHint}
+                    onClick={() =>
+                      props.permission?.onDecide?.({
+                        requestId: req.requestId,
+                        sessionId: req.sessionId,
+                        outcome: "cancelled",
+                      })
+                    }
+                  >
+                    取消
+                  </button>
+                ) : null}
+
+                {!props.permission?.onDecide ? (
+                  <span className="muted">（当前页面未接入审批按钮）</span>
+                ) : !isAdmin ? (
+                  <span className="muted">仅管理员可审批</span>
+                ) : resolved ? (
+                  <span className="muted">已处理</span>
+                ) : null}
+              </div>
             </div>
           );
         }

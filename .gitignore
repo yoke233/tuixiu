@@ -7,7 +7,7 @@ dist/
 build/
 .turbo/
 .next/
-
+.codex/
 .tmp/
 .worktrees/
 

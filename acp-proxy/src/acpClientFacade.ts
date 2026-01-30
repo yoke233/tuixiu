@@ -2,7 +2,12 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
-import { FS_READ_SCRIPT, FS_WRITE_SCRIPT } from "./utils/fsScripts.js";
+import {
+  FS_READ_NODE_SCRIPT,
+  FS_READ_SCRIPT,
+  FS_WRITE_NODE_SCRIPT,
+  FS_WRITE_SCRIPT,
+} from "./utils/fsScripts.js";
 
 import type { SandboxInstanceProvider } from "./sandbox/types.js";
 
@@ -14,7 +19,7 @@ export type JsonRpcRequest = {
   jsonrpc: "2.0";
   id: JsonRpcId;
   method: string;
-  params?: unknown;
+  params?: any;
 };
 
 export type JsonRpcResponse = {
@@ -82,6 +87,51 @@ function resolveWorkspaceGuestPath(opts: {
   const rootWithSep = rootNorm.endsWith("/") ? rootNorm : `${rootNorm}/`;
   if (normalized === rootNorm || normalized.startsWith(rootWithSep)) return normalized;
   throw new Error("path is outside workspace root");
+}
+
+function isSubPathCaseInsensitive(root: string, target: string): boolean {
+  const r = path.win32.resolve(root).toLowerCase();
+  const t = path.win32.resolve(target).toLowerCase();
+  const rel = path.win32.relative(r, t);
+  if (!rel) return true;
+  return !rel.startsWith("..") && !path.win32.isAbsolute(rel);
+}
+
+function resolveWorkspaceHostPath(opts: { workspaceHostRoot: string; requestedPath: string }): string {
+  const root = opts.workspaceHostRoot.trim();
+  if (!root) throw new Error("workspaceHostRoot missing");
+
+  const raw = String(opts.requestedPath ?? "").trim();
+  if (!raw) throw new Error("path 为空");
+
+  const isWindowsAbs = /^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith("\\\\");
+  const normalized = raw.replaceAll("/", "\\");
+
+  const hostPath = isWindowsAbs
+    ? path.win32.resolve(path.win32.normalize(normalized))
+    : path.win32.resolve(root, path.win32.normalize(normalized.replace(/^[\\/]+/, "")));
+
+  if (!isSubPathCaseInsensitive(root, hostPath)) throw new Error("path is outside workspace root");
+  return hostPath;
+}
+
+function resolveWorkspacePathForSandbox(opts: {
+  sandbox: SandboxInstanceProvider;
+  workspaceGuestRoot: string;
+  workspaceHostRoot?: string | null;
+  requestedPath: string;
+}): { cwdInGuest: string; pathArg: string; kind: "guest" | "host" } {
+  if (opts.sandbox.provider === "host_process") {
+    const workspaceHostRoot = typeof opts.workspaceHostRoot === "string" ? opts.workspaceHostRoot : "";
+    const pathArg = resolveWorkspaceHostPath({ workspaceHostRoot, requestedPath: opts.requestedPath });
+    return { cwdInGuest: workspaceHostRoot, pathArg, kind: "host" };
+  }
+
+  const pathArg = resolveWorkspaceGuestPath({
+    workspaceGuestRoot: opts.workspaceGuestRoot,
+    requestedPath: opts.requestedPath,
+  });
+  return { cwdInGuest: opts.workspaceGuestRoot, pathArg, kind: "guest" };
 }
 
 async function readAllText(stream: ReadableStream<Uint8Array> | undefined): Promise<string> {
@@ -163,6 +213,7 @@ export class AcpClientFacade {
       runId: string;
       instanceName: string;
       workspaceGuestRoot: string;
+      workspaceHostRoot?: string | null;
       sandbox: SandboxInstanceProvider;
       log: Logger;
       terminalEnabled: boolean;
@@ -319,17 +370,35 @@ export class AcpClientFacade {
       }
 
       if (method === "fs/read_text_file") {
-        if (!isRecord(req.params) || typeof req.params.path !== "string") {
-          throw { code: -32602, message: "invalid params" };
+        let pathArg = "";
+        let cwdInGuest = this.opts.workspaceGuestRoot;
+        try {
+          const resolved = resolveWorkspacePathForSandbox({
+            sandbox: this.opts.sandbox,
+            workspaceGuestRoot: this.opts.workspaceGuestRoot,
+            workspaceHostRoot: this.opts.workspaceHostRoot,
+            requestedPath: req.params.path,
+          });
+          pathArg = resolved.pathArg;
+          cwdInGuest = resolved.cwdInGuest;
+        } catch (err) {
+          this.opts.log("fs/read_text_file rejected by resolveWorkspaceGuestPath", {
+            runId: this.opts.runId,
+            instanceName: this.opts.instanceName,
+            requestedPath: (req as any)?.params?.path,
+            workspaceGuestRoot: this.opts.workspaceGuestRoot,
+            workspaceHostRoot: this.opts.workspaceHostRoot ?? null,
+            err: String(err),
+          });
+          throw err;
         }
-        const guestPath = resolveWorkspaceGuestPath({
-          workspaceGuestRoot: this.opts.workspaceGuestRoot,
-          requestedPath: req.params.path,
-        });
 
         const res = await this.execToText({
-          command: ["sh", "-c", FS_READ_SCRIPT, "sh", guestPath],
-          cwdInGuest: this.opts.workspaceGuestRoot,
+          command:
+            this.opts.sandbox.provider === "host_process"
+              ? ["node", "-e", FS_READ_NODE_SCRIPT, pathArg]
+              : ["sh", "-c", FS_READ_SCRIPT, "sh", pathArg],
+          cwdInGuest,
         });
         if (res.code !== 0) {
           const errText = `${res.stdout}\n${res.stderr}`.toLowerCase();
@@ -355,25 +424,37 @@ export class AcpClientFacade {
       }
 
       if (method === "fs/write_text_file") {
-        if (!isRecord(req.params) || typeof req.params.path !== "string") {
-          throw { code: -32602, message: "invalid params" };
+        let pathArg = "";
+        let cwdInGuest = this.opts.workspaceGuestRoot;
+        try {
+          const resolved = resolveWorkspacePathForSandbox({
+            sandbox: this.opts.sandbox,
+            workspaceGuestRoot: this.opts.workspaceGuestRoot,
+            workspaceHostRoot: this.opts.workspaceHostRoot,
+            requestedPath: req.params.path,
+          });
+          pathArg = resolved.pathArg;
+          cwdInGuest = resolved.cwdInGuest;
+        } catch (err) {
+          this.opts.log("fs/write_text_file rejected by resolveWorkspaceGuestPath", {
+            runId: this.opts.runId,
+            instanceName: this.opts.instanceName,
+            requestedPath: (req as any)?.params?.path,
+            workspaceGuestRoot: this.opts.workspaceGuestRoot,
+            workspaceHostRoot: this.opts.workspaceHostRoot ?? null,
+            err: String(err),
+          });
+          throw err;
         }
-        const guestPath = resolveWorkspaceGuestPath({
-          workspaceGuestRoot: this.opts.workspaceGuestRoot,
-          requestedPath: req.params.path,
-        });
         const content =
           typeof (req.params as any).content === "string" ? (req.params as any).content : "";
 
         const res = await this.execToText({
-          command: [
-            "sh",
-            "-c",
-            FS_WRITE_SCRIPT,
-            "sh",
-            guestPath,
-          ],
-          cwdInGuest: this.opts.workspaceGuestRoot,
+          command:
+            this.opts.sandbox.provider === "host_process"
+              ? ["node", "-e", FS_WRITE_NODE_SCRIPT, pathArg]
+              : ["sh", "-c", FS_WRITE_SCRIPT, "sh", pathArg],
+          cwdInGuest,
           stdinText: content,
         });
         if (res.code !== 0) {
@@ -383,17 +464,18 @@ export class AcpClientFacade {
       }
 
       if (method === "terminal/create") {
-        if (!isRecord(req.params)) throw { code: -32602, message: "invalid params" };
         const params: any = req.params;
         const terminalId = randomUUID();
         const sessionId = typeof params.sessionId === "string" ? params.sessionId : "";
 
         const cwdRaw =
           typeof params.cwd === "string" && params.cwd.trim() ? params.cwd.trim() : ".";
-        const cwd = resolveWorkspaceGuestPath({
+        const cwd = resolveWorkspacePathForSandbox({
+          sandbox: this.opts.sandbox,
           workspaceGuestRoot: this.opts.workspaceGuestRoot,
+          workspaceHostRoot: this.opts.workspaceHostRoot,
           requestedPath: cwdRaw,
-        });
+        }).pathArg;
 
         const env: Record<string, string> = {};
         for (const item of params.env ?? []) {
@@ -494,9 +576,7 @@ export class AcpClientFacade {
       }
 
       if (method === "terminal/output") {
-        if (!isRecord(req.params) || typeof req.params.terminalId !== "string") {
-          throw { code: -32602, message: "invalid params" };
-        }
+
         const term = this.terminals.get(req.params.terminalId);
         if (!term) throw { code: -32004, message: "resource not found" };
 
@@ -512,10 +592,9 @@ export class AcpClientFacade {
         });
       }
 
+
       if (method === "terminal/wait_for_exit") {
-        if (!isRecord(req.params) || typeof req.params.terminalId !== "string") {
-          throw { code: -32602, message: "invalid params" };
-        }
+ 
         const term = this.terminals.get(req.params.terminalId);
         if (!term) throw { code: -32004, message: "resource not found" };
 
@@ -527,9 +606,7 @@ export class AcpClientFacade {
       }
 
       if (method === "terminal/kill") {
-        if (!isRecord(req.params) || typeof req.params.terminalId !== "string") {
-          throw { code: -32602, message: "invalid params" };
-        }
+
         const term = this.terminals.get(req.params.terminalId);
         if (!term) throw { code: -32004, message: "resource not found" };
         await term.kill();
@@ -537,9 +614,7 @@ export class AcpClientFacade {
       }
 
       if (method === "terminal/release") {
-        if (!isRecord(req.params) || typeof req.params.terminalId !== "string") {
-          throw { code: -32602, message: "invalid params" };
-        }
+ 
         const term = this.terminals.get(req.params.terminalId);
         if (!term) throw { code: -32004, message: "resource not found" };
         await term.release();

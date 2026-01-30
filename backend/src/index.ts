@@ -4,7 +4,9 @@ import cookie from "@fastify/cookie";
 import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
+import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { loadEnv } from "./config.js";
 import { prisma } from "./db.js";
@@ -58,8 +60,29 @@ const server = Fastify({
 await server.register(cors, { origin: true, credentials: true });
 await server.register(cookie);
 await server.register(websocket);
-const frontendRoot = path.resolve(process.cwd(), "public");
-await server.register(staticPlugin, { root: frontendRoot });
+
+const thisDir = path.dirname(fileURLToPath(import.meta.url));
+const frontendRoots = [
+  // legacy behavior: works in Docker images that set cwd to a folder containing `public/`
+  path.resolve(process.cwd(), "public"),
+  // robust: works regardless of cwd (dev/build within repo)
+  path.resolve(thisDir, "..", "public"),
+  // local dev convenience: serve built Vite output if present
+  path.resolve(thisDir, "..", "..", "frontend", "dist"),
+];
+function hasFrontendBundle(root: string): boolean {
+  if (!fs.existsSync(path.join(root, "index.html"))) return false;
+  // Vite build emits absolute `/assets/...` by default, so ensure assets exist to avoid HTML fallback for JS.
+  return fs.existsSync(path.join(root, "assets"));
+}
+
+const frontendRoot =
+  frontendRoots.find((root) => hasFrontendBundle(root)) ??
+  frontendRoots.find((root) => fs.existsSync(path.join(root, "index.html"))) ??
+  null;
+if (frontendRoot) {
+  await server.register(staticPlugin, { root: frontendRoot });
+}
 
 const auth = await registerAuth(server, { jwtSecret: env.JWT_SECRET });
 server.register(
@@ -79,6 +102,7 @@ server.addHook("preHandler", async (request, reply) => {
   if (pathOnly.startsWith("/api/auth/")) return;
   if (pathOnly.startsWith("/api/webhooks/")) return;
   if (pathOnly.startsWith("/api/integrations/")) return;
+  if (pathOnly.startsWith("/api/admin/acp-proxy/register")) return;
 
   await auth.authenticate(request, reply);
   if ((reply as any).sent) return;
@@ -143,6 +167,7 @@ async function sandboxGitPush(opts: { run: any; branch: string; project: any }) 
 
 const wsGateway = createWebSocketGateway({
   prisma,
+  attachments,
   sandboxGitPush,
   log: (msg, extra) => server.log.debug(extra ? { ...extra, msg } : { msg }),
 });
@@ -338,7 +363,30 @@ server.setNotFoundHandler(async (request, reply) => {
     reply.code(404).send({ success: false, error: { code: "NOT_FOUND", message: "接口不存在" } });
     return;
   }
-  reply.sendFile("index.html");
+
+  // Do not serve index.html for missing static assets, otherwise browsers will refuse to execute
+  // module scripts due to MIME mismatch and the app becomes a blank page.
+  const looksLikeStaticAsset =
+    pathOnly.startsWith("/assets/") ||
+    pathOnly === "/favicon.ico" ||
+    pathOnly === "/vite.svg" ||
+    /\.[a-z0-9]+$/i.test(pathOnly);
+  if (looksLikeStaticAsset) {
+    reply.code(404).type("text/plain; charset=utf-8").send("静态资源不存在");
+    return;
+  }
+
+  if (frontendRoot && "sendFile" in reply) {
+    reply.sendFile("index.html");
+    return;
+  }
+  reply
+    .code(404)
+    .type("text/plain; charset=utf-8")
+    .send(
+      "前端静态文件缺失：无法直连 SPA 路由（例如 /sessions/<id>）。\n" +
+        "请运行 `pnpm -C frontend dev` 并访问 Vite（默认 5173），或构建并确保存在 frontend/dist/index.html（或 backend/public/index.html）。",
+    );
 });
 
 await server.listen({ port: env.PORT, host: env.HOST });

@@ -18,6 +18,7 @@ import { isRecord, validateInstanceName, validateRunId } from "../utils/validate
 import { AgentBridge } from "../acp/agentBridge.js";
 
 import type { RunRuntime } from "./runTypes.js";
+import { mapCwdForHostProcess } from "./hostCwd.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -103,6 +104,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
       runId,
       instanceName,
       workspaceGuestRoot: WORKSPACE_GUEST_PATH,
+      workspaceHostRoot: run.hostWorkspacePath,
       sandbox: ctx.sandbox as any,
       log: ctx.log,
       terminalEnabled: resolveTerminalEnabled(ctx),
@@ -438,6 +440,7 @@ export async function startAgent(
       runId: run.runId,
       instanceName: run.instanceName,
       workspaceGuestRoot: WORKSPACE_GUEST_PATH,
+      workspaceHostRoot: run.hostWorkspacePath,
       sandbox: ctx.sandbox as any,
       log: ctx.log,
       terminalEnabled: resolveTerminalEnabled(ctx),
@@ -505,6 +508,62 @@ export async function startAgent(
         } catch (err) {
           ctx.log("failed to send prompt_update", { runId: run.runId, err: String(err) });
         }
+
+        // Persist session lifecycle/state to backend even before the first prompt finishes.
+        // Backend uses `agent_update` with `content.type` to update Run.acpSessionId and session metadata.
+        if (sessionId && isRecord(update)) {
+          const content = (update as any).content;
+          const contentType = isRecord(content) ? String((content as any).type ?? "") : "";
+          if (contentType === "session_created") {
+            sendUpdate(ctx, run.runId, { type: "session_created", session_id: sessionId });
+          }
+          if (contentType === "session_state") {
+            sendUpdate(ctx, run.runId, { ...(content as any), session_id: sessionId });
+          }
+        }
+
+        // 自动把 codex-acp 的 Approval Preset 从 read-only 切到 auto（如果 Agent 提供了该 configOption）。
+        // 注意：这里只在 host_process 下做（也就是本机运行 Agent 时），并且对每个 sessionId 只执行一次。
+        if (
+          ctx.sandbox.provider === "host_process" &&
+          sessionId &&
+          isRecord(update) &&
+          (update as any).sessionUpdate === "config_option_update"
+        ) {
+          const configOptions = Array.isArray((update as any).configOptions)
+            ? ((update as any).configOptions as any[])
+            : null;
+          const modeOpt = configOptions?.find(
+            (x) => x && typeof x === "object" && (x as any).id === "mode",
+          ) as any;
+          const currentValue = typeof modeOpt?.currentValue === "string" ? modeOpt.currentValue : "";
+          const options = Array.isArray(modeOpt?.options) ? (modeOpt.options as any[]) : null;
+          const hasAuto = !!options?.some(
+            (o) => o && typeof o === "object" && (o as any).value === "auto",
+          );
+
+          if (hasAuto && currentValue && currentValue !== "auto") {
+            if (!run.autoConfigOptionAppliedSessionIds) {
+              run.autoConfigOptionAppliedSessionIds = new Set();
+            }
+            if (!run.autoConfigOptionAppliedSessionIds.has(sessionId)) {
+              run.autoConfigOptionAppliedSessionIds.add(sessionId);
+              void withAuthRetry(run, () =>
+                run.agent!.sendRpc<any>("session/set_config_option", {
+                  sessionId,
+                  configId: "mode",
+                  value: "auto",
+                }),
+              ).catch((err) => {
+                ctx.log("auto set_config_option(mode=auto) failed", {
+                  runId: run.runId,
+                  sessionId,
+                  err: String(err),
+                });
+              });
+            }
+          }
+        }
       } else {
         ctx.log("jsonrpc notification (unhandled)", { runId: run.runId, method: msg.method });
       }
@@ -533,6 +592,14 @@ export async function startAgent(
         code: info.code,
         signal: info.signal,
       });
+      sendUpdate(ctx, run.runId, {
+        type: "transport_disconnected",
+        instance_name: run.instanceName,
+        code: info.code ?? null,
+        signal: info.signal ?? null,
+        at: nowIso(),
+        reason: "agent_exit",
+      });
       void closeAgent(ctx, run, "agent_exit").finally(() => {
         try {
           ctx.send({
@@ -550,6 +617,11 @@ export async function startAgent(
   });
 
   run.agent = bridge;
+  sendUpdate(ctx, run.runId, {
+    type: "transport_connected",
+    instance_name: run.instanceName,
+    at: nowIso(),
+  });
 
   const info = await ctx.sandbox.inspectInstance(run.instanceName);
   sendSandboxInstanceStatus(ctx, {
@@ -727,6 +799,11 @@ export async function ensureSessionForPrompt(
   const initResult = await ensureInitialized(ctx, run);
   const promptCapabilities = getPromptCapabilities(initResult);
 
+  const cwd =
+    ctx.sandbox.provider === "host_process"
+      ? mapCwdForHostProcess(opts.cwd, run.hostWorkspacePath ?? "")
+      : opts.cwd;
+
   const sessionId = typeof opts.sessionId === "string" ? opts.sessionId.trim() : "";
   let prompt = opts.prompt;
 
@@ -734,15 +811,42 @@ export async function ensureSessionForPrompt(
 
   if (!sessionId) {
     const created = await withAuthRetry(run, () =>
-      run.agent!.sendRpc<any>("session/new", { cwd: opts.cwd, mcpServers: [] }),
+      run.agent!.sendRpc<any>("session/new", { cwd, mcpServers: [] }),
     );
     const createdSessionId = String((created as any)?.sessionId ?? "").trim();
     if (!createdSessionId) throw new Error("session/new 未返回 sessionId");
     run.seenSessionIds.add(createdSessionId);
+
+    // codex-acp (以及一些其他 Agent) 会用 configOptions 来表达“Approval Preset”等配置；
+    // 这里不要强行 set_mode("ask")，否则当 Agent 并不支持该 modeId 时会直接报 Invalid params。
     if (ctx.sandbox.provider === "host_process") {
-      await withAuthRetry(run, () =>
-        run.agent!.sendRpc<any>("session/set_mode", { sessionId: createdSessionId, modeId: "ask" }),
+      const configOptions = Array.isArray((created as any)?.configOptions)
+        ? ((created as any).configOptions as any[])
+        : null;
+      const modeOpt = configOptions?.find(
+        (x) => x && typeof x === "object" && (x as any).id === "mode",
+      ) as any;
+      const currentValue = typeof modeOpt?.currentValue === "string" ? modeOpt.currentValue : "";
+      const options = Array.isArray(modeOpt?.options) ? (modeOpt.options as any[]) : null;
+      const hasAuto = !!options?.some(
+        (o) => o && typeof o === "object" && (o as any).value === "auto",
       );
+
+      if (hasAuto && currentValue && currentValue !== "auto") {
+        await withAuthRetry(run, () =>
+          run.agent!.sendRpc<any>("session/set_config_option", {
+            sessionId: createdSessionId,
+            configId: "mode",
+            value: "auto",
+          }),
+        ).catch((err) => {
+          ctx.log("session/set_config_option(mode=auto) failed", {
+            runId: run.runId,
+            sessionId: createdSessionId,
+            err: String(err),
+          });
+        });
+      }
     }
     prompt = composePromptWithContext(opts.context, prompt, promptCapabilities);
     return { sessionId: createdSessionId, prompt, created: true };
@@ -755,7 +859,7 @@ export async function ensureSessionForPrompt(
       await withAuthRetry(run, () =>
         run.agent!.sendRpc<any>("session/load", {
           sessionId,
-          cwd: opts.cwd,
+          cwd,
           mcpServers: [],
         }),
       ).catch((err) => {

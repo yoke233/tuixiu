@@ -153,6 +153,9 @@ export class AgentBridge {
     const promise = new Promise<unknown>((resolve, reject) => {
       this.pendingRpc.set(id, { resolve, reject });
     });
+    // 避免 agent 异常退出时 pendingRpc 的 reject 触发 unhandledRejection 警告。
+    // 这里挂一个 no-op catch 不会吞掉后续 await 的异常（Promise 仍然是 rejected）。
+    promise.catch(() => {});
 
     await this.writeToAgent({ jsonrpc: "2.0", id, method, params } as any);
 

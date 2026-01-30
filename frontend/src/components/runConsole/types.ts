@@ -13,6 +13,12 @@ export type ToolCallInfo = {
   stderr?: string;
 };
 
+export type PermissionOption = {
+  optionId: string;
+  name?: string;
+  kind?: string;
+};
+
 export type ConsoleItem = {
   id: string;
   role: ConsoleRole;
@@ -22,6 +28,13 @@ export type ConsoleItem = {
   live?: boolean;
   toolCallId?: string;
   toolCallInfo?: ToolCallInfo;
+  permissionRequest?: {
+    requestId: string;
+    sessionId: string;
+    promptId: string | null;
+    toolCall?: unknown;
+    options: PermissionOption[];
+  };
   detailsTitle?: string;
   chunkType?: "agent_message" | "agent_thought" | "user_message";
   initStep?: {

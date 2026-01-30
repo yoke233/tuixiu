@@ -1,7 +1,7 @@
 services:
   app:
-    image: yoke233/tuixiu-server:20260130
-    container_name: tuixiu-app
+    image: yoke233/tuixiu-service:latest
+    container_name: tuixiu-service
     restart: always
     environment:
       DATABASE_URL: postgres://acp_user:acp_password@postgres:5432/acp_system
@@ -16,14 +16,15 @@ services:
     networks:
       - tuixiu-network
   acp-proxy:
+    image: yoke233/tuixiu-acp-proxy:latest
     build:
       context: .
       dockerfile: acp-proxy/Dockerfile
-    container_name: acp-proxy
+    container_name: tuixiu-acp-proxy
     restart: always
     volumes:
-      - "./acp-proxy/config.toml:/config/config.toml:ro"
-      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./acp-proxy/config-host.toml:/config/config.toml:ro"
+      - "./acp-proxy/.codex:/root/.codex"
     environment:
       ACP_PROXY_REGISTER_URL: http://app:3000/api/admin/acp-proxy/register
       ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
@@ -33,7 +34,7 @@ services:
       - tuixiu-network
   postgres:
     image: postgres:14
-    container_name: acp-postgres
+    container_name: tuixiu-acp-postgres
     restart: always
     environment:
       POSTGRES_USER: acp_user

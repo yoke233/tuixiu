@@ -13,13 +13,18 @@ export function SessionConsoleCard(props: { model: SessionController }) {
     liveEventIds,
     issue,
     isAdmin,
+    onResolvePermission,
     onSetMode,
     onDropFiles,
     onPause,
     onSend,
     pausing,
     pendingImages,
+    permissionRequests,
     removePendingImage,
+    resolvedPermissionIds,
+    resolvingPermissionId,
+    run,
     runId,
     sending,
     sessionState,
@@ -77,26 +82,69 @@ export function SessionConsoleCard(props: { model: SessionController }) {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [modeMenuOpen]);
 
-  const availableModes = useMemo(
-    () => [
-      {
-        id: "ask",
-        name: "Ask",
-        description: "Request permission before making any changes",
-      },
-      {
-        id: "architect",
-        name: "Architect",
-        description: "Design and plan software systems without implementation",
-      },
-      {
-        id: "code",
-        name: "Code",
-        description: "Write and modify code with full tool access",
-      },
-    ],
-    [],
-  );
+  type ConfigOption = {
+    id: string;
+    name?: string;
+    type?: string;
+    category?: string;
+    description?: string;
+    currentValue?: unknown;
+    options?: Array<{
+      name?: string;
+      value?: unknown;
+      description?: string;
+    }>;
+  };
+
+  const availableConfigOptions = useMemo((): ConfigOption[] => {
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const payload = (events[i] as any)?.payload;
+      const update = payload?.update;
+      if (payload?.type !== "session_update") continue;
+      if (update?.sessionUpdate !== "config_option_update") continue;
+      return Array.isArray(update?.configOptions) ? (update.configOptions as ConfigOption[]) : [];
+    }
+
+    const meta = (run as any)?.metadata;
+    const state =
+      meta && typeof meta === "object" && !Array.isArray(meta) ? (meta as any).acpSessionState : null;
+    const fromMeta = state && typeof state === "object" ? (state as any).configOptions : null;
+    return Array.isArray(fromMeta) ? (fromMeta as ConfigOption[]) : [];
+  }, [events, run]);
+
+  type ModeOption = {
+    id: string;          // 你 UI 需要的 id
+    name: string;        // 展示名
+    description?: string;
+    value: string;       // 原始 value（read-only/auto/full-access）
+  };
+
+  const availableModes = useMemo((): ModeOption[] => {
+    // 先拿到最新的 configOptions（用我上一条给你的 availableConfigOptions）
+    const modeOpt = availableConfigOptions.find((x) => x?.id === "mode");
+    const options = modeOpt?.options;
+
+    if (!Array.isArray(options)) return [];
+
+    return options
+      .map((o) => {
+        const name = typeof o?.name === "string" ? o.name : "";
+        const value = typeof o?.value === "string" ? o.value : "";
+        const description = typeof o?.description === "string" ? o.description : "";
+        if (!value || !name) return null;
+
+        return {
+          id: value,          // 直接用 value 当 id（最稳）
+          value,
+          name,
+          description: description || undefined,
+        } satisfies ModeOption;
+      })
+      .filter(Boolean) as ModeOption[];
+  }, [availableConfigOptions]);
+
+
+
   const availableCommands = useMemo(() => {
     for (let i = events.length - 1; i >= 0; i -= 1) {
       const payload = (events[i] as any)?.payload;
@@ -217,7 +265,27 @@ export function SessionConsoleCard(props: { model: SessionController }) {
           if (e.dataTransfer.files?.length) void onDropFiles(e.dataTransfer.files);
         }}
       >
-        <RunConsole events={events} liveEventIds={liveEventIds} />
+        <RunConsole
+          events={events}
+          liveEventIds={liveEventIds}
+          permission={{
+            isAdmin,
+            resolvingRequestId: resolvingPermissionId,
+            resolvedRequestIds: resolvedPermissionIds,
+            onDecide: (input) => {
+              const req =
+                permissionRequests.find((x) => x.requestId === input.requestId) ??
+                ({
+                  requestId: input.requestId,
+                  sessionId: input.sessionId,
+                  promptId: null,
+                  toolCall: undefined,
+                  options: [],
+                } as any);
+              void onResolvePermission(req, { outcome: input.outcome, optionId: input.optionId });
+            },
+          }}
+        />
       </div>
 
       {pendingImages.length ? (

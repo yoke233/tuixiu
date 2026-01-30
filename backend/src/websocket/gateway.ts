@@ -1,10 +1,17 @@
 import type { FastifyInstance } from "fastify";
-import type { JwtPayload } from "@fastify/jwt";
 import type { WebSocket } from "ws";
 
 import type { PrismaDeps } from "../db.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
-import { buildContextFromRun } from "../modules/runs/runContext.js";
+import type { AttachmentStore } from "../modules/attachments/attachmentStore.js";
+import {
+  clientAcpPromptSchema,
+  compactAcpPromptForEvent,
+  type AcpContentBlock,
+  type ClientAcpContentBlock,
+} from "../modules/acp/acpContent.js";
+import { buildChatContextFromEvents, buildContextFromRun } from "../modules/runs/runContext.js";
+import { buildRecoveryInit } from "../modules/runs/runRecovery.js";
 import { triggerPmAutoAdvance } from "../modules/pm/pmAutoAdvance.js";
 import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
 import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
@@ -20,6 +27,8 @@ type AgentRegisterMessage = {
     max_concurrent?: number;
   };
 };
+
+type JwtPayload = Record<string, unknown> | string;
 
 type AgentHeartbeatMessage = {
   type: "heartbeat";
@@ -133,6 +142,15 @@ type AnyAgentMessage =
   | AcpExitMessage
   | SandboxInventoryMessage;
 
+type ClientPromptRunMessage = {
+  type: "prompt_run";
+  request_id?: string;
+  run_id?: string;
+  prompt?: unknown;
+};
+
+type ClientCommand = ClientPromptRunMessage;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -183,6 +201,7 @@ function describePromptUpdate(update: unknown): {
 
 export function createWebSocketGateway(deps: {
   prisma: PrismaDeps;
+  attachments?: AttachmentStore | null;
   sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 }) {
@@ -258,6 +277,238 @@ export function createWebSocketGateway(deps: {
     for (const ws of clientConnections) {
       ws.send(data);
     }
+  }
+
+  function sendToClient(socket: WebSocket, payload: unknown) {
+    try {
+      socket.send(JSON.stringify(payload));
+    } catch {
+      // ignore
+    }
+  }
+
+  function parseClientCommand(value: unknown): ClientCommand | null {
+    if (!isRecord(value)) return null;
+    const type = typeof value.type === "string" ? value.type.trim() : "";
+    if (type !== "prompt_run") return null;
+    return value as ClientPromptRunMessage;
+  }
+
+  async function materializeClientPrompt(opts: {
+    runId: string;
+    prompt: readonly ClientAcpContentBlock[];
+  }): Promise<AcpContentBlock[] | { error: { code: string; message: string } }> {
+    const out: AcpContentBlock[] = [];
+    for (const block of opts.prompt) {
+      if (block.type !== "image") {
+        out.push(block as any);
+        continue;
+      }
+
+      const data = typeof (block as any).data === "string" ? String((block as any).data).trim() : "";
+      if (data) {
+        out.push({ ...(block as any), data } as any);
+        continue;
+      }
+
+      const uri = typeof (block as any).uri === "string" ? String((block as any).uri).trim() : "";
+      if (!uri) {
+        return { error: { code: "BAD_PROMPT", message: "image 缺少 data/uri" } };
+      }
+      if (!deps.attachments) {
+        return {
+          error: { code: "ATTACHMENTS_DISABLED", message: "附件存储未配置，无法从 uri 物化图片" },
+        };
+      }
+
+      let attachmentId = "";
+      try {
+        const u = new URL(uri, "http://localhost");
+        const parts = u.pathname.split("/").filter(Boolean);
+        const runsIdx = parts.indexOf("runs");
+        if (runsIdx >= 0 && parts.length >= runsIdx + 4 && parts[runsIdx + 2] === "attachments") {
+          const runIdFromUri = parts[runsIdx + 1] ?? "";
+          const attachmentFromUri = parts[runsIdx + 3] ?? "";
+          if (runIdFromUri === opts.runId) attachmentId = attachmentFromUri;
+        }
+      } catch {
+        // ignore
+      }
+
+      if (!attachmentId) {
+        return {
+          error: {
+            code: "BAD_PROMPT",
+            message: "image.uri 非法（仅支持 /runs/:id/attachments/:attachmentId）",
+          },
+        };
+      }
+
+      const bytes = await deps.attachments.getBytes({ runId: opts.runId, id: attachmentId });
+      if (!bytes) {
+        return { error: { code: "ATTACHMENT_NOT_FOUND", message: "图片附件不存在或不可读" } };
+      }
+
+      out.push({ ...(block as any), data: bytes.toString("base64"), uri } as any);
+    }
+    return out;
+  }
+
+  async function handleClientCommand(socket: WebSocket, cmd: ClientCommand) {
+    if (cmd.type !== "prompt_run") return;
+
+    const requestId =
+      typeof cmd.request_id === "string" && cmd.request_id.trim() ? cmd.request_id.trim() : uuidv7();
+    const runId = typeof cmd.run_id === "string" ? cmd.run_id.trim() : "";
+    if (!runId) {
+      sendToClient(socket, {
+        type: "client_command_result",
+        request_id: requestId,
+        ok: false,
+        error: { code: "BAD_REQUEST", message: "run_id 缺失" },
+      });
+      return;
+    }
+
+    const tunnel = acpTunnel;
+    if (!tunnel) {
+      sendToClient(socket, {
+        type: "client_command_result",
+        request_id: requestId,
+        ok: false,
+        error: { code: "NO_AGENT_GATEWAY", message: "ACP 隧道未配置" },
+      });
+      return;
+    }
+
+    const parsed = clientAcpPromptSchema.safeParse(cmd.prompt);
+    if (!parsed.success) {
+      sendToClient(socket, {
+        type: "client_command_result",
+        request_id: requestId,
+        ok: false,
+        error: { code: "BAD_PROMPT", message: "prompt 格式不合法" },
+      });
+      return;
+    }
+
+    await enqueueRunTask(runId, async () => {
+      try {
+        const materialized = await materializeClientPrompt({ runId, prompt: parsed.data });
+        if ((materialized as any)?.error) {
+          sendToClient(socket, {
+            type: "client_command_result",
+            request_id: requestId,
+            ok: false,
+            error: (materialized as any).error,
+          });
+          return;
+        }
+        const prompt = materialized as AcpContentBlock[];
+
+        const run = await deps.prisma.run.findUnique({
+          where: { id: runId },
+          include: {
+            agent: true,
+            issue: { include: { project: true } },
+            artifacts: { orderBy: { createdAt: "desc" } },
+          },
+        });
+        if (!run) {
+          sendToClient(socket, {
+            type: "client_command_result",
+            request_id: requestId,
+            ok: false,
+            error: { code: "NOT_FOUND", message: "Run 不存在" },
+          });
+          return;
+        }
+        if (!run.agent) {
+          sendToClient(socket, {
+            type: "client_command_result",
+            request_id: requestId,
+            ok: false,
+            error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法发送 prompt" },
+          });
+          return;
+        }
+
+        const sandboxStatus = typeof (run as any).sandboxStatus === "string" ? (run as any).sandboxStatus : "";
+        let context: string | undefined;
+        let init:
+          | { script: string; timeout_seconds?: number; env?: Record<string, string> }
+          | undefined;
+
+        if (sandboxStatus === "missing") {
+          const recentEvents = await deps.prisma.event.findMany({
+            where: { runId },
+            orderBy: { timestamp: "desc" },
+            take: 200,
+          });
+          const chatContext = buildChatContextFromEvents(recentEvents);
+          context = chatContext || undefined;
+          init = (await buildRecoveryInit({
+            prisma: deps.prisma,
+            run,
+            issue: (run as any).issue,
+            project: (run as any).issue?.project,
+          })) as any;
+        }
+
+        const cwd = String((run as any).workspacePath ?? "");
+        if (!cwd) {
+          sendToClient(socket, {
+            type: "client_command_result",
+            request_id: requestId,
+            ok: false,
+            error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法发送 prompt" },
+          });
+          return;
+        }
+
+        const createdAt = new Date();
+        try {
+          const createdEvent = await deps.prisma.event.create({
+            data: {
+              id: uuidv7(),
+              runId,
+              source: "user",
+              type: "user.message",
+              payload: { prompt: compactAcpPromptForEvent(prompt) } as any,
+              timestamp: createdAt,
+            },
+          });
+          if (createdEvent) {
+            broadcastToClients({ type: "event_added", run_id: runId, event: createdEvent });
+          }
+        } catch {
+          // ignore persist error (保持与 HTTP 行为一致：尽量继续发送 prompt）
+        }
+
+        await tunnel.promptRun({
+          proxyId: String((run as any).agent.proxyId),
+          runId,
+          cwd,
+          sessionId: (run as any).acpSessionId ?? null,
+          context,
+          prompt,
+          init,
+        });
+
+        sendToClient(socket, {
+          type: "client_command_result",
+          request_id: requestId,
+          ok: true,
+        });
+      } catch (error) {
+        sendToClient(socket, {
+          type: "client_command_result",
+          request_id: requestId,
+          ok: false,
+          error: { code: "AGENT_SEND_FAILED", message: "发送消息到 Agent 失败", details: String(error) },
+        });
+      }
+    });
   }
 
   async function sendToAgent(proxyId: string, payload: unknown) {
@@ -851,6 +1102,40 @@ export function createWebSocketGateway(deps: {
               }
             }
 
+            if (contentType === "transport_connected" || contentType === "transport_disconnected") {
+              const raw = message.content as any;
+              const instanceName =
+                typeof raw.instance_name === "string" && raw.instance_name.trim()
+                  ? raw.instance_name.trim()
+                  : deriveSandboxInstanceName(message.run_id);
+              const at = parseTimestamp(raw.at) ?? new Date();
+              const status = contentType === "transport_connected" ? "connected" : "disconnected";
+              const reason = typeof raw.reason === "string" ? raw.reason : null;
+              const code = typeof raw.code === "number" && Number.isFinite(raw.code) ? raw.code : null;
+              const signal =
+                typeof raw.signal === "string" && raw.signal.trim() ? raw.signal.trim() : null;
+
+              const run = await deps.prisma.run
+                .findUnique({ where: { id: message.run_id }, select: { metadata: true } })
+                .catch(() => null);
+              const prev =
+                run && isRecord(run.metadata) ? (run.metadata as Record<string, unknown>) : {};
+              const next = {
+                ...prev,
+                acpTransport: {
+                  status,
+                  instanceName,
+                  at: at.toISOString(),
+                  ...(reason ? { reason } : {}),
+                  ...(code !== null ? { code } : {}),
+                  ...(signal ? { signal } : {}),
+                },
+              };
+              await deps.prisma.run
+                .update({ where: { id: message.run_id }, data: { metadata: next as any } })
+                .catch(() => {});
+            }
+
             if (contentType === "session_state") {
               const raw = message.content as any;
               const sessionId = typeof raw.session_id === "string" ? raw.session_id : "";
@@ -1116,7 +1401,7 @@ export function createWebSocketGateway(deps: {
         socket.close(1008, "Unauthorized");
         return false;
       }
-      await (server as any).jwt.verify(token) as JwtPayload;
+      await (server as any).jwt.verify(token);
       return true;
     } catch {
       socket.close(1008, "Unauthorized");
@@ -1131,11 +1416,13 @@ export function createWebSocketGateway(deps: {
         socket.close(1008, "Unauthorized");
         return false;
       }
-      const payload = (await (server as any).jwt.verify(token)) as JwtPayload & {
-        type?: string;
-        proxyId?: string;
-      };
-      if (payload?.type !== "acp_proxy") {
+      const payload = (await (server as any).jwt.verify(token)) as JwtPayload;
+      if (!payload || typeof payload !== "object") {
+        socket.close(1008, "Unauthorized");
+        return false;
+      }
+      const payloadRecord = payload as Record<string, unknown>;
+      if (payloadRecord.type !== "acp_proxy") {
         socket.close(1008, "Unauthorized");
         return false;
       }
@@ -1150,6 +1437,17 @@ export function createWebSocketGateway(deps: {
     clientConnections.add(socket);
     socket.on("close", () => {
       clientConnections.delete(socket);
+    });
+    socket.on("message", (data) => {
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(typeof data === "string" ? data : String(data));
+      } catch {
+        return;
+      }
+      const cmd = parseClientCommand(parsed);
+      if (!cmd) return;
+      void handleClientCommand(socket, cmd);
     });
   }
 

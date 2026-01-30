@@ -1,7 +1,7 @@
 import type { Event } from "../../types";
 
 import { extractToolCallInfo, formatToolCallInfo } from "./toolCallInfo";
-import type { ConsoleItem } from "./types";
+import type { ConsoleItem, PermissionOption } from "./types";
 import { summarizeContentBlocks, tryParseContentBlocks } from "../../acp/contentBlocks";
 
 function extractTextFromUpdateContent(content: unknown): string | null {
@@ -31,6 +31,63 @@ function extractTextFromUpdateContent(content: unknown): string | null {
 
   return null;
 }
+
+function formatConfigOptionsUpdate(update: any): { title: string; body: string } | null {
+  const list = update?.configOptions;
+  if (!Array.isArray(list) || !list.length) return null;
+
+  const lines: string[] = [];
+
+  for (const opt of list) {
+    if (!opt || typeof opt !== "object") continue;
+
+    const id = typeof (opt as any).id === "string" ? String((opt as any).id) : "";
+    if (!id) continue;
+
+    const name = typeof (opt as any).name === "string" ? String((opt as any).name).trim() : "";
+    const type = typeof (opt as any).type === "string" ? String((opt as any).type).trim() : "";
+    const category =
+      typeof (opt as any).category === "string" ? String((opt as any).category).trim() : "";
+    const description =
+      typeof (opt as any).description === "string" ? String((opt as any).description).trim() : "";
+
+    const currentValue = (opt as any).currentValue;
+    const currentValueStr =
+      currentValue === undefined ? "" : `current=${JSON.stringify(currentValue)}`;
+
+    const headParts = [
+      `${id}${name ? ` (${name})` : ""}`,
+      type ? `type=${type}` : "",
+      category ? `category=${category}` : "",
+      currentValueStr,
+    ].filter(Boolean);
+
+    lines.push(`- ${headParts.join(" | ")}`);
+
+    if (description) lines.push(`  ${description}`);
+
+    const options = (opt as any).options;
+    if (Array.isArray(options) && options.length) {
+      for (const o of options) {
+        if (!o || typeof o !== "object") continue;
+        const oname = typeof (o as any).name === "string" ? String((o as any).name).trim() : "";
+        const oval = (o as any).value;
+        const odesc =
+          typeof (o as any).description === "string" ? String((o as any).description).trim() : "";
+        const parts = [
+          oname || "",
+          oval === undefined ? "" : `value=${JSON.stringify(oval)}`,
+          odesc || "",
+        ].filter(Boolean);
+        if (parts.length) lines.push(`  - ${parts.join(" | ")}`);
+      }
+    }
+  }
+
+  if (!lines.length) return null;
+  return { title: `配置选项（${list.length}）`, body: lines.join("\n") };
+}
+
 
 function formatAvailableCommandsUpdate(update: any): { title: string; body: string } | null {
   const list = update?.availableCommands;
@@ -104,6 +161,38 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
         kind: "block",
         text: payload.text,
         timestamp: e.timestamp,
+      };
+    }
+
+    if (payload?.type === "permission_request") {
+      const requestIdRaw = payload?.request_id;
+      const requestId = requestIdRaw == null ? "" : String(requestIdRaw);
+      const sessionId = typeof payload?.session_id === "string" ? payload.session_id : "";
+      const optionsRaw = Array.isArray(payload?.options) ? payload.options : [];
+      const options = optionsRaw
+        .filter((o: any) => o && typeof o === "object" && typeof o.optionId === "string")
+        .map(
+          (o: any) =>
+            ({
+              optionId: String(o.optionId),
+              name: typeof o.name === "string" ? o.name : undefined,
+              kind: typeof o.kind === "string" ? o.kind : undefined,
+            }) satisfies PermissionOption,
+        );
+
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: "",
+        timestamp: e.timestamp,
+        permissionRequest: {
+          requestId,
+          sessionId,
+          promptId: typeof payload?.prompt_id === "string" ? String(payload.prompt_id) : null,
+          toolCall: payload?.tool_call,
+          options,
+        },
       };
     }
 
@@ -210,6 +299,22 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
           formatted?.body ??
           extractTextFromUpdateContent(update?.content) ??
           JSON.stringify(update, null, 2);
+        return {
+          id: e.id,
+          role: "system",
+          kind: "block",
+          text,
+          timestamp: e.timestamp,
+          detailsTitle: formatted?.title,
+        };
+      }
+
+      if (sessionUpdate === "config_option_update") {
+        const formatted = formatConfigOptionsUpdate(update);
+        const text = "";
+          // formatted?.body ??
+          // extractTextFromUpdateContent(update?.content) ??
+          // JSON.stringify(update, null, 2);
         return {
           id: e.id,
           role: "system",

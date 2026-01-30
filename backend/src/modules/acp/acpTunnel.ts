@@ -690,6 +690,34 @@ export function createAcpTunnel(deps: {
           });
         }
       }
+
+      if (sessionUpdate === "config_option_update") {
+        const configOptions = Array.isArray((update as any).configOptions)
+          ? ((update as any).configOptions as any[])
+          : null;
+        if (configOptions) {
+          const modeOpt = configOptions.find(
+            (x) => x && typeof x === "object" && (x as any).id === "mode",
+          ) as any;
+          const modelOpt = configOptions.find(
+            (x) => x && typeof x === "object" && (x as any).id === "model",
+          ) as any;
+
+          const modeValue = typeof modeOpt?.currentValue === "string" ? modeOpt.currentValue : "";
+          const modelValue =
+            typeof modelOpt?.currentValue === "string" ? modelOpt.currentValue : "";
+
+          await updateSessionState(runId, {
+            sessionId,
+            // 兼容：部分 Agent 用 configOptions 表达“approval preset / mode”和“model”。
+            ...(modeValue ? { currentModeId: modeValue } : {}),
+            ...(modelValue ? { currentModelId: modelValue } : {}),
+            configOptions,
+            updatedAt: new Date().toISOString(),
+            note: "config_option_update",
+          });
+        }
+      }
     });
   }
 

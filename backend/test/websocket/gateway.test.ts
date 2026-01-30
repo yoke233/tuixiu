@@ -9,6 +9,9 @@ class FakeSocket extends EventEmitter {
   send(data: string) {
     this.sent.push(data);
   }
+  close(_code?: number, _reason?: string) {
+    this.emit("close");
+  }
 }
 
 describe("WebSocketGateway", () => {
@@ -863,7 +866,7 @@ describe("WebSocketGateway", () => {
     expect(clientSocket.sent).toEqual([]);
   });
 
-  it("init registers websocket routes", () => {
+  it("init registers websocket routes", async () => {
     const prisma = {} as any;
     const gateway = createWebSocketGateway({ prisma });
 
@@ -872,6 +875,7 @@ describe("WebSocketGateway", () => {
       get: (path: string, opts: any, handler: any) => {
         calls.push({ path, opts, handler });
       },
+      jwt: { verify: vi.fn().mockResolvedValue({ type: "acp_proxy" }) },
       log: { error: vi.fn() },
     };
 
@@ -888,8 +892,8 @@ describe("WebSocketGateway", () => {
 
     const agentSocket = new FakeSocket();
     const clientSocket = new FakeSocket();
-    agentHandler(agentSocket as any);
-    clientHandler(clientSocket as any);
+    await agentHandler(agentSocket as any, { url: "/ws/agent?token=t" } as any);
+    await clientHandler(clientSocket as any, { url: "/ws/client?token=t" } as any);
 
     expect(agentSocket.listenerCount("message")).toBeGreaterThan(0);
     expect(gateway.__testing.clientConnections.has(clientSocket as any)).toBe(true);

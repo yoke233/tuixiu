@@ -3,10 +3,11 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { bootstrapAuth, loginAuth, logoutAuth, meAuth } from "../api/auth";
 import type { User, UserRole } from "../types";
 import { AuthContext, type AuthState } from "./AuthContext";
-import { clearStoredAuth, getStoredUser, setStoredUser } from "./storage";
+import { clearStoredAuth, getStoredToken, getStoredUser, setStoredToken, setStoredUser } from "./storage";
 
 export function AuthProvider(props: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getStoredUser());
+  const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [status, setStatus] = useState<AuthState["status"]>("loading");
 
   useEffect(() => {
@@ -33,14 +34,18 @@ export function AuthProvider(props: { children: ReactNode }) {
   const login = useCallback(async (input: { username: string; password: string }) => {
     const res = await loginAuth(input);
     setStoredUser(res.user);
+    setStoredToken(res.token);
     setUser(res.user);
+    setToken(res.token);
     setStatus("authenticated");
   }, []);
 
   const bootstrap = useCallback(async (input: { username?: string; password?: string }) => {
     const res = await bootstrapAuth(input);
     setStoredUser(res.user);
+    setStoredToken(res.token);
     setUser(res.user);
+    setToken(res.token);
     setStatus("authenticated");
   }, []);
 
@@ -48,6 +53,7 @@ export function AuthProvider(props: { children: ReactNode }) {
     void logoutAuth().catch(() => {});
     clearStoredAuth();
     setUser(null);
+    setToken(null);
     setStatus("anonymous");
   }, []);
 
@@ -61,8 +67,8 @@ export function AuthProvider(props: { children: ReactNode }) {
   );
 
   const value = useMemo<AuthState>(
-    () => ({ status, token: null, user, login, bootstrap, logout, hasRole }),
-    [bootstrap, hasRole, login, logout, status, user],
+    () => ({ status, token, user, login, bootstrap, logout, hasRole }),
+    [bootstrap, hasRole, login, logout, status, token, user],
   );
 
   return <AuthContext.Provider value={value}>{props.children}</AuthContext.Provider>;

@@ -1,4 +1,4 @@
-import type { Event } from "../../types";
+import type { Event, Run } from "../../types";
 
 export type SessionState = {
   sessionId: string;
@@ -10,6 +10,35 @@ export type SessionState = {
   lastStopReason: string | null;
   note: string | null;
 };
+
+function readSessionStateFromRun(run: Run | null): SessionState | null {
+  const meta = (run as any)?.metadata;
+  const state = meta && typeof meta === "object" && !Array.isArray(meta) ? (meta as any).acpSessionState : null;
+  if (!state || typeof state !== "object") return null;
+
+  const sessionId = typeof (state as any).sessionId === "string" ? String((state as any).sessionId) : "";
+  if (!sessionId) return null;
+
+  const activity = typeof (state as any).activity === "string" ? String((state as any).activity) : "unknown";
+  const inFlightRaw = (state as any).inFlight;
+  const inFlight = typeof inFlightRaw === "number" && Number.isFinite(inFlightRaw) ? Math.max(0, inFlightRaw) : 0;
+  const updatedAt = typeof (state as any).updatedAt === "string" ? String((state as any).updatedAt) : "";
+  const currentModeId = typeof (state as any).currentModeId === "string" ? String((state as any).currentModeId) : null;
+  const currentModelId = typeof (state as any).currentModelId === "string" ? String((state as any).currentModelId) : null;
+  const lastStopReason = typeof (state as any).lastStopReason === "string" ? String((state as any).lastStopReason) : null;
+  const note = typeof (state as any).note === "string" ? String((state as any).note) : null;
+
+  return {
+    sessionId,
+    activity,
+    inFlight,
+    updatedAt,
+    currentModeId,
+    currentModelId,
+    lastStopReason,
+    note,
+  };
+}
 
 export function readSessionState(events: Event[]): SessionState | null {
   for (let i = events.length - 1; i >= 0; i -= 1) {
@@ -43,3 +72,6 @@ export function readSessionState(events: Event[]): SessionState | null {
   return null;
 }
 
+export function readEffectiveSessionState(opts: { events: Event[]; run: Run | null }): SessionState | null {
+  return readSessionState(opts.events) ?? readSessionStateFromRun(opts.run);
+}

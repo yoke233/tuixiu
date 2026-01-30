@@ -16,4 +16,7 @@ export type RunRuntime = {
   initResult: unknown | null;
   seenSessionIds: Set<string>;
   activePromptId: string | null;
+
+  // 用于避免对同一个 session 反复发送 set_config_option（例如 mode=auto）。
+  autoConfigOptionAppliedSessionIds?: Set<string>;
 };

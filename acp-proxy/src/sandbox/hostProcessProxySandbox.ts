@@ -1,10 +1,9 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams, type StdioOptions } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
 
 import type { LoadedProxyConfig } from "../config.js";
-import { FS_READ_SCRIPT, FS_WRITE_SCRIPT } from "../utils/fsScripts.js";
 import type { ProxySandbox } from "./ProxySandbox.js";
 import type {
   EnsureInstanceRunningOpts,
@@ -27,7 +26,49 @@ type HostInstance = {
 };
 
 const WORKSPACE_GUEST_ROOT = "/workspace";
-const ALLOWED_SHELL_SCRIPTS = new Set([FS_READ_SCRIPT, FS_WRITE_SCRIPT]);
+const PIPE_STDIO = ["pipe", "pipe", "pipe"] as StdioOptions;
+
+function needsCmdShimOnWindows(cmd: string): boolean {
+  if (process.platform !== "win32") return false;
+  const base = cmd.trim();
+  if (!base) return false;
+  if (/\s/.test(base)) return true;
+  const ext = path.extname(base).toLowerCase();
+  // `.cmd`/`.bat` 不能被 CreateProcess 直接当作可执行文件运行；需要走 `cmd.exe /c`。
+  if (ext === ".cmd" || ext === ".bat") return true;
+
+  // 没有扩展名时：仅对常见 npm shim 名称走 cmd shim（避免把 node.exe/pwsh.exe 之类也强行包一层）。
+  if (ext === "") {
+    const name = path.win32.basename(base).toLowerCase();
+    const shimNames = new Set(["npm", "npx", "pnpm", "yarn", "bunx", "codex", "codex-acp"]);
+    return shimNames.has(name);
+  }
+
+  return false;
+}
+
+function quoteForCmd(value: string): string {
+  // cmd.exe 的简单转义：双引号用 "" 表示
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+
+function buildCmdShimSpawn(command: string[], cwd: string, env: NodeJS.ProcessEnv) {
+  const line =
+    command.length === 1
+      ? String(command[0] ?? "").trim()
+      : [quoteForCmd(command[0] ?? ""), ...command.slice(1).map((a) => quoteForCmd(String(a)))].join(" ");
+  return {
+    cmd: "cmd.exe",
+    args: ["/d", "/s", "/c", line],
+    spawnOpts: {
+      cwd,
+      env,
+      stdio: PIPE_STDIO,
+      windowsHide: true,
+    },
+  };
+}
 
 function isSubPath(root: string, target: string): boolean {
   const rel = path.relative(root, target);
@@ -128,26 +169,45 @@ export class HostProcessProxySandbox implements ProxySandbox {
   }
 
   private resolveHostCwd(instanceName: string, guestCwd: string): string {
-    const normalizedGuest = normalizeGuestPath(guestCwd);
-    const instance = this.instances.get(instanceName);
-    if (!instance) throw new Error("instance missing");
-    const relative = path.posix.relative(WORKSPACE_GUEST_ROOT, normalizedGuest);
-    const hostPath = path.resolve(instance.workspaceHostPath, relative);
-    if (!isSubPath(instance.workspaceHostPath, hostPath)) {
-      throw new Error("cwd outside workspace");
-    }
-    return hostPath;
-  }
+    try {
+      const instance = this.instances.get(instanceName);
+      if (!instance) throw new Error("instance missing");
 
-  private assertCommandAllowed(command: string[]): void {
-    if (!command.length) throw new Error("command is empty");
-    const head = command[0];
-    if (head === "git") return;
-    if (head === "sh" && command[1] === "-c") {
-      const script = command[2] ?? "";
-      if (ALLOWED_SHELL_SCRIPTS.has(script)) return;
+      const raw = guestCwd.trim();
+      let normalizedGuest = raw;
+      let hostPath = "";
+
+      // Windows host_process：允许直接传入宿主机绝对路径（codex-acp 会用 Windows 路径做 cwd / fs / terminal）
+      const isWindowsHostAbs =
+        /^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith("\\\\");
+      if (process.platform === "win32" && raw && isWindowsHostAbs) {
+        normalizedGuest = path.win32.normalize(raw);
+        hostPath = path.win32.resolve(normalizedGuest);
+      } else {
+        normalizedGuest = normalizeGuestPath(raw);
+        const relative = path.posix.relative(WORKSPACE_GUEST_ROOT, normalizedGuest);
+        hostPath = path.resolve(instance.workspaceHostPath, relative);
+      }
+
+      if (!isSubPath(instance.workspaceHostPath, hostPath)) throw new Error("cwd outside workspace");
+
+      this.opts.log("host_process resolveHostCwd", {
+        instanceName,
+        guestCwd,
+        normalizedGuest,
+        workspaceHostPath: instance.workspaceHostPath,
+        hostCwd: hostPath,
+      });
+
+      return hostPath;
+    } catch (err) {
+      this.opts.log("host_process resolveHostCwd rejected", {
+        instanceName,
+        guestCwd,
+        err: String(err),
+      });
+      throw err;
     }
-    throw new Error("host_process only allows git and internal fs scripts");
   }
 
   async inspectInstance(instanceName: string): Promise<SandboxInstanceInfo> {
@@ -223,23 +283,45 @@ export class HostProcessProxySandbox implements ProxySandbox {
     cwdInGuest: string;
     env?: Record<string, string>;
   }): Promise<ProcessHandle> {
-    this.assertCommandAllowed(opts.command);
+    if (!opts.command.length) throw new Error("command is empty");
     const cwd = this.resolveHostCwd(opts.instanceName, opts.cwdInGuest);
     const env = { ...process.env, ...this.opts.config.env, ...opts.env };
-    const [cmd, ...args] = opts.command;
+
+    const useCmdShim = needsCmdShimOnWindows(opts.command[0] ?? "");
+    const resolved = useCmdShim
+      ? buildCmdShimSpawn(opts.command, cwd, env)
+      : {
+          cmd: opts.command[0],
+          args: opts.command.slice(1),
+          spawnOpts: {
+            cwd,
+            env,
+            stdio: PIPE_STDIO,
+            windowsHide: true,
+          },
+        };
+
     this.opts.log("host_process execProcess", {
       instanceName: opts.instanceName,
-      cmd,
-      args,
+      cmd: resolved.cmd,
+      args: resolved.args,
       cwd,
+      shim: useCmdShim ? "cmd.exe" : null,
+      rawCmd: opts.command[0],
     });
-    const proc = spawn(cmd, args, {
-      cwd,
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    return processHandleFromChildProcess(proc);
+    try {
+      const proc = spawn(resolved.cmd, resolved.args, resolved.spawnOpts) as ChildProcessWithoutNullStreams;
+      return processHandleFromChildProcess(proc);
+    } catch (err) {
+      this.opts.log("host_process spawn failed", {
+        instanceName: opts.instanceName,
+        cmd: resolved.cmd,
+        args: resolved.args,
+        cwd,
+        err: String(err),
+      });
+      throw err;
+    }
   }
 
   async openAgent(opts: {
@@ -266,18 +348,31 @@ export class HostProcessProxySandbox implements ProxySandbox {
 
     const [cmd, ...args] = opts.agentCommand;
     const env = { ...process.env, ...this.opts.config.env };
+
+    const useCmdShim = needsCmdShimOnWindows(cmd);
+    const resolved = useCmdShim
+      ? buildCmdShimSpawn(opts.agentCommand, workspaceHostPath, env)
+      : {
+          cmd,
+          args,
+          spawnOpts: {
+            cwd: workspaceHostPath,
+            env,
+            stdio: PIPE_STDIO,
+            windowsHide: true,
+          },
+        };
+
     this.opts.log("host_process start agent", {
       instanceName: opts.instanceName,
-      cmd,
+      cmd: resolved.cmd,
+      args: resolved.args,
       cwd: workspaceHostPath,
+      shim: useCmdShim ? "cmd.exe" : null,
+      rawCmd: cmd,
     });
 
-    const proc = spawn(cmd, args, {
-      cwd: workspaceHostPath,
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    const proc = spawn(resolved.cmd, resolved.args, resolved.spawnOpts) as ChildProcessWithoutNullStreams;
     const handle = processHandleFromChildProcess(proc);
 
     const createdAt = inst?.createdAt ?? new Date().toISOString();

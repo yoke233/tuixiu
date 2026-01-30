@@ -49,6 +49,20 @@ import type { IssuesOutletContext } from "./types";
 
 export type IssueDetailController = ReturnType<typeof useIssueDetailController>;
 
+function mergeEventsById(prev: Event[], incoming: Event[], limit: number): Event[] {
+  if (!incoming.length) return prev;
+  const byId = new Map<string, Event>();
+  for (const e of prev) byId.set(e.id, e);
+  for (const e of incoming) byId.set(e.id, e);
+  const merged = Array.from(byId.values());
+  merged.sort((a, b) => {
+    const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return ta - tb;
+  });
+  return merged.length > limit ? merged.slice(merged.length - limit) : merged;
+}
+
 export function useIssueDetailController(opts: {
   issueId: string;
   outlet: IssuesOutletContext | null;
@@ -259,6 +273,7 @@ export function useIssueDetailController(opts: {
       setTasksLoaded(false);
       setTasksError(null);
       try {
+        const shouldLoadEvents = wsStatusRef.current !== "open";
         const i = await getIssue(issueId);
         setIssue(i);
         outlet?.onIssueUpdated?.(i);
@@ -278,17 +293,25 @@ export function useIssueDetailController(opts: {
         const desiredRunId = selectedRunIdRef.current || i.runs?.[0]?.id || "";
         if (desiredRunId) {
           try {
-            const [r, es] = await Promise.all([getRun(desiredRunId), listRunEvents(desiredRunId)]);
+            setEvents([]);
+            const r = await getRun(desiredRunId);
             setRun(r);
             setSelectedRunId(desiredRunId);
-            setEvents([...es].reverse());
+            if (shouldLoadEvents) {
+              const es = await listRunEvents(desiredRunId);
+              setEvents((prev) => mergeEventsById(prev, [...es].reverse(), 600));
+            }
           } catch (e) {
             const latest = i.runs?.[0]?.id || "";
             if (latest && latest !== desiredRunId) {
-              const [r, es] = await Promise.all([getRun(latest), listRunEvents(latest)]);
+              setEvents([]);
+              const r = await getRun(latest);
               setRun(r);
               setSelectedRunId(latest);
-              setEvents([...es].reverse());
+              if (shouldLoadEvents) {
+                const es = await listRunEvents(latest);
+                setEvents((prev) => mergeEventsById(prev, [...es].reverse(), 600));
+              }
             } else {
               throw e;
             }
@@ -450,7 +473,7 @@ export function useIssueDetailController(opts: {
     },
     [currentRunId, issueId, refresh, refreshTasksOnly],
   );
-  const ws = useWsClient(onWs);
+  const ws = useWsClient(onWs, { token: auth.token });
   useEffect(() => {
     wsStatusRef.current = ws.status;
   }, [ws.status]);
@@ -494,6 +517,8 @@ export function useIssueDetailController(opts: {
       });
       setSelectedRunId(res.run.id);
       selectedRunIdRef.current = res.run.id;
+      setEvents([]);
+      setLiveEventIds(new Set());
       await refresh({ silent: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

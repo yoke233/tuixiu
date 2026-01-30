@@ -24,7 +24,7 @@ export function buildConsoleItems(
   for (const e of ordered) {
     const item = eventToConsoleItem(e);
     if (opts?.liveEventIds?.has(e.id)) item.live = true;
-    if (!item.text && !item.plan) continue;
+    if (!item.text && !item.plan && !item.permissionRequest) continue;
 
     const last = out[out.length - 1];
     if (

@@ -67,9 +67,9 @@ export default function App() {
           <Route
             path="/sessions/:runId"
             element={
-              <RequireAdmin>
+              <RequireAuth>
                 <SessionPage />
-              </RequireAdmin>
+              </RequireAuth>
             }
           />
         </Routes>

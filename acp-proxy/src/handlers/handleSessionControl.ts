@@ -138,3 +138,54 @@ export async function handleSessionSetModel(ctx: ProxyContext, msg: any): Promis
     reply({ ok: false, error: String(err) });
   }
 }
+
+export async function handleSessionSetConfigOption(ctx: ProxyContext, msg: any): Promise<void> {
+  const runId = String(msg?.run_id ?? "").trim();
+  if (!runId) return;
+  const controlIdRaw = String(msg?.control_id ?? "").trim();
+  const sessionId = String(msg?.session_id ?? "").trim();
+  const configId = String(msg?.config_id ?? "").trim();
+  const value = msg?.value;
+
+  const reply = (payload: Record<string, unknown>) => {
+    try {
+      ctx.send({
+        type: "session_control_result",
+        run_id: runId,
+        control_id: controlIdRaw,
+        ...payload,
+      });
+    } catch (err) {
+      ctx.log("failed to send session_control_result", { runId, err: String(err) });
+    }
+  };
+
+  try {
+    if (!controlIdRaw) {
+      reply({ ok: false, error: "control_id 为空" });
+      return;
+    }
+    if (!sessionId) {
+      reply({ ok: false, error: "session_id 为空" });
+      return;
+    }
+    if (!configId) {
+      reply({ ok: false, error: "config_id 为空" });
+      return;
+    }
+
+    const run = ctx.runs.get(runId);
+    if (!run || !run.agent) {
+      reply({ ok: false, error: "run_not_open" });
+      return;
+    }
+
+    await ensureInitialized(ctx, run);
+    await withAuthRetry(run, () =>
+      run.agent!.sendRpc("session/set_config_option", { sessionId, configId, value }),
+    );
+    reply({ ok: true });
+  } catch (err) {
+    reply({ ok: false, error: String(err) });
+  }
+}

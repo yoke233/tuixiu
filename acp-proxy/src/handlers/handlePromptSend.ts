@@ -12,6 +12,7 @@ import {
   startAgent,
   withAuthRetry,
 } from "../runs/runRuntime.js";
+import { mapCwdForHostProcess } from "../runs/hostCwd.js";
 
 export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<void> {
   const runId = String(msg?.run_id ?? "").trim();
@@ -49,6 +50,10 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
 
     const cwd =
       typeof msg?.cwd === "string" && msg.cwd.trim() ? msg.cwd.trim() : WORKSPACE_GUEST_PATH;
+    const cwdForAgent =
+      ctx.sandbox.provider === "host_process"
+        ? mapCwdForHostProcess(cwd, run.hostWorkspacePath ?? "")
+        : cwd;
     const sessionId =
       typeof msg?.session_id === "string" && msg.session_id.trim() ? msg.session_id.trim() : null;
     const context = typeof msg?.context === "string" ? msg.context : undefined;
@@ -71,7 +76,12 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
 
       run.activePromptId = promptIdRaw;
       try {
-        const ensured = await ensureSessionForPrompt(ctx, run, { cwd, sessionId, context, prompt });
+        const ensured = await ensureSessionForPrompt(ctx, run, {
+          cwd: cwdForAgent,
+          sessionId,
+          context,
+          prompt,
+        });
         const caps = getPromptCapabilities(run.initResult);
         assertPromptBlocksSupported(ensured.prompt, caps);
 
@@ -94,7 +104,7 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
             if (!run.agent) throw err;
             recreatedFrom = usedSessionId;
             const createdRes = await withAuthRetry(run, () =>
-              run.agent!.sendRpc<any>("session/new", { cwd, mcpServers: [] }),
+              run.agent!.sendRpc<any>("session/new", { cwd: cwdForAgent, mcpServers: [] }),
             );
             const newSessionId = String((createdRes as any)?.sessionId ?? "").trim();
             if (!newSessionId) throw err;

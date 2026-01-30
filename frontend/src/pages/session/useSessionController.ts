@@ -7,13 +7,13 @@ import {
   setAcpSessionModel,
 } from "../../api/acpSessions";
 import { getIssue } from "../../api/issues";
-import { getRun, listRunEvents, pauseRun, promptRun, uploadRunAttachment } from "../../api/runs";
+import { getRun, listRunEvents, pauseRun, uploadRunAttachment } from "../../api/runs";
 import { useAuth } from "../../auth/AuthContext";
 import { useWsClient, type WsMessage } from "../../hooks/useWsClient";
 import type { Event, Issue, Run } from "../../types";
 import { readFileAsBase64 } from "../../utils/files";
 
-import { readSessionState } from "./readSessionState";
+import { readEffectiveSessionState } from "./readSessionState";
 
 export type SessionController = ReturnType<typeof useSessionController>;
 
@@ -31,6 +31,20 @@ type PermissionRequestItem = {
   options: PermissionOption[];
   createdAt?: string;
 };
+
+function mergeEventsById(prev: Event[], incoming: Event[], limit: number): Event[] {
+  if (!incoming.length) return prev;
+  const byId = new Map<string, Event>();
+  for (const e of prev) byId.set(e.id, e);
+  for (const e of incoming) byId.set(e.id, e);
+  const merged = Array.from(byId.values());
+  merged.sort((a, b) => {
+    const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return ta - tb;
+  });
+  return merged.length > limit ? merged.slice(merged.length - limit) : merged;
+}
 
 export function useSessionController() {
   const params = useParams();
@@ -82,7 +96,7 @@ export function useSessionController() {
     [clearErrorTimer],
   );
 
-  const sessionState = useMemo(() => readSessionState(events), [events]);
+  const sessionState = useMemo(() => readEffectiveSessionState({ events, run }), [events, run]);
   const sessionId = run?.acpSessionId ?? null;
   const isAdmin = auth.user?.role === "admin";
 
@@ -147,8 +161,12 @@ export function useSessionController() {
         const r = await getRun(runId);
         setRun(r);
 
-        const [es, iss] = await Promise.all([listRunEvents(runId), getIssue(r.issueId)]);
-        setEvents([...es].reverse());
+        const issPromise = getIssue(r.issueId);
+        if (wsStatusRef.current !== "open") {
+          const es = await listRunEvents(runId);
+          setEvents((prev) => mergeEventsById(prev, [...es].reverse(), 800));
+        }
+        const iss = await issPromise;
         setIssue(iss);
       } catch (err) {
         setTransientError(err instanceof Error ? err.message : String(err));
@@ -166,6 +184,9 @@ export function useSessionController() {
 
   useEffect(() => {
     if (!runId) return;
+    setRun(null);
+    setIssue(null);
+    setEvents([]);
     setLiveEventIds(new Set());
     setResolvedPermissionIds(new Set());
   }, [runId]);
@@ -232,7 +253,7 @@ export function useSessionController() {
     },
     [refresh, runId],
   );
-  const ws = useWsClient(onWs);
+  const ws = useWsClient(onWs, { token: auth.token });
   useEffect(() => {
     wsStatusRef.current = ws.status;
   }, [ws.status]);
@@ -350,21 +371,28 @@ export function useSessionController() {
       if (!prompt.length) return;
 
       setTransientError(null);
+
+      const requestId =
+        typeof globalThis.crypto !== "undefined" && "randomUUID" in globalThis.crypto
+          ? (globalThis.crypto as any).randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
       setSending(true);
-      setChatText("");
-      setPendingImages([]);
       try {
-        await promptRun(runId, prompt);
-        if (wsStatusRef.current !== "open") {
-          void refresh({ silent: true });
+        const ok = ws.sendJson({ type: "prompt_run", request_id: requestId, run_id: runId, prompt });
+        if (!ok) {
+          setTransientError("WebSocket 未连接（或已断开），无法发送消息");
+          return;
         }
+        setChatText("");
+        setPendingImages([]);
       } catch (err) {
         setTransientError(err instanceof Error ? err.message : String(err));
       } finally {
         setSending(false);
       }
     },
-    [chatText, pendingImages, refresh, requireLogin, runId, setTransientError, uploadingImages],
+    [chatText, pendingImages, requireLogin, runId, setTransientError, uploadingImages, ws],
   );
 
   const onDropFiles = useCallback(
@@ -440,6 +468,7 @@ export function useSessionController() {
     sessionId,
     permissionRequests,
     resolvingPermissionId,
+    resolvedPermissionIds,
     isAdmin,
 
     // ui state

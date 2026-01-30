@@ -109,3 +109,57 @@ describe("RunConsole sandbox", () => {
     expect(screen.queryByText(payload)).not.toBeInTheDocument();
   });
 });
+
+describe("RunConsole permission request", () => {
+  it("renders permission_request options as buttons and emits decision", async () => {
+    const events: Event[] = [
+      {
+        id: "e1",
+        runId: "r1",
+        source: "acp",
+        type: "acp.update.received",
+        payload: {
+          type: "permission_request",
+          request_id: "1",
+          session_id: "sess_1",
+          prompt_id: "p1",
+          tool_call: {
+            title: "Run pnpm -v",
+            kind: "execute",
+            content: [
+              {
+                type: "content",
+                content: { type: "text", text: "需要联网下载依赖以执行 pnpm install 并完成后续构建/测试与提交。" },
+              },
+            ],
+          },
+          options: [
+            { optionId: "approved-for-session", name: "Always", kind: "allow_always" },
+            { optionId: "approved", name: "Yes", kind: "allow_once" },
+            { optionId: "abort", name: "No, provide feedback", kind: "reject_once" },
+          ],
+        },
+        timestamp: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    const onDecide = vi.fn();
+
+    render(<RunConsole events={events} permission={{ isAdmin: true, onDecide }} />);
+
+    expect(await screen.findByText("PERMISSION")).toBeInTheDocument();
+    expect(
+      screen.getByText("需要联网下载依赖以执行 pnpm install 并完成后续构建/测试与提交。"),
+    ).toBeInTheDocument();
+
+    const yes = screen.getByRole("button", { name: "Yes" });
+    fireEvent.click(yes);
+
+    expect(onDecide).toHaveBeenCalledWith({
+      requestId: "1",
+      sessionId: "sess_1",
+      outcome: "selected",
+      optionId: "approved",
+    });
+  });
+});

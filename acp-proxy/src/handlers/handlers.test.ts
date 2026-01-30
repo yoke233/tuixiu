@@ -203,6 +203,14 @@ describe("proxy/handlers", () => {
       method: "session/update",
       params: {
         sessionId: "s1",
+        update: { sessionUpdate: "session_created", content: { type: "session_created" } },
+      },
+    });
+    await h.sendStdout({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "s1",
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "2" } },
       },
     });
@@ -224,6 +232,18 @@ describe("proxy/handlers", () => {
           (m as any).prompt_id === "p1" &&
           (m as any).update?.sessionUpdate === "agent_message_chunk" &&
           (m as any).update?.content?.text === "2",
+      ),
+    ).toBe(true);
+
+    expect(
+      messages.some(
+        (m) =>
+          m &&
+          typeof m === "object" &&
+          (m as any).type === "agent_update" &&
+          (m as any).run_id === "r1" &&
+          (m as any).content?.type === "session_created" &&
+          (m as any).content?.session_id === "s1",
       ),
     ).toBe(true);
 
