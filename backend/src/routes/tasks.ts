@@ -17,6 +17,7 @@ export function makeTaskRoutes(deps: {
   sendToAgent?: SendToAgent;
   createWorkspace?: CreateWorkspace;
   broadcastToClients?: (payload: unknown) => void;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
 }): FastifyPluginAsync {
   return async (server) => {
     server.get("/task-templates", async () => {
@@ -49,6 +50,7 @@ export function makeTaskRoutes(deps: {
             sendToAgent: deps.sendToAgent,
             createWorkspace: deps.createWorkspace,
             broadcastToClients: deps.broadcastToClients,
+            sandboxGitPush: deps.sandboxGitPush,
           },
           { issueId: id, taskId: (task as any).id, trigger: "task_created" },
         );

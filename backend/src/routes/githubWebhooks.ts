@@ -59,6 +59,7 @@ function toRepoKey(parsed: github.ParsedGitHubRepo): string {
 export function makeGitHubWebhookRoutes(deps: {
   prisma: PrismaDeps;
   acp?: AcpTunnel;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   webhookSecret?: string;
   parseRepo?: typeof github.parseGitHubRepo;
   onIssueUpserted?: (issueId: string, reason: string) => void;
@@ -259,13 +260,18 @@ export function makeGitHubWebhookRoutes(deps: {
           }
 
           triggerPmAutoAdvance(
-            { prisma: deps.prisma },
+            { prisma: deps.prisma, sandboxGitPush: deps.sandboxGitPush },
             { runId: run.id, issueId: (run as any).issueId, trigger: "ci_completed" },
           );
 
           if ((run as any).taskId && deps.acp) {
             triggerTaskAutoAdvance(
-              { prisma: deps.prisma, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
+              {
+                prisma: deps.prisma,
+                acp: deps.acp,
+                broadcastToClients: deps.broadcastToClients,
+                sandboxGitPush: deps.sandboxGitPush,
+              },
               { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "ci_completed" },
             );
           }
@@ -392,7 +398,12 @@ export function makeGitHubWebhookRoutes(deps: {
 
                     if (deps.acp) {
                       triggerTaskAutoAdvance(
-                        { prisma: deps.prisma, acp: deps.acp, broadcastToClients: deps.broadcastToClients },
+                        {
+                          prisma: deps.prisma,
+                          acp: deps.acp,
+                          broadcastToClients: deps.broadcastToClients,
+                          sandboxGitPush: deps.sandboxGitPush,
+                        },
                         { issueId: (run as any).issueId, taskId, trigger: "task_rolled_back" },
                       );
                     }

@@ -1,14 +1,155 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { access } from "node:fs/promises";
+import path from "node:path";
 
 import type { ProxyContext } from "../proxyContext.js";
 import { WORKSPACE_GUEST_PATH, nowIso } from "../proxyContext.js";
 import { closeAgent, sendSandboxInstanceStatus } from "../runs/runRuntime.js";
+import { createHostGitEnv } from "../utils/gitHost.js";
 import { validateInstanceName, validateRunId } from "../utils/validate.js";
 
 type ExpectedInstance = {
   instance_name: string;
   run_id: string;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseEnv(raw: unknown): Record<string, string> | undefined {
+  if (!isRecord(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+const execFileAsync = promisify(execFile);
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readAllText(stream: ReadableStream<Uint8Array> | undefined): Promise<string> {
+  if (!stream) return "";
+  const decoder = new TextDecoder();
+  const reader = stream.getReader();
+  let out = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      out += decoder.decode(value, { stream: true });
+    }
+    out += decoder.decode();
+    return out;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function trimOutput(text: string, limit = 8_000): string {
+  if (!text || text.length <= limit) return text;
+  return `...${text.slice(text.length - limit)}`;
+}
+
+const GIT_PUSH_SCRIPT = `set -euo pipefail
+
+repo="\${TUIXIU_REPO_URL:-}"
+ws="\${TUIXIU_WORKSPACE_GUEST:-/workspace}"
+branch="\${TUIXIU_RUN_BRANCH:-}"
+remote="\${TUIXIU_GIT_REMOTE:-origin}"
+auth="\${TUIXIU_GIT_AUTH_MODE:-}"
+
+if [ -z "$branch" ]; then
+  echo "[git_push] missing TUIXIU_RUN_BRANCH" >&2
+  exit 2
+fi
+if [ -z "$ws" ] || [ "$ws" = "/" ]; then
+  echo "[git_push] invalid workspace" >&2
+  exit 2
+fi
+
+if [ "$auth" = "ssh" ]; then
+  if [ -n "\${TUIXIU_GIT_SSH_COMMAND:-}" ]; then
+    export GIT_SSH_COMMAND="$TUIXIU_GIT_SSH_COMMAND"
+  else
+    key_path=""
+    if [ -n "\${TUIXIU_GIT_SSH_KEY_B64:-}" ]; then
+      key_path="\${TUIXIU_GIT_SSH_KEY_PATH:-/tmp/tuixiu_git_key}"
+      printf '%s' "$TUIXIU_GIT_SSH_KEY_B64" | base64 -d > "$key_path"
+      chmod 600 "$key_path" 2>/dev/null || true
+    elif [ -n "\${TUIXIU_GIT_SSH_KEY:-}" ]; then
+      key_path="\${TUIXIU_GIT_SSH_KEY_PATH:-/tmp/tuixiu_git_key}"
+      printf '%s\\n' "$TUIXIU_GIT_SSH_KEY" > "$key_path"
+      chmod 600 "$key_path" 2>/dev/null || true
+    elif [ -n "\${TUIXIU_GIT_SSH_KEY_PATH:-}" ]; then
+      key_path="$TUIXIU_GIT_SSH_KEY_PATH"
+      chmod 600 "$key_path" 2>/dev/null || true
+    fi
+
+    kh="\${TUIXIU_GIT_SSH_KNOWN_HOSTS_PATH:-/tmp/tuixiu_known_hosts}"
+    if [ -n "$key_path" ]; then
+      host=""
+      case "$repo" in
+        ssh://*)
+          host=$(printf "%s" "$repo" | sed -E 's#^ssh://([^@/]+@)?([^/:]+).*#\\2#')
+          ;;
+        *@*:* )
+          host=$(printf "%s" "$repo" | sed -E 's#^[^@]+@([^:]+):.*#\\1#')
+          ;;
+        http://*|https://*)
+          host=$(printf "%s" "$repo" | sed -E 's#^https?://([^/]+).*#\\1#')
+          ;;
+      esac
+      if [ -n "$host" ]; then
+        ssh-keyscan -t rsa,ecdsa,ed25519 "$host" > "$kh" 2>/dev/null || true
+      fi
+      if [ -s "$kh" ]; then
+        export GIT_SSH_COMMAND="ssh -i \\"$key_path\\" -o IdentitiesOnly=yes -o UserKnownHostsFile=\\"$kh\\" -o StrictHostKeyChecking=yes"
+      else
+        export GIT_SSH_COMMAND="ssh -i \\"$key_path\\" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+      fi
+    fi
+  fi
+else
+  if [ -n "\${TUIXIU_GIT_HTTP_PASSWORD:-}" ]; then
+    export GIT_TERMINAL_PROMPT=0
+    export GCM_INTERACTIVE=Never
+    askpass="\${TUIXIU_GIT_ASKPASS_PATH:-/tmp/tuixiu-askpass.sh}"
+    cat > "$askpass" <<'EOF'
+#!/bin/sh
+prompt="$1"
+case "$prompt" in
+  *Username*|*username*)
+    printf '%s\\n' "\${TUIXIU_GIT_HTTP_USERNAME:-x-access-token}"
+    ;;
+  *)
+    printf '%s\\n' "\${TUIXIU_GIT_HTTP_PASSWORD:-}"
+    ;;
+esac
+EOF
+    chmod 700 "$askpass"
+    export GIT_ASKPASS="$askpass"
+  fi
+fi
+
+git -C "$ws" push -u "$remote" "$branch"
+`;
 
 function parseExpectedInstances(ctx: ProxyContext, raw: unknown): ExpectedInstance[] {
   if (!Array.isArray(raw)) return [];
@@ -68,6 +209,8 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
   const runId = String(msg?.run_id ?? "").trim();
   const instanceNameRaw = String(msg?.instance_name ?? "").trim();
   const action = String(msg?.action ?? "").trim();
+  const requestIdRaw = String(msg?.request_id ?? "").trim();
+  const requestId = requestIdRaw ? requestIdRaw : null;
 
   const reply = (payload: Record<string, unknown>) => {
     try {
@@ -76,6 +219,7 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
         run_id: runId || null,
         instance_name: instanceNameRaw || null,
         action,
+        request_id: requestId,
         ...payload,
       });
     } catch (err) {
@@ -98,6 +242,137 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
       }
       await ctx.sandbox.removeImage(image);
       reply({ ok: true });
+      return;
+    }
+
+    if (action === "git_push") {
+      validateRunId(runId);
+      const branch = String(msg?.branch ?? "").trim();
+      if (!branch) {
+        reply({ ok: false, error: "branch 为空" });
+        return;
+      }
+      if (ctx.cfg.sandbox.gitPush === false) {
+        reply({ ok: false, error: "git_push disabled" });
+        return;
+      }
+
+      const timeoutSecondsRaw = msg?.timeout_seconds ?? 300;
+      const timeoutSeconds = Number.isFinite(timeoutSecondsRaw)
+        ? Math.max(5, Math.min(3600, Number(timeoutSecondsRaw)))
+        : 300;
+
+      const env = parseEnv(msg?.env) ?? {};
+      const remote =
+        typeof msg?.remote === "string" && msg.remote.trim() ? msg.remote.trim() : "origin";
+
+      const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
+      if (workspaceMode === "mount") {
+        const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
+        if (!rootRaw) {
+          reply({ ok: false, error: "workspaceHostRoot 未配置" });
+          return;
+        }
+        const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
+        const hostWorkspace = path.join(root, `run-${runId}`);
+        if (!(await pathExists(hostWorkspace))) {
+          reply({ ok: false, error: `workspace 不存在: ${hostWorkspace}` });
+          return;
+        }
+
+        let cleanup = async () => {};
+        try {
+          const envRes = await createHostGitEnv(env);
+          cleanup = envRes.cleanup;
+          const res = await execFileAsync("git", ["push", "-u", remote, branch], {
+            cwd: hostWorkspace,
+            env: envRes.env,
+          });
+          reply({ ok: true, stdout: trimOutput(String(res.stdout ?? "")), stderr: trimOutput(String(res.stderr ?? "")) });
+        } catch (err) {
+          const stdout = String((err as any)?.stdout ?? "");
+          const stderr = String((err as any)?.stderr ?? "");
+          reply({
+            ok: false,
+            error: String(err),
+            stdout: trimOutput(stdout),
+            stderr: trimOutput(stderr),
+          });
+        } finally {
+          await cleanup().catch(() => {});
+        }
+        return;
+      }
+
+      const instanceName = validateInstanceName(instanceNameRaw);
+      const cwdInGuest = String(msg?.cwd ?? "").trim() || WORKSPACE_GUEST_PATH;
+      env.TUIXIU_RUN_BRANCH = branch;
+      env.TUIXIU_WORKSPACE_GUEST = env.TUIXIU_WORKSPACE_GUEST ?? WORKSPACE_GUEST_PATH;
+      env.TUIXIU_GIT_REMOTE = remote;
+
+      let proc: any;
+      try {
+        proc = await ctx.sandbox.execProcess({
+          instanceName,
+          command: ["bash", "-lc", GIT_PUSH_SCRIPT],
+          cwdInGuest,
+          env,
+        });
+      } catch (err) {
+        reply({ ok: false, error: String(err) });
+        return;
+      }
+
+      const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+        proc.onExit?.((info: { code: number | null; signal: string | null }) => resolve(info));
+        if (!proc.onExit) resolve({ code: null, signal: null });
+      });
+
+      const outP = readAllText(proc.stdout);
+      const errP = readAllText(proc.stderr);
+
+      const raced = await Promise.race([
+        exitP.then((r) => ({ kind: "exit" as const, ...r })),
+        delay(timeoutSeconds * 1000).then(() => ({ kind: "timeout" as const })),
+      ]);
+
+      if (raced.kind === "timeout") {
+        await proc.close?.().catch(() => {});
+        const [stdout, stderr] = await Promise.allSettled([outP, errP]).then((res) => [
+          res[0].status === "fulfilled" ? res[0].value : "",
+          res[1].status === "fulfilled" ? res[1].value : "",
+        ]);
+        reply({
+          ok: false,
+          error: `timeout after ${timeoutSeconds}s`,
+          stdout: trimOutput(stdout),
+          stderr: trimOutput(stderr),
+        });
+        return;
+      }
+
+      const [stdout, stderr] = await Promise.all([outP, errP]);
+      const code = raced.code ?? null;
+      const signal = raced.signal ?? null;
+      if (code !== 0) {
+        reply({
+          ok: false,
+          error: `exitCode=${code ?? "unknown"}${signal ? ` signal=${signal}` : ""}`,
+          stdout: trimOutput(stdout),
+          stderr: trimOutput(stderr),
+          code,
+          signal,
+        });
+        return;
+      }
+
+      reply({
+        ok: true,
+        stdout: trimOutput(stdout),
+        stderr: trimOutput(stderr),
+        code,
+        signal,
+      });
       return;
     }
 

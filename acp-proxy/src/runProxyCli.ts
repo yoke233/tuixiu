@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { loadConfig } from "./config.js";
 import { createLogger, type LoggerFn } from "./logger.js";
@@ -20,7 +21,7 @@ import {
   handleSessionSetModel,
 } from "./handlers/handleSessionControl.js";
 import { handleSandboxControl } from "./handlers/handleSandboxControl.js";
-import { nowIso, type ProxyContext } from "./proxyContext.js";
+import { nowIso, type ProxyContext, WORKSPACE_GUEST_PATH } from "./proxyContext.js";
 
 type RunProxyCliOpts = {
   configPath?: string;
@@ -80,7 +81,101 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     // ignore
   }
 
-  const registerAgent = () => {
+  async function execSandboxToText(opts: {
+    instanceName: string;
+    command: string[];
+    cwdInGuest: string;
+    timeoutSeconds: number;
+  }): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    const proc = await sandbox.execProcess({
+      instanceName: opts.instanceName,
+      command: opts.command,
+      cwdInGuest: opts.cwdInGuest,
+    });
+
+    let resolveExit!: (info: { code: number | null; signal: string | null }) => void;
+    const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+      resolveExit = resolve;
+    });
+    proc.onExit?.((info) => resolveExit(info));
+    if (!proc.onExit) resolveExit({ code: null, signal: null });
+
+    const readAll = async (stream: ReadableStream<Uint8Array> | undefined) => {
+      if (!stream) return "";
+      const decoder = new TextDecoder();
+      const reader = stream.getReader();
+      let out = "";
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          out += decoder.decode(value, { stream: true });
+        }
+        out += decoder.decode();
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          // ignore
+        }
+      }
+      return out;
+    };
+
+    const raced = await Promise.race([
+      exitP.then((r) => ({ kind: "exit" as const, ...r })),
+      delay(opts.timeoutSeconds * 1000).then(() => ({ kind: "timeout" as const })),
+    ]);
+
+    const [stdout, stderr] = await Promise.all([readAll(proc.stdout), readAll(proc.stderr)]);
+
+    if (raced.kind === "timeout") {
+      await proc.close().catch(() => {});
+      return { code: 124, stdout, stderr };
+    }
+    return { code: raced.code ?? 0, stdout, stderr };
+  }
+
+  async function probeGitSupport(): Promise<boolean> {
+    const instanceName = `acp-proxy-probe-${randomUUID()}`;
+    try {
+      await sandbox.ensureInstanceRunning({
+        runId: instanceName,
+        instanceName,
+        workspaceGuestPath: WORKSPACE_GUEST_PATH,
+        env: undefined,
+      });
+      const res = await execSandboxToText({
+        instanceName,
+        command: ["git", "--version"],
+        cwdInGuest: WORKSPACE_GUEST_PATH,
+        timeoutSeconds: 30,
+      });
+      return res.code === 0;
+    } catch (err) {
+      log("probe git failed", { err: String(err) });
+      return false;
+    } finally {
+      await sandbox.removeInstance(instanceName).catch(() => {});
+    }
+  }
+
+  let cachedGitPushCap: boolean | null = null;
+  const resolveGitPushCap = async (): Promise<boolean> => {
+    if (cachedGitPushCap !== null) return cachedGitPushCap;
+    if (cfg.sandbox.gitPush === false) {
+      cachedGitPushCap = false;
+      return cachedGitPushCap;
+    }
+    if ((cfg.sandbox.workspaceMode ?? "mount") === "mount") {
+      cachedGitPushCap = true;
+      return cachedGitPushCap;
+    }
+    cachedGitPushCap = await probeGitSupport();
+    return cachedGitPushCap;
+  };
+
+  const registerAgent = async () => {
     const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities)
       ? cfg.agent.capabilities
       : {};
@@ -106,11 +201,11 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       agentMode: sandbox.agentMode,
       image: cfg.sandbox.image ?? null,
       workingDir: cfg.sandbox.workingDir ?? null,
+      workspaceMode: cfg.sandbox.workspaceMode ?? "mount",
     };
+    sandboxCaps.gitPush = await resolveGitPushCap();
     if (cfg.sandbox.provider === "container_oci")
       sandboxCaps.runtime = cfg.sandbox.runtime ?? "docker";
-    if (cfg.sandbox.provider === "boxlite_oci")
-      sandboxCaps.workspaceMode = cfg.sandbox.workspaceMode ?? "mount";
 
     ctx.send({
       type: "register_agent",
@@ -218,7 +313,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       signal: opts?.signal,
       onMessage,
       onConnected: async () => {
-        registerAgent();
+        await registerAgent();
         await reportInventory().catch((err) =>
           log("report inventory failed", { err: String(err) }),
         );

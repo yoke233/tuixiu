@@ -30,6 +30,7 @@ function makeDeps(overrides: {
     id: "r1",
     branchName: "feat/test",
     workspacePath: "D:\\tmp",
+    agent: { capabilities: { sandbox: { gitPush: true } } },
     issue,
     artifacts: [],
     ...overrides.run,
@@ -45,7 +46,7 @@ function makeDeps(overrides: {
     },
   } as any;
 
-  const gitPush = vi.fn().mockResolvedValue(undefined);
+  const sandboxGitPush = vi.fn().mockResolvedValue(undefined);
   const parseRepo = vi.fn().mockReturnValue({ apiBaseUrl: "https://api.github.com", owner: "o", repo: "r" });
   const createPullRequest = vi.fn().mockResolvedValue({
     number: 99,
@@ -57,7 +58,7 @@ function makeDeps(overrides: {
     base: { ref: "main" },
   });
 
-  return { prisma, gitPush, parseRepo, createPullRequest };
+  return { prisma, sandboxGitPush, parseRepo, createPullRequest };
 }
 
 describe("createReviewRequestForRun", () => {
@@ -71,10 +72,10 @@ describe("createReviewRequestForRun", () => {
   });
 
   it("GitHub issue 来源：创建 PR 时自动追加 Closes #<number>", async () => {
-    const { prisma, gitPush, parseRepo, createPullRequest } = makeDeps({});
+    const { prisma, sandboxGitPush, parseRepo, createPullRequest } = makeDeps({});
 
     const res = await createReviewRequestForRun(
-      { prisma, gitPush, github: { parseRepo, createPullRequest } } as any,
+      { prisma, sandboxGitPush, github: { parseRepo, createPullRequest } } as any,
       "r1",
       {},
     );
@@ -87,12 +88,12 @@ describe("createReviewRequestForRun", () => {
   });
 
   it("body 已包含 issue 引用时，不重复追加", async () => {
-    const { prisma, gitPush, parseRepo, createPullRequest } = makeDeps({
+    const { prisma, sandboxGitPush, parseRepo, createPullRequest } = makeDeps({
       issue: { description: "Hello\n\nCloses #3" },
     });
 
     const res = await createReviewRequestForRun(
-      { prisma, gitPush, github: { parseRepo, createPullRequest } } as any,
+      { prisma, sandboxGitPush, github: { parseRepo, createPullRequest } } as any,
       "r1",
       {},
     );
@@ -105,12 +106,12 @@ describe("createReviewRequestForRun", () => {
   });
 
   it("避免把 #30 误判成 #3：仍应追加 Closes #3", async () => {
-    const { prisma, gitPush, parseRepo, createPullRequest } = makeDeps({
+    const { prisma, sandboxGitPush, parseRepo, createPullRequest } = makeDeps({
       issue: { description: "Relates #30" },
     });
 
     const res = await createReviewRequestForRun(
-      { prisma, gitPush, github: { parseRepo, createPullRequest } } as any,
+      { prisma, sandboxGitPush, github: { parseRepo, createPullRequest } } as any,
       "r1",
       {},
     );
@@ -123,12 +124,12 @@ describe("createReviewRequestForRun", () => {
   });
 
   it("body 已包含 issue URL 时，不追加 Closes #<number>", async () => {
-    const { prisma, gitPush, parseRepo, createPullRequest } = makeDeps({
+    const { prisma, sandboxGitPush, parseRepo, createPullRequest } = makeDeps({
       issue: { description: "See https://github.com/o/r/issues/3" },
     });
 
     const res = await createReviewRequestForRun(
-      { prisma, gitPush, github: { parseRepo, createPullRequest } } as any,
+      { prisma, sandboxGitPush, github: { parseRepo, createPullRequest } } as any,
       "r1",
       {},
     );
@@ -140,58 +141,71 @@ describe("createReviewRequestForRun", () => {
     );
   });
 
-  it("BoxLite git_clone：跳过 gitPush（由 VM 内 Agent 负责 push）", async () => {
-    const { prisma, gitPush, parseRepo, createPullRequest } = makeDeps({
+  it("SANDBOX_GIT_PUSH_UNSUPPORTED when capability is false", async () => {
+    const { prisma, sandboxGitPush, parseRepo, createPullRequest } = makeDeps({
       run: {
         agent: {
-          capabilities: {
-            sandbox: { provider: "boxlite_oci", boxlite: { workspaceMode: "git_clone" } },
-          },
+          capabilities: { sandbox: { gitPush: false } },
         },
       },
     });
 
     const res = await createReviewRequestForRun(
-      { prisma, gitPush, github: { parseRepo, createPullRequest } } as any,
+      { prisma, sandboxGitPush, github: { parseRepo, createPullRequest } } as any,
       "r1",
       {},
     );
 
-    expect(res.success).toBe(true);
-    expect(gitPush).not.toHaveBeenCalled();
-    expect(createPullRequest).toHaveBeenCalled();
+    expect(res.success).toBe(false);
+    expect((res as any).error?.code).toBe("SANDBOX_GIT_PUSH_UNSUPPORTED");
+    expect(sandboxGitPush).not.toHaveBeenCalled();
+    expect(createPullRequest).not.toHaveBeenCalled();
   });
 
-  it("UNSUPPORTED_SCM：不应尝试 gitPush", async () => {
-    const { prisma, gitPush, parseRepo, createPullRequest } = makeDeps({
+  it("NO_SANDBOX_GIT_PUSH when deps missing", async () => {
+    const { prisma, parseRepo, createPullRequest } = makeDeps({});
+
+    const res = await createReviewRequestForRun(
+      { prisma, github: { parseRepo, createPullRequest } } as any,
+      "r1",
+      {},
+    );
+
+    expect(res.success).toBe(false);
+    expect((res as any).error?.code).toBe("NO_SANDBOX_GIT_PUSH");
+    expect(createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it("UNSUPPORTED_SCM：不应尝试 sandboxGitPush", async () => {
+    const { prisma, sandboxGitPush, parseRepo, createPullRequest } = makeDeps({
       project: { scmType: "gitee" },
     });
 
     const res = await createReviewRequestForRun(
-      { prisma, gitPush, github: { parseRepo, createPullRequest } } as any,
+      { prisma, sandboxGitPush, github: { parseRepo, createPullRequest } } as any,
       "r1",
       {},
     );
 
     expect(res.success).toBe(false);
     expect((res as any).error?.code).toBe("UNSUPPORTED_SCM");
-    expect(gitPush).not.toHaveBeenCalled();
+    expect(sandboxGitPush).not.toHaveBeenCalled();
     expect(createPullRequest).not.toHaveBeenCalled();
   });
 
   it("NOT_FOUND when run missing", async () => {
     const prisma = { run: { findUnique: vi.fn().mockResolvedValue(null) } } as any;
-    const res = await createReviewRequestForRun({ prisma, gitPush: vi.fn() } as any, "r1", {});
+    const res = await createReviewRequestForRun({ prisma, sandboxGitPush: vi.fn() } as any, "r1", {});
     expect(res.success).toBe(false);
     expect((res as any).error.code).toBe("NOT_FOUND");
   });
 
   it("returns existing PR when scmPrUrl exists", async () => {
-    const { prisma, gitPush } = makeDeps({
+    const { prisma, sandboxGitPush } = makeDeps({
       run: { scmProvider: "github", scmPrNumber: 9, scmPrUrl: "https://github.com/o/r/pull/9", scmPrState: "open" },
     });
 
-    const res = await createReviewRequestForRun({ prisma, gitPush } as any, "r1", {});
+    const res = await createReviewRequestForRun({ prisma, sandboxGitPush } as any, "r1", {});
     expect(res).toEqual({
       success: true,
       data: { pr: { provider: "github", number: 9, url: "https://github.com/o/r/pull/9", state: "open" } },
@@ -199,26 +213,26 @@ describe("createReviewRequestForRun", () => {
   });
 
   it("taskId fallback: returns latest PR Artifact when present", async () => {
-    const { prisma, gitPush } = makeDeps({
+    const { prisma, sandboxGitPush } = makeDeps({
       run: { taskId: "t1", scmPrUrl: null, scmPrNumber: null },
     });
     prisma.artifact.findFirst = vi.fn().mockResolvedValue({ id: "a-pr-1", type: "pr", content: { webUrl: "u" } });
 
-    const res = await createReviewRequestForRun({ prisma, gitPush } as any, "r1", {});
+    const res = await createReviewRequestForRun({ prisma, sandboxGitPush } as any, "r1", {});
     expect(res).toEqual({ success: true, data: { pr: { id: "a-pr-1", type: "pr", content: { webUrl: "u" } } } });
   });
 
   it("NO_BRANCH when branch is missing", async () => {
-    const { prisma, gitPush } = makeDeps({ run: { branchName: null, artifacts: [] } });
-    const res = await createReviewRequestForRun({ prisma, gitPush } as any, "r1", {});
+    const { prisma, sandboxGitPush } = makeDeps({ run: { branchName: null, artifacts: [] } });
+    const res = await createReviewRequestForRun({ prisma, sandboxGitPush } as any, "r1", {});
     expect(res.success).toBe(false);
     expect((res as any).error.code).toBe("NO_BRANCH");
   });
 
-  it("GIT_PUSH_FAILED when gitPush throws", async () => {
+  it("GIT_PUSH_FAILED when sandboxGitPush throws", async () => {
     const { prisma } = makeDeps({});
-    const gitPush = vi.fn().mockRejectedValue(new Error("boom"));
-    const res = await createReviewRequestForRun({ prisma, gitPush } as any, "r1", {});
+    const sandboxGitPush = vi.fn().mockRejectedValue(new Error("boom"));
+    const res = await createReviewRequestForRun({ prisma, sandboxGitPush } as any, "r1", {});
     expect(res.success).toBe(false);
     expect((res as any).error.code).toBe("GIT_PUSH_FAILED");
   });
@@ -242,14 +256,21 @@ describe("createReviewRequestForRun", () => {
       projectId: "p1",
       project,
     };
-    const run = { id: "r1", branchName: "run/r1", workspacePath: "D:\\tmp", issue, artifacts: [] };
+    const run = {
+      id: "r1",
+      branchName: "run/r1",
+      workspacePath: "D:\\tmp",
+      agent: { capabilities: { sandbox: { gitPush: true } } },
+      issue,
+      artifacts: [],
+    };
 
     const prisma = {
       run: { findUnique: vi.fn().mockResolvedValue(run), update: vi.fn().mockResolvedValue({}) },
       artifact: { findFirst: vi.fn() },
     } as any;
 
-    const gitPush = vi.fn().mockResolvedValue(undefined);
+    const sandboxGitPush = vi.fn().mockResolvedValue(undefined);
     const createMergeRequest = vi.fn().mockResolvedValue({
       id: 1,
       iid: 7,
@@ -261,7 +282,7 @@ describe("createReviewRequestForRun", () => {
     });
 
     const res = await createReviewRequestForRun(
-      { prisma, gitPush, gitlab: { inferBaseUrl: () => "https://gitlab.example.com", createMergeRequest } } as any,
+      { prisma, sandboxGitPush, gitlab: { inferBaseUrl: () => "https://gitlab.example.com", createMergeRequest } } as any,
       "r1",
       {},
     );
@@ -325,7 +346,7 @@ describe("mergeReviewRequestForRun", () => {
     });
 
     const res = await mergeReviewRequestForRun(
-      { prisma, gitPush: vi.fn(), gitlab: { inferBaseUrl: () => "https://gitlab.example.com", mergeMergeRequest, getMergeRequest } } as any,
+      { prisma, gitlab: { inferBaseUrl: () => "https://gitlab.example.com", mergeMergeRequest, getMergeRequest } } as any,
       "r1",
       { squash: true },
     );
@@ -356,7 +377,7 @@ describe("mergeReviewRequestForRun", () => {
     const getPullRequest = vi.fn().mockRejectedValue(new Error("ignore"));
 
     const res = await mergeReviewRequestForRun(
-      { prisma, gitPush: vi.fn(), github: { parseRepo, mergePullRequest, getPullRequest } } as any,
+      { prisma, github: { parseRepo, mergePullRequest, getPullRequest } } as any,
       "r1",
       { squash: true, mergeCommitMessage: "m" },
     );
@@ -397,7 +418,7 @@ describe("syncReviewRequestForRun", () => {
     });
 
     const res = await syncReviewRequestForRun(
-      { prisma, gitPush: vi.fn(), github: { parseRepo, getPullRequest } } as any,
+      { prisma, github: { parseRepo, getPullRequest } } as any,
       "r1",
     );
 
@@ -406,4 +427,3 @@ describe("syncReviewRequestForRun", () => {
     expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
   });
 });
-

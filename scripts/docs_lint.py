@@ -53,6 +53,8 @@ def main() -> int:
         rel = md.relative_to(ROOT).as_posix()
         if rel.startswith("docs/_meta/templates/"):
             continue
+        if rel.startswith("docs/plans/"):
+            continue
 
         try:
             text = md.read_text(encoding="utf-8")

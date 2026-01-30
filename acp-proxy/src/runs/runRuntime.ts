@@ -1,17 +1,34 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
+import { access, mkdir, rm } from "node:fs/promises";
+import path from "node:path";
 
 import * as acp from "@agentclientprotocol/sdk";
 
 import { AcpClientFacade } from "../acpClientFacade.js";
 import type { JsonRpcRequest } from "../acpClientFacade.js";
 import type { AgentInit } from "../sandbox/ProxySandbox.js";
+import type { ProcessHandle } from "../sandbox/types.js";
 import { DEFAULT_KEEPALIVE_TTL_SECONDS, WORKSPACE_GUEST_PATH, nowIso } from "../proxyContext.js";
 import type { ProxyContext } from "../proxyContext.js";
 import { pickSecretValues, redactSecrets } from "../utils/secrets.js";
+import { createHostGitEnv } from "../utils/gitHost.js";
 import { isRecord, validateInstanceName, validateRunId } from "../utils/validate.js";
 import { AgentBridge } from "../acp/agentBridge.js";
 
 import type { RunRuntime } from "./runTypes.js";
+
+const execFileAsync = promisify(execFile);
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function sendUpdate(ctx: ProxyContext, runId: string, content: unknown): void {
   try {
@@ -58,6 +75,22 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
   run.expiresAt = null;
   run.lastUsedAt = Date.now();
 
+  const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
+  if (workspaceMode === "mount") {
+    const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
+    if (!rootRaw) {
+      throw new Error("sandbox.workspaceHostRoot 未配置，无法使用 mount 模式");
+    }
+    const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
+    const hostWorkspacePath = path.join(root, `run-${runId}`);
+    await mkdir(hostWorkspacePath, { recursive: true });
+    run.hostWorkspacePath = hostWorkspacePath;
+    run.workspaceMounts = [{ hostPath: hostWorkspacePath, guestPath: WORKSPACE_GUEST_PATH }];
+  } else {
+    run.hostWorkspacePath = null;
+    run.workspaceMounts = undefined;
+  }
+
   if (!run.acpClient) {
     run.acpClient = new AcpClientFacade({
       runId,
@@ -84,6 +117,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
     instanceName,
     workspaceGuestPath: WORKSPACE_GUEST_PATH,
     env: undefined,
+    mounts: run.workspaceMounts,
   });
   sendSandboxInstanceStatus(ctx, {
     runId,
@@ -95,6 +129,55 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
     throw new Error(`sandbox 实例未处于 running 状态：${info.status}`);
   }
   return run;
+}
+
+export async function ensureHostWorkspaceGit(
+  ctx: ProxyContext,
+  run: RunRuntime,
+  initEnv?: Record<string, string>,
+): Promise<void> {
+  const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
+  if (workspaceMode !== "mount") return;
+
+  const hostWorkspacePath = run.hostWorkspacePath?.trim() ?? "";
+  if (!hostWorkspacePath) {
+    throw new Error("hostWorkspacePath 缺失，无法准备宿主机 workspace");
+  }
+
+  const env = initEnv ?? {};
+  const repo = String(env.TUIXIU_REPO_URL ?? "").trim();
+  const branch = String(env.TUIXIU_RUN_BRANCH ?? "").trim();
+  const baseBranch = String(env.TUIXIU_BASE_BRANCH ?? "main").trim() || "main";
+
+  if (!repo) throw new Error("缺少 TUIXIU_REPO_URL，无法准备宿主机 workspace");
+  if (!branch) throw new Error("缺少 TUIXIU_RUN_BRANCH，无法准备宿主机 workspace");
+
+  const gitDir = path.join(hostWorkspacePath, ".git");
+  const { env: hostEnv, cleanup } = await createHostGitEnv(env);
+
+  try {
+    if (await pathExists(gitDir)) {
+      await execFileAsync("git", ["-C", hostWorkspacePath, "fetch", "--prune"], { env: hostEnv });
+    } else {
+      await rm(hostWorkspacePath, { recursive: true, force: true }).catch(() => {});
+      await mkdir(hostWorkspacePath, { recursive: true });
+      await execFileAsync(
+        "git",
+        ["clone", "--branch", baseBranch, "--single-branch", repo, hostWorkspacePath],
+        { env: hostEnv },
+      );
+    }
+
+    try {
+      await execFileAsync("git", ["-C", hostWorkspacePath, "checkout", "-B", branch, `origin/${baseBranch}`], {
+        env: hostEnv,
+      });
+    } catch {
+      await execFileAsync("git", ["-C", hostWorkspacePath, "checkout", "-B", branch], { env: hostEnv });
+    }
+  } finally {
+    await cleanup().catch(() => {});
+  }
 }
 
 export async function closeAgent(
@@ -289,6 +372,7 @@ export async function startAgent(
     runId: run.runId,
     instanceName: run.instanceName,
     workspaceGuestPath: WORKSPACE_GUEST_PATH,
+    mounts: run.workspaceMounts,
     agentCommand: ctx.cfg.agent_command,
     init,
   });

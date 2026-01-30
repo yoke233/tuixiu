@@ -1,16 +1,11 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
 import type { PrismaDeps } from "../../db.js";
 import { uuidv7 } from "../../utils/uuid.js";
-import { createGitProcessEnv } from "../../utils/gitAuth.js";
 import { createReviewRequestForRun } from "../scm/runReviewRequest.js";
 import { requestCreatePrApproval, requestMergePrApproval } from "../approvals/approvalRequests.js";
 import { autoReviewRunForPm } from "./pmAutoReviewRun.js";
 import { isPmAutomationEnabled } from "./pmLlm.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
 
-const execFileAsync = promisify(execFile);
 
 type AutoAdvanceTrigger = "run_completed" | "ci_completed";
 type QueueTask = () => Promise<void>;
@@ -27,15 +22,6 @@ function enqueueByKey(queue: Map<string, Promise<void>>, key: string, task: Queu
   return next;
 }
 
-async function defaultGitPush(opts: { cwd: string; branch: string; project: any }) {
-  const { env, cleanup } = await createGitProcessEnv(opts.project);
-  try {
-    await execFileAsync("git", ["push", "-u", "origin", opts.branch], { cwd: opts.cwd, env });
-  } finally {
-    await cleanup();
-  }
-}
-
 function hasScmPr(run: any): boolean {
   if (typeof run?.scmPrUrl === "string" && run.scmPrUrl.trim()) return true;
   const n = Number(run?.scmPrNumber ?? 0);
@@ -45,7 +31,7 @@ function hasScmPr(run: any): boolean {
 async function runAutoAdvanceOnce(
   deps: {
     prisma: PrismaDeps;
-    gitPush?: (opts: { cwd: string; branch: string; project: any }) => Promise<void>;
+    sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
     log?: (msg: string, extra?: Record<string, unknown>) => void;
   },
   runId: string,
@@ -112,8 +98,11 @@ async function runAutoAdvanceOnce(
       return;
     }
 
-    const gitPush = deps.gitPush ?? defaultGitPush;
-    const res = await createReviewRequestForRun({ prisma: deps.prisma, gitPush }, runId, {}).catch((err: unknown) => ({
+    const res = await createReviewRequestForRun(
+      { prisma: deps.prisma, sandboxGitPush: deps.sandboxGitPush },
+      runId,
+      {},
+    ).catch((err: unknown) => ({
       success: false,
       error: { code: "PR_CREATE_FAILED", message: "创建 PR 失败", details: String(err) },
     }));
@@ -167,7 +156,11 @@ async function runAutoAdvanceOnce(
 
 const issueQueue = new Map<string, Promise<void>>();
 
-export function triggerPmAutoAdvance(deps: { prisma: PrismaDeps; log?: (msg: string, extra?: Record<string, unknown>) => void }, opts: {
+export function triggerPmAutoAdvance(deps: {
+  prisma: PrismaDeps;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
+  log?: (msg: string, extra?: Record<string, unknown>) => void;
+}, opts: {
   runId: string;
   issueId: string;
   trigger: AutoAdvanceTrigger;

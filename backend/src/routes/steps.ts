@@ -15,6 +15,7 @@ export function makeStepRoutes(deps: {
   createWorkspace?: CreateWorkspace;
   autoDispatch?: boolean;
   broadcastToClients?: (payload: unknown) => void;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
 }): FastifyPluginAsync {
   return async (server) => {
     server.post("/steps/:id/start", async (request) => {
@@ -37,6 +38,7 @@ export function makeStepRoutes(deps: {
               acp: deps.acp,
               createWorkspace: deps.createWorkspace,
               broadcastToClients: deps.broadcastToClients,
+              sandboxGitPush: deps.sandboxGitPush,
             },
             data.run.id,
           );
@@ -80,6 +82,7 @@ export function makeStepRoutes(deps: {
             acp: deps.acp,
             createWorkspace: deps.createWorkspace,
             broadcastToClients: deps.broadcastToClients,
+            sandboxGitPush: deps.sandboxGitPush,
           },
           { issueId: (task as any).issueId, taskId: (task as any).id, trigger: "task_rolled_back" },
         );

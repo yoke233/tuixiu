@@ -48,6 +48,28 @@ docker run --rm tuixiu-codex-acp:local codex --version
 docker run --rm tuixiu-codex-acp:local codex-acp --help
 ```
 
+### 0.6) Linux/WSL2 使用 BoxLite（可选）
+
+> 目的：在 Linux/WSL2 上用 BoxLite（`sandbox.provider=boxlite_oci`）把 ACP Agent 放到 OCI/micro-VM 里运行。
+
+- 仅 Linux/WSL2 可用（需要 `/dev/kvm` 可用）；Windows 原生请用 `container_oci`
+- `acp-proxy` 需要在 Linux/WSL2 内运行（BoxLite Node SDK 随 `pnpm install` 安装）
+- BoxLite 通常从 registry 拉镜像，建议把 `acp-proxy/agent-images/codex-acp` 构建并推到 registry
+
+示例配置（`acp-proxy/config.toml`）：
+
+```toml
+[sandbox]
+provider = "boxlite_oci"
+image = "ghcr.io/<org>/codex-acp:latest"
+workingDir = "/workspace"
+
+[sandbox.env]
+OPENAI_API_KEY = "<key>"
+```
+
+更多细节（workspaceMode、volume 挂载、WSL2 路径映射）见：`docs/03_guides/environment-setup.md` 的 BoxLite 小节。
+
 ### 1) 安装依赖 + 启动数据库
 
 ```powershell

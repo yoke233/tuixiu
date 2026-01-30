@@ -50,6 +50,8 @@ export class RunManager {
       expiresAt: null,
       lastUsedAt: this.now(),
       opQueue: Promise.resolve(),
+      hostWorkspacePath: null,
+      workspaceMounts: undefined,
       agent: null,
       suppressNextAcpExit: false,
       acpClient: null,

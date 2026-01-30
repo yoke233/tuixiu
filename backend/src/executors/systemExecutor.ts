@@ -1,8 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
 import type { PrismaDeps } from "../db.js";
-import { createGitProcessEnv } from "../utils/gitAuth.js";
 import { createReviewRequestForRun } from "../modules/scm/runReviewRequest.js";
 import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
 import { planArtifactPublish, publishArtifact } from "../modules/artifacts/artifactPublish.js";
@@ -10,18 +6,10 @@ import { requestCreatePrApproval, requestPublishArtifactApproval } from "../modu
 import { getPmPolicyFromBranchProtection } from "../modules/pm/pmPolicy.js";
 import { computeSensitiveHitFromPaths } from "../modules/pm/pmSensitivePaths.js";
 
-const execFileAsync = promisify(execFile);
-
-async function defaultGitPush(opts: { cwd: string; branch: string; project: any }) {
-  const { env, cleanup } = await createGitProcessEnv(opts.project);
-  try {
-    await execFileAsync("git", ["push", "-u", "origin", opts.branch], { cwd: opts.cwd, env });
-  } finally {
-    await cleanup();
-  }
-}
-
-export async function startSystemExecution(deps: { prisma: PrismaDeps }, runId: string): Promise<{ executed: boolean }> {
+export async function startSystemExecution(
+  deps: { prisma: PrismaDeps; sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void> },
+  runId: string,
+): Promise<{ executed: boolean }> {
   const run = await deps.prisma.run.findUnique({
     where: { id: runId },
     include: {
@@ -63,7 +51,7 @@ export async function startSystemExecution(deps: { prisma: PrismaDeps }, runId: 
     const res = await createReviewRequestForRun(
       {
         prisma: deps.prisma,
-        gitPush: defaultGitPush,
+        sandboxGitPush: deps.sandboxGitPush,
       },
       runId,
       {},

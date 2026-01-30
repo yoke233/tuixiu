@@ -22,11 +22,18 @@ export type SandboxInstanceInfo = {
   createdAt: string | null;
 };
 
+export type WorkspaceMount = {
+  hostPath: string;
+  guestPath: string;
+  readOnly?: boolean;
+};
+
 export type EnsureInstanceRunningOpts = {
   runId: string;
   instanceName: string;
   workspaceGuestPath: string;
   env?: Record<string, string>;
+  mounts?: WorkspaceMount[];
 };
 
 export type ExecProcessInInstanceOpts = {

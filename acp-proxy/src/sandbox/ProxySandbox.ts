@@ -40,6 +40,7 @@ export interface ProxySandbox {
     runId: string;
     instanceName: string;
     workspaceGuestPath: string;
+    mounts?: { hostPath: string; guestPath: string; readOnly?: boolean }[];
     agentCommand: string[];
     init?: AgentInit;
   }): Promise<OpenAgentResult>;

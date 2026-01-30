@@ -30,6 +30,13 @@ image = "tuixiu-codex-acp:local"
 # 容器/BoxLite 内的工作目录（Run 的 workspace 固定在 guest 内 /workspace；通常由 `acp_open.init.script` 负责 git clone）
 workingDir = "/workspace"
 
+# workspaceMode: "mount" | "git_clone"
+workspaceMode = "mount"
+# sandbox 是否支持由后端触发 git push（mount 默认 true，git_clone 动态探测）
+# gitPush = false
+
+# 宿主机 workspace 根目录（仅 mount 模式需要）
+workspaceHostRoot = "C:/Users/<you>/.tuixiu/workspaces"
 # BoxLite 模式（simple=默认，jsbox=可复用 box）
 # boxMode = "jsbox"
 # boxName + boxReuse=shared 可复用缓存（不再重复创建/安装）

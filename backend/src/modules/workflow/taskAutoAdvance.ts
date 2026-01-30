@@ -60,6 +60,7 @@ export async function autoAdvanceTaskOnce(
     acp?: AcpTunnel;
     createWorkspace?: CreateWorkspace;
     broadcastToClients?: (payload: unknown) => void;
+    sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
     startStep?: typeof startStep;
     dispatchExecutionForRun?: typeof dispatchExecutionForRun;
     log?: (msg: string, extra?: Record<string, unknown>) => void;
@@ -140,6 +141,7 @@ export async function autoAdvanceTaskOnce(
       acp: deps.acp,
       createWorkspace: deps.createWorkspace,
       broadcastToClients: deps.broadcastToClients,
+      sandboxGitPush: deps.sandboxGitPush,
     },
     (started as any).run.id,
   );
@@ -162,6 +164,7 @@ export function triggerTaskAutoAdvance(
     acp?: AcpTunnel;
     createWorkspace?: CreateWorkspace;
     broadcastToClients?: (payload: unknown) => void;
+    sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
     log?: (msg: string, extra?: Record<string, unknown>) => void;
   },
   opts: { issueId: string; taskId: string; trigger: AutoAdvanceTrigger },

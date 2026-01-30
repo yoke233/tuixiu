@@ -2,14 +2,13 @@ import type { PrismaDeps } from "../../db.js";
 import * as gitlab from "../../integrations/gitlab.js";
 import * as github from "../../integrations/github.js";
 import type { GitAuthProject } from "../../utils/gitAuth.js";
+import { isSandboxGitPushEnabled } from "../../utils/sandboxCaps.js";
 import { postGitHubPrCreatedCommentBestEffort } from "./githubIssueComments.js";
 import { buildRunScmStateUpdate } from "./runScmState.js";
 
-export type GitPush = (opts: { cwd: string; branch: string; project: GitAuthProject }) => Promise<void>;
-
 export type RunReviewDeps = {
   prisma: PrismaDeps;
-  gitPush: GitPush;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: GitAuthProject }) => Promise<void>;
   gitlab?: {
     inferBaseUrl?: typeof gitlab.inferGitlabBaseUrl;
     createMergeRequest?: typeof gitlab.createMergeRequest;
@@ -45,25 +44,10 @@ function appendGitHubIssueLinkForPrBody(params: {
   return `${trimmed}${trimmed ? "\n\n" : ""}Closes #${externalNumber}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function pickBoxliteWorkspaceModeFromCaps(capabilities: unknown): "mount" | "git_clone" | null {
-  if (!isRecord(capabilities)) return null;
-  const sandbox = capabilities.sandbox;
-  if (!isRecord(sandbox)) return null;
-  if (sandbox.provider !== "boxlite_oci") return null;
-  const boxlite = sandbox.boxlite;
-  if (!isRecord(boxlite)) return "mount";
-  return boxlite.workspaceMode === "git_clone" ? "git_clone" : "mount";
-}
-
-function isBoxliteGitCloneRun(run: any): boolean {
+function isSandboxGitPushRun(run: any): boolean {
   const assignedCaps = run?.issue?.assignedAgent?.capabilities;
   const runCaps = run?.agent?.capabilities;
-  const mode = pickBoxliteWorkspaceModeFromCaps(assignedCaps ?? runCaps);
-  return mode === "git_clone";
+  return isSandboxGitPushEnabled(assignedCaps ?? runCaps);
 }
 
 export async function createReviewRequestForRun(
@@ -144,12 +128,20 @@ export async function createReviewRequestForRun(
   const title = body.title ?? runAny.issue.title ?? `Run ${runAny.id}`;
   const description = body.description ?? runAny.issue.description ?? "";
 
-  if (!isBoxliteGitCloneRun(runAny)) {
-    try {
-      await deps.gitPush({ cwd: runAny.workspacePath ?? process.cwd(), branch, project });
-    } catch (err) {
-      return { success: false, error: { code: "GIT_PUSH_FAILED", message: "git push 失败", details: String(err) } };
-    }
+  const shouldSandboxGitPush = isSandboxGitPushRun(runAny);
+  if (!shouldSandboxGitPush) {
+    return {
+      success: false,
+      error: { code: "SANDBOX_GIT_PUSH_UNSUPPORTED", message: "sandbox 不支持 git push" },
+    };
+  }
+  if (!deps.sandboxGitPush) {
+    return { success: false, error: { code: "NO_SANDBOX_GIT_PUSH", message: "sandbox git push 未配置" } };
+  }
+  try {
+    await deps.sandboxGitPush({ run: runAny, branch, project });
+  } catch (err) {
+    return { success: false, error: { code: "GIT_PUSH_FAILED", message: "git push 失败", details: String(err) } };
   }
 
   if (scm === "gitlab" || scm === "codeup") {

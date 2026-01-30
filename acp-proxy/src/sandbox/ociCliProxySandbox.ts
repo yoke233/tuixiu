@@ -138,6 +138,7 @@ export class OciCliProxySandbox implements ProxySandbox {
     runId: string;
     instanceName: string;
     workspaceGuestPath: string;
+    mounts?: { hostPath: string; guestPath: string; readOnly?: boolean }[];
     agentCommand: string[];
     init?: { script?: string; timeout_seconds?: number; env?: Record<string, string> };
   }): Promise<{ handle: ProcessHandle; created: boolean; initPending: boolean }> {
@@ -172,12 +173,13 @@ export class OciCliProxySandbox implements ProxySandbox {
           ? opts.workspaceGuestPath.trim()
           : "/workspace";
 
+      const mounts = toMounts([...(this.opts.config.volumes ?? []), ...(opts.mounts ?? [])]);
       const handle = this.startAgent({
         cli,
         name: opts.instanceName,
         image: this.opts.config.image,
         workingDir,
-        mounts: toMounts(this.opts.config.volumes),
+        mounts,
         env: this.opts.config.env,
         labels: {
           "acp-proxy.managed": "1",

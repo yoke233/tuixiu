@@ -1,7 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 
 import type { PrismaDeps, SendToAgent } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
@@ -9,7 +7,6 @@ import { toApprovalSummary, type ApprovalStatus } from "../modules/approvals/app
 import type { CreateWorkspace } from "../executors/types.js";
 import { mergeReviewRequestForRun, createReviewRequestForRun } from "../modules/scm/runReviewRequest.js";
 import { postGitHubApprovalCommentBestEffort } from "../modules/scm/githubIssueComments.js";
-import { createGitProcessEnv } from "../utils/gitAuth.js";
 import { publishArtifact } from "../modules/artifacts/artifactPublish.js";
 import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
 import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
@@ -17,7 +14,6 @@ import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
 
-const execFileAsync = promisify(execFile);
 
 function normalizeApprovalStatus(value: string | undefined): ApprovalStatus | null {
   const v = String(value ?? "").trim().toLowerCase();
@@ -31,7 +27,7 @@ export function makeApprovalRoutes(deps: {
   sendToAgent?: SendToAgent;
   createWorkspace?: CreateWorkspace;
   broadcastToClients?: (payload: unknown) => void;
-  gitPush?: (opts: { cwd: string; branch: string; project: any }) => Promise<void>;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   gitlab?: {
     inferBaseUrl?: typeof gitlab.inferGitlabBaseUrl;
     createMergeRequest?: typeof gitlab.createMergeRequest;
@@ -46,20 +42,6 @@ export function makeApprovalRoutes(deps: {
   };
 }): FastifyPluginAsync {
   return async (server) => {
-    const gitPush =
-      deps.gitPush ??
-      (async (opts: { cwd: string; branch: string; project: any }) => {
-        const { env, cleanup } = await createGitProcessEnv(opts.project);
-        try {
-          await execFileAsync("git", ["push", "-u", "origin", opts.branch], {
-            cwd: opts.cwd,
-            env,
-          });
-        } finally {
-          await cleanup();
-        }
-      });
-
     server.get("/", async (request) => {
       const querySchema = z.object({
         status: z.string().optional(),
@@ -157,7 +139,7 @@ export function makeApprovalRoutes(deps: {
         };
 
         const mergeRes = await mergeReviewRequestForRun(
-          { prisma: deps.prisma, gitPush, gitlab: deps.gitlab, github: deps.github },
+          { prisma: deps.prisma, gitlab: deps.gitlab, github: deps.github },
           String((run as any).id),
           mergeBody,
         );
@@ -241,7 +223,12 @@ export function makeApprovalRoutes(deps: {
         };
 
         const createRes = await createReviewRequestForRun(
-          { prisma: deps.prisma, gitPush, gitlab: deps.gitlab, github: deps.github },
+          {
+            prisma: deps.prisma,
+            sandboxGitPush: deps.sandboxGitPush,
+            gitlab: deps.gitlab,
+            github: deps.github,
+          },
           String((run as any).id),
           createBody,
           (run as any).taskId ? { setRunWaitingCi: false } : undefined,
@@ -326,7 +313,13 @@ export function makeApprovalRoutes(deps: {
             run_id: String((run as any).id),
           });
           triggerTaskAutoAdvance(
-            { prisma: deps.prisma, sendToAgent: deps.sendToAgent, createWorkspace: deps.createWorkspace, broadcastToClients: deps.broadcastToClients },
+            {
+              prisma: deps.prisma,
+              sendToAgent: deps.sendToAgent,
+              createWorkspace: deps.createWorkspace,
+              broadcastToClients: deps.broadcastToClients,
+              sandboxGitPush: deps.sandboxGitPush,
+            },
             { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
           );
         }
@@ -424,7 +417,13 @@ export function makeApprovalRoutes(deps: {
             run_id: String((run as any).id),
           });
           triggerTaskAutoAdvance(
-            { prisma: deps.prisma, sendToAgent: deps.sendToAgent, createWorkspace: deps.createWorkspace, broadcastToClients: deps.broadcastToClients },
+            {
+              prisma: deps.prisma,
+              sendToAgent: deps.sendToAgent,
+              createWorkspace: deps.createWorkspace,
+              broadcastToClients: deps.broadcastToClients,
+              sandboxGitPush: deps.sandboxGitPush,
+            },
             { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
           );
         }

@@ -174,7 +174,10 @@ export class ContainerSandbox implements SandboxProvider, SandboxInstanceProvide
         : "/workspace";
 
     const envForContainer = { ...cfg.env, ...opts.env };
-    const volumes: ContainerVolume[] = [...(cfg.volumes ?? [])];
+    const volumes: ContainerVolume[] = [
+      ...(cfg.volumes ?? []),
+      ...(Array.isArray(opts.mounts) ? opts.mounts : []),
+    ];
 
     const args: string[] = ["run", "-d", "--name", instanceName, "-w", workingDir];
     args.push("--label", "acp-proxy.managed=1");

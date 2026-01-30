@@ -66,6 +66,59 @@ describe("loadConfig", () => {
     expect(cfg.sandbox.workspaceMode).toBe("mount");
   });
 
+  it("parses sandbox.workspaceMode=git_clone", async () => {
+    const p = path.join(
+      tmpdir(),
+      `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
+    );
+    await writeFile(
+      p,
+      JSON.stringify({
+        orchestrator_url: "ws://localhost:3000/ws/agent",
+        heartbeat_seconds: 30,
+        mock_mode: true,
+        agent_command: ["node", "--version"],
+        agent: { id: "codex-local-1", max_concurrent: 2 },
+        sandbox: {
+          provider: "boxlite_oci",
+          image: "alpine:latest",
+          workspaceMode: "git_clone",
+        },
+      }),
+      "utf8",
+    );
+
+    const cfg = await loadConfig(p);
+    expect(cfg.sandbox.workspaceMode).toBe("git_clone");
+  });
+
+  it("parses sandbox.gitPush", async () => {
+    const p = path.join(
+      tmpdir(),
+      `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
+    );
+    await writeFile(
+      p,
+      JSON.stringify({
+        orchestrator_url: "ws://localhost:3000/ws/agent",
+        heartbeat_seconds: 30,
+        mock_mode: true,
+        agent_command: ["node", "--version"],
+        agent: { id: "codex-local-1", max_concurrent: 2 },
+        sandbox: {
+          provider: "boxlite_oci",
+          image: "alpine:latest",
+          workspaceMode: "git_clone",
+          gitPush: false,
+        },
+      }),
+      "utf8",
+    );
+
+    const cfg = await loadConfig(p);
+    expect(cfg.sandbox.gitPush).toBe(false);
+  });
+
   it("applies profile overrides", async () => {
     const p = path.join(
       tmpdir(),

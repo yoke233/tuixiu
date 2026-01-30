@@ -15,6 +15,7 @@ export async function dispatchExecutionForRun(
     acp?: AcpTunnel;
     createWorkspace?: CreateWorkspace;
     broadcastToClients?: (payload: unknown) => void;
+    sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   },
   runId: string,
 ): Promise<{ success: boolean; error?: string }> {
@@ -40,7 +41,7 @@ export async function dispatchExecutionForRun(
       return { success: true };
     }
     if (executorType === "system") {
-      const sysRes = await startSystemExecution({ prisma: deps.prisma }, runId);
+      const sysRes = await startSystemExecution({ prisma: deps.prisma, sandboxGitPush: deps.sandboxGitPush }, runId);
       if ((run as any).taskId) {
         deps.broadcastToClients?.({
           type: "task_updated",
@@ -57,6 +58,7 @@ export async function dispatchExecutionForRun(
               acp: deps.acp,
               createWorkspace: deps.createWorkspace,
               broadcastToClients: deps.broadcastToClients,
+              sandboxGitPush: deps.sandboxGitPush,
             },
             { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
           );

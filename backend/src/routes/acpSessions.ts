@@ -19,6 +19,7 @@ export function makeAcpSessionRoutes(deps: {
   acp?: AcpTunnel;
   createWorkspace?: CreateWorkspace;
   broadcastToClients?: (payload: unknown) => void;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   auth: AuthHelpers;
 }): FastifyPluginAsync {
   return async (server) => {
@@ -163,6 +164,7 @@ export function makeAcpSessionRoutes(deps: {
               acp: deps.acp,
               createWorkspace: deps.createWorkspace,
               broadcastToClients: deps.broadcastToClients,
+              sandboxGitPush: deps.sandboxGitPush,
             },
             (started as any).run.id,
           );

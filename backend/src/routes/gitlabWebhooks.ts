@@ -41,6 +41,7 @@ function normalizeGitLabLabels(labels: unknown): string[] {
 
 export function makeGitLabWebhookRoutes(deps: {
   prisma: PrismaDeps;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   webhookSecret?: string;
   onIssueUpserted?: (issueId: string, reason: string) => void;
   broadcastToClients?: (payload: unknown) => void;
@@ -200,13 +201,13 @@ export function makeGitLabWebhookRoutes(deps: {
         }
 
         triggerPmAutoAdvance(
-          { prisma: deps.prisma },
+          { prisma: deps.prisma, sandboxGitPush: deps.sandboxGitPush },
           { runId: (run as any).id, issueId: (run as any).issueId, trigger: "ci_completed" },
         );
 
         if ((run as any).taskId) {
           triggerTaskAutoAdvance(
-            { prisma: deps.prisma, broadcastToClients: deps.broadcastToClients },
+            { prisma: deps.prisma, broadcastToClients: deps.broadcastToClients, sandboxGitPush: deps.sandboxGitPush },
             { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "ci_completed" },
           );
         }

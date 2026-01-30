@@ -65,6 +65,20 @@ type SessionControlResultMessage = {
   error?: string;
 };
 
+type SandboxControlResultMessage = {
+  type: "sandbox_control_result";
+  run_id?: string | null;
+  instance_name?: string | null;
+  action?: string;
+  request_id?: string | null;
+  ok?: boolean;
+  error?: string;
+  stdout?: string;
+  stderr?: string;
+  code?: number | null;
+  signal?: string | null;
+};
+
 type BranchCreatedMessage = {
   type: "branch_created";
   run_id: string;
@@ -113,6 +127,7 @@ type AnyAgentMessage =
   | PromptUpdateMessage
   | PromptResultMessage
   | SessionControlResultMessage
+  | SandboxControlResultMessage
   | BranchCreatedMessage
   | AcpExitMessage
   | SandboxInventoryMessage;
@@ -167,6 +182,7 @@ function describePromptUpdate(update: unknown): {
 
 export function createWebSocketGateway(deps: {
   prisma: PrismaDeps;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 }) {
   const agentConnections = new Map<string, WebSocket>();
@@ -177,6 +193,10 @@ export function createWebSocketGateway(deps: {
     handlePromptUpdate: (proxyId: string, payload: unknown) => void;
     handlePromptResult: (proxyId: string, payload: unknown) => void;
     handleSessionControlResult: (proxyId: string, payload: unknown) => void;
+    handleProxyDisconnected?: (proxyId: string) => void;
+  } = null;
+  let sandboxControlHandlers: null | {
+    handleSandboxControlResult: (proxyId: string, payload: unknown) => void;
     handleProxyDisconnected?: (proxyId: string) => void;
   } = null;
 
@@ -470,6 +490,17 @@ export function createWebSocketGateway(deps: {
           if (proxyId && acpTunnelHandlers) {
             try {
               acpTunnelHandlers.handleSessionControlResult(proxyId, message);
+            } catch (err) {
+              logError(err);
+            }
+          }
+          return;
+        }
+
+        if (message.type === "sandbox_control_result") {
+          if (proxyId && sandboxControlHandlers) {
+            try {
+              sandboxControlHandlers.handleSandboxControlResult(proxyId, message);
             } catch (err) {
               logError(err);
             }
@@ -914,13 +945,13 @@ export function createWebSocketGateway(deps: {
                 }
 
                 triggerPmAutoAdvance(
-                  { prisma: deps.prisma },
+                  { prisma: deps.prisma, sandboxGitPush: deps.sandboxGitPush },
                   { runId: run.id, issueId: run.issueId, trigger: "run_completed" },
                 );
 
                 if (run.taskId) {
                   triggerTaskAutoAdvance(
-                    { prisma: deps.prisma, sendToAgent, broadcastToClients },
+                    { prisma: deps.prisma, sendToAgent, broadcastToClients, sandboxGitPush: deps.sandboxGitPush },
                     { issueId: run.issueId, taskId: run.taskId, trigger: "step_completed" },
                   );
                 }
@@ -1062,6 +1093,7 @@ export function createWebSocketGateway(deps: {
         .update({ where: { proxyId }, data: { status: "offline" } })
         .catch(() => {});
       acpTunnelHandlers?.handleProxyDisconnected?.(proxyId);
+      sandboxControlHandlers?.handleProxyDisconnected?.(proxyId);
     });
   }
 
@@ -1097,6 +1129,12 @@ export function createWebSocketGateway(deps: {
       handleProxyDisconnected?: (proxyId: string) => void;
     }) => {
       acpTunnelHandlers = handlers;
+    },
+    setSandboxControlHandlers: (handlers: {
+      handleSandboxControlResult: (proxyId: string, payload: unknown) => void;
+      handleProxyDisconnected?: (proxyId: string) => void;
+    }) => {
+      sandboxControlHandlers = handlers;
     },
     __testing: {
       agentConnections,

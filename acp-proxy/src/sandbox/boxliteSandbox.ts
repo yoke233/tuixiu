@@ -208,6 +208,7 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
   private async ensureBox(opts: {
     instanceName: string;
     envForProc: Record<string, string>;
+    volumes?: BoxliteVolume[];
   }): Promise<any> {
     this.opts.log("boxlite ensureBox start", { instanceName: opts.instanceName });
     try {
@@ -243,7 +244,7 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
       autoRemove,
       workingDir,
       env: envForProc,
-      volumes: cfg.volumes ?? [],
+      volumes: opts.volumes ?? cfg.volumes ?? [],
     };
 
     this.opts.log("boxlite create", {
@@ -351,10 +352,18 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
     }
 
     const envForProc = { ...cfg.env, ...opts.env };
+    const extraVolumes = Array.isArray(opts.mounts)
+      ? opts.mounts.map((v) => ({ hostPath: v.hostPath, guestPath: v.guestPath, readOnly: v.readOnly }))
+      : [];
+    if (extraVolumes.length && this.isSharedBox(cfg)) {
+      throw new Error("boxlite 共享 box 不支持动态 workspace mount");
+    }
+    const volumes = [...(cfg.volumes ?? []), ...extraVolumes];
     this.opts.log("boxlite ensureInstanceRunning", { instanceName });
     await this.ensureBox({
       instanceName,
       envForProc,
+      volumes,
     });
 
     return { instanceName, status: "running", createdAt: null };

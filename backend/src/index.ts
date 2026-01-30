@@ -29,11 +29,14 @@ import { makeTaskRoutes } from "./routes/tasks.js";
 import { makeTextTemplateRoutes } from "./routes/textTemplates.js";
 import { createPmAutomation } from "./modules/pm/pmAutomation.js";
 import { createAcpTunnel } from "./modules/acp/acpTunnel.js";
+import { createSandboxControlClient } from "./modules/sandbox/sandboxControl.js";
 import { startGitHubPollingLoop } from "./modules/scm/githubPolling.js";
 import { createLocalAttachmentStore } from "./modules/attachments/localAttachmentStore.js";
-import { createRunWorkspace } from "./utils/runWorkspace.js";
-import { startWorkspaceCleanupLoop } from "./modules/workspace/workspaceCleanup.js";
+import { resolveGitAuthMode } from "./utils/gitAuth.js";
+import { defaultRunBranchName } from "./utils/gitWorkspace.js";
+import { buildSandboxGitPushEnv } from "./utils/sandboxGitPush.js";
 import { createWebSocketGateway } from "./websocket/gateway.js";
+import { deriveSandboxInstanceName } from "./utils/sandbox.js";
 
 const env = loadEnv();
 const attachments = createLocalAttachmentStore({
@@ -99,8 +102,40 @@ server.addHook("preHandler", async (request, reply) => {
   }
 });
 
+let sandboxControl: ReturnType<typeof createSandboxControlClient> | null = null;
+
+async function sandboxGitPush(opts: { run: any; branch: string; project: any }) {
+  const run = opts.run;
+  const proxyId = String(run?.agent?.proxyId ?? run?.issue?.assignedAgent?.proxyId ?? "").trim();
+  if (!proxyId) throw new Error("Run.agent.proxyId 缺失");
+
+  const instanceName =
+    typeof run?.sandboxInstanceName === "string" && run.sandboxInstanceName.trim()
+      ? run.sandboxInstanceName.trim()
+      : deriveSandboxInstanceName(String(run?.id ?? ""));
+  if (!instanceName) throw new Error("sandboxInstanceName 缺失");
+
+  const env = buildSandboxGitPushEnv(opts.project);
+  env.TUIXIU_RUN_BRANCH = opts.branch;
+  env.TUIXIU_WORKSPACE_GUEST = "/workspace";
+
+  if (!sandboxControl) {
+    throw new Error("sandboxControl 未初始化");
+  }
+
+  await sandboxControl.gitPush({
+    proxyId,
+    runId: String(run?.id ?? ""),
+    instanceName,
+    branch: opts.branch,
+    cwd: "/workspace",
+    env,
+  });
+}
+
 const wsGateway = createWebSocketGateway({
   prisma,
+  sandboxGitPush,
   log: (msg, extra) => server.log.debug(extra ? { ...extra, msg } : { msg }),
 });
 wsGateway.init(server);
@@ -114,10 +149,17 @@ const acpTunnel = createAcpTunnel({
   prisma,
   sendToAgent: wsGateway.sendToAgent,
   broadcastToClients: wsGateway.broadcastToClients,
+  sandboxGitPush,
   log: (msg, extra) => server.log.info(extra ? { ...extra, msg } : { msg }),
 });
 wsGateway.setAcpTunnelHandlers(acpTunnel.gatewayHandlers);
 wsGateway.setAcpTunnel(acpTunnel);
+
+sandboxControl = createSandboxControlClient({
+  sendToAgent: wsGateway.sendToAgent,
+  log: (msg, extra) => server.log.info(extra ? { ...extra, msg } : { msg }),
+});
+wsGateway.setSandboxControlHandlers(sandboxControl.handlers);
 
 const createWorkspace = async ({
   runId,
@@ -130,21 +172,29 @@ const createWorkspace = async ({
 }) => {
   const run = await prisma.run.findUnique({
     where: { id: runId },
-    include: { issue: { include: { project: true } } },
+    include: { issue: { include: { project: true } }, agent: true },
   });
   const project = (run as any)?.issue?.project;
   if (!project) {
     throw new Error("Run 对应的 Project 不存在");
   }
 
-  return await createRunWorkspace({
-    runId,
-    baseBranch,
-    name,
-    project,
-    workspacesRoot: env.WORKSPACES_ROOT,
-    repoCacheRoot: env.REPO_CACHE_ROOT,
-  });
+  const branchName = defaultRunBranchName(name);
+  const resolvedBase = String(baseBranch ?? "").trim() || String(project.defaultBranch ?? "main");
+  return {
+    workspaceMode: "clone",
+    workspacePath: "/workspace",
+    branchName,
+    baseBranch: resolvedBase,
+    gitAuthMode: resolveGitAuthMode({
+      repoUrl: String(project.repoUrl ?? ""),
+      scmType: project.scmType ?? null,
+      gitAuthMode: project.gitAuthMode ?? null,
+      githubAccessToken: project.githubAccessToken ?? null,
+      gitlabAccessToken: project.gitlabAccessToken ?? null,
+    }),
+    timingsMs: { totalMs: 0 },
+  };
 };
 
 const pm = createPmAutomation({
@@ -171,6 +221,7 @@ server.register(
     acp: acpTunnel,
     broadcastToClients: wsGateway.broadcastToClients,
     attachments,
+    sandboxGitPush,
   }),
   { prefix: "/api/runs" },
 );
@@ -180,6 +231,7 @@ server.register(
     sendToAgent: wsGateway.sendToAgent,
     createWorkspace,
     broadcastToClients: wsGateway.broadcastToClients,
+    sandboxGitPush,
   }),
   { prefix: "/api/approvals" },
 );
@@ -198,6 +250,7 @@ server.register(
     webhookSecret: env.GITHUB_WEBHOOK_SECRET,
     onIssueUpserted: pm.triggerAutoStart,
     broadcastToClients: wsGateway.broadcastToClients,
+    sandboxGitPush,
   }),
   { prefix: "/api/webhooks" },
 );
@@ -207,6 +260,7 @@ server.register(
     webhookSecret: env.GITLAB_WEBHOOK_SECRET,
     onIssueUpserted: pm.triggerAutoStart,
     broadcastToClients: wsGateway.broadcastToClients,
+    sandboxGitPush,
   }),
   { prefix: "/api/webhooks" },
 );
@@ -233,6 +287,7 @@ server.register(
     sendToAgent: wsGateway.sendToAgent,
     createWorkspace,
     broadcastToClients: wsGateway.broadcastToClients,
+    sandboxGitPush,
   }),
   { prefix: "/api" },
 );
@@ -243,6 +298,7 @@ server.register(
     createWorkspace,
     autoDispatch: true,
     broadcastToClients: wsGateway.broadcastToClients,
+    sandboxGitPush,
   }),
   { prefix: "/api" },
 );
@@ -255,6 +311,7 @@ server.register(
     createWorkspace,
     broadcastToClients: wsGateway.broadcastToClients,
     auth,
+    sandboxGitPush,
   }),
   { prefix: "/api/admin" },
 );
@@ -262,15 +319,5 @@ server.register(makeSandboxRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, 
   prefix: "/api/admin",
 });
 server.register(makeTextTemplateRoutes({ prisma, auth }), { prefix: "/api/admin" });
-
-startWorkspaceCleanupLoop({
-  prisma,
-  workspacesRoot: env.WORKSPACES_ROOT,
-  repoCacheRoot: env.REPO_CACHE_ROOT,
-  workspaceTtlDays: env.WORKSPACE_TTL_DAYS,
-  repoCacheTtlDays: env.REPO_CACHE_TTL_DAYS,
-  intervalSeconds: env.CLEANUP_INTERVAL_SECONDS,
-  log: (msg, extra) => server.log.info(extra ? { ...extra, msg } : { msg }),
-});
 
 await server.listen({ port: env.PORT, host: env.HOST });

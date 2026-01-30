@@ -124,6 +124,7 @@ export class BoxliteProxySandbox implements ProxySandbox {
     runId: string;
     instanceName: string;
     workspaceGuestPath: string;
+    mounts?: { hostPath: string; guestPath: string; readOnly?: boolean }[];
     agentCommand: string[];
     init?: { script?: string; timeout_seconds?: number; env?: Record<string, string> };
   }): Promise<{ handle: ProcessHandle; created: boolean; initPending: boolean }> {
@@ -142,6 +143,7 @@ export class BoxliteProxySandbox implements ProxySandbox {
         instanceName: opts.instanceName,
         workspaceGuestPath: opts.workspaceGuestPath,
         env: undefined,
+        mounts: opts.mounts,
       });
     }
 

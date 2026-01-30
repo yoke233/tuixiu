@@ -81,9 +81,22 @@ export type SandboxControlMessage = {
   type: "sandbox_control";
   run_id?: string;
   instance_name?: string;
-  action: "inspect" | "ensure_running" | "stop" | "remove" | "report_inventory" | "remove_image";
+  action:
+    | "inspect"
+    | "ensure_running"
+    | "stop"
+    | "remove"
+    | "report_inventory"
+    | "remove_image"
+    | "git_push";
   image?: string;
   expected_instances?: Array<{ instance_name: string; run_id: string }>;
+  request_id?: string;
+  branch?: string;
+  cwd?: string;
+  env?: Record<string, string>;
+  timeout_seconds?: number;
+  remote?: string;
 };
 
 export type IncomingMessage =

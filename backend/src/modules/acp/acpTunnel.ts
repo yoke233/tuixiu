@@ -67,6 +67,7 @@ type RunChunkBuffer = {
 export function createAcpTunnel(deps: {
   prisma: PrismaDeps;
   sendToAgent: SendToAgent;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   broadcastToClients?: (payload: unknown) => void;
   log?: Logger;
 }) {
@@ -324,7 +325,7 @@ export function createAcpTunnel(deps: {
 
     if (!suppressPmAutoAdvance) {
       triggerPmAutoAdvance(
-        { prisma: deps.prisma },
+        { prisma: deps.prisma, sandboxGitPush: deps.sandboxGitPush },
         { runId, issueId: (run as any).issueId, trigger: "run_completed" },
       );
     }

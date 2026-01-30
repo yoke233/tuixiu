@@ -1,8 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { promisify } from "node:util";
 
 import type { PrismaDeps, SendToAgent } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
@@ -29,13 +27,10 @@ import {
   setTaskBlockedFromRun,
 } from "../modules/workflow/taskProgress.js";
 import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
-import { createGitProcessEnv } from "../utils/gitAuth.js";
 import { getPmPolicyFromBranchProtection } from "../modules/pm/pmPolicy.js";
 import type { AttachmentStore } from "../modules/attachments/attachmentStore.js";
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
-
-const execFileAsync = promisify(execFile);
 
 export function makeRunRoutes(deps: {
   prisma: PrismaDeps;
@@ -43,7 +38,7 @@ export function makeRunRoutes(deps: {
   acp?: AcpTunnel;
   broadcastToClients?: (payload: unknown) => void;
   attachments?: AttachmentStore;
-  gitPush?: (opts: { cwd: string; branch: string; project: any }) => Promise<void>;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   gitlab?: {
     inferBaseUrl?: typeof gitlab.inferGitlabBaseUrl;
     createMergeRequest?: typeof gitlab.createMergeRequest;
@@ -58,20 +53,6 @@ export function makeRunRoutes(deps: {
   };
 }): FastifyPluginAsync {
   return async (server) => {
-    const gitPush =
-      deps.gitPush ??
-      (async (opts: { cwd: string; branch: string; project: any }) => {
-        const { env, cleanup } = await createGitProcessEnv(opts.project);
-        try {
-          await execFileAsync("git", ["push", "-u", "origin", opts.branch], {
-            cwd: opts.cwd,
-            env,
-          });
-        } finally {
-          await cleanup();
-        }
-      });
-
     server.get("/:id", async (request) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const { id } = paramsSchema.parse(request.params);
@@ -239,7 +220,7 @@ export function makeRunRoutes(deps: {
       return await createReviewRequestForRun(
         {
           prisma: deps.prisma,
-          gitPush,
+          sandboxGitPush: deps.sandboxGitPush,
           gitlab: deps.gitlab,
           github: deps.github,
         },
@@ -302,7 +283,6 @@ export function makeRunRoutes(deps: {
       return await syncReviewRequestForRun(
         {
           prisma: deps.prisma,
-          gitPush,
           gitlab: deps.gitlab,
           github: deps.github,
         },
@@ -580,7 +560,7 @@ export function makeRunRoutes(deps: {
 
       if (stepKind === "pr.merge") {
         const mergeRes = await mergeReviewRequestForRun(
-          { prisma: deps.prisma, gitPush, gitlab: deps.gitlab, github: deps.github },
+          { prisma: deps.prisma, gitlab: deps.gitlab, github: deps.github },
           run.id,
           { squash: body.squash, mergeCommitMessage: body.mergeCommitMessage },
         );
@@ -609,6 +589,7 @@ export function makeRunRoutes(deps: {
               sendToAgent: deps.sendToAgent,
               acp: deps.acp,
               broadcastToClients: deps.broadcastToClients,
+              sandboxGitPush: deps.sandboxGitPush,
             },
             {
               issueId: (run as any).issueId,
@@ -667,6 +648,7 @@ export function makeRunRoutes(deps: {
             sendToAgent: deps.sendToAgent,
             acp: deps.acp,
             broadcastToClients: deps.broadcastToClients,
+            sandboxGitPush: deps.sandboxGitPush,
           },
           { issueId: (run as any).issueId, taskId: (run as any).taskId, trigger: "step_completed" },
         );

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { parse as parseToml } from "@iarna/toml";
 import { z } from "zod";
@@ -41,6 +42,8 @@ const sandboxBootstrapSchema = z.object({
   timeoutSeconds: z.coerce.number().int().positive().optional(),
 });
 
+const defaultWorkspaceHostRoot = path.join(os.homedir(), ".tuixiu", "workspaces");
+
 const sandboxSchema = z
   .object({
     terminalEnabled: z.boolean().default(false),
@@ -51,7 +54,9 @@ const sandboxSchema = z
     env: z.record(z.string()).optional(),
     cpus: z.coerce.number().positive().optional(),
     memoryMib: z.coerce.number().int().positive().optional(),
-    workspaceMode: z.enum(["mount"]).default("mount"),
+    workspaceMode: z.enum(["mount", "git_clone"]).default("mount"),
+    gitPush: z.boolean().optional(),
+    workspaceHostRoot: z.string().min(1).default(defaultWorkspaceHostRoot),
     runtime: z.string().min(1).optional(),
     extraRunArgs: z.array(z.string().min(1)).optional(),
     boxMode: z.enum(["simple", "jsbox"]).optional(),
@@ -96,7 +101,9 @@ const configOverrideSchema = z.object({
       env: z.record(z.string()).optional(),
       cpus: z.coerce.number().positive().optional(),
       memoryMib: z.coerce.number().int().positive().optional(),
-      workspaceMode: z.enum(["mount"]).optional(),
+      workspaceMode: z.enum(["mount", "git_clone"]).optional(),
+      gitPush: z.boolean().optional(),
+      workspaceHostRoot: z.string().min(1).optional(),
       runtime: z.string().min(1).optional(),
       extraRunArgs: z.array(z.string().min(1)).optional(),
       boxMode: z.enum(["simple", "jsbox"]).optional(),

@@ -1,0 +1,14 @@
+.git
+.github
+.worktrees
+.pnpm-store
+**/node_modules
+**/dist
+**/.turbo
+**/.vite
+**/.next
+**/.cache
+**/coverage
+**/*.log
+**/.DS_Store
+**/Thumbs.db
