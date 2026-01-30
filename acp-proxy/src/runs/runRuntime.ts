@@ -13,7 +13,6 @@ import type { ProcessHandle } from "../sandbox/types.js";
 import { DEFAULT_KEEPALIVE_TTL_SECONDS, WORKSPACE_GUEST_PATH, nowIso } from "../proxyContext.js";
 import type { ProxyContext } from "../proxyContext.js";
 import { pickSecretValues, redactSecrets } from "../utils/secrets.js";
-import { isFsToolEnabled, isGitToolEnabled, isTerminalToolEnabled } from "../utils/agentCaps.js";
 import { createHostGitEnv } from "../utils/gitHost.js";
 import { isRecord, validateInstanceName, validateRunId } from "../utils/validate.js";
 import { AgentBridge } from "../acp/agentBridge.js";
@@ -60,14 +59,7 @@ export function sendSandboxInstanceStatus(
 }
 
 function resolveTerminalEnabled(ctx: ProxyContext): boolean {
-  return isTerminalToolEnabled({
-    sandboxTerminalEnabled: ctx.cfg.sandbox.terminalEnabled === true,
-    capabilities: ctx.cfg.agent.capabilities,
-  });
-}
-
-function resolveFsEnabled(ctx: ProxyContext): boolean {
-  return isFsToolEnabled(ctx.cfg.agent.capabilities);
+  return ctx.cfg.sandbox.terminalEnabled === true;
 }
 
 export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRuntime> {
@@ -106,6 +98,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
   }
 
   if (!run.acpClient) {
+    const permissionAsk = ctx.sandbox.provider === "host_process";
     run.acpClient = new AcpClientFacade({
       runId,
       instanceName,
@@ -113,8 +106,17 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
       sandbox: ctx.sandbox as any,
       log: ctx.log,
       terminalEnabled: resolveTerminalEnabled(ctx),
-      fsEnabled: resolveFsEnabled(ctx),
-      capabilities: ctx.cfg.agent.capabilities,
+      permissionAsk,
+      onPermissionRequest: (req) => {
+        sendUpdate(ctx, runId, {
+          type: "permission_request",
+          request_id: req.requestId,
+          session_id: req.sessionId,
+          prompt_id: run.activePromptId ?? null,
+          tool_call: req.toolCall,
+          options: req.options,
+        });
+      },
     });
   }
 
@@ -153,9 +155,6 @@ export async function ensureHostWorkspaceGit(
   run: RunRuntime,
   initEnv?: Record<string, string>,
 ): Promise<void> {
-  if (!isGitToolEnabled(ctx.cfg.agent.capabilities)) {
-    throw new Error("git tool disabled");
-  }
   const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
   if (workspaceMode !== "mount") return;
 
@@ -236,6 +235,7 @@ export async function closeAgent(
   run.initResult = null;
   run.seenSessionIds.clear();
   run.activePromptId = null;
+  run.acpClient?.cancelAllPermissions();
 
   await agent.close().catch(() => {});
   ctx.log("agent closed", { runId: run.runId, reason });
@@ -433,6 +433,7 @@ export async function startAgent(
   const redact = (line: string) => redactSecrets(line, secrets);
 
   if (!run.acpClient) {
+    const permissionAsk = ctx.sandbox.provider === "host_process";
     run.acpClient = new AcpClientFacade({
       runId: run.runId,
       instanceName: run.instanceName,
@@ -440,8 +441,17 @@ export async function startAgent(
       sandbox: ctx.sandbox as any,
       log: ctx.log,
       terminalEnabled: resolveTerminalEnabled(ctx),
-      fsEnabled: resolveFsEnabled(ctx),
-      capabilities: ctx.cfg.agent.capabilities,
+      permissionAsk,
+      onPermissionRequest: (req) => {
+        sendUpdate(ctx, run.runId, {
+          type: "permission_request",
+          request_id: req.requestId,
+          session_id: req.sessionId,
+          prompt_id: run.activePromptId ?? null,
+          tool_call: req.toolCall,
+          options: req.options,
+        });
+      },
     });
   }
 
@@ -461,6 +471,21 @@ export async function startAgent(
     },
     onNotification: (msg) => {
       run.lastUsedAt = Date.now();
+      if (msg.method === "$/cancel_request") {
+        const params = msg.params;
+        const requestId = isRecord(params) ? (params as any).requestId : null;
+        if (requestId != null) {
+          const cancelled = run.acpClient?.cancelPermissionRequest(requestId);
+          if (!cancelled) {
+            ctx.log("cancel_request ignored (not found)", {
+              runId: run.runId,
+              requestId: String(requestId),
+            });
+          }
+        }
+        return;
+      }
+
       if (msg.method === "session/update") {
         const params = msg.params;
         const sessionId =
@@ -576,7 +601,7 @@ export async function ensureInitialized(ctx: ProxyContext, run: RunRuntime): Pro
     protocolVersion,
     clientInfo: { name: "acp-proxy", title: "tuixiu acp-proxy", version: "0.0.0" },
     clientCapabilities: {
-      fs: { readTextFile: resolveFsEnabled(ctx), writeTextFile: resolveFsEnabled(ctx) },
+      fs: { readTextFile: true, writeTextFile: true },
       terminal: resolveTerminalEnabled(ctx),
     },
   });
@@ -714,6 +739,11 @@ export async function ensureSessionForPrompt(
     const createdSessionId = String((created as any)?.sessionId ?? "").trim();
     if (!createdSessionId) throw new Error("session/new 未返回 sessionId");
     run.seenSessionIds.add(createdSessionId);
+    if (ctx.sandbox.provider === "host_process") {
+      await withAuthRetry(run, () =>
+        run.agent!.sendRpc<any>("session/set_mode", { sessionId: createdSessionId, modeId: "ask" }),
+      );
+    }
     prompt = composePromptWithContext(opts.context, prompt, promptCapabilities);
     return { sessionId: createdSessionId, prompt, created: true };
   }

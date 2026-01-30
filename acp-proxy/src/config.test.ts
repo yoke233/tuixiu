@@ -22,7 +22,7 @@ describe("loadConfig", () => {
         agent: {
           id: "codex-local-1",
           max_concurrent: 2,
-          capabilities: { tools: ["git"] },
+          capabilities: {},
         },
         sandbox: {
           provider: "container_oci",
@@ -36,7 +36,7 @@ describe("loadConfig", () => {
     const cfg = await loadConfig(p);
     expect(cfg.agent.name).toBe("codex-local-1");
     expect(cfg.agent.max_concurrent).toBe(2);
-    expect(cfg.agent.capabilities).toEqual({ tools: ["git"] });
+    expect(cfg.agent.capabilities).toEqual({});
     expect(cfg.sandbox.terminalEnabled).toBe(false);
   });
 
@@ -145,7 +145,7 @@ describe("loadConfig", () => {
     expect(cfg.sandbox.provider).toBe("host_process");
   });
 
-  it("rejects host_process with terminalEnabled", async () => {
+  it("allows host_process with terminalEnabled", async () => {
     const p = path.join(
       tmpdir(),
       `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
@@ -167,7 +167,9 @@ describe("loadConfig", () => {
       "utf8",
     );
 
-    await expect(loadConfig(p)).rejects.toThrow(/host_process/);
+    const cfg = await loadConfig(p);
+    expect(cfg.sandbox.provider).toBe("host_process");
+    expect(cfg.sandbox.terminalEnabled).toBe(true);
   });
 
   it("rejects host_process with git_clone", async () => {

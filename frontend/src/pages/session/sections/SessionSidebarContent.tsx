@@ -23,8 +23,12 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
     sessionState,
     settingMode,
     settingModel,
+    permissionRequests,
+    resolvingPermissionId,
+    isAdmin,
     onSetMode,
     onSetModel,
+    onResolvePermission,
   } = model;
 
   const [modeDraft, setModeDraft] = useState("");
@@ -234,6 +238,89 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
           </div>
         )}
       </section>
+
+      {permissionRequests.length ? (
+        <section className="card">
+          <div className="row spaceBetween" style={{ alignItems: "baseline" }}>
+            <div style={{ fontWeight: 800 }}>权限请求</div>
+            <span className="muted">{permissionRequests.length} 条</span>
+          </div>
+
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            {permissionRequests.map((req) => {
+              const allowOption =
+                req.options.find((o) => (o.kind ?? "").startsWith("allow")) ?? req.options[0];
+              const rejectOption =
+                req.options.find((o) => (o.kind ?? "").startsWith("reject")) ?? null;
+              const busy = resolvingPermissionId === req.requestId;
+              const toolCall = req.toolCall as any;
+              const title =
+                typeof toolCall?.title === "string" && toolCall.title.trim()
+                  ? toolCall.title.trim()
+                  : "工具调用权限";
+              const kind =
+                typeof toolCall?.kind === "string" && toolCall.kind.trim()
+                  ? toolCall.kind.trim()
+                  : null;
+
+              return (
+                <div key={req.requestId} style={{ display: "grid", gap: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{title}</div>
+                    <div className="muted" style={{ marginTop: 4 }}>
+                      {kind ? `kind=${kind} · ` : ""}
+                      requestId={req.requestId}
+                      {req.promptId ? ` · prompt=${req.promptId}` : ""}
+                    </div>
+                    {req.createdAt ? (
+                      <div className="muted" style={{ marginTop: 4 }}>
+                        {new Date(req.createdAt).toLocaleString()}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        allowOption
+                          ? onResolvePermission(req, {
+                              outcome: "selected",
+                              optionId: allowOption.optionId,
+                            })
+                          : onResolvePermission(req, { outcome: "cancelled" })
+                      }
+                      disabled={!isAdmin || busy || !allowOption}
+                      title={!isAdmin ? "需要管理员权限" : ""}
+                    >
+                      {busy ? "处理中…" : "同意"}
+                    </button>
+                    <button
+                      type="button"
+                      className="buttonSecondary"
+                      onClick={() =>
+                        rejectOption
+                          ? onResolvePermission(req, {
+                              outcome: "selected",
+                              optionId: rejectOption.optionId,
+                            })
+                          : onResolvePermission(req, { outcome: "cancelled" })
+                      }
+                      disabled={!isAdmin || busy}
+                      title={!isAdmin ? "需要管理员权限" : ""}
+                    >
+                      {rejectOption ? "拒绝" : "取消"}
+                    </button>
+                    {!isAdmin ? (
+                      <span className="muted">仅管理员可审批</span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

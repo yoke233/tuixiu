@@ -14,6 +14,19 @@ function extractPromptText(prompt: unknown): string {
   return String(prompt ?? "");
 }
 
+const defaultRoleEnv = "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=role-gh\n";
+
+function makeRoleTemplate(overrides?: Partial<any>) {
+  return {
+    id: "role-1",
+    key: "dev",
+    displayName: "Dev",
+    envText: defaultRoleEnv,
+    initTimeoutSeconds: 120,
+    ...overrides,
+  };
+}
+
 describe("Issues routes", () => {
   const originalEnv = {
     WORKTREE_NAME_LLM: process.env.WORKTREE_NAME_LLM,
@@ -237,10 +250,11 @@ describe("Issues routes", () => {
           constraints: ["c1"],
           testRequirements: null,
           runs: [],
-          project: { id: "p1", defaultBranch: "main" },
+          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -318,10 +332,11 @@ describe("Issues routes", () => {
           externalProvider: "github",
           externalNumber: 456,
           runs: [],
-          project: { id: "p1", defaultBranch: "main" },
+          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -381,10 +396,11 @@ describe("Issues routes", () => {
           externalProvider: "github",
           externalNumber: 456,
           runs: [],
-          project: { id: "p1", defaultBranch: "main" },
+          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -458,10 +474,11 @@ describe("Issues routes", () => {
             externalProvider: "github",
             externalNumber: 456,
             runs: [],
-            project: { id: "p1", defaultBranch: "main" },
+            project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
           }),
           update: vi.fn().mockResolvedValue({ id: "i1" }),
         },
+        roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
         agent: {
           findUnique: vi.fn().mockResolvedValue({
             id: "a1",
@@ -523,10 +540,11 @@ describe("Issues routes", () => {
           constraints: [],
           testRequirements: null,
           runs: [],
-          project: { id: "p1", defaultBranch: "main" },
+          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -583,10 +601,11 @@ describe("Issues routes", () => {
           constraints: [],
           testRequirements: "需要加单测",
           runs: [],
-          project: { id: "p1", defaultBranch: "main" },
+          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -655,6 +674,7 @@ describe("Issues routes", () => {
             repoUrl: "https://github.com/o/r",
             defaultBranch: "main",
             githubAccessToken: "ghp_xxx",
+            defaultRoleKey: "dev",
           },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
@@ -667,7 +687,7 @@ describe("Issues routes", () => {
           promptTemplate: "你是 {{role.name}}，请优先写单测。",
           initScript: "echo init",
           initTimeoutSeconds: 120,
-          envText: "GH_TOKEN=ghp_role_xxx",
+          envText: "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=ghp_role_xxx",
         }),
       },
       agent: {
@@ -744,10 +764,11 @@ describe("Issues routes", () => {
           constraints: [],
           testRequirements: null,
           runs: [],
-          project: { id: "p1", defaultBranch: "main" },
+          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -852,6 +873,7 @@ describe("Issues routes", () => {
               defaultBranch: "main",
               repoUrl: "https://github.com/o/r",
               githubAccessToken: "ghp_test",
+              defaultRoleKey: "dev",
             },
           }),
           update: vi.fn().mockResolvedValue({ id: "i1" }),
@@ -867,7 +889,7 @@ describe("Issues routes", () => {
           }),
           update: vi.fn().mockResolvedValue({ id: "a1" }),
         },
-        roleTemplate: { findFirst: vi.fn().mockResolvedValue(null) },
+        roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
         run: {
           create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }),
           update: vi.fn().mockResolvedValue({ id: "r1" }),

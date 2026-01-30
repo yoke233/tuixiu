@@ -71,6 +71,15 @@ export type SessionSetModelMessage = {
   model_id: string;
 };
 
+export type SessionPermissionMessage = {
+  type: "session_permission";
+  run_id: string;
+  session_id: string;
+  request_id: string | number;
+  outcome: "selected" | "cancelled";
+  option_id?: string;
+};
+
 export type AgentUpdateMessage = {
   type: "agent_update";
   run_id: string;
@@ -106,5 +115,6 @@ export type IncomingMessage =
   | SessionCancelMessage
   | SessionSetModeMessage
   | SessionSetModelMessage
+  | SessionPermissionMessage
   | SandboxControlMessage
   | { type: string; [k: string]: unknown };

@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Outlet } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./pages/IssueListPage", () => ({
   IssueListPage: () => (
@@ -17,6 +17,19 @@ vi.mock("./pages/IssueDetailPage", () => ({
 import App from "./App";
 
 describe("App routes", () => {
+  beforeEach(() => {
+    localStorage.setItem("authToken", "test-token");
+    localStorage.setItem(
+      "authUser",
+      JSON.stringify({ id: "u1", username: "admin", role: "admin" }),
+    );
+  });
+
+  afterEach(() => {
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("authUser");
+  });
+
   it("redirects / to /issues", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>

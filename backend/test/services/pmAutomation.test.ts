@@ -20,6 +20,7 @@ describe("PM automation", () => {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     CODEX_API_KEY: process.env.CODEX_API_KEY,
   };
+  const defaultRoleEnv = "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=role-gh\n";
 
   beforeEach(() => {
     delete process.env.PM_LLM_BASE_URL;
@@ -80,6 +81,7 @@ describe("PM automation", () => {
           promptTemplate: "",
           initScript: null,
           initTimeoutSeconds: 300,
+          envText: defaultRoleEnv,
         }),
       },
       agent: {

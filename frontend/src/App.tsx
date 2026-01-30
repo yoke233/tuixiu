@@ -26,6 +26,18 @@ function RequireAdmin(props: { children: ReactElement }) {
   return props.children;
 }
 
+function RequireAuth(props: { children: ReactElement }) {
+  const auth = useAuth();
+  const location = useLocation();
+
+  if (auth.status === "loading") return <div className="detailEmpty">加载中…</div>;
+  if (!auth.user) {
+    const next = encodeURIComponent(`${location.pathname}${location.search}`);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
+  return props.children;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -33,7 +45,14 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/issues" replace />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/issues" element={<IssueListPage />}>
+          <Route
+            path="/issues"
+            element={
+              <RequireAuth>
+                <IssueListPage />
+              </RequireAuth>
+            }
+          >
             <Route index element={<div className="detailEmpty">选择一个 Issue 查看详情</div>} />
             <Route path=":id" element={<IssueDetailPage />} />
           </Route>

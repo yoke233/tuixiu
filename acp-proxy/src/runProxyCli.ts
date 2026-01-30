@@ -20,9 +20,9 @@ import {
   handleSessionSetMode,
   handleSessionSetModel,
 } from "./handlers/handleSessionControl.js";
+import { handleSessionPermission } from "./handlers/handleSessionPermission.js";
 import { handleSandboxControl } from "./handlers/handleSandboxControl.js";
 import { nowIso, type ProxyContext, WORKSPACE_GUEST_PATH } from "./proxyContext.js";
-import { isGitToolEnabled, isTerminalToolEnabled } from "./utils/agentCaps.js";
 
 type RunProxyCliOpts = {
   configPath?: string;
@@ -164,10 +164,6 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
   let cachedGitPushCap: boolean | null = null;
   const resolveGitPushCap = async (): Promise<boolean> => {
     if (cachedGitPushCap !== null) return cachedGitPushCap;
-    if (!isGitToolEnabled(cfg.agent.capabilities)) {
-      cachedGitPushCap = false;
-      return cachedGitPushCap;
-    }
     if (cfg.sandbox.gitPush === false) {
       cachedGitPushCap = false;
       return cachedGitPushCap;
@@ -191,10 +187,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       ? ((baseCaps as any).runtime as Record<string, unknown>)
       : {};
 
-    const terminalEnabled = isTerminalToolEnabled({
-      sandboxTerminalEnabled: cfg.sandbox.terminalEnabled === true,
-      capabilities: cfg.agent.capabilities,
-    });
+    const terminalEnabled = cfg.sandbox.terminalEnabled === true;
     const runtime: Record<string, unknown> = {
       ...baseRuntime,
       platform: process.platform,
@@ -302,6 +295,10 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       }
       if (msg.type === "session_set_model") {
         void handleSessionSetModel(ctx, msg);
+        return;
+      }
+      if (msg.type === "session_permission") {
+        void handleSessionPermission(ctx, msg);
         return;
       }
       if (msg.type === "acp_close") {

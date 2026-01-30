@@ -172,7 +172,20 @@ describe("acpTunnel (full)", () => {
 
     const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
       if (payload.type === "acp_open") {
-        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, {
+          run_id: payload.run_id,
+          ok: true,
+        });
+        return;
+      }
+      if (payload.type === "prompt_send") {
+        tunnelRef.current.gatewayHandlers.handlePromptResult(proxyId, {
+          run_id: payload.run_id,
+          prompt_id: payload.prompt_id,
+          ok: true,
+          session_id: "s1",
+          stop_reason: "end",
+        });
       }
     });
 
@@ -210,7 +223,7 @@ describe("acpTunnel (full)", () => {
     );
   });
 
-  it("withAuthRetry authenticates and retries when code=-32000", async () => {
+  it("promptRun forwards session_id when provided", async () => {
     const tunnelRef = { current: null as any };
     const prisma = {
       run: {
@@ -228,64 +241,90 @@ describe("acpTunnel (full)", () => {
       agent: { update: vi.fn() },
     } as any;
 
+    let promptPayload: any = null;
     const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
       if (payload.type === "acp_open") {
-        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, {
+          run_id: payload.run_id,
+          ok: true,
+        });
+        return;
+      }
+      if (payload.type === "prompt_send") {
+        promptPayload = payload;
+        tunnelRef.current.gatewayHandlers.handlePromptResult(proxyId, {
+          run_id: payload.run_id,
+          prompt_id: payload.prompt_id,
+          ok: true,
+          session_id: "s1",
+          stop_reason: "end",
+        });
       }
     });
 
     const tunnel = createAcpTunnel({ prisma, sendToAgent });
     tunnelRef.current = tunnel;
-
-    (acp as any).__testing.nextPromptError = { code: -32000 };
-    const p = tunnel.promptRun({ proxyId: "proxy-1", runId: "r1", cwd: "/workspace", prompt: [{ type: "text", text: "hi" }] });
-
-    // first call fails with auth required; second call succeeds after authenticate
-    await expect(p).resolves.toEqual({ sessionId: "s1", stopReason: "end" });
-    expect((acp as any).__testing.authenticateCalls).toEqual([{ methodId: "m1" }]);
-    expect((acp as any).__testing.promptCalls).toHaveLength(2);
-  });
-
-  it("recreates session when prompt throws session error", async () => {
-    const tunnelRef = { current: null as any };
-    const prisma = {
-      run: {
-        findUnique: vi.fn().mockImplementation(async (args: any) => {
-          const sel = args?.select ?? {};
-          if (sel.sandboxInstanceName) return { sandboxInstanceName: null, keepaliveTtlSeconds: null };
-          if (sel.metadata) return { metadata: {}, acpSessionId: null };
-          if (sel.status) return { id: "r1", status: "completed", issueId: "i1", agentId: null, taskId: null, stepId: null, metadata: {} };
-          return null;
-        }),
-        update: vi.fn().mockResolvedValue(undefined),
-      },
-      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
-      issue: { updateMany: vi.fn() },
-      agent: { update: vi.fn() },
-    } as any;
-
-    const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
-      if (payload.type === "acp_open") {
-        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
-      }
-    });
-
-    const tunnel = createAcpTunnel({ prisma, sendToAgent });
-    tunnelRef.current = tunnel;
-
-    (acp as any).__testing.nextPromptError = new Error("Session not found");
 
     const res = await tunnel.promptRun({
       proxyId: "proxy-1",
       runId: "r1",
       cwd: "/workspace",
-      context: "CTX",
-      prompt: [{ type: "text", text: "hello" }],
+      sessionId: "s-hint",
+      prompt: [{ type: "text", text: "hi" }],
     });
 
-    expect(res.sessionId).toBe("s2");
-    expect((acp as any).__testing.newSessionCalls).toHaveLength(2);
-    expect((acp as any).__testing.promptCalls).toHaveLength(2);
+    expect(res).toEqual({ sessionId: "s1", stopReason: "end" });
+    expect(promptPayload?.session_id).toBe("s-hint");
+  });
+
+  it("promptRun rejects when prompt_result fails", async () => {
+    const tunnelRef = { current: null as any };
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockImplementation(async (args: any) => {
+          const sel = args?.select ?? {};
+          if (sel.sandboxInstanceName) return { sandboxInstanceName: null, keepaliveTtlSeconds: null };
+          if (sel.metadata) return { metadata: {}, acpSessionId: null };
+          if (sel.status) return { id: "r1", status: "completed", issueId: "i1", agentId: null, taskId: null, stepId: null, metadata: {} };
+          return null;
+        }),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+      issue: { updateMany: vi.fn() },
+      agent: { update: vi.fn() },
+    } as any;
+
+    const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
+      if (payload.type === "acp_open") {
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, {
+          run_id: payload.run_id,
+          ok: true,
+        });
+        return;
+      }
+      if (payload.type === "prompt_send") {
+        tunnelRef.current.gatewayHandlers.handlePromptResult(proxyId, {
+          run_id: payload.run_id,
+          prompt_id: payload.prompt_id,
+          ok: false,
+          error: "prompt_failed",
+        });
+      }
+    });
+
+    const tunnel = createAcpTunnel({ prisma, sendToAgent });
+    tunnelRef.current = tunnel;
+
+    await expect(
+      tunnel.promptRun({
+        proxyId: "proxy-1",
+        runId: "r1",
+        cwd: "/workspace",
+        context: "CTX",
+        prompt: [{ type: "text", text: "hello" }],
+      }),
+    ).rejects.toThrow("prompt_failed");
   });
 
   it("supports cancelSession / setSessionMode / setSessionModel", async () => {
@@ -304,7 +343,22 @@ describe("acpTunnel (full)", () => {
 
     const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
       if (payload.type === "acp_open") {
-        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, {
+          run_id: payload.run_id,
+          ok: true,
+        });
+        return;
+      }
+      if (
+        payload.type === "session_cancel" ||
+        payload.type === "session_set_mode" ||
+        payload.type === "session_set_model"
+      ) {
+        tunnelRef.current.gatewayHandlers.handleSessionControlResult(proxyId, {
+          run_id: payload.run_id,
+          control_id: payload.control_id,
+          ok: true,
+        });
       }
     });
 
@@ -315,12 +369,21 @@ describe("acpTunnel (full)", () => {
     await tunnel.setSessionMode({ proxyId: "proxy-1", runId: "r1", cwd: "/workspace", sessionId: "s1", modeId: "m2" });
     await tunnel.setSessionModel({ proxyId: "proxy-1", runId: "r1", cwd: "/workspace", sessionId: "s1", modelId: "gpt" });
 
-    expect((acp as any).__testing.cancelCalls).toEqual([{ sessionId: "s1" }]);
-    expect((acp as any).__testing.setModeCalls).toEqual([{ sessionId: "s1", modeId: "m2" }]);
-    expect((acp as any).__testing.setModelCalls).toEqual([{ sessionId: "s1", modelId: "gpt" }]);
+    expect(sendToAgent).toHaveBeenCalledWith(
+      "proxy-1",
+      expect.objectContaining({ type: "session_cancel", session_id: "s1" }),
+    );
+    expect(sendToAgent).toHaveBeenCalledWith(
+      "proxy-1",
+      expect.objectContaining({ type: "session_set_mode", mode_id: "m2" }),
+    );
+    expect(sendToAgent).toHaveBeenCalledWith(
+      "proxy-1",
+      expect.objectContaining({ type: "session_set_model", model_id: "gpt" }),
+    );
   });
 
-  it("exposes client fs/terminal helpers through runStates", async () => {
+  it("stores run state after promptRun", async () => {
     const tunnelRef = { current: null as any };
     const prisma = {
       run: {
@@ -339,7 +402,20 @@ describe("acpTunnel (full)", () => {
 
     const sendToAgent = vi.fn().mockImplementation(async (proxyId: string, payload: any) => {
       if (payload.type === "acp_open") {
-        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, { run_id: payload.run_id, ok: true });
+        tunnelRef.current.gatewayHandlers.handleAcpOpened(proxyId, {
+          run_id: payload.run_id,
+          ok: true,
+        });
+        return;
+      }
+      if (payload.type === "prompt_send") {
+        tunnelRef.current.gatewayHandlers.handlePromptResult(proxyId, {
+          run_id: payload.run_id,
+          prompt_id: payload.prompt_id,
+          ok: true,
+          session_id: "s1",
+          stop_reason: "end",
+        });
       }
     });
 
@@ -349,39 +425,7 @@ describe("acpTunnel (full)", () => {
 
     const state = tunnel.__testing.runStates.get("r1");
     expect(state).toBeTruthy();
-
-    const client = state.conn.client;
-
-    const readAll = await client.readTextFile({ path: "a.txt" });
-    expect(readAll).toEqual({ content: "L1\nL2\nL3\n" });
-
-    const readSlice = await client.readTextFile({ path: "a.txt", line: 2, limit: 1 });
-    expect(readSlice).toEqual({ content: "L2" });
-
-    await client.writeTextFile({ path: "dir/out.txt", content: "X" });
-    expect(fs.promises.mkdir).toHaveBeenCalled();
-    expect(fs.promises.writeFile).toHaveBeenCalledWith(expect.stringContaining("dir"), "X", "utf8");
-
-    await expect(client.createTerminal({ sessionId: "s1", command: "", args: [] })).rejects.toMatchObject({ code: -32602 });
-
-    const { terminalId } = await client.createTerminal({
-      sessionId: "s1",
-      cwd: "/workspace",
-      command: "pnpm",
-      args: ["test"],
-      env: [{ name: "A", value: "1" }],
-      outputByteLimit: 4096,
-    });
-
-    const termState = state.terminals.get(terminalId);
-    expect(termState).toBeTruthy();
-
-    // feed some output and exit
-    (termState as any).exitStatus = { exitCode: 0, signal: null };
-    const out = await client.terminalOutput({ terminalId });
-    expect(out).toEqual({ output: "", truncated: false, exitStatus: { exitCode: 0, signal: null } });
-
-    await client.releaseTerminal({ terminalId });
-    expect(state.terminals.has(terminalId)).toBe(false);
+    expect(state?.opened).toBe(true);
+    expect(state?.promptDeferredById.size).toBe(0);
   });
 });

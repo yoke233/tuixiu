@@ -22,6 +22,17 @@ function makeAgent(overrides?: Partial<any>) {
   };
 }
 
+const defaultRoleEnv = "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=role-gh\n";
+
+function makeRoleTemplate(overrides?: Partial<any>) {
+  return {
+    key: "dev",
+    displayName: "Dev",
+    envText: defaultRoleEnv,
+    ...overrides,
+  };
+}
+
 function makeRun(opts?: {
   kind?: string;
   stepParams?: any;
@@ -134,7 +145,7 @@ describe("acpAgentExecutor", () => {
       key: "dev",
       displayName: "Dev",
       promptTemplate: "Role: {{workspace}}",
-      envText: "GH_TOKEN=role-gh\n",
+      envText: defaultRoleEnv,
       initScript: "echo hi",
       initTimeoutSeconds: 10,
     };
@@ -179,11 +190,14 @@ describe("acpAgentExecutor", () => {
           env: expect.objectContaining({
             GH_TOKEN: "role-gh",
             GITHUB_TOKEN: "role-gh",
-            GITLAB_TOKEN: "proj-gl",
+            TUIXIU_GIT_AUTH_MODE: "https_pat",
             TUIXIU_RUN_ID: "r1",
+            TUIXIU_RUN_BRANCH: "run-branch",
             TUIXIU_WORKSPACE: "C:/ws",
             TUIXIU_WORKSPACE_GUEST: "/workspace",
             TUIXIU_PROJECT_ID: "p1",
+            TUIXIU_PROJECT_NAME: "P1",
+            TUIXIU_REPO_URL: "https://example.com/repo.git",
             TUIXIU_BASE_BRANCH: "main",
             TUIXIU_ROLE_KEY: "dev",
           }),
@@ -227,7 +241,7 @@ describe("acpAgentExecutor", () => {
         update: vi.fn().mockResolvedValue(undefined),
       },
       issue: { update: vi.fn().mockResolvedValue(undefined) },
-      roleTemplate: { findFirst: vi.fn().mockResolvedValue({ key: "dev" }) },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
     } as any;
 
@@ -275,7 +289,7 @@ describe("acpAgentExecutor", () => {
         update: vi.fn().mockResolvedValue(undefined),
       },
       issue: { update: vi.fn().mockResolvedValue(undefined) },
-      roleTemplate: { findFirst: vi.fn().mockResolvedValue({ key: "dev" }) },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
     } as any;
 

@@ -54,6 +54,10 @@ describe("Approvals routes (actions)", () => {
           stepId: null,
           branchName: "run/r1",
           workspacePath: "D:\\tmp",
+          agent: {
+            id: "a1",
+            capabilities: { sandbox: { gitPush: true } },
+          },
           issue: {
             id: "i1",
             projectId: "p1",
@@ -91,7 +95,7 @@ describe("Approvals routes (actions)", () => {
     await server.register(
       makeApprovalRoutes({
         prisma,
-        gitPush: vi.fn().mockResolvedValue(undefined),
+        sandboxGitPush: vi.fn().mockResolvedValue(undefined),
         gitlab: { inferBaseUrl: () => "https://gitlab.example.com", createMergeRequest },
       }),
       { prefix: "/api/approvals" },

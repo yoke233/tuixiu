@@ -84,5 +84,3 @@ max_concurrent = 5
 
 [agent.capabilities]
 languages = ["typescript"]
-# tools 作为允许列表（未列出即禁止）：fs / terminal / git / cat / rg / tail / grep / ng 等
-tools = ["fs", "terminal", "git", "cat", "rg", "tail", "grep", "ng", "docker", "pnpm"]

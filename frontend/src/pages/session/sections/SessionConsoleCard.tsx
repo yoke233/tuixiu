@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RunConsole } from "../../../components/RunConsole";
 import { apiUrl } from "../../../api/client";
@@ -12,6 +12,8 @@ export function SessionConsoleCard(props: { model: SessionController }) {
     events,
     liveEventIds,
     issue,
+    isAdmin,
+    onSetMode,
     onDropFiles,
     onPause,
     onSend,
@@ -20,8 +22,10 @@ export function SessionConsoleCard(props: { model: SessionController }) {
     removePendingImage,
     runId,
     sending,
+    sessionState,
     sessionId,
     setChatText,
+    settingMode,
     uploadingImages,
   } = props.model;
 
@@ -57,9 +61,42 @@ export function SessionConsoleCard(props: { model: SessionController }) {
   }, [sandboxStatus]);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const modeMenuRef = useRef<HTMLDivElement | null>(null);
   const [commandIndex, setCommandIndex] = useState(0);
   const [commandMenuDismissed, setCommandMenuDismissed] = useState(false);
   const [commandMenuForcedOpen, setCommandMenuForcedOpen] = useState(false);
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!modeMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!modeMenuRef.current) return;
+      if (!modeMenuRef.current.contains(event.target as Node)) setModeMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [modeMenuOpen]);
+
+  const availableModes = useMemo(
+    () => [
+      {
+        id: "ask",
+        name: "Ask",
+        description: "Request permission before making any changes",
+      },
+      {
+        id: "architect",
+        name: "Architect",
+        description: "Design and plan software systems without implementation",
+      },
+      {
+        id: "code",
+        name: "Code",
+        description: "Write and modify code with full tool access",
+      },
+    ],
+    [],
+  );
   const availableCommands = useMemo(() => {
     for (let i = events.length - 1; i >= 0; i -= 1) {
       const payload = (events[i] as any)?.payload;
@@ -285,6 +322,72 @@ export function SessionConsoleCard(props: { model: SessionController }) {
           </div>
         ) : null}
         <div className="consoleActions">
+          <div style={{ position: "relative" }} ref={modeMenuRef}>
+            <button
+              type="button"
+              className="buttonSecondary consoleIconButton"
+              onClick={() => setModeMenuOpen((open) => !open)}
+              disabled={!sessionId  || settingMode}
+              aria-label="设置 mode"
+              title={
+                !sessionId
+                  ? "session 尚未建立" : "设置 mode"
+              }
+            >
+              {settingMode ? <span className="iconSpinner" aria-hidden="true" /> : "mode"}
+            </button>
+            {modeMenuOpen ? (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 8px)",
+                  right: 0,
+                  width: "min(72vw, 320px)",
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid var(--card-border)",
+                  background: "var(--card-bg)",
+                  boxShadow: "var(--shadow-soft)",
+                  zIndex: 30,
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>设置 mode</div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {sessionState?.currentModeId
+                    ? `当前：${sessionState.currentModeId}`
+                    : "当前：-"}
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {availableModes.map((mode) => {
+                    const active = sessionState?.currentModeId === mode.id;
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        className="buttonSecondary"
+                        onClick={() => {
+                          void onSetMode(mode.id);
+                          setModeMenuOpen(false);
+                        }}
+                        disabled={!sessionId || !isAdmin || settingMode}
+                        style={{
+                          textAlign: "left",
+                          borderColor: active ? "var(--accent)" : undefined,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>{mode.name}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {mode.description}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             className="buttonSecondary consoleIconButton"

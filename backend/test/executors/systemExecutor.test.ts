@@ -100,14 +100,16 @@ describe("systemExecutor", () => {
   });
 
   it("pr.create executes when no approval required (covers default git push)", async () => {
-    const cleanup = vi.fn().mockResolvedValue(undefined);
-    (createGitProcessEnv as any).mockResolvedValueOnce({ env: { GIT_TERMINAL_PROMPT: "0" }, cleanup });
-
     (createReviewRequestForRun as any).mockImplementation(async (deps: any) => {
-      await deps.gitPush({ cwd: "C:/repo", branch: "run-branch", project: { repoUrl: "https://example.com/repo.git" } });
+      await deps.sandboxGitPush({
+        run: { id: "r1" },
+        branch: "run-branch",
+        project: { repoUrl: "https://example.com/repo.git" },
+      });
       return { success: true, data: {} };
     });
 
+    const sandboxGitPush = vi.fn().mockResolvedValue(undefined);
     const prisma = {
       run: {
         findUnique: vi.fn().mockResolvedValue({
@@ -120,17 +122,19 @@ describe("systemExecutor", () => {
       },
     } as any;
 
-    const res = await startSystemExecution({ prisma }, "r1");
+    const res = await startSystemExecution({ prisma, sandboxGitPush }, "r1");
     expect(res).toEqual({ executed: true });
-
-    expect(execFile).toHaveBeenCalledWith("git", ["push", "-u", "origin", "run-branch"], { cwd: "C:/repo", env: { GIT_TERMINAL_PROMPT: "0" } }, expect.any(Function));
-    expect(cleanup).toHaveBeenCalled();
 
     expect(prisma.run.update).toHaveBeenCalledWith({
       where: { id: "r1" },
       data: expect.objectContaining({ status: "completed" }),
     });
     expect(advanceTaskFromRunTerminal).toHaveBeenCalledWith({ prisma }, "r1", "completed");
+    expect(sandboxGitPush).toHaveBeenCalledWith({
+      run: { id: "r1" },
+      branch: "run-branch",
+      project: { repoUrl: "https://example.com/repo.git" },
+    });
   });
 
   it("pr.create throws when createReviewRequestForRun fails", async () => {

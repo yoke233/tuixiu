@@ -329,5 +329,65 @@ export function makeAcpSessionRoutes(deps: {
         return { success: true, data: { ok: true } };
       },
     );
+
+    server.post(
+      "/acp-sessions/permission",
+      { preHandler: requireAdmin },
+      async (request) => {
+        const bodySchema = z.object({
+          runId: z.string().uuid(),
+          sessionId: z.string().min(1).max(200),
+          requestId: z.union([z.string().min(1), z.number().int()]),
+          outcome: z.enum(["selected", "cancelled"]),
+          optionId: z.string().min(1).max(200).optional(),
+        });
+        const { runId, sessionId, requestId, outcome, optionId } = bodySchema.parse(
+          request.body ?? {},
+        );
+
+        if (outcome === "selected" && !optionId) {
+          return {
+            success: false,
+            error: { code: "OPTION_REQUIRED", message: "outcome=selected 时必须提供 optionId" },
+          };
+        }
+
+        const run = await deps.prisma.run.findUnique({
+          where: { id: runId },
+          include: { agent: true } as any,
+        } as any);
+        if (!run) {
+          return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+        }
+        if (!deps.sendToAgent) {
+          return { success: false, error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" } };
+        }
+        if (!(run as any).agent) {
+          return { success: false, error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent" } };
+        }
+
+        try {
+          await deps.sendToAgent((run as any).agent.proxyId, {
+            type: "session_permission",
+            run_id: runId,
+            session_id: sessionId,
+            request_id: requestId,
+            outcome,
+            option_id: outcome === "selected" ? optionId : null,
+          });
+        } catch (error) {
+          return {
+            success: false,
+            error: {
+              code: "AGENT_SEND_FAILED",
+              message: "发送 session_permission 失败",
+              details: String(error),
+            },
+          };
+        }
+
+        return { success: true, data: { ok: true } };
+      },
+    );
   };
 }

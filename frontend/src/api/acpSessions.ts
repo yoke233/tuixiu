@@ -39,3 +39,14 @@ export async function setAcpSessionModel(runId: string, sessionId: string, model
   const data = await apiPost<{ ok: true }>(`/admin/acp-sessions/set-model`, { runId, sessionId, modelId });
   return data;
 }
+
+export async function decideAcpSessionPermission(input: {
+  runId: string;
+  sessionId: string;
+  requestId: string | number;
+  outcome: "selected" | "cancelled";
+  optionId?: string;
+}): Promise<{ ok: true }> {
+  const data = await apiPost<{ ok: true }>(`/admin/acp-sessions/permission`, input);
+  return data;
+}
