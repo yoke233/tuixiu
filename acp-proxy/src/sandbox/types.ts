@@ -12,7 +12,7 @@ export interface SandboxProvider {
   runProcess(opts: RunProcessOpts): Promise<ProcessHandle>;
 }
 
-export type SandboxProviderKind = "boxlite_oci" | "container_oci";
+export type SandboxProviderKind = "boxlite_oci" | "container_oci" | "host_process";
 
 export type SandboxInstanceState = "running" | "stopped" | "missing";
 

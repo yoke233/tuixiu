@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { setAcpSessionMode, setAcpSessionModel } from "../../api/acpSessions";
+import {
+  decideAcpSessionPermission,
+  setAcpSessionMode,
+  setAcpSessionModel,
+} from "../../api/acpSessions";
 import { getIssue } from "../../api/issues";
 import { getRun, listRunEvents, pauseRun, promptRun, uploadRunAttachment } from "../../api/runs";
 import { useAuth } from "../../auth/AuthContext";
@@ -12,6 +16,21 @@ import { readFileAsBase64 } from "../../utils/files";
 import { readSessionState } from "./readSessionState";
 
 export type SessionController = ReturnType<typeof useSessionController>;
+
+type PermissionOption = {
+  optionId: string;
+  name?: string;
+  kind?: string;
+};
+
+type PermissionRequestItem = {
+  requestId: string;
+  sessionId: string;
+  promptId: string | null;
+  toolCall?: unknown;
+  options: PermissionOption[];
+  createdAt?: string;
+};
 
 export function useSessionController() {
   const params = useParams();
@@ -39,6 +58,8 @@ export function useSessionController() {
   const [pausing, setPausing] = useState(false);
   const [settingMode, setSettingMode] = useState(false);
   const [settingModel, setSettingModel] = useState(false);
+  const [resolvingPermissionId, setResolvingPermissionId] = useState<string | null>(null);
+  const [resolvedPermissionIds, setResolvedPermissionIds] = useState<Set<string>>(new Set());
 
   const clearErrorTimer = useCallback(() => {
     if (errorTimerRef.current !== null) {
@@ -63,6 +84,50 @@ export function useSessionController() {
 
   const sessionState = useMemo(() => readSessionState(events), [events]);
   const sessionId = run?.acpSessionId ?? null;
+  const isAdmin = auth.user?.role === "admin";
+
+  const permissionRequests = useMemo(() => {
+    const items: PermissionRequestItem[] = [];
+    for (const event of events) {
+      const payload = (event as any)?.payload;
+      if (!payload || typeof payload !== "object") continue;
+      if ((payload as any).type !== "permission_request") continue;
+      const requestIdRaw = (payload as any).request_id;
+      if (requestIdRaw == null) continue;
+      const requestId = String(requestIdRaw);
+      if (resolvedPermissionIds.has(requestId)) continue;
+
+      const sessionIdRaw = typeof (payload as any).session_id === "string" ? payload.session_id : "";
+      const sessionIdValue = sessionIdRaw || run?.acpSessionId || "";
+      if (!sessionIdValue) continue;
+
+      const optionsRaw = Array.isArray((payload as any).options) ? (payload as any).options : [];
+      const options = optionsRaw
+        .filter((o: any) => o && typeof o === "object" && typeof o.optionId === "string")
+        .map((o: any) => ({
+          optionId: String(o.optionId),
+          name: typeof o.name === "string" ? o.name : undefined,
+          kind: typeof o.kind === "string" ? o.kind : undefined,
+        }));
+
+      items.push({
+        requestId,
+        sessionId: sessionIdValue,
+        promptId:
+          typeof (payload as any).prompt_id === "string" ? String((payload as any).prompt_id) : null,
+        toolCall: (payload as any).tool_call,
+        options,
+        createdAt: event.timestamp,
+      });
+    }
+
+    items.sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return ta - tb;
+    });
+    return items;
+  }, [events, resolvedPermissionIds, run?.acpSessionId]);
 
   useEffect(() => () => clearErrorTimer(), [clearErrorTimer]);
 
@@ -102,6 +167,7 @@ export function useSessionController() {
   useEffect(() => {
     if (!runId) return;
     setLiveEventIds(new Set());
+    setResolvedPermissionIds(new Set());
   }, [runId]);
 
   const onWs = useCallback(
@@ -231,6 +297,40 @@ export function useSessionController() {
     [refresh, requireLogin, runId, sessionId, setTransientError],
   );
 
+  const onResolvePermission = useCallback(
+    async (req: PermissionRequestItem, decision: { outcome: "selected" | "cancelled"; optionId?: string }) => {
+      if (!runId) return;
+      if (!req.sessionId) return;
+      if (!requireLogin()) return;
+      if (!isAdmin) {
+        setTransientError("需要管理员权限才能审批权限请求");
+        return;
+      }
+
+      setTransientError(null);
+      setResolvingPermissionId(req.requestId);
+      try {
+        await decideAcpSessionPermission({
+          runId,
+          sessionId: req.sessionId,
+          requestId: req.requestId,
+          outcome: decision.outcome,
+          optionId: decision.optionId,
+        });
+        setResolvedPermissionIds((prev) => {
+          const next = new Set(prev);
+          next.add(req.requestId);
+          return next;
+        });
+      } catch (err) {
+        setTransientError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setResolvingPermissionId(null);
+      }
+    },
+    [isAdmin, requireLogin, runId, setTransientError],
+  );
+
   const onSend = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -338,6 +438,9 @@ export function useSessionController() {
     // derived
     sessionState,
     sessionId,
+    permissionRequests,
+    resolvingPermissionId,
+    isAdmin,
 
     // ui state
     loading,
@@ -357,6 +460,7 @@ export function useSessionController() {
     onPause,
     onSetMode,
     onSetModel,
+    onResolvePermission,
     onSend,
     onDropFiles,
     removePendingImage,

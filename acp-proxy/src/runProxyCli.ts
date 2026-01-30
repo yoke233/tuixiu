@@ -20,6 +20,7 @@ import {
   handleSessionSetMode,
   handleSessionSetModel,
 } from "./handlers/handleSessionControl.js";
+import { handleSessionPermission } from "./handlers/handleSessionPermission.js";
 import { handleSandboxControl } from "./handlers/handleSandboxControl.js";
 import { nowIso, type ProxyContext, WORKSPACE_GUEST_PATH } from "./proxyContext.js";
 
@@ -209,6 +210,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       ? ((baseCaps as any).runtime as Record<string, unknown>)
       : {};
 
+    const terminalEnabled = cfg.sandbox.terminalEnabled === true;
     const runtime: Record<string, unknown> = {
       ...baseRuntime,
       platform: process.platform,
@@ -220,7 +222,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     const sandboxCaps: Record<string, unknown> = {
       ...baseSandbox,
       provider: cfg.sandbox.provider,
-      terminalEnabled: cfg.sandbox.terminalEnabled,
+      terminalEnabled,
       agentMode: sandbox.agentMode,
       image: cfg.sandbox.image ?? null,
       workingDir: cfg.sandbox.workingDir ?? null,
@@ -316,6 +318,10 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       }
       if (msg.type === "session_set_model") {
         void handleSessionSetModel(ctx, msg);
+        return;
+      }
+      if (msg.type === "session_permission") {
+        void handleSessionPermission(ctx, msg);
         return;
       }
       if (msg.type === "acp_close") {

@@ -50,6 +50,7 @@ type StartAgentFn = (opts: {
 type ContainerOciSandboxCfg = LoadedProxyConfig["sandbox"] & {
   provider: "container_oci";
   runtime: string;
+  image: string;
 };
 
 export const DEFAULT_INIT_MARKER_PREFIX = "__ACP_PROXY_INIT_RESULT__:";

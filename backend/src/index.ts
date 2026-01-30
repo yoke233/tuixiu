@@ -79,7 +79,6 @@ server.addHook("preHandler", async (request, reply) => {
   if (pathOnly.startsWith("/api/auth/")) return;
   if (pathOnly.startsWith("/api/webhooks/")) return;
   if (pathOnly.startsWith("/api/integrations/")) return;
-  if (request.method === "GET") return;
 
   await auth.authenticate(request, reply);
   if ((reply as any).sent) return;

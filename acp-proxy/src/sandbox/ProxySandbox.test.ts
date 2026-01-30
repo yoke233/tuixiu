@@ -17,4 +17,17 @@ describe("proxy/sandbox/createProxySandbox", () => {
     );
     expect(adapter.provider).toBe("container_oci");
   });
+
+  it("creates host_process adapter", () => {
+    const adapter = createProxySandbox(
+      {
+        provider: "host_process",
+        terminalEnabled: false,
+        workspaceMode: "mount",
+        workspaceHostRoot: "/tmp",
+      } as any,
+      () => {},
+    );
+    expect(adapter.provider).toBe("host_process");
+  });
 });

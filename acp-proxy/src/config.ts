@@ -47,8 +47,8 @@ const defaultWorkspaceHostRoot = path.join(os.homedir(), ".tuixiu", "workspaces"
 const sandboxSchema = z
   .object({
     terminalEnabled: z.boolean().default(false),
-    provider: z.enum(["boxlite_oci", "container_oci"]),
-    image: z.string().min(1),
+    provider: z.enum(["boxlite_oci", "container_oci", "host_process"]),
+    image: z.string().min(1).optional(),
     workingDir: z.string().min(1).optional(),
     volumes: z.array(volumeSchema).optional(),
     env: z.record(z.string()).optional(),
@@ -68,11 +68,25 @@ const sandboxSchema = z
     bootstrap: sandboxBootstrapSchema.optional(),
   })
   .superRefine((v, ctx) => {
+    if ((v.provider === "container_oci" || v.provider === "boxlite_oci") && !v.image?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "sandbox.provider=container_oci/boxlite_oci 时必须配置 sandbox.image",
+      });
+    }
     if (v.provider === "container_oci" && !v.runtime?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "sandbox.provider=container_oci 时必须配置 sandbox.runtime",
       });
+    }
+    if (v.provider === "host_process") {
+      if (v.workspaceMode !== "mount") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "sandbox.provider=host_process 仅支持 workspaceMode=mount",
+        });
+      }
     }
   });
 
@@ -95,11 +109,11 @@ const configOverrideSchema = z.object({
   auth_token: z.string().optional(),
   heartbeat_seconds: z.coerce.number().int().positive().optional(),
   mock_mode: z.boolean().optional(),
-  sandbox: z
-    .object({
-      terminalEnabled: z.boolean().optional(),
-      provider: z.enum(["boxlite_oci", "container_oci"]).optional(),
-      image: z.string().min(1).optional(),
+    sandbox: z
+      .object({
+        terminalEnabled: z.boolean().optional(),
+        provider: z.enum(["boxlite_oci", "container_oci", "host_process"]).optional(),
+        image: z.string().min(1).optional(),
       workingDir: z.string().min(1).optional(),
       volumes: z.array(volumeSchema).optional(),
       env: z.record(z.string()).optional(),
@@ -185,7 +199,8 @@ export async function loadConfig(
   }
   if (process.env.ACP_PROXY_SANDBOX_PROVIDER?.trim()) {
     const raw = process.env.ACP_PROXY_SANDBOX_PROVIDER.trim();
-    if (raw === "boxlite_oci" || raw === "container_oci") envSandboxOverride.provider = raw;
+    if (raw === "boxlite_oci" || raw === "container_oci" || raw === "host_process")
+      envSandboxOverride.provider = raw;
   }
   if (process.env.ACP_PROXY_SANDBOX_IMAGE?.trim()) {
     envSandboxOverride.image = process.env.ACP_PROXY_SANDBOX_IMAGE.trim();

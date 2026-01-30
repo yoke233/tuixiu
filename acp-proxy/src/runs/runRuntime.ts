@@ -58,6 +58,10 @@ export function sendSandboxInstanceStatus(
   });
 }
 
+function resolveTerminalEnabled(ctx: ProxyContext): boolean {
+  return ctx.cfg.sandbox.terminalEnabled === true;
+}
+
 export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRuntime> {
   const runId = validateRunId(msg?.run_id);
   const instanceName =
@@ -94,12 +98,25 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
   }
 
   if (!run.acpClient) {
+    const permissionAsk = ctx.sandbox.provider === "host_process";
     run.acpClient = new AcpClientFacade({
       runId,
       instanceName,
       workspaceGuestRoot: WORKSPACE_GUEST_PATH,
       sandbox: ctx.sandbox as any,
       log: ctx.log,
+      terminalEnabled: resolveTerminalEnabled(ctx),
+      permissionAsk,
+      onPermissionRequest: (req) => {
+        sendUpdate(ctx, runId, {
+          type: "permission_request",
+          request_id: req.requestId,
+          session_id: req.sessionId,
+          prompt_id: run.activePromptId ?? null,
+          tool_call: req.toolCall,
+          options: req.options,
+        });
+      },
     });
   }
 
@@ -218,6 +235,7 @@ export async function closeAgent(
   run.initResult = null;
   run.seenSessionIds.clear();
   run.activePromptId = null;
+  run.acpClient?.cancelAllPermissions();
 
   await agent.close().catch(() => {});
   ctx.log("agent closed", { runId: run.runId, reason });
@@ -228,6 +246,11 @@ export async function runInitScript(
   run: RunRuntime,
   init?: AgentInit,
 ): Promise<boolean> {
+  if (ctx.sandbox.provider === "host_process") {
+    ctx.log("host_process skip init script", { runId: run.runId });
+    return true;
+  }
+
   const script = init?.script?.trim() ?? "";
   if (!script) return true;
 
@@ -410,12 +433,25 @@ export async function startAgent(
   const redact = (line: string) => redactSecrets(line, secrets);
 
   if (!run.acpClient) {
+    const permissionAsk = ctx.sandbox.provider === "host_process";
     run.acpClient = new AcpClientFacade({
       runId: run.runId,
       instanceName: run.instanceName,
       workspaceGuestRoot: WORKSPACE_GUEST_PATH,
       sandbox: ctx.sandbox as any,
       log: ctx.log,
+      terminalEnabled: resolveTerminalEnabled(ctx),
+      permissionAsk,
+      onPermissionRequest: (req) => {
+        sendUpdate(ctx, run.runId, {
+          type: "permission_request",
+          request_id: req.requestId,
+          session_id: req.sessionId,
+          prompt_id: run.activePromptId ?? null,
+          tool_call: req.toolCall,
+          options: req.options,
+        });
+      },
     });
   }
 
@@ -435,6 +471,21 @@ export async function startAgent(
     },
     onNotification: (msg) => {
       run.lastUsedAt = Date.now();
+      if (msg.method === "$/cancel_request") {
+        const params = msg.params;
+        const requestId = isRecord(params) ? (params as any).requestId : null;
+        if (requestId != null) {
+          const cancelled = run.acpClient?.cancelPermissionRequest(requestId);
+          if (!cancelled) {
+            ctx.log("cancel_request ignored (not found)", {
+              runId: run.runId,
+              requestId: String(requestId),
+            });
+          }
+        }
+        return;
+      }
+
       if (msg.method === "session/update") {
         const params = msg.params;
         const sessionId =
@@ -551,7 +602,7 @@ export async function ensureInitialized(ctx: ProxyContext, run: RunRuntime): Pro
     clientInfo: { name: "acp-proxy", title: "tuixiu acp-proxy", version: "0.0.0" },
     clientCapabilities: {
       fs: { readTextFile: true, writeTextFile: true },
-      terminal: ctx.cfg.sandbox.terminalEnabled === true,
+      terminal: resolveTerminalEnabled(ctx),
     },
   });
 
@@ -688,6 +739,11 @@ export async function ensureSessionForPrompt(
     const createdSessionId = String((created as any)?.sessionId ?? "").trim();
     if (!createdSessionId) throw new Error("session/new 未返回 sessionId");
     run.seenSessionIds.add(createdSessionId);
+    if (ctx.sandbox.provider === "host_process") {
+      await withAuthRetry(run, () =>
+        run.agent!.sendRpc<any>("session/set_mode", { sessionId: createdSessionId, modeId: "ask" }),
+      );
+    }
     prompt = composePromptWithContext(opts.context, prompt, promptCapabilities);
     return { sessionId: createdSessionId, prompt, created: true };
   }

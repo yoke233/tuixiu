@@ -77,6 +77,7 @@ function baseConfig(): any {
       provider: "boxlite_oci",
       image: "img",
       workingDir: "/workspace",
+      workspaceHostRoot: "C:/tmp",
     },
     agent_command: ["node", "-e", "console.log('ok')"],
     agent: { id: "a1", name: "a1", max_concurrent: 1, capabilities: {} },

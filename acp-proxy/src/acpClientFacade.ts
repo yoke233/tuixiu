@@ -2,6 +2,8 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
+import { FS_READ_SCRIPT, FS_WRITE_SCRIPT } from "./utils/fsScripts.js";
+
 import type { SandboxInstanceProvider } from "./sandbox/types.js";
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
@@ -33,6 +35,33 @@ type ManagedTerminal = {
   exitPromise: Promise<TerminalExitStatus>;
   kill: () => Promise<void>;
   release: () => Promise<void>;
+};
+
+type PermissionOption = {
+  optionId: string;
+  name?: string;
+  kind?: string;
+  [k: string]: unknown;
+};
+
+type PermissionOutcome =
+  | { outcome: "selected"; optionId: string }
+  | { outcome: "cancelled" };
+
+type PermissionDecision =
+  | { outcome: "selected"; optionId?: string | null }
+  | { outcome: "cancelled" };
+
+type PermissionRequest = {
+  requestId: string;
+  sessionId: string | null;
+  toolCall: unknown;
+  options: PermissionOption[];
+};
+
+type PendingPermission = {
+  options: PermissionOption[];
+  resolve: (outcome: PermissionOutcome) => void;
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -127,6 +156,7 @@ function okResponse(id: JsonRpcId, result: unknown): JsonRpcResponse {
 
 export class AcpClientFacade {
   private readonly terminals = new Map<string, ManagedTerminal>();
+  private readonly pendingPermissions = new Map<string, PendingPermission>();
 
   constructor(
     private readonly opts: {
@@ -135,6 +165,9 @@ export class AcpClientFacade {
       workspaceGuestRoot: string;
       sandbox: SandboxInstanceProvider;
       log: Logger;
+      terminalEnabled: boolean;
+      permissionAsk?: boolean;
+      onPermissionRequest?: (req: PermissionRequest) => void;
     },
   ) {}
 
@@ -182,24 +215,107 @@ export class AcpClientFacade {
     return { stdout, stderr, code: exit.code, signal: exit.signal };
   }
 
+  private pickDefaultPermissionOutcome(options: PermissionOption[]): PermissionOutcome {
+    const preferred = options.find((o) => o.kind === "allow_once") ?? options[0] ?? null;
+    const optionId = preferred?.optionId?.trim() ?? "";
+    return optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" };
+  }
+
+  private normalizePermissionDecision(
+    options: PermissionOption[],
+    decision: PermissionDecision,
+  ): PermissionOutcome {
+    if (decision.outcome === "cancelled") return { outcome: "cancelled" };
+    const optionId = typeof decision.optionId === "string" ? decision.optionId.trim() : "";
+    if (optionId) {
+      const matched = options.find((o) => o.optionId === optionId);
+      if (matched) return { outcome: "selected", optionId: matched.optionId };
+    }
+    return this.pickDefaultPermissionOutcome(options);
+  }
+
+  private async waitForPermission(req: PermissionRequest): Promise<PermissionOutcome> {
+    if (!req.options.length) {
+      this.opts.log("permission request missing options", { runId: this.opts.runId });
+      return { outcome: "cancelled" };
+    }
+
+    const requestId = req.requestId;
+    if (this.pendingPermissions.has(requestId)) {
+      this.opts.log("permission request already pending", { runId: this.opts.runId, requestId });
+      return this.pickDefaultPermissionOutcome(req.options);
+    }
+
+    const outcome = new Promise<PermissionOutcome>((resolve) => {
+      this.pendingPermissions.set(requestId, { options: req.options, resolve });
+    });
+
+    try {
+      this.opts.onPermissionRequest?.(req);
+    } catch (err) {
+      this.opts.log("permission request handler failed", { runId: this.opts.runId, err: String(err) });
+    }
+
+    const res = await outcome;
+    this.pendingPermissions.delete(requestId);
+    return res;
+  }
+
+  resolvePermission(requestId: JsonRpcId, decision: PermissionDecision): boolean {
+    const key = String(requestId);
+    const pending = this.pendingPermissions.get(key);
+    if (!pending) return false;
+    const outcome = this.normalizePermissionDecision(pending.options, decision);
+    pending.resolve(outcome);
+    this.pendingPermissions.delete(key);
+    return true;
+  }
+
+  cancelPermissionRequest(requestId: JsonRpcId): boolean {
+    return this.resolvePermission(requestId, { outcome: "cancelled" });
+  }
+
+  cancelAllPermissions(): void {
+    for (const [requestId, pending] of this.pendingPermissions.entries()) {
+      pending.resolve({ outcome: "cancelled" });
+      this.pendingPermissions.delete(requestId);
+    }
+  }
+
   async handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse | null> {
     const method = req.method;
     try {
       if (method === "session/request_permission") {
         const params = isRecord(req.params) ? req.params : {};
-        const options = Array.isArray((params as any).options)
+        const optionsRaw = Array.isArray((params as any).options)
           ? ((params as any).options as any[])
           : [];
-        const preferred =
-          options.find((o) => isRecord(o) && o.kind === "allow_once") ?? options[0] ?? null;
-        const optionId =
-          preferred && isRecord(preferred) && typeof preferred.optionId === "string"
-            ? preferred.optionId
-            : null;
+        const options = optionsRaw
+          .filter((o) => isRecord(o) && typeof (o as any).optionId === "string")
+          .map((o) => o as PermissionOption);
 
-        return okResponse(req.id, {
-          outcome: optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" },
+        if (!this.opts.permissionAsk) {
+          const outcome = this.pickDefaultPermissionOutcome(options);
+          return okResponse(req.id, { outcome });
+        }
+
+        const sessionId =
+          typeof (params as any).sessionId === "string" ? String((params as any).sessionId) : null;
+        const toolCall = (params as any).toolCall;
+        const requestId = String(req.id);
+
+        const outcome = await this.waitForPermission({
+          requestId,
+          sessionId,
+          toolCall,
+          options,
         });
+
+        return okResponse(req.id, { outcome });
+      }
+
+      if (method.startsWith("terminal/") && !this.opts.terminalEnabled) {
+        throw { code: -32000, message: "terminal disabled" };
       }
 
       if (method === "fs/read_text_file") {
@@ -212,7 +328,7 @@ export class AcpClientFacade {
         });
 
         const res = await this.execToText({
-          command: ["sh", "-c", 'cat "$1"', "sh", guestPath],
+          command: ["sh", "-c", FS_READ_SCRIPT, "sh", guestPath],
           cwdInGuest: this.opts.workspaceGuestRoot,
         });
         if (res.code !== 0) {
@@ -253,13 +369,7 @@ export class AcpClientFacade {
           command: [
             "sh",
             "-c",
-            [
-              "set -e",
-              'p="$1"',
-              'dir="${p%/*}"',
-              'if [ "$dir" != "$p" ]; then mkdir -p "$dir"; fi',
-              'cat > "$p"',
-            ].join("\n"),
+            FS_WRITE_SCRIPT,
             "sh",
             guestPath,
           ],
@@ -302,7 +412,6 @@ export class AcpClientFacade {
           (x: unknown) => typeof x === "string" && x.length,
         ) as string[];
         if (!command.length) throw { code: -32602, message: "command is required" };
-
         const handle = await this.opts.sandbox.execProcess({
           instanceName: this.opts.instanceName,
           command,

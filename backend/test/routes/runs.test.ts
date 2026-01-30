@@ -463,13 +463,14 @@ describe("Runs routes", () => {
               gitlabAccessToken: "tok",
             },
           },
+          agent: { id: "a1", capabilities: { sandbox: { gitPush: true } } },
           artifacts: [],
         }),
         update: vi.fn().mockResolvedValue({}),
       },
     } as any;
 
-    const gitPush = vi.fn().mockResolvedValue(undefined);
+    const sandboxGitPush = vi.fn().mockResolvedValue(undefined);
     const createMergeRequest = vi.fn().mockResolvedValue({
       id: 9,
       iid: 7,
@@ -483,7 +484,7 @@ describe("Runs routes", () => {
     await server.register(
       makeRunRoutes({
         prisma,
-        gitPush,
+        sandboxGitPush,
         gitlab: {
           inferBaseUrl: () => "https://gitlab.example.com",
           createMergeRequest,
@@ -502,8 +503,13 @@ describe("Runs routes", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.success).toBe(true);
-    expect(gitPush).toHaveBeenCalledWith(
-      expect.objectContaining({ cwd: "D:\\repo\\.worktrees\\run-r1", branch: "run/r1" }),
+    expect(sandboxGitPush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branch: "run/r1",
+        project: expect.objectContaining({
+          repoUrl: "https://gitlab.example.com/group/repo.git",
+        }),
+      }),
     );
     expect(createMergeRequest).toHaveBeenCalled();
     expect(prisma.run.update).toHaveBeenCalledWith(
@@ -597,13 +603,14 @@ describe("Runs routes", () => {
               githubAccessToken: "ghp_xxx",
             },
           },
+          agent: { id: "a1", capabilities: { sandbox: { gitPush: true } } },
           artifacts: [],
         }),
         update: vi.fn().mockResolvedValue({}),
       },
     } as any;
 
-    const gitPush = vi.fn().mockResolvedValue(undefined);
+    const sandboxGitPush = vi.fn().mockResolvedValue(undefined);
     const createPullRequest = vi.fn().mockResolvedValue({
       id: 99,
       number: 12,
@@ -617,7 +624,7 @@ describe("Runs routes", () => {
     await server.register(
       makeRunRoutes({
         prisma,
-        gitPush,
+        sandboxGitPush,
         github: {
           parseRepo: () => ({
             host: "github.com",
@@ -642,8 +649,13 @@ describe("Runs routes", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.success).toBe(true);
-    expect(gitPush).toHaveBeenCalledWith(
-      expect.objectContaining({ cwd: "D:\\repo\\.worktrees\\run-r1", branch: "run/r1" }),
+    expect(sandboxGitPush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branch: "run/r1",
+        project: expect.objectContaining({
+          repoUrl: "https://github.com/octo-org/octo-repo.git",
+        }),
+      }),
     );
     expect(createPullRequest).toHaveBeenCalled();
     expect(prisma.run.update).toHaveBeenCalledWith(

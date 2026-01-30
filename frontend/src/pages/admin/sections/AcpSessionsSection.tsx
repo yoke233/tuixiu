@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { cancelAcpSession, listAcpSessions, startAcpSession } from "../../../api/acpSessions";
+import { cancelAcpSession, listAcpSessions, setAcpSessionMode, startAcpSession } from "../../../api/acpSessions";
 import { listAgents } from "../../../api/agents";
 import { reportSandboxInventory, listSandboxes } from "../../../api/sandboxes";
 import { StatusBadge } from "../../../components/StatusBadge";
@@ -29,6 +29,7 @@ export function AcpSessionsSection(props: Props) {
   const [loadingAcpProxies, setLoadingAcpProxies] = useState(false);
   const [reportingInventoryProxyId, setReportingInventoryProxyId] = useState<string>("");
   const [cancelingAcpSessionKey, setCancelingAcpSessionKey] = useState<string>("");
+  const [settingModeKey, setSettingModeKey] = useState<string>("");
   const [startingAcpSession, setStartingAcpSession] = useState(false);
   const [acpSessionGoal, setAcpSessionGoal] = useState("");
 
@@ -153,6 +154,30 @@ export function AcpSessionsSection(props: Props) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setCancelingAcpSessionKey("");
+      }
+    },
+    [refreshAcpSessions, requireAdmin, setError],
+  );
+
+  const onSetAcpSessionMode = useCallback(
+    async (runId: string, sessionId: string, currentMode?: string | null) => {
+      setError(null);
+      if (!requireAdmin()) return;
+
+      const hint = currentMode ? `当前：${currentMode}` : "例如：balanced";
+      const input = window.prompt(`请输入 modeId（${hint}）`);
+      const modeId = input ? input.trim() : "";
+      if (!modeId) return;
+
+      const key = `${runId}:${sessionId}`;
+      setSettingModeKey(key);
+      try {
+        await setAcpSessionMode(runId, sessionId, modeId);
+        await refreshAcpSessions();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSettingModeKey("");
       }
     },
     [refreshAcpSessions, requireAdmin, setError],
@@ -400,7 +425,7 @@ export function AcpSessionsSection(props: Props) {
               <tbody>
                 {acpSessions.map((s) => {
                   const key = `${s.runId}:${s.sessionId}`;
-                  const busy = cancelingAcpSessionKey === key;
+                  const busy = cancelingAcpSessionKey === key || settingModeKey === key;
                   return (
                     <tr key={key}>
                       <td>
@@ -480,11 +505,27 @@ export function AcpSessionsSection(props: Props) {
                         <button
                           type="button"
                           className="buttonSecondary"
+                          onClick={() =>
+                            void onSetAcpSessionMode(
+                              s.runId,
+                              s.sessionId,
+                              s.sessionState?.currentModeId ?? null,
+                            )
+                          }
+                          disabled={busy || !s.agent}
+                          title={!s.agent ? "该 Run 未绑定 Agent（无法下发 session/set_mode）" : ""}
+                        >
+                          {settingModeKey === key ? "设置中…" : "设置 mode"}
+                        </button>
+                        <button
+                          type="button"
+                          className="buttonSecondary"
                           onClick={() => void onCancelAcpSession(s.runId, s.sessionId)}
                           disabled={busy || !s.agent}
                           title={!s.agent ? "该 Run 未绑定 Agent（无法下发 session/cancel）" : ""}
+                          style={{ marginLeft: 8 }}
                         >
-                          {busy ? "关闭中…" : "关闭"}
+                          {cancelingAcpSessionKey === key ? "关闭中…" : "关闭"}
                         </button>
                       </td>
                     </tr>

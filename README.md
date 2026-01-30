@@ -83,7 +83,7 @@ Copy-Item acp-proxy/config.toml.example acp-proxy/config.toml
 编辑 `acp-proxy/config.toml`（至少确认）：
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
-- `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（Linux/WSL2/macOS arm64）
+- `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（Linux/WSL2/macOS arm64）；`host_process` 仅 PoC（低隔离，必须关闭 terminal）
 - `sandbox.image`: `tuixiu-codex-acp:local`
 - `sandbox.runtime`: `docker`（可替换为 `podman`/`nerdctl`，仅 `provider=container_oci` 会用到）
 - （推荐）把宿主机 `~/.codex/config.toml` 只读挂载到容器内：`[[sandbox.volumes]] hostPath="C:/Users/<you>/.codex/config.toml" guestPath="/root/.codex/config.toml" readOnly=true`
