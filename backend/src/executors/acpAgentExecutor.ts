@@ -7,6 +7,7 @@ import { renderTextTemplateFromDb } from "../modules/templates/textTemplates.js"
 import { renderTextTemplate } from "../utils/textTemplate.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../utils/agentInit.js";
 import {
+  assertRoleGitAuthEnv,
   pickGitAccessToken,
   resolveGitAuthMode,
   resolveGitHttpUsername,
@@ -400,6 +401,7 @@ export async function startAcpAgentExecution(
   }
 
   const roleEnv = normalizeRoleEnv(role?.envText ? parseEnvText(String(role.envText)) : {});
+  assertRoleGitAuthEnv(roleEnv, role?.key ?? null);
   const gitAuthMode = resolveGitAuthMode({
     repoUrl: String(project?.repoUrl ?? ""),
     scmType: project?.scmType ?? null,

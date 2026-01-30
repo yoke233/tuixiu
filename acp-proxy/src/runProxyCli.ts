@@ -8,7 +8,7 @@ import type { IncomingMessage } from "./types.js";
 import { pickArg } from "./utils/args.js";
 import { isRecord } from "./utils/validate.js";
 import { RunManager } from "./runs/runManager.js";
-import { closeAgent, sendSandboxInstanceStatus } from "./runs/runRuntime.js";
+import { closeAgent, sendSandboxInstanceStatus, sendUpdate } from "./runs/runRuntime.js";
 import { createProxySandbox } from "./sandbox/createProxySandbox.js";
 import { OrchestratorClient } from "./orchestrator/orchestratorClient.js";
 import { handleAcpClose } from "./handlers/handleAcpClose.js";
@@ -64,6 +64,21 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     send: client.send.bind(client),
     log,
   };
+
+  try {
+    (sandbox as any).setBootstrapReporter?.(
+      (info: { runId: string; stage: string; status: string; message?: string }) => {
+        sendUpdate(ctx, info.runId, {
+          type: "init_step",
+          stage: info.stage,
+          status: info.status,
+          message: info.message,
+        });
+      },
+    );
+  } catch {
+    // ignore
+  }
 
   const registerAgent = () => {
     const baseCaps: Record<string, unknown> = isRecord(cfg.agent.capabilities)

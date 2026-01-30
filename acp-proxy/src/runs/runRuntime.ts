@@ -137,12 +137,25 @@ export async function runInitScript(
     text: `[init] start (bash, timeout=${timeoutSeconds}s)`,
   });
 
-  const proc = await ctx.sandbox.execProcess({
-    instanceName: run.instanceName,
-    command: ["bash", "-lc", script],
-    cwdInGuest: WORKSPACE_GUEST_PATH,
-    env,
-  });
+  let proc: ProcessHandle;
+  try {
+    proc = await ctx.sandbox.execProcess({
+      instanceName: run.instanceName,
+      command: ["bash", "-lc", script],
+      cwdInGuest: WORKSPACE_GUEST_PATH,
+      env,
+    });
+  } catch (err) {
+    const message = String(err);
+    sendUpdate(ctx, run.runId, {
+      type: "init_step",
+      stage: "init",
+      status: "failed",
+      message,
+    });
+    sendUpdate(ctx, run.runId, { type: "init_result", ok: false, error: message });
+    return false;
+  }
 
   const readLines = async (
     stream: ReadableStream<Uint8Array> | undefined,
@@ -167,6 +180,7 @@ export async function runInitScript(
             sendUpdate(ctx, run.runId, { type: "init_step", ...step });
             continue;
           }
+          ctx.log("init output", { runId: run.runId, stream: label, text });
           sendUpdate(ctx, run.runId, {
             type: "text",
             text: `[init:${label}] ${text}`,
@@ -185,6 +199,7 @@ export async function runInitScript(
         if (step) {
           sendUpdate(ctx, run.runId, { type: "init_step", ...step });
         } else {
+          ctx.log("init output", { runId: run.runId, stream: label, text: rest });
           sendUpdate(ctx, run.runId, {
             type: "text",
             text: `[init:${label}] ${rest}`,

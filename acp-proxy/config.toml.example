@@ -30,6 +30,21 @@ image = "tuixiu-codex-acp:local"
 # 容器/BoxLite 内的工作目录（Run 的 workspace 固定在 guest 内 /workspace；通常由 `acp_open.init.script` 负责 git clone）
 workingDir = "/workspace"
 
+# BoxLite 模式（simple=默认，jsbox=可复用 box）
+# boxMode = "jsbox"
+# boxName + boxReuse=shared 可复用缓存（不再重复创建/安装）
+# boxName = "codex-box"
+# boxReuse = "shared"
+# boxAutoRemove = false
+# execTimeoutSeconds = 300
+# execLogIntervalSeconds = 10
+
+# 运行时安装（示例：本地安装 codex + codex-acp）
+# [sandbox.bootstrap]
+# checkCommand = ["bash", "-lc", "which codex-acp >/dev/null 2>&1"]
+# installCommand = ["bash", "-lc", "npm i -g @openai/codex @zed-industries/codex-acp"]
+# timeoutSeconds = 900
+
 # 仅 provider=container_oci 时使用：透传给 `<runtime> run` 的额外参数
 # extraRunArgs = ["--network=host"]
 

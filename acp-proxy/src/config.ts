@@ -35,6 +35,12 @@ const volumeSchema = z.preprocess(
   }),
 );
 
+const sandboxBootstrapSchema = z.object({
+  checkCommand: z.array(z.string().min(1)).optional(),
+  installCommand: z.array(z.string().min(1)).optional(),
+  timeoutSeconds: z.coerce.number().int().positive().optional(),
+});
+
 const sandboxSchema = z
   .object({
     terminalEnabled: z.boolean().default(false),
@@ -48,6 +54,13 @@ const sandboxSchema = z
     workspaceMode: z.enum(["mount"]).default("mount"),
     runtime: z.string().min(1).optional(),
     extraRunArgs: z.array(z.string().min(1)).optional(),
+    boxMode: z.enum(["simple", "jsbox"]).optional(),
+    boxName: z.string().min(1).optional(),
+    boxReuse: z.enum(["per_instance", "shared"]).optional(),
+    boxAutoRemove: z.boolean().optional(),
+    execTimeoutSeconds: z.coerce.number().int().positive().optional(),
+    execLogIntervalSeconds: z.coerce.number().int().positive().optional(),
+    bootstrap: sandboxBootstrapSchema.optional(),
   })
   .superRefine((v, ctx) => {
     if (v.provider === "container_oci" && !v.runtime?.trim()) {
@@ -86,6 +99,13 @@ const configOverrideSchema = z.object({
       workspaceMode: z.enum(["mount"]).optional(),
       runtime: z.string().min(1).optional(),
       extraRunArgs: z.array(z.string().min(1)).optional(),
+      boxMode: z.enum(["simple", "jsbox"]).optional(),
+      boxName: z.string().min(1).optional(),
+      boxReuse: z.enum(["per_instance", "shared"]).optional(),
+      boxAutoRemove: z.boolean().optional(),
+      execTimeoutSeconds: z.coerce.number().int().positive().optional(),
+      execLogIntervalSeconds: z.coerce.number().int().positive().optional(),
+      bootstrap: sandboxBootstrapSchema.optional(),
     })
     .optional(),
   agent_command: z.array(z.string().min(1)).optional(),

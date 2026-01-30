@@ -13,6 +13,7 @@ import { postGitHubIssueCommentBestEffort } from "../scm/githubIssueComments.js"
 import type { AcpTunnel } from "../acp/acpTunnel.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
 import {
+  assertRoleGitAuthEnv,
   pickGitAccessToken,
   resolveGitAuthMode,
   resolveGitHttpUsername,
@@ -355,6 +356,7 @@ export async function startIssueRun(opts: {
   try {
     const project: any = (issue as any).project;
     const roleEnv = normalizeRoleEnv(role ? parseEnvText(String((role as any).envText)) : {});
+    assertRoleGitAuthEnv(roleEnv, role ? String((role as any).key ?? "") : null);
     const gitAuthMode = resolveGitAuthMode({
       repoUrl: String(project?.repoUrl ?? ""),
       scmType: project?.scmType ?? null,

@@ -2,6 +2,7 @@ import type { PrismaDeps } from "../../db.js";
 import { parseEnvText } from "../../utils/envText.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
 import {
+  assertRoleGitAuthEnv,
   pickGitAccessToken,
   resolveGitAuthMode,
   resolveGitHttpUsername,
@@ -62,6 +63,7 @@ export async function buildRecoveryInit(opts: {
   if (!role) return undefined;
 
   const roleEnv = normalizeRoleEnv(role?.envText ? parseEnvText(String(role.envText)) : {});
+  assertRoleGitAuthEnv(roleEnv, role?.key ?? null);
   const gitAuthMode = resolveGitAuthMode({
     repoUrl: String(project?.repoUrl ?? ""),
     scmType: project?.scmType ?? null,
