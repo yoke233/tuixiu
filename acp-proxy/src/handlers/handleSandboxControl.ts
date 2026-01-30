@@ -16,6 +16,9 @@ type ExpectedInstance = {
   run_id: string;
 };
 
+const runQueues = new Map<string, Promise<void>>();
+const runQueueSizes = new Map<string, number>();
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -30,6 +33,76 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
 }
 
 const execFileAsync = promisify(execFile);
+
+function resolveQueueRunId(runIdRaw: string, instanceNameRaw: string): string | null {
+  const runId = runIdRaw.trim();
+  if (runId) {
+    try {
+      return validateRunId(runId);
+    } catch {
+      return null;
+    }
+  }
+
+  const instanceName = instanceNameRaw.trim();
+  if (!instanceName.startsWith("tuixiu-run-")) return null;
+  const inferred = instanceName.slice("tuixiu-run-".length);
+  if (!inferred) return null;
+  try {
+    return validateRunId(inferred);
+  } catch {
+    return null;
+  }
+}
+
+async function enqueueFallback(runId: string, task: () => Promise<void>): Promise<void> {
+  const prev = runQueues.get(runId) ?? Promise.resolve();
+  const next = prev
+    .catch(() => {})
+    .then(task)
+    .finally(() => {
+      if (runQueues.get(runId) === next) runQueues.delete(runId);
+    });
+  runQueues.set(runId, next);
+  return next;
+}
+
+async function enqueueRunTask(
+  ctx: ProxyContext,
+  runId: string | null,
+  meta: { action: string; requestId?: string | null },
+  task: () => Promise<void>,
+): Promise<void> {
+  if (!runId) {
+    await task();
+    return;
+  }
+
+  const pending = runQueueSizes.get(runId) ?? 0;
+  if (pending > 0) {
+    ctx.log("sandbox_control queued", {
+      runId,
+      action: meta.action,
+      requestId: meta.requestId ?? undefined,
+      pending,
+    });
+  }
+  runQueueSizes.set(runId, pending + 1);
+
+  const run = ctx.runs.get(runId);
+  try {
+    if (run) {
+      await ctx.runs.enqueue(runId, task);
+      return;
+    }
+
+    await enqueueFallback(runId, task);
+  } finally {
+    const next = (runQueueSizes.get(runId) ?? 1) - 1;
+    if (next <= 0) runQueueSizes.delete(runId);
+    else runQueueSizes.set(runId, next);
+  }
+}
 
 async function pathExists(p: string): Promise<boolean> {
   try {
@@ -211,6 +284,7 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
   const action = String(msg?.action ?? "").trim();
   const requestIdRaw = String(msg?.request_id ?? "").trim();
   const requestId = requestIdRaw ? requestIdRaw : null;
+  const queueRunId = resolveQueueRunId(runId, instanceNameRaw);
 
   const reply = (payload: Record<string, unknown>) => {
     try {
@@ -245,119 +319,143 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
       return;
     }
 
-    if (action === "git_push") {
-      validateRunId(runId);
-      const branch = String(msg?.branch ?? "").trim();
-      if (!branch) {
-        reply({ ok: false, error: "branch 为空" });
-        return;
-      }
-      if (ctx.cfg.sandbox.gitPush === false) {
-        reply({ ok: false, error: "git_push disabled" });
-        return;
-      }
-
-      const timeoutSecondsRaw = msg?.timeout_seconds ?? 300;
-      const timeoutSeconds = Number.isFinite(timeoutSecondsRaw)
-        ? Math.max(5, Math.min(3600, Number(timeoutSecondsRaw)))
-        : 300;
-
-      const env = parseEnv(msg?.env) ?? {};
-      const remote =
-        typeof msg?.remote === "string" && msg.remote.trim() ? msg.remote.trim() : "origin";
-
-      const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
-      if (workspaceMode === "mount") {
-        const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
-        if (!rootRaw) {
-          reply({ ok: false, error: "workspaceHostRoot 未配置" });
+    await enqueueRunTask(ctx, queueRunId, { action, requestId }, async () => {
+      if (action === "git_push") {
+        const effectiveRunId = validateRunId(runId);
+        const branch = String(msg?.branch ?? "").trim();
+        if (!branch) {
+          reply({ ok: false, error: "branch 为空" });
           return;
         }
-        const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
-        const hostWorkspace = path.join(root, `run-${runId}`);
-        if (!(await pathExists(hostWorkspace))) {
-          reply({ ok: false, error: `workspace 不存在: ${hostWorkspace}` });
+        if (ctx.cfg.sandbox.gitPush === false) {
+          reply({ ok: false, error: "git_push disabled" });
           return;
         }
 
-        let cleanup = async () => {};
+        const timeoutSecondsRaw = msg?.timeout_seconds ?? 300;
+        const timeoutSeconds = Number.isFinite(timeoutSecondsRaw)
+          ? Math.max(5, Math.min(3600, Number(timeoutSecondsRaw)))
+          : 300;
+
+        const env = parseEnv(msg?.env) ?? {};
+        const remote =
+          typeof msg?.remote === "string" && msg.remote.trim() ? msg.remote.trim() : "origin";
+
+        const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
+        if (workspaceMode === "mount") {
+          const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
+          if (!rootRaw) {
+            reply({ ok: false, error: "workspaceHostRoot 未配置" });
+            return;
+          }
+          const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
+          const runtime = ctx.runs.get(effectiveRunId);
+          const runtimePath =
+            runtime?.hostWorkspacePath && runtime.hostWorkspacePath.trim()
+              ? runtime.hostWorkspacePath.trim()
+              : "";
+          const hostWorkspace = runtimePath || path.join(root, `run-${effectiveRunId}`);
+          const shouldCheck = !runtime?.hostWorkspaceReady || !runtimePath;
+          if (shouldCheck) {
+            if (!(await pathExists(hostWorkspace))) {
+              reply({ ok: false, error: `workspace 不存在: ${hostWorkspace}` });
+              return;
+            }
+            const gitDir = path.join(hostWorkspace, ".git");
+            if (!(await pathExists(gitDir))) {
+              reply({ ok: false, error: `workspace 未就绪(缺少 .git): ${hostWorkspace}` });
+              return;
+            }
+          }
+
+          let cleanup = async () => {};
+          try {
+            const envRes = await createHostGitEnv(env);
+            cleanup = envRes.cleanup;
+            const res = await execFileAsync("git", ["push", "-u", remote, branch], {
+              cwd: hostWorkspace,
+              env: envRes.env,
+            });
+            reply({ ok: true, stdout: trimOutput(String(res.stdout ?? "")), stderr: trimOutput(String(res.stderr ?? "")) });
+          } catch (err) {
+            const stdout = String((err as any)?.stdout ?? "");
+            const stderr = String((err as any)?.stderr ?? "");
+            reply({
+              ok: false,
+              error: String(err),
+              stdout: trimOutput(stdout),
+              stderr: trimOutput(stderr),
+            });
+          } finally {
+            await cleanup().catch(() => {});
+          }
+          return;
+        }
+
+        const instanceName = validateInstanceName(instanceNameRaw);
+        const cwdInGuest = String(msg?.cwd ?? "").trim() || WORKSPACE_GUEST_PATH;
+        env.TUIXIU_RUN_BRANCH = branch;
+        env.TUIXIU_WORKSPACE_GUEST = env.TUIXIU_WORKSPACE_GUEST ?? WORKSPACE_GUEST_PATH;
+        env.TUIXIU_GIT_REMOTE = remote;
+
+        let proc: any;
         try {
-          const envRes = await createHostGitEnv(env);
-          cleanup = envRes.cleanup;
-          const res = await execFileAsync("git", ["push", "-u", remote, branch], {
-            cwd: hostWorkspace,
-            env: envRes.env,
+          proc = await ctx.sandbox.execProcess({
+            instanceName,
+            command: ["bash", "-lc", GIT_PUSH_SCRIPT],
+            cwdInGuest,
+            env,
           });
-          reply({ ok: true, stdout: trimOutput(String(res.stdout ?? "")), stderr: trimOutput(String(res.stderr ?? "")) });
         } catch (err) {
-          const stdout = String((err as any)?.stdout ?? "");
-          const stderr = String((err as any)?.stderr ?? "");
+          reply({ ok: false, error: String(err) });
+          return;
+        }
+
+        const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+          proc.onExit?.((info: { code: number | null; signal: string | null }) => resolve(info));
+          if (!proc.onExit) resolve({ code: null, signal: null });
+        });
+
+        const outP = readAllText(proc.stdout);
+        const errP = readAllText(proc.stderr);
+
+        const raced = await Promise.race([
+          exitP.then((r) => ({ kind: "exit" as const, ...r })),
+          delay(timeoutSeconds * 1000).then(() => ({ kind: "timeout" as const })),
+        ]);
+
+        if (raced.kind === "timeout") {
+          await proc.close?.().catch(() => {});
+          const [stdout, stderr] = await Promise.allSettled([outP, errP]).then((res) => [
+            res[0].status === "fulfilled" ? res[0].value : "",
+            res[1].status === "fulfilled" ? res[1].value : "",
+          ]);
           reply({
             ok: false,
-            error: String(err),
+            error: `timeout after ${timeoutSeconds}s`,
             stdout: trimOutput(stdout),
             stderr: trimOutput(stderr),
           });
-        } finally {
-          await cleanup().catch(() => {});
+          return;
         }
-        return;
-      }
 
-      const instanceName = validateInstanceName(instanceNameRaw);
-      const cwdInGuest = String(msg?.cwd ?? "").trim() || WORKSPACE_GUEST_PATH;
-      env.TUIXIU_RUN_BRANCH = branch;
-      env.TUIXIU_WORKSPACE_GUEST = env.TUIXIU_WORKSPACE_GUEST ?? WORKSPACE_GUEST_PATH;
-      env.TUIXIU_GIT_REMOTE = remote;
+        const [stdout, stderr] = await Promise.all([outP, errP]);
+        const code = raced.code ?? null;
+        const signal = raced.signal ?? null;
+        if (code !== 0) {
+          reply({
+            ok: false,
+            error: `exitCode=${code ?? "unknown"}${signal ? ` signal=${signal}` : ""}`,
+            stdout: trimOutput(stdout),
+            stderr: trimOutput(stderr),
+            code,
+            signal,
+          });
+          return;
+        }
 
-      let proc: any;
-      try {
-        proc = await ctx.sandbox.execProcess({
-          instanceName,
-          command: ["bash", "-lc", GIT_PUSH_SCRIPT],
-          cwdInGuest,
-          env,
-        });
-      } catch (err) {
-        reply({ ok: false, error: String(err) });
-        return;
-      }
-
-      const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
-        proc.onExit?.((info: { code: number | null; signal: string | null }) => resolve(info));
-        if (!proc.onExit) resolve({ code: null, signal: null });
-      });
-
-      const outP = readAllText(proc.stdout);
-      const errP = readAllText(proc.stderr);
-
-      const raced = await Promise.race([
-        exitP.then((r) => ({ kind: "exit" as const, ...r })),
-        delay(timeoutSeconds * 1000).then(() => ({ kind: "timeout" as const })),
-      ]);
-
-      if (raced.kind === "timeout") {
-        await proc.close?.().catch(() => {});
-        const [stdout, stderr] = await Promise.allSettled([outP, errP]).then((res) => [
-          res[0].status === "fulfilled" ? res[0].value : "",
-          res[1].status === "fulfilled" ? res[1].value : "",
-        ]);
         reply({
-          ok: false,
-          error: `timeout after ${timeoutSeconds}s`,
-          stdout: trimOutput(stdout),
-          stderr: trimOutput(stderr),
-        });
-        return;
-      }
-
-      const [stdout, stderr] = await Promise.all([outP, errP]);
-      const code = raced.code ?? null;
-      const signal = raced.signal ?? null;
-      if (code !== 0) {
-        reply({
-          ok: false,
-          error: `exitCode=${code ?? "unknown"}${signal ? ` signal=${signal}` : ""}`,
+          ok: true,
           stdout: trimOutput(stdout),
           stderr: trimOutput(stderr),
           code,
@@ -366,89 +464,80 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
         return;
       }
 
-      reply({
-        ok: true,
-        stdout: trimOutput(stdout),
-        stderr: trimOutput(stderr),
-        code,
-        signal,
-      });
-      return;
-    }
+      const instanceName = validateInstanceName(instanceNameRaw);
 
-    const instanceName = validateInstanceName(instanceNameRaw);
+      if (action === "inspect") {
+        const info = await ctx.sandbox.inspectInstance(instanceName);
+        if (runId) {
+          sendSandboxInstanceStatus(ctx, {
+            runId,
+            instanceName,
+            status: info.status === "missing" ? "missing" : info.status,
+            lastError: null,
+          });
+        }
+        reply({ ok: true, status: info.status, details: { created_at: info.createdAt } });
+        return;
+      }
 
-    if (action === "inspect") {
-      const info = await ctx.sandbox.inspectInstance(instanceName);
-      if (runId) {
+      if (action === "ensure_running") {
+        const effectiveRunId = validateRunId(runId);
+        const info = await ctx.sandbox.ensureInstanceRunning({
+          runId: effectiveRunId,
+          instanceName,
+          workspaceGuestPath: WORKSPACE_GUEST_PATH,
+          env: undefined,
+        });
         sendSandboxInstanceStatus(ctx, {
-          runId,
+          runId: effectiveRunId,
           instanceName,
           status: info.status === "missing" ? "missing" : info.status,
           lastError: null,
         });
+        reply({ ok: true, status: info.status, details: { created_at: info.createdAt } });
+        return;
       }
-      reply({ ok: true, status: info.status, details: { created_at: info.createdAt } });
-      return;
-    }
 
-    if (action === "ensure_running") {
-      const effectiveRunId = validateRunId(runId);
-      const info = await ctx.sandbox.ensureInstanceRunning({
-        runId: effectiveRunId,
-        instanceName,
-        workspaceGuestPath: WORKSPACE_GUEST_PATH,
-        env: undefined,
-      });
-      sendSandboxInstanceStatus(ctx, {
-        runId: effectiveRunId,
-        instanceName,
-        status: info.status === "missing" ? "missing" : info.status,
-        lastError: null,
-      });
-      reply({ ok: true, status: info.status, details: { created_at: info.createdAt } });
-      return;
-    }
+      if (action === "stop") {
+        if (runId) {
+          const run = ctx.runs.get(runId);
+          if (run) await closeAgent(ctx, run, "sandbox_control_stop");
+        }
+        await ctx.sandbox.stopInstance(instanceName);
+        const info = await ctx.sandbox.inspectInstance(instanceName);
+        if (runId) {
+          sendSandboxInstanceStatus(ctx, {
+            runId,
+            instanceName,
+            status: info.status === "missing" ? "missing" : info.status,
+            lastError: null,
+          });
+        }
+        reply({ ok: true, status: info.status });
+        return;
+      }
 
-    if (action === "stop") {
-      if (runId) {
-        const run = ctx.runs.get(runId);
-        if (run) await closeAgent(ctx, run, "sandbox_control_stop");
+      if (action === "remove") {
+        if (runId) {
+          const run = ctx.runs.get(runId);
+          if (run) await closeAgent(ctx, run, "sandbox_control_remove");
+          ctx.runs.delete(runId);
+        }
+        await ctx.sandbox.removeInstance(instanceName);
+        if (runId) {
+          sendSandboxInstanceStatus(ctx, {
+            runId,
+            instanceName,
+            status: "missing",
+            lastError: null,
+          });
+        }
+        reply({ ok: true, status: "missing" });
+        return;
       }
-      await ctx.sandbox.stopInstance(instanceName);
-      const info = await ctx.sandbox.inspectInstance(instanceName);
-      if (runId) {
-        sendSandboxInstanceStatus(ctx, {
-          runId,
-          instanceName,
-          status: info.status === "missing" ? "missing" : info.status,
-          lastError: null,
-        });
-      }
-      reply({ ok: true, status: info.status });
-      return;
-    }
 
-    if (action === "remove") {
-      if (runId) {
-        const run = ctx.runs.get(runId);
-        if (run) await closeAgent(ctx, run, "sandbox_control_remove");
-        ctx.runs.delete(runId);
-      }
-      await ctx.sandbox.removeInstance(instanceName);
-      if (runId) {
-        sendSandboxInstanceStatus(ctx, {
-          runId,
-          instanceName,
-          status: "missing",
-          lastError: null,
-        });
-      }
-      reply({ ok: true, status: "missing" });
-      return;
-    }
-
-    reply({ ok: false, error: "unsupported_action" });
+      reply({ ok: false, error: "unsupported_action" });
+    });
   } catch (err) {
     const message = String(err);
     if (runId && instanceNameRaw) {

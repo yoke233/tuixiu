@@ -12,6 +12,7 @@ import { renderTextTemplate } from "../../utils/textTemplate.js";
 import { postGitHubIssueCommentBestEffort } from "../scm/githubIssueComments.js";
 import type { AcpTunnel } from "../acp/acpTunnel.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
+import { getSandboxWorkspaceMode } from "../../utils/sandboxCaps.js";
 import {
   assertRoleGitAuthEnv,
   pickGitAccessToken,
@@ -226,6 +227,7 @@ export async function startIssueRun(opts: {
         ? (caps as any).sandbox.provider
         : null;
 
+    const sandboxWorkspaceMode = getSandboxWorkspaceMode(caps);
     gitAuthModeFromWorkspace = ws.gitAuthMode ?? null;
     const snapshot = {
       workspaceMode,
@@ -233,7 +235,7 @@ export async function startIssueRun(opts: {
       branchName,
       baseBranch: resolvedBaseBranch,
       gitAuthMode: ws.gitAuthMode ?? ((issue as any).project as any)?.gitAuthMode ?? null,
-      sandbox: { provider: sandboxProvider },
+      sandbox: { provider: sandboxProvider, workspaceMode: sandboxWorkspaceMode ?? undefined },
       agent: { max_concurrent: (selectedAgent as any).maxConcurrentRuns },
       timingsMs: timingsMsSnapshot,
     };
@@ -402,6 +404,13 @@ export async function startIssueRun(opts: {
       TUIXIU_WORKSPACE_GUEST: String(agentWorkspacePath),
       TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String((issue as any).projectId)}`,
     };
+    const sandboxWorkspaceMode = getSandboxWorkspaceMode((selectedAgent as any)?.capabilities);
+    if (sandboxWorkspaceMode) {
+      initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
+      if (sandboxWorkspaceMode === "mount") {
+        initEnv.TUIXIU_SKIP_WORKSPACE_INIT = "1";
+      }
+    }
     if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
     if (initEnv.TUIXIU_GIT_AUTH_MODE === undefined) initEnv.TUIXIU_GIT_AUTH_MODE = gitAuthMode;
     if (initEnv.TUIXIU_GIT_HTTP_USERNAME === undefined && gitHttpUsername) {

@@ -85,9 +85,11 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
     const hostWorkspacePath = path.join(root, `run-${runId}`);
     await mkdir(hostWorkspacePath, { recursive: true });
     run.hostWorkspacePath = hostWorkspacePath;
+    run.hostWorkspaceReady = false;
     run.workspaceMounts = [{ hostPath: hostWorkspacePath, guestPath: WORKSPACE_GUEST_PATH }];
   } else {
     run.hostWorkspacePath = null;
+    run.hostWorkspaceReady = false;
     run.workspaceMounts = undefined;
   }
 
@@ -153,9 +155,24 @@ export async function ensureHostWorkspaceGit(
   if (!branch) throw new Error("缺少 TUIXIU_RUN_BRANCH，无法准备宿主机 workspace");
 
   const gitDir = path.join(hostWorkspacePath, ".git");
-  const { env: hostEnv, cleanup } = await createHostGitEnv(env);
+  const reportStep = (stage: string, status: string, message?: string) => {
+    sendUpdate(ctx, run.runId, {
+      type: "init_step",
+      stage,
+      status,
+      ...(message ? { message } : {}),
+    });
+  };
 
+  let cleanup = async () => {};
   try {
+    reportStep("auth", "start");
+    const hostEnvRes = await createHostGitEnv(env);
+    cleanup = hostEnvRes.cleanup;
+    const hostEnv = hostEnvRes.env;
+    reportStep("auth", "done");
+
+    reportStep("clone", "start");
     if (await pathExists(gitDir)) {
       await execFileAsync("git", ["-C", hostWorkspacePath, "fetch", "--prune"], { env: hostEnv });
     } else {
@@ -167,7 +184,9 @@ export async function ensureHostWorkspaceGit(
         { env: hostEnv },
       );
     }
+    reportStep("clone", "done");
 
+    reportStep("checkout", "start");
     try {
       await execFileAsync("git", ["-C", hostWorkspacePath, "checkout", "-B", branch, `origin/${baseBranch}`], {
         env: hostEnv,
@@ -175,6 +194,12 @@ export async function ensureHostWorkspaceGit(
     } catch {
       await execFileAsync("git", ["-C", hostWorkspacePath, "checkout", "-B", branch], { env: hostEnv });
     }
+    reportStep("checkout", "done");
+    reportStep("ready", "done");
+    run.hostWorkspaceReady = true;
+  } catch (err) {
+    reportStep("init", "failed", String(err));
+    throw err;
   } finally {
     await cleanup().catch(() => {});
   }

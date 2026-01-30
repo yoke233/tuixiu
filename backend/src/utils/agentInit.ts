@@ -24,6 +24,8 @@ ws="\${TUIXIU_WORKSPACE_GUEST:-\${TUIXIU_WORKSPACE:-/workspace}}"
 base="\${TUIXIU_BASE_BRANCH:-main}"
 branch="\${TUIXIU_RUN_BRANCH:-}"
 auth="\${TUIXIU_GIT_AUTH_MODE:-}"
+workspace_mode="\${TUIXIU_WORKSPACE_MODE:-}"
+skip_workspace_init="\${TUIXIU_SKIP_WORKSPACE_INIT:-}"
 
 if [ -z "$repo" ]; then
   echo "[init] missing TUIXIU_REPO_URL" >&2
@@ -36,6 +38,11 @@ fi
 if [ -z "$ws" ] || [ "$ws" = "/" ]; then
   echo "[init] invalid workspace" >&2
   exit 2
+fi
+
+if [ "$workspace_mode" = "mount" ] || [ "$skip_workspace_init" = "1" ]; then
+  init_step ready done
+  exit 0
 fi
 
 init_step auth start

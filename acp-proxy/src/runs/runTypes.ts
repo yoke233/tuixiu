@@ -6,6 +6,7 @@ export type RunRuntime = {
   lastUsedAt: number;
   opQueue: Promise<void>;
   hostWorkspacePath?: string | null;
+  hostWorkspaceReady?: boolean;
   workspaceMounts?: Array<{ hostPath: string; guestPath: string; readOnly?: boolean }>;
 
   agent: import("../acp/agentBridge.js").AgentBridge | null;

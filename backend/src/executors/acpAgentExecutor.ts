@@ -6,6 +6,7 @@ import { buildContextPackPrompt } from "../modules/acp/contextPack.js";
 import { renderTextTemplateFromDb } from "../modules/templates/textTemplates.js";
 import { renderTextTemplate } from "../utils/textTemplate.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../utils/agentInit.js";
+import { getSandboxWorkspaceMode } from "../utils/sandboxCaps.js";
 import {
   assertRoleGitAuthEnv,
   pickGitAccessToken,
@@ -421,18 +422,6 @@ export async function startAcpAgentExecution(
     gitAuthMode: project?.gitAuthMode ?? null,
   });
   const initEnv: Record<string, string> = {
-    ...(project.githubAccessToken
-      ? {
-          GH_TOKEN: String(project.githubAccessToken),
-          GITHUB_TOKEN: String(project.githubAccessToken),
-        }
-      : {}),
-    ...(project.gitlabAccessToken
-      ? {
-          GITLAB_TOKEN: String(project.gitlabAccessToken),
-          GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken),
-        }
-      : {}),
     ...roleEnv,
     TUIXIU_PROJECT_ID: String(issue.projectId),
     TUIXIU_PROJECT_NAME: String(project.name ?? ""),
@@ -446,6 +435,13 @@ export async function startAcpAgentExecution(
     TUIXIU_WORKSPACE_GUEST: "/workspace",
     TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(issue.projectId)}`,
   };
+  const sandboxWorkspaceMode = getSandboxWorkspaceMode((agent as any)?.capabilities);
+  if (sandboxWorkspaceMode) {
+    initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
+    if (sandboxWorkspaceMode === "mount") {
+      initEnv.TUIXIU_SKIP_WORKSPACE_INIT = "1";
+    }
+  }
   if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
   if (initEnv.TUIXIU_GIT_AUTH_MODE === undefined) initEnv.TUIXIU_GIT_AUTH_MODE = gitAuthMode;
   if (initEnv.TUIXIU_GIT_HTTP_USERNAME === undefined && gitHttpUsername) {
