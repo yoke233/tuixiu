@@ -37,6 +37,7 @@ import { defaultRunBranchName } from "./utils/gitWorkspace.js";
 import { buildSandboxGitPushEnv } from "./utils/sandboxGitPush.js";
 import { createWebSocketGateway } from "./websocket/gateway.js";
 import { deriveSandboxInstanceName } from "./utils/sandbox.js";
+import type { CreateWorkspace } from "./executors/types.js";
 
 const env = loadEnv();
 const attachments = createLocalAttachmentStore({
@@ -161,7 +162,7 @@ sandboxControl = createSandboxControlClient({
 });
 wsGateway.setSandboxControlHandlers(sandboxControl.handlers);
 
-const createWorkspace = async ({
+const createWorkspace: CreateWorkspace = async ({
   runId,
   baseBranch,
   name,
