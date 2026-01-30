@@ -43,6 +43,7 @@
 
 - `orchestrator_url`：后端 WebSocket 地址，例如 `wss://backend.example.com/ws/agent`
 - `agent.id`：这台机器上报到后端的 agent 标识（建议全局唯一）
+- `agent.capabilities.tools`：工具白名单（仅允许 `fs`/`terminal`/`git` 等列出的功能执行；未列出即拒绝；`terminal` 只允许执行 tools 里列出的命令，如 `cat/rg/grep/tail`；`git` 影响 git_push 与宿主机 git 操作）
 - `sandbox.terminalEnabled`：是否允许执行终端类指令（需要同时在 `agent.capabilities.tools` 中包含 `terminal`；建议只在沙盒可信时开启）
 - `sandbox.agentMode`：ACP agent 启动模式（`exec`/`entrypoint`）
 - `sandbox.provider`：`boxlite_oci` / `container_oci` / `host_process`（PoC；必须 `terminalEnabled=false` 且 `workspaceMode=mount`）

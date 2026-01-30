@@ -22,7 +22,7 @@ import {
 } from "./handlers/handleSessionControl.js";
 import { handleSandboxControl } from "./handlers/handleSandboxControl.js";
 import { nowIso, type ProxyContext, WORKSPACE_GUEST_PATH } from "./proxyContext.js";
-import { isTerminalToolEnabled } from "./utils/agentCaps.js";
+import { isGitToolEnabled, isTerminalToolEnabled } from "./utils/agentCaps.js";
 
 type RunProxyCliOpts = {
   configPath?: string;
@@ -164,6 +164,10 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
   let cachedGitPushCap: boolean | null = null;
   const resolveGitPushCap = async (): Promise<boolean> => {
     if (cachedGitPushCap !== null) return cachedGitPushCap;
+    if (!isGitToolEnabled(cfg.agent.capabilities)) {
+      cachedGitPushCap = false;
+      return cachedGitPushCap;
+    }
     if (cfg.sandbox.gitPush === false) {
       cachedGitPushCap = false;
       return cachedGitPushCap;

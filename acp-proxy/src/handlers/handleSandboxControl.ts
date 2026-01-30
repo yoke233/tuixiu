@@ -8,6 +8,7 @@ import path from "node:path";
 import type { ProxyContext } from "../proxyContext.js";
 import { WORKSPACE_GUEST_PATH, nowIso } from "../proxyContext.js";
 import { closeAgent, sendSandboxInstanceStatus } from "../runs/runRuntime.js";
+import { isGitToolEnabled } from "../utils/agentCaps.js";
 import { createHostGitEnv } from "../utils/gitHost.js";
 import { validateInstanceName, validateRunId } from "../utils/validate.js";
 
@@ -325,6 +326,10 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
         const branch = String(msg?.branch ?? "").trim();
         if (!branch) {
           reply({ ok: false, error: "branch 为空" });
+          return;
+        }
+        if (!isGitToolEnabled(ctx.cfg.agent.capabilities)) {
+          reply({ ok: false, error: "git tool disabled" });
           return;
         }
         if (ctx.cfg.sandbox.gitPush === false) {

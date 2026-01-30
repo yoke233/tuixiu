@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { FS_READ_SCRIPT, FS_WRITE_SCRIPT } from "./utils/fsScripts.js";
+import { isTerminalCommandAllowed } from "./utils/agentCaps.js";
 
 import type { SandboxInstanceProvider } from "./sandbox/types.js";
 
@@ -138,6 +139,8 @@ export class AcpClientFacade {
       sandbox: SandboxInstanceProvider;
       log: Logger;
       terminalEnabled: boolean;
+      fsEnabled: boolean;
+      capabilities: unknown;
     },
   ) {}
 
@@ -210,6 +213,9 @@ export class AcpClientFacade {
       }
 
       if (method === "fs/read_text_file") {
+        if (!this.opts.fsEnabled) {
+          throw { code: -32000, message: "fs disabled" };
+        }
         if (!isRecord(req.params) || typeof req.params.path !== "string") {
           throw { code: -32602, message: "invalid params" };
         }
@@ -246,6 +252,9 @@ export class AcpClientFacade {
       }
 
       if (method === "fs/write_text_file") {
+        if (!this.opts.fsEnabled) {
+          throw { code: -32000, message: "fs disabled" };
+        }
         if (!isRecord(req.params) || typeof req.params.path !== "string") {
           throw { code: -32602, message: "invalid params" };
         }
@@ -303,6 +312,13 @@ export class AcpClientFacade {
           (x: unknown) => typeof x === "string" && x.length,
         ) as string[];
         if (!command.length) throw { code: -32602, message: "command is required" };
+        const rawCommandName = command[0] ?? "";
+        const commandName = rawCommandName.includes("/")
+          ? path.posix.basename(rawCommandName)
+          : rawCommandName;
+        if (!isTerminalCommandAllowed(this.opts.capabilities, commandName)) {
+          throw { code: -32000, message: "terminal command not allowed" };
+        }
 
         const handle = await this.opts.sandbox.execProcess({
           instanceName: this.opts.instanceName,

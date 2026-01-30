@@ -13,7 +13,7 @@ import type { ProcessHandle } from "../sandbox/types.js";
 import { DEFAULT_KEEPALIVE_TTL_SECONDS, WORKSPACE_GUEST_PATH, nowIso } from "../proxyContext.js";
 import type { ProxyContext } from "../proxyContext.js";
 import { pickSecretValues, redactSecrets } from "../utils/secrets.js";
-import { isTerminalToolEnabled } from "../utils/agentCaps.js";
+import { isFsToolEnabled, isGitToolEnabled, isTerminalToolEnabled } from "../utils/agentCaps.js";
 import { createHostGitEnv } from "../utils/gitHost.js";
 import { isRecord, validateInstanceName, validateRunId } from "../utils/validate.js";
 import { AgentBridge } from "../acp/agentBridge.js";
@@ -66,6 +66,10 @@ function resolveTerminalEnabled(ctx: ProxyContext): boolean {
   });
 }
 
+function resolveFsEnabled(ctx: ProxyContext): boolean {
+  return isFsToolEnabled(ctx.cfg.agent.capabilities);
+}
+
 export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRuntime> {
   const runId = validateRunId(msg?.run_id);
   const instanceName =
@@ -109,6 +113,8 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
       sandbox: ctx.sandbox as any,
       log: ctx.log,
       terminalEnabled: resolveTerminalEnabled(ctx),
+      fsEnabled: resolveFsEnabled(ctx),
+      capabilities: ctx.cfg.agent.capabilities,
     });
   }
 
@@ -147,6 +153,9 @@ export async function ensureHostWorkspaceGit(
   run: RunRuntime,
   initEnv?: Record<string, string>,
 ): Promise<void> {
+  if (!isGitToolEnabled(ctx.cfg.agent.capabilities)) {
+    throw new Error("git tool disabled");
+  }
   const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
   if (workspaceMode !== "mount") return;
 
@@ -431,6 +440,8 @@ export async function startAgent(
       sandbox: ctx.sandbox as any,
       log: ctx.log,
       terminalEnabled: resolveTerminalEnabled(ctx),
+      fsEnabled: resolveFsEnabled(ctx),
+      capabilities: ctx.cfg.agent.capabilities,
     });
   }
 
@@ -565,7 +576,7 @@ export async function ensureInitialized(ctx: ProxyContext, run: RunRuntime): Pro
     protocolVersion,
     clientInfo: { name: "acp-proxy", title: "tuixiu acp-proxy", version: "0.0.0" },
     clientCapabilities: {
-      fs: { readTextFile: true, writeTextFile: true },
+      fs: { readTextFile: resolveFsEnabled(ctx), writeTextFile: resolveFsEnabled(ctx) },
       terminal: resolveTerminalEnabled(ctx),
     },
   });
