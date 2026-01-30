@@ -2,6 +2,8 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
+import { FS_READ_SCRIPT, FS_WRITE_SCRIPT } from "./utils/fsScripts.js";
+
 import type { SandboxInstanceProvider } from "./sandbox/types.js";
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
@@ -135,6 +137,7 @@ export class AcpClientFacade {
       workspaceGuestRoot: string;
       sandbox: SandboxInstanceProvider;
       log: Logger;
+      terminalEnabled: boolean;
     },
   ) {}
 
@@ -202,6 +205,10 @@ export class AcpClientFacade {
         });
       }
 
+      if (method.startsWith("terminal/") && !this.opts.terminalEnabled) {
+        throw { code: -32000, message: "terminal disabled" };
+      }
+
       if (method === "fs/read_text_file") {
         if (!isRecord(req.params) || typeof req.params.path !== "string") {
           throw { code: -32602, message: "invalid params" };
@@ -212,7 +219,7 @@ export class AcpClientFacade {
         });
 
         const res = await this.execToText({
-          command: ["sh", "-c", 'cat "$1"', "sh", guestPath],
+          command: ["sh", "-c", FS_READ_SCRIPT, "sh", guestPath],
           cwdInGuest: this.opts.workspaceGuestRoot,
         });
         if (res.code !== 0) {
@@ -253,13 +260,7 @@ export class AcpClientFacade {
           command: [
             "sh",
             "-c",
-            [
-              "set -e",
-              'p="$1"',
-              'dir="${p%/*}"',
-              'if [ "$dir" != "$p" ]; then mkdir -p "$dir"; fi',
-              'cat > "$p"',
-            ].join("\n"),
+            FS_WRITE_SCRIPT,
             "sh",
             guestPath,
           ],

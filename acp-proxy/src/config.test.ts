@@ -119,6 +119,82 @@ describe("loadConfig", () => {
     expect(cfg.sandbox.gitPush).toBe(false);
   });
 
+  it("parses host_process without image", async () => {
+    const p = path.join(
+      tmpdir(),
+      `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
+    );
+    await writeFile(
+      p,
+      JSON.stringify({
+        orchestrator_url: "ws://localhost:3000/ws/agent",
+        heartbeat_seconds: 30,
+        mock_mode: true,
+        agent_command: ["node", "--version"],
+        agent: { id: "codex-local-1", max_concurrent: 2 },
+        sandbox: {
+          provider: "host_process",
+          terminalEnabled: false,
+          workspaceMode: "mount",
+        },
+      }),
+      "utf8",
+    );
+
+    const cfg = await loadConfig(p);
+    expect(cfg.sandbox.provider).toBe("host_process");
+  });
+
+  it("rejects host_process with terminalEnabled", async () => {
+    const p = path.join(
+      tmpdir(),
+      `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
+    );
+    await writeFile(
+      p,
+      JSON.stringify({
+        orchestrator_url: "ws://localhost:3000/ws/agent",
+        heartbeat_seconds: 30,
+        mock_mode: true,
+        agent_command: ["node", "--version"],
+        agent: { id: "codex-local-1", max_concurrent: 2 },
+        sandbox: {
+          provider: "host_process",
+          terminalEnabled: true,
+          workspaceMode: "mount",
+        },
+      }),
+      "utf8",
+    );
+
+    await expect(loadConfig(p)).rejects.toThrow(/host_process/);
+  });
+
+  it("rejects host_process with git_clone", async () => {
+    const p = path.join(
+      tmpdir(),
+      `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
+    );
+    await writeFile(
+      p,
+      JSON.stringify({
+        orchestrator_url: "ws://localhost:3000/ws/agent",
+        heartbeat_seconds: 30,
+        mock_mode: true,
+        agent_command: ["node", "--version"],
+        agent: { id: "codex-local-1", max_concurrent: 2 },
+        sandbox: {
+          provider: "host_process",
+          terminalEnabled: false,
+          workspaceMode: "git_clone",
+        },
+      }),
+      "utf8",
+    );
+
+    await expect(loadConfig(p)).rejects.toThrow(/host_process/);
+  });
+
   it("applies profile overrides", async () => {
     const p = path.join(
       tmpdir(),

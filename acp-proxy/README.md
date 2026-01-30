@@ -2,11 +2,12 @@
 
 `acp-proxy` 是一个 Node 服务，作为 **ACP 执行面（Agent Host）**：管理 Run 级沙箱实例，在沙箱内启动 ACP agent，并在本机实现 ACP Client 方法（`fs/*`、`terminal/*`、`session/request_permission`），再将 ACP 消息与结构化状态/清单回传后端 Orchestrator。
 
-本仓库版本已收敛为 “沙箱启动 Agent”：不再支持 host_process / bwrap 等本地直跑模式。
+默认使用 “沙箱启动 Agent”。`host_process` 仅作为低风险 PoC（几乎无隔离），请勿在生产使用。
 
 - Linux（含 WSL2）+ `/dev/kvm`：使用 BoxLite 启动容器/VM 并运行 ACP Agent
 - macOS Apple Silicon（arm64）：使用 BoxLite
 - Windows 原生 + macOS Intel（x64）：使用容器运行时（`docker`/`podman`/`nerdctl`）启动 ACP Agent 容器（默认 `docker`，可配置）
+- `host_process`：直接在宿主机运行 ACP Agent（仅 PoC，低隔离）
 
 ## 架构与流程
 
@@ -25,9 +26,10 @@
 - sandbox 运行环境：
   - BoxLite：Linux/WSL2 需要 `/dev/kvm`；macOS 仅支持 Apple Silicon（arm64）
   - Container：Windows/macOS Intel 需要可用的容器运行时（默认 `docker`，也可用 `podman/nerdctl`）
-- 必须配置 `sandbox.provider` 与 `sandbox.image`
-  - BoxLite：`sandbox.provider=boxlite_oci`
-  - Container：`sandbox.provider=container_oci`，并配置 `sandbox.runtime`（例如 `podman`）
+- 必须配置 `sandbox.provider`
+  - BoxLite：`sandbox.provider=boxlite_oci`，需 `sandbox.image`
+  - Container：`sandbox.provider=container_oci`，需 `sandbox.image` + `sandbox.runtime`
+  - Host：`sandbox.provider=host_process`（不需要 `sandbox.image`，但仅 PoC）
 
 ## 配置
 
@@ -41,10 +43,10 @@
 
 - `orchestrator_url`：后端 WebSocket 地址，例如 `wss://backend.example.com/ws/agent`
 - `agent.id`：这台机器上报到后端的 agent 标识（建议全局唯一）
-- `sandbox.terminalEnabled`：是否允许执行终端类指令（建议只在沙盒可信时开启）
+- `sandbox.terminalEnabled`：是否允许执行终端类指令（需要同时在 `agent.capabilities.tools` 中包含 `terminal`；建议只在沙盒可信时开启）
 - `sandbox.agentMode`：ACP agent 启动模式（`exec`/`entrypoint`）
-- `sandbox.provider`：`boxlite_oci` 或 `container_oci`
-- `sandbox.image`：用于运行 ACP 的镜像（必填）
+- `sandbox.provider`：`boxlite_oci` / `container_oci` / `host_process`（PoC；必须 `terminalEnabled=false` 且 `workspaceMode=mount`）
+- `sandbox.image`：用于运行 ACP 的镜像（`host_process` 不需要）
 - `agent_command`：在 guest 内执行的 ACP 启动命令
 - `sandbox.runtime`（仅 `provider=container_oci`）：容器运行时（默认 `docker`）
 - `sandbox.workingDir`：ACP 工作目录（默认 `/workspace`）
@@ -64,7 +66,7 @@
 - `ACP_PROXY_ORCHESTRATOR_URL`
 - `ACP_PROXY_AUTH_TOKEN`
 - `ACP_PROXY_TERMINAL_ENABLED`（`1`/`true` 为开启）
-- `ACP_PROXY_SANDBOX_PROVIDER`（`boxlite_oci`/`container_oci`）
+- `ACP_PROXY_SANDBOX_PROVIDER`（`boxlite_oci`/`container_oci`/`host_process`）
 - `ACP_PROXY_SANDBOX_IMAGE`
 - `ACP_PROXY_SANDBOX_WORKING_DIR`
 - `ACP_PROXY_CONTAINER_RUNTIME`

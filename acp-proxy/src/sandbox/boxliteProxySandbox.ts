@@ -28,7 +28,7 @@ type BoxliteSandboxApi = {
   }): Promise<ProcessHandle>;
 };
 
-type BoxliteSandboxCfg = LoadedProxyConfig["sandbox"] & { provider: "boxlite_oci" };
+type BoxliteSandboxCfg = LoadedProxyConfig["sandbox"] & { provider: "boxlite_oci"; image: string };
 
 export class BoxliteProxySandbox implements ProxySandbox {
   readonly provider = "boxlite_oci" as const;

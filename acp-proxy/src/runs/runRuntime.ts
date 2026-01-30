@@ -13,6 +13,7 @@ import type { ProcessHandle } from "../sandbox/types.js";
 import { DEFAULT_KEEPALIVE_TTL_SECONDS, WORKSPACE_GUEST_PATH, nowIso } from "../proxyContext.js";
 import type { ProxyContext } from "../proxyContext.js";
 import { pickSecretValues, redactSecrets } from "../utils/secrets.js";
+import { isTerminalToolEnabled } from "../utils/agentCaps.js";
 import { createHostGitEnv } from "../utils/gitHost.js";
 import { isRecord, validateInstanceName, validateRunId } from "../utils/validate.js";
 import { AgentBridge } from "../acp/agentBridge.js";
@@ -58,6 +59,13 @@ export function sendSandboxInstanceStatus(
   });
 }
 
+function resolveTerminalEnabled(ctx: ProxyContext): boolean {
+  return isTerminalToolEnabled({
+    sandboxTerminalEnabled: ctx.cfg.sandbox.terminalEnabled === true,
+    capabilities: ctx.cfg.agent.capabilities,
+  });
+}
+
 export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRuntime> {
   const runId = validateRunId(msg?.run_id);
   const instanceName =
@@ -100,6 +108,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
       workspaceGuestRoot: WORKSPACE_GUEST_PATH,
       sandbox: ctx.sandbox as any,
       log: ctx.log,
+      terminalEnabled: resolveTerminalEnabled(ctx),
     });
   }
 
@@ -228,6 +237,11 @@ export async function runInitScript(
   run: RunRuntime,
   init?: AgentInit,
 ): Promise<boolean> {
+  if (ctx.sandbox.provider === "host_process") {
+    ctx.log("host_process skip init script", { runId: run.runId });
+    return true;
+  }
+
   const script = init?.script?.trim() ?? "";
   if (!script) return true;
 
@@ -416,6 +430,7 @@ export async function startAgent(
       workspaceGuestRoot: WORKSPACE_GUEST_PATH,
       sandbox: ctx.sandbox as any,
       log: ctx.log,
+      terminalEnabled: resolveTerminalEnabled(ctx),
     });
   }
 
@@ -551,7 +566,7 @@ export async function ensureInitialized(ctx: ProxyContext, run: RunRuntime): Pro
     clientInfo: { name: "acp-proxy", title: "tuixiu acp-proxy", version: "0.0.0" },
     clientCapabilities: {
       fs: { readTextFile: true, writeTextFile: true },
-      terminal: ctx.cfg.sandbox.terminalEnabled === true,
+      terminal: resolveTerminalEnabled(ctx),
     },
   });
 

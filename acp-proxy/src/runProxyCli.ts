@@ -22,6 +22,7 @@ import {
 } from "./handlers/handleSessionControl.js";
 import { handleSandboxControl } from "./handlers/handleSandboxControl.js";
 import { nowIso, type ProxyContext, WORKSPACE_GUEST_PATH } from "./proxyContext.js";
+import { isTerminalToolEnabled } from "./utils/agentCaps.js";
 
 type RunProxyCliOpts = {
   configPath?: string;
@@ -186,6 +187,10 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       ? ((baseCaps as any).runtime as Record<string, unknown>)
       : {};
 
+    const terminalEnabled = isTerminalToolEnabled({
+      sandboxTerminalEnabled: cfg.sandbox.terminalEnabled === true,
+      capabilities: cfg.agent.capabilities,
+    });
     const runtime: Record<string, unknown> = {
       ...baseRuntime,
       platform: process.platform,
@@ -197,7 +202,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     const sandboxCaps: Record<string, unknown> = {
       ...baseSandbox,
       provider: cfg.sandbox.provider,
-      terminalEnabled: cfg.sandbox.terminalEnabled,
+      terminalEnabled,
       agentMode: sandbox.agentMode,
       image: cfg.sandbox.image ?? null,
       workingDir: cfg.sandbox.workingDir ?? null,

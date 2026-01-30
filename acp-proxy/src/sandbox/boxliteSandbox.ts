@@ -355,9 +355,6 @@ export class BoxliteSandbox implements SandboxProvider, SandboxInstanceProvider 
     const extraVolumes = Array.isArray(opts.mounts)
       ? opts.mounts.map((v) => ({ hostPath: v.hostPath, guestPath: v.guestPath, readOnly: v.readOnly }))
       : [];
-    if (extraVolumes.length && this.isSharedBox(cfg)) {
-      throw new Error("boxlite 共享 box 不支持动态 workspace mount");
-    }
     const volumes = [...(cfg.volumes ?? []), ...extraVolumes];
     this.opts.log("boxlite ensureInstanceRunning", { instanceName });
     await this.ensureBox({
