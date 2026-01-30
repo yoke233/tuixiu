@@ -49,7 +49,10 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         orderBy: { createdAt: "desc" },
       });
 
-      return { success: true, data: { roles: roles.map((r: unknown) => toRoleDto(r, { includeEnvText })) } };
+      return {
+        success: true,
+        data: { roles: roles.map((r: unknown) => toRoleDto(r, { includeEnvText })) },
+      };
     });
 
     server.post("/:projectId/roles", async (request) => {
@@ -105,7 +108,9 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const body = bodySchema.parse(request.body ?? {});
       const envText = normalizeEnvText(body.envText);
 
-      const existing = await deps.prisma.roleTemplate.findFirst({ where: { id: roleId, projectId } });
+      const existing = await deps.prisma.roleTemplate.findFirst({
+        where: { id: roleId, projectId },
+      });
       if (!existing) {
         return { success: false, error: { code: "NOT_FOUND", message: "RoleTemplate 不存在" } };
       }
@@ -129,7 +134,9 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const paramsSchema = z.object({ projectId: z.string().uuid(), roleId: z.string().uuid() });
       const { projectId, roleId } = paramsSchema.parse(request.params);
 
-      const existing = await deps.prisma.roleTemplate.findFirst({ where: { id: roleId, projectId } });
+      const existing = await deps.prisma.roleTemplate.findFirst({
+        where: { id: roleId, projectId },
+      });
       if (!existing) {
         return { success: false, error: { code: "NOT_FOUND", message: "RoleTemplate 不存在" } };
       }
@@ -140,4 +147,3 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
     });
   };
 }
-

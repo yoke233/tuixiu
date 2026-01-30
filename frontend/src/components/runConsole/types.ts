@@ -24,6 +24,11 @@ export type ConsoleItem = {
   toolCallInfo?: ToolCallInfo;
   detailsTitle?: string;
   chunkType?: "agent_message" | "agent_thought" | "user_message";
+  initStep?: {
+    stage: string;
+    status: string;
+    message?: string;
+  };
   plan?: {
     entries: Array<{
       status: string;

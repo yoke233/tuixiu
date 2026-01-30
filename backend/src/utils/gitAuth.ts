@@ -13,26 +13,46 @@ export type GitAuthProject = {
 };
 
 function inferGitAuthMode(project: GitAuthProject): GitAuthMode {
-  const explicit = String(project.gitAuthMode ?? "").trim().toLowerCase();
+  const explicit = String(project.gitAuthMode ?? "")
+    .trim()
+    .toLowerCase();
   if (explicit === "https_pat") return "https_pat";
   if (explicit === "ssh") return "ssh";
 
-  const url = String(project.repoUrl ?? "").trim().toLowerCase();
+  const url = String(project.repoUrl ?? "")
+    .trim()
+    .toLowerCase();
   if (url.startsWith("http://") || url.startsWith("https://")) return "https_pat";
   return "ssh";
 }
 
 function inferHttpsUsername(project: GitAuthProject): string {
-  const scm = String(project.scmType ?? "").trim().toLowerCase();
+  const scm = String(project.scmType ?? "")
+    .trim()
+    .toLowerCase();
   if (scm === "gitlab" || scm === "codeup") return "oauth2";
   return "x-access-token";
 }
 
 function pickPatToken(project: GitAuthProject): string | null {
-  const scm = String(project.scmType ?? "").trim().toLowerCase();
+  const scm = String(project.scmType ?? "")
+    .trim()
+    .toLowerCase();
   if (scm === "github") return project.githubAccessToken?.trim() || null;
   if (scm === "gitlab" || scm === "codeup") return project.gitlabAccessToken?.trim() || null;
   return project.githubAccessToken?.trim() || project.gitlabAccessToken?.trim() || null;
+}
+
+export function resolveGitAuthMode(project: GitAuthProject): GitAuthMode {
+  return inferGitAuthMode(project);
+}
+
+export function resolveGitHttpUsername(project: GitAuthProject): string {
+  return inferHttpsUsername(project);
+}
+
+export function pickGitAccessToken(project: GitAuthProject): string | null {
+  return pickPatToken(project);
 }
 
 async function writeAskPassScript(opts: {
@@ -60,7 +80,7 @@ async function writeAskPassScript(opts: {
     : [
         "#!/bin/sh",
         `prompt="$1"`,
-        "case \"$prompt\" in",
+        'case "$prompt" in',
         "  *Username*|*username*)",
         `    printf '%s\\n' '${username}'`,
         "    ;;",
@@ -117,4 +137,3 @@ export async function createGitProcessEnv(project: GitAuthProject): Promise<{
     cleanup,
   };
 }
-

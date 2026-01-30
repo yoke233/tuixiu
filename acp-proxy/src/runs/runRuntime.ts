@@ -162,6 +162,11 @@ export async function runInitScript(
         for (const line of parts) {
           const text = redact(line);
           if (!text.trim()) continue;
+          const step = parseInitStepLine(text);
+          if (step) {
+            sendUpdate(ctx, run.runId, { type: "init_step", ...step });
+            continue;
+          }
           sendUpdate(ctx, run.runId, {
             type: "text",
             text: `[init:${label}] ${text}`,
@@ -176,10 +181,15 @@ export async function runInitScript(
       }
       const rest = redact(buf);
       if (rest.trim()) {
-        sendUpdate(ctx, run.runId, {
-          type: "text",
-          text: `[init:${label}] ${rest}`,
-        });
+        const step = parseInitStepLine(rest);
+        if (step) {
+          sendUpdate(ctx, run.runId, { type: "init_step", ...step });
+        } else {
+          sendUpdate(ctx, run.runId, {
+            type: "text",
+            text: `[init:${label}] ${rest}`,
+          });
+        }
       }
     }
   };
@@ -326,6 +336,11 @@ export async function startAgent(
     },
     onStderrLine: (line, kind) => {
       if (kind === "init") {
+        const step = parseInitStepLine(line);
+        if (step) {
+          sendUpdate(ctx, run.runId, { type: "init_step", ...step });
+          return;
+        }
         sendUpdate(ctx, run.runId, { type: "text", text: `[init:stderr] ${line}` });
         return;
       }
@@ -447,6 +462,22 @@ export function getPromptCapabilities(initResult: unknown | null): PromptCapabil
     ? (initResult as any).agentCapabilities?.promptCapabilities
     : null;
   return isRecord(caps) ? (caps as PromptCapabilities) : {};
+}
+
+const INIT_STEP_PREFIX = "__TUIXIU_INIT_STEP__:";
+
+function parseInitStepLine(
+  line: string,
+): { stage: string; status: string; message?: string } | null {
+  if (!line.startsWith(INIT_STEP_PREFIX)) return null;
+  const raw = line.slice(INIT_STEP_PREFIX.length).trim();
+  if (!raw) return null;
+  const parts = raw.split(":");
+  const stage = parts[0]?.trim();
+  const status = parts[1]?.trim() || "progress";
+  const message = parts.slice(2).join(":").trim();
+  if (!stage) return null;
+  return message ? { stage, status, message } : { stage, status };
 }
 
 export function assertPromptBlocksSupported(

@@ -5,11 +5,19 @@ import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
 import { buildContextPackPrompt } from "../modules/acp/contextPack.js";
 import { renderTextTemplateFromDb } from "../modules/templates/textTemplates.js";
 import { renderTextTemplate } from "../utils/textTemplate.js";
+import { buildWorkspaceInitScript, mergeInitScripts } from "../utils/agentInit.js";
+import {
+  pickGitAccessToken,
+  resolveGitAuthMode,
+  resolveGitHttpUsername,
+} from "../utils/gitAuth.js";
 
 import type { CreateWorkspace, CreateWorkspaceResult } from "./types.js";
 
 function normalizeWorkspaceMode(mode: unknown): "worktree" | "clone" {
-  const v = String(mode ?? "").trim().toLowerCase();
+  const v = String(mode ?? "")
+    .trim()
+    .toLowerCase();
   if (v === "worktree") return "worktree";
   return "clone";
 }
@@ -27,6 +35,16 @@ function inferTestCommand(step: any, issue: any): string {
     typeof issue?.testRequirements === "string" ? issue.testRequirements.trim() : "";
   if (fromIssue) return fromIssue;
   return "pnpm -r test";
+}
+
+function normalizeRoleEnv(env: Record<string, string>): Record<string, string> {
+  if (env.GH_TOKEN && env.GITHUB_TOKEN === undefined) env.GITHUB_TOKEN = env.GH_TOKEN;
+  if (env.GITHUB_TOKEN && env.GH_TOKEN === undefined) env.GH_TOKEN = env.GITHUB_TOKEN;
+  if (env.GITLAB_TOKEN && env.GITLAB_ACCESS_TOKEN === undefined)
+    env.GITLAB_ACCESS_TOKEN = env.GITLAB_TOKEN;
+  if (env.GITLAB_ACCESS_TOKEN && env.GITLAB_TOKEN === undefined)
+    env.GITLAB_TOKEN = env.GITLAB_ACCESS_TOKEN;
+  return env;
 }
 
 async function buildStepInstruction(prisma: PrismaDeps, step: any, issue: any): Promise<string> {
@@ -381,13 +399,25 @@ export async function startAcpAgentExecution(
     promptParts.push(`测试要求:\n${issue.testRequirements}`);
   }
 
-  const roleEnv = role?.envText ? parseEnvText(String(role.envText)) : {};
-  if (roleEnv.GH_TOKEN && roleEnv.GITHUB_TOKEN === undefined) {
-    roleEnv.GITHUB_TOKEN = roleEnv.GH_TOKEN;
-  }
-  if (roleEnv.GITHUB_TOKEN && roleEnv.GH_TOKEN === undefined) {
-    roleEnv.GH_TOKEN = roleEnv.GITHUB_TOKEN;
-  }
+  const roleEnv = normalizeRoleEnv(role?.envText ? parseEnvText(String(role.envText)) : {});
+  const gitAuthMode = resolveGitAuthMode({
+    repoUrl: String(project?.repoUrl ?? ""),
+    scmType: project?.scmType ?? null,
+    gitAuthMode: workspace.gitAuthMode ?? project?.gitAuthMode ?? null,
+    githubAccessToken: project?.githubAccessToken ?? null,
+    gitlabAccessToken: project?.gitlabAccessToken ?? null,
+  });
+  const gitHttpUsername = resolveGitHttpUsername({
+    repoUrl: String(project?.repoUrl ?? ""),
+    scmType: project?.scmType ?? null,
+  });
+  const gitHttpPassword = pickGitAccessToken({
+    scmType: project?.scmType ?? null,
+    githubAccessToken: project?.githubAccessToken ?? null,
+    gitlabAccessToken: project?.gitlabAccessToken ?? null,
+    repoUrl: project?.repoUrl ?? null,
+    gitAuthMode: project?.gitAuthMode ?? null,
+  });
   const initEnv: Record<string, string> = {
     ...(project.githubAccessToken
       ? {
@@ -411,12 +441,31 @@ export async function startAcpAgentExecution(
     TUIXIU_RUN_ID: String(run.id),
     TUIXIU_RUN_BRANCH: String(workspace.branchName),
     TUIXIU_WORKSPACE: String(workspace.workspacePath),
+    TUIXIU_WORKSPACE_GUEST: "/workspace",
     TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(issue.projectId)}`,
   };
   if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
+  if (initEnv.TUIXIU_GIT_AUTH_MODE === undefined) initEnv.TUIXIU_GIT_AUTH_MODE = gitAuthMode;
+  if (initEnv.TUIXIU_GIT_HTTP_USERNAME === undefined && gitHttpUsername) {
+    initEnv.TUIXIU_GIT_HTTP_USERNAME = gitHttpUsername;
+  }
+  if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined && gitHttpPassword) {
+    initEnv.TUIXIU_GIT_HTTP_PASSWORD = gitHttpPassword;
+  }
+  if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined) {
+    const fallbackToken =
+      initEnv.GITHUB_TOKEN ||
+      initEnv.GH_TOKEN ||
+      initEnv.GITLAB_ACCESS_TOKEN ||
+      initEnv.GITLAB_TOKEN;
+    if (fallbackToken) initEnv.TUIXIU_GIT_HTTP_PASSWORD = fallbackToken;
+  }
+
+  const baseInitScript = buildWorkspaceInitScript();
+  const roleInitScript = role?.initScript?.trim() ? String(role.initScript) : "";
 
   const init = {
-    script: role?.initScript?.trim() ? String(role.initScript) : "",
+    script: mergeInitScripts(baseInitScript, roleInitScript),
     timeout_seconds: role?.initTimeoutSeconds,
     env: initEnv,
   };

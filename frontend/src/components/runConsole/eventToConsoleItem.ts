@@ -42,9 +42,12 @@ function formatAvailableCommandsUpdate(update: any): { title: string; body: stri
     const name = typeof (cmd as any).name === "string" ? String((cmd as any).name) : "";
     if (!name) continue;
 
-    const description = typeof (cmd as any).description === "string" ? String((cmd as any).description).trim() : "";
+    const description =
+      typeof (cmd as any).description === "string" ? String((cmd as any).description).trim() : "";
     const hint =
-      (cmd as any).input && typeof (cmd as any).input === "object" && typeof (cmd as any).input.hint === "string"
+      (cmd as any).input &&
+      typeof (cmd as any).input === "object" &&
+      typeof (cmd as any).input.hint === "string"
         ? String((cmd as any).input.hint).trim()
         : "";
 
@@ -66,7 +69,8 @@ function extractPlan(update: any): ConsoleItem["plan"] | null {
     if (!e || typeof e !== "object") continue;
     const status = typeof (e as any).status === "string" ? String((e as any).status).trim() : "";
     const content = typeof (e as any).content === "string" ? String((e as any).content).trim() : "";
-    const priority = typeof (e as any).priority === "string" ? String((e as any).priority).trim() : "";
+    const priority =
+      typeof (e as any).priority === "string" ? String((e as any).priority).trim() : "";
     if (!status || !content) continue;
     out.push({ status, content, priority: priority || undefined });
   }
@@ -100,6 +104,25 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
         kind: "block",
         text: payload.text,
         timestamp: e.timestamp,
+      };
+    }
+
+    if (payload?.type === "init_step") {
+      const stage = typeof payload.stage === "string" ? payload.stage.trim() : "";
+      const status = typeof payload.status === "string" ? payload.status.trim() : "progress";
+      const message = typeof payload.message === "string" ? payload.message.trim() : "";
+      const parts = [stage, status, message].filter(Boolean);
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: parts.join(" "),
+        timestamp: e.timestamp,
+        initStep: {
+          stage: stage || "init",
+          status: status || "progress",
+          message: message || undefined,
+        },
       };
     }
 
@@ -183,7 +206,10 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
 
       if (sessionUpdate === "available_commands_update") {
         const formatted = formatAvailableCommandsUpdate(update);
-        const text = formatted?.body ?? extractTextFromUpdateContent(update?.content) ?? JSON.stringify(update, null, 2);
+        const text =
+          formatted?.body ??
+          extractTextFromUpdateContent(update?.content) ??
+          JSON.stringify(update, null, 2);
         return {
           id: e.id,
           role: "system",

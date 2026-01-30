@@ -1006,6 +1006,14 @@ export function createWebSocketGateway(deps: {
               }
             }
 
+            if (contentType === "init_step") {
+              broadcastToClients({
+                type: "run.init_step",
+                run_id: message.run_id,
+                step: message.content,
+              });
+            }
+
             broadcastToClients({
               type: "event_added",
               run_id: message.run_id,

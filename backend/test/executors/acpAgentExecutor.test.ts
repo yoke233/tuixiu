@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/utils/gitWorkspace.js", () => ({ suggestRunKeyWithLlm: vi.fn() }));
 vi.mock("../../src/modules/acp/contextPack.js", () => ({ buildContextPackPrompt: vi.fn() }));
-vi.mock("../../src/modules/templates/textTemplates.js", () => ({ renderTextTemplateFromDb: vi.fn() }));
+vi.mock("../../src/modules/templates/textTemplates.js", () => ({
+  renderTextTemplateFromDb: vi.fn(),
+}));
 
 const { startAcpAgentExecution } = await import("../../src/executors/acpAgentExecutor.js");
 const { suggestRunKeyWithLlm } = await import("../../src/utils/gitWorkspace.js");
@@ -20,7 +22,13 @@ function makeAgent(overrides?: Partial<any>) {
   };
 }
 
-function makeRun(opts?: { kind?: string; stepParams?: any; stepRoleKey?: string | null; stepKey?: string; projectNoticeTemplate?: any }) {
+function makeRun(opts?: {
+  kind?: string;
+  stepParams?: any;
+  stepRoleKey?: string | null;
+  stepKey?: string;
+  projectNoticeTemplate?: any;
+}) {
   const step = {
     id: "s1",
     kind: opts?.kind ?? "test.run",
@@ -87,36 +95,63 @@ describe("acpAgentExecutor", () => {
 
   it("throws when acpTunnel missing", async () => {
     const prisma = {} as any;
-    await expect(startAcpAgentExecution({ prisma, acp: null as any }, "r1")).rejects.toThrow("acpTunnel 未配置");
+    await expect(startAcpAgentExecution({ prisma, acp: null as any }, "r1")).rejects.toThrow(
+      "acpTunnel 未配置",
+    );
   });
 
   it("throws when run missing", async () => {
     const prisma = { run: { findUnique: vi.fn().mockResolvedValue(null) } } as any;
-    await expect(startAcpAgentExecution({ prisma, acp: { promptRun: vi.fn() } as any }, "r1")).rejects.toThrow("Run 不存在");
+    await expect(
+      startAcpAgentExecution({ prisma, acp: { promptRun: vi.fn() } as any }, "r1"),
+    ).rejects.toThrow("Run 不存在");
   });
 
   it("throws when roleKey specified but role missing", async () => {
     const run = makeRun({ kind: "test.run", stepRoleKey: "dev" });
     const prisma = {
-      run: { findUnique: vi.fn().mockResolvedValue(run), update: vi.fn().mockResolvedValue(undefined) },
-      agent: { findMany: vi.fn().mockResolvedValue([makeAgent()]), update: vi.fn().mockResolvedValue(undefined) },
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([makeAgent()]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
       issue: { update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(null) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
     } as any;
 
-    await expect(startAcpAgentExecution({ prisma, acp: { promptRun: vi.fn() } as any }, "r1")).rejects.toThrow("RoleTemplate 不存在");
+    await expect(
+      startAcpAgentExecution({ prisma, acp: { promptRun: vi.fn() } as any }, "r1"),
+    ).rejects.toThrow("RoleTemplate 不存在");
   });
 
   it("renders step instruction for test.run and passes init env", async () => {
     const run = makeRun({ kind: "test.run" });
-    const role = { key: "dev", displayName: "Dev", promptTemplate: "Role: {{workspace}}", envText: "GH_TOKEN=role-gh\n", initScript: "echo hi", initTimeoutSeconds: 10 };
+    const role = {
+      key: "dev",
+      displayName: "Dev",
+      promptTemplate: "Role: {{workspace}}",
+      envText: "GH_TOKEN=role-gh\n",
+      initScript: "echo hi",
+      initTimeoutSeconds: 10,
+    };
     const agent = makeAgent();
 
-    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }) } as any;
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
+    } as any;
     const prisma = {
-      run: { findUnique: vi.fn().mockResolvedValue(run), update: vi.fn().mockResolvedValue(undefined) },
-      agent: { findMany: vi.fn().mockResolvedValue([agent]), update: vi.fn().mockResolvedValue(undefined) },
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([agent]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
       issue: { update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(role) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
@@ -126,7 +161,11 @@ describe("acpAgentExecutor", () => {
 
     expect(renderTextTemplateFromDb).toHaveBeenCalledWith(
       { prisma },
-      expect.objectContaining({ key: "acp.stepInstruction.test.run", projectId: "p1", vars: { cmd: "pnpm test" } }),
+      expect.objectContaining({
+        key: "acp.stepInstruction.test.run",
+        projectId: "p1",
+        vars: { cmd: "pnpm test" },
+      }),
     );
 
     expect(acp.promptRun).toHaveBeenCalledWith(
@@ -135,7 +174,7 @@ describe("acpAgentExecutor", () => {
         runId: "r1",
         cwd: "/workspace",
         init: expect.objectContaining({
-          script: "echo hi",
+          script: expect.stringContaining("echo hi"),
           timeout_seconds: 10,
           env: expect.objectContaining({
             GH_TOKEN: "role-gh",
@@ -143,6 +182,7 @@ describe("acpAgentExecutor", () => {
             GITLAB_TOKEN: "proj-gl",
             TUIXIU_RUN_ID: "r1",
             TUIXIU_WORKSPACE: "C:/ws",
+            TUIXIU_WORKSPACE_GUEST: "/workspace",
             TUIXIU_PROJECT_ID: "p1",
             TUIXIU_BASE_BRANCH: "main",
             TUIXIU_ROLE_KEY: "dev",
@@ -166,20 +206,34 @@ describe("acpAgentExecutor", () => {
       kind: "code.review",
       stepParams: {
         mode: "ai",
-        githubPr: { number: 7, url: "https://github.com/o/r/pull/7", baseBranch: "main", headBranch: "run-1", headSha: "abcdef1234567890" },
+        githubPr: {
+          number: 7,
+          url: "https://github.com/o/r/pull/7",
+          baseBranch: "main",
+          headBranch: "run-1",
+          headSha: "abcdef1234567890",
+        },
       },
       stepRoleKey: null,
     });
 
     const prisma = {
-      run: { findUnique: vi.fn().mockResolvedValue(run), update: vi.fn().mockResolvedValue(undefined) },
-      agent: { findMany: vi.fn().mockResolvedValue([makeAgent()]), update: vi.fn().mockResolvedValue(undefined) },
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([makeAgent()]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
       issue: { update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue({ key: "dev" }) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
     } as any;
 
-    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }) } as any;
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
+    } as any;
 
     await startAcpAgentExecution({ prisma, acp }, "r1");
 
@@ -212,18 +266,30 @@ describe("acpAgentExecutor", () => {
     });
 
     const prisma = {
-      run: { findUnique: vi.fn().mockResolvedValue(run), update: vi.fn().mockResolvedValue(undefined) },
-      agent: { findMany: vi.fn().mockResolvedValue([makeAgent()]), update: vi.fn().mockResolvedValue(undefined) },
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([makeAgent()]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
       issue: { update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue({ key: "dev" }) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
     } as any;
 
-    const acp = { promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }) } as any;
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
+    } as any;
     await startAcpAgentExecution({ prisma, acp, createWorkspace }, "r1");
 
     expect(suggestRunKeyWithLlm).toHaveBeenCalled();
-    expect(createWorkspace).toHaveBeenCalledWith({ runId: "r1", baseBranch: "main", name: "run-key" });
+    expect(createWorkspace).toHaveBeenCalledWith({
+      runId: "r1",
+      baseBranch: "main",
+      name: "run-key",
+    });
     expect(prisma.task.update).toHaveBeenCalledWith({
       where: { id: "t1" },
       data: expect.objectContaining({
@@ -234,7 +300,11 @@ describe("acpAgentExecutor", () => {
     });
     expect(prisma.run.update).toHaveBeenCalledWith({
       where: { id: "r1" },
-      data: expect.objectContaining({ workspaceType: "clone", workspacePath: "C:/ws2", branchName: "b2" }),
+      data: expect.objectContaining({
+        workspaceType: "clone",
+        workspacePath: "C:/ws2",
+        branchName: "b2",
+      }),
     });
   });
 });

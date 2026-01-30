@@ -16,6 +16,9 @@ export function pickSecretValues(env: Record<string, string> | undefined): strin
     "CODEX_API_KEY",
     "GITLAB_TOKEN",
     "GITLAB_ACCESS_TOKEN",
+    "TUIXIU_GIT_HTTP_PASSWORD",
+    "TUIXIU_GIT_SSH_KEY",
+    "TUIXIU_GIT_SSH_KEY_B64",
   ];
   const out: string[] = [];
   for (const k of secretKeys) {

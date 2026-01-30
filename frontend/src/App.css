@@ -518,6 +518,17 @@ a:hover {
   color: var(--console-user-text);
 }
 
+.consoleInitStep {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.consoleInitMessage {
+  color: var(--muted);
+}
+
 .consoleInput {
   display: flex;
   flex-wrap: nowrap;

@@ -13,6 +13,28 @@ import {
 } from "./runConsole/toolCallInfo";
 import { parseSandboxInstanceStatusText } from "../utils/sandboxStatus";
 
+const INIT_STAGE_LABELS: Record<string, string> = {
+  auth: "鉴权准备",
+  clone: "项目拉取",
+  checkout: "切换分支",
+  ready: "环境就绪",
+};
+
+const INIT_STATUS_LABELS: Record<string, string> = {
+  start: "开始",
+  progress: "进行中",
+  done: "完成",
+  error: "失败",
+};
+
+function initStatusClass(status: string): string {
+  if (status === "done") return "badge green";
+  if (status === "start") return "badge blue";
+  if (status === "progress") return "badge orange";
+  if (status === "error" || status === "failed") return "badge red";
+  return "badge gray";
+}
+
 export function RunConsole(props: { events: Event[]; liveEventIds?: Set<string> }) {
   const defaultVisibleCount = 160;
   const loadMoreStep = 200;
@@ -186,6 +208,20 @@ export function RunConsole(props: { events: Event[]; liveEventIds?: Set<string> 
                 </div>
               }
             />
+          );
+        }
+        if (item.role === "system" && item.initStep) {
+          const stageLabel = INIT_STAGE_LABELS[item.initStep.stage] ?? item.initStep.stage;
+          const statusLabel = INIT_STATUS_LABELS[item.initStep.status] ?? item.initStep.status;
+          return (
+            <div key={item.id} className="consoleItem system consoleInitStep">
+              <span className="badge gray">INIT</span>
+              <span className={initStatusClass(item.initStep.status)}>{statusLabel}</span>
+              <span className="toolSummaryTitle">{stageLabel}</span>
+              {item.initStep.message ? (
+                <span className="consoleInitMessage">{item.initStep.message}</span>
+              ) : null}
+            </div>
           );
         }
         if (item.role === "user" && item.kind === "chunk" && item.chunkType === "user_message") {
