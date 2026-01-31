@@ -4,6 +4,8 @@ import { RunConsole } from "../../../components/RunConsole";
 import { apiUrl } from "../../../api/client";
 import { findLatestSandboxInstanceStatus } from "../../../utils/sandboxStatus";
 import type { SessionController } from "../useSessionController";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function SessionConsoleCard(props: { model: SessionController }) {
   const {
@@ -303,21 +305,16 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                   border: "1px solid rgba(255,255,255,0.12)",
                 }}
               />
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="icon"
                 onClick={() => removePendingImage(img.id)}
-                className="buttonSecondary"
-                style={{
-                  position: "absolute",
-                  top: -8,
-                  right: -8,
-                  padding: "2px 6px",
-                  borderRadius: 999,
-                }}
+                className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
                 aria-label="移除图片"
               >
                 ×
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -340,9 +337,11 @@ export function SessionConsoleCard(props: { model: SessionController }) {
           if (e.dataTransfer.files?.length) void onDropFiles(e.dataTransfer.files);
         }}
       >
-        <button
+        <Button
           type="button"
-          className="buttonSecondary consoleIconButton consoleCommandButton"
+          variant="secondary"
+          size="icon"
+          className="consoleIconButton consoleCommandButton"
           onClick={() => {
             setCommandMenuDismissed(false);
             setCommandMenuForcedOpen(true);
@@ -353,8 +352,8 @@ export function SessionConsoleCard(props: { model: SessionController }) {
           title="命令"
         >
           /
-        </button>
-        <input
+        </Button>
+        <Input
           aria-label="对话输入"
           ref={inputRef}
           value={chatText}
@@ -391,9 +390,11 @@ export function SessionConsoleCard(props: { model: SessionController }) {
         ) : null}
         <div className="consoleActions">
           <div style={{ position: "relative" }} ref={modeMenuRef}>
-            <button
+            <Button
               type="button"
-              className="buttonSecondary consoleIconButton"
+              variant="secondary"
+              size="icon"
+              className="consoleIconButton"
               onClick={() => setModeMenuOpen((open) => !open)}
               disabled={!sessionId  || settingMode}
               aria-label="设置 mode"
@@ -403,7 +404,7 @@ export function SessionConsoleCard(props: { model: SessionController }) {
               }
             >
               {settingMode ? <span className="iconSpinner" aria-hidden="true" /> : "mode"}
-            </button>
+            </Button>
             {modeMenuOpen ? (
               <div
                 style={{
@@ -431,43 +432,45 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                   {availableModes.map((mode) => {
                     const active = sessionState?.currentModeId === mode.id;
                     return (
-                      <button
+                      <Button
                         key={mode.id}
                         type="button"
-                        className="buttonSecondary"
+                        variant="outline"
                         onClick={() => {
                           void onSetMode(mode.id);
                           setModeMenuOpen(false);
                         }}
                         disabled={!sessionId || !isAdmin || settingMode}
-                        style={{
-                          textAlign: "left",
-                          borderColor: active ? "var(--accent)" : undefined,
-                        }}
+                        className={`h-auto w-full items-start justify-start py-2 text-left ${active ? "border-primary" : ""}`}
                       >
-                        <div style={{ fontWeight: 700 }}>{mode.name}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          {mode.description}
+                        <div style={{ display: "grid", gap: 2 }}>
+                          <div style={{ fontWeight: 700 }}>{mode.name}</div>
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            {mode.description}
+                          </div>
                         </div>
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
               </div>
             ) : null}
           </div>
-          <button
+          <Button
             type="button"
-            className="buttonSecondary consoleIconButton"
+            variant="secondary"
+            size="icon"
+            className="consoleIconButton"
             onClick={onPause}
             disabled={!runId || pausing || !sessionId}
             aria-label="暂停"
             title="暂停"
           >
             {pausing ? <span className="iconSpinner" aria-hidden="true" /> : "⏸"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            size="icon"
             className="consoleIconButton"
             disabled={
               !auth.user ||
@@ -479,7 +482,7 @@ export function SessionConsoleCard(props: { model: SessionController }) {
             title="发送"
           >
             {sending || uploadingImages ? <span className="iconSpinner" aria-hidden="true" /> : "➤"}
-          </button>
+          </Button>
         </div>
       </form>
       {sandboxHint ? (

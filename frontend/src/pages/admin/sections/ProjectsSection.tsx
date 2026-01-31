@@ -5,6 +5,7 @@ import { useAuth } from "../../../auth/AuthContext";
 import type { Project } from "../../../types";
 import type { WorkspaceNoticeMode } from "../adminUtils";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -223,13 +224,14 @@ export function ProjectsSection(props: Props) {
             {String(effectiveProject.scmType ?? "").toLowerCase() === "github" ? (
               <div style={{ marginTop: 12 }}>
                 <label className="label" style={{ marginBottom: 6 }}>
-                  GitHub 轮询监听（每分钟导入 Issues/PR）
-                  <input
-                    type="checkbox"
-                    checked={Boolean(effectiveProject.githubPollingEnabled)}
-                    disabled={savingGithubPollingEnabled || !auth.hasRole(["admin"])}
-                    onChange={(e) => void onToggleGithubPollingEnabled(e.target.checked)}
-                  />
+                  <span className="row gap" style={{ alignItems: "center" }}>
+                    <Checkbox
+                      checked={Boolean(effectiveProject.githubPollingEnabled)}
+                      disabled={savingGithubPollingEnabled || !auth.hasRole(["admin"])}
+                      onCheckedChange={(v) => void onToggleGithubPollingEnabled(v === true)}
+                    />
+                    GitHub 轮询监听（每分钟导入 Issues/PR）
+                  </span>
                 </label>
                 <div className="muted">
                   上次同步：
@@ -389,8 +391,10 @@ export function ProjectsSection(props: Props) {
                 <Input type="password" value={projectGithubAccessToken} onChange={(e) => setProjectGithubAccessToken(e.target.value)} placeholder="ghp_... / github_pat_..." />
               </label>
               <label className="label">
-                启用 GitHub 轮询监听（每分钟导入 Issues/PR）
-                <input type="checkbox" checked={projectGithubPollingEnabled} onChange={(e) => setProjectGithubPollingEnabled(e.target.checked)} />
+                <span className="row gap" style={{ alignItems: "center" }}>
+                  <Checkbox checked={projectGithubPollingEnabled} onCheckedChange={(v) => setProjectGithubPollingEnabled(v === true)} />
+                  启用 GitHub 轮询监听（每分钟导入 Issues/PR）
+                </span>
               </label>
             </details>
           ) : null}

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRole, deleteRole, listRoles, updateRole } from "../../../api/roles";
 import type { RoleTemplate } from "../../../types";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -403,7 +404,7 @@ export function RolesSection(props: Props) {
             <label className="label">
               envText（仅 admin，可选）
               <div className="row gap" style={{ alignItems: "center" }}>
-                <input type="checkbox" checked={roleEditEnvTextEnabled} onChange={(e) => setRoleEditEnvTextEnabled(e.target.checked)} />
+                <Checkbox checked={roleEditEnvTextEnabled} onCheckedChange={(v) => setRoleEditEnvTextEnabled(v === true)} />
                 <div className="muted">
                   勾选后允许编辑并保存（留空=清空）。
                   {editingRole.envKeys?.length ? ` 当前 keys: ${editingRole.envKeys.join(", ")}` : ""}

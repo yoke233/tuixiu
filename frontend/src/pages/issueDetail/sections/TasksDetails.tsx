@@ -4,6 +4,7 @@ import { StatusBadge } from "../../../components/StatusBadge";
 import type { TaskTrack } from "../../../types";
 import type { IssueDetailController } from "../useIssueDetailController";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -297,13 +298,14 @@ export function TasksDetails(props: { model: IssueDetailController }) {
                                     {s.kind === "pr.merge" ? (
                                       <>
                                         <label className="label" style={{ margin: 0 }}>
-                                          squash
-                                          <input
-                                            type="checkbox"
-                                            checked={Boolean(form?.squash)}
-                                            onChange={(e) => patchHumanForm(latest.id, { squash: e.target.checked })}
-                                            disabled={submittingRunId === latest.id}
-                                          />
+                                          <span className="row gap" style={{ alignItems: "center" }}>
+                                            <Checkbox
+                                              checked={Boolean(form?.squash)}
+                                              onCheckedChange={(v) => patchHumanForm(latest.id, { squash: v === true })}
+                                              disabled={submittingRunId === latest.id}
+                                            />
+                                            squash
+                                          </span>
                                         </label>
                                         <label className="label" style={{ margin: 0, flex: "1 1 320px", minWidth: 0 }}>
                                           merge message（可选）
