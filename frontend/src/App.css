@@ -1371,7 +1371,7 @@ a:hover {
 .modalOverlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 40;
   background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
