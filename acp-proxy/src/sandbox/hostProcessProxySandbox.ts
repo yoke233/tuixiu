@@ -5,6 +5,11 @@ import { Readable, Writable } from "node:stream";
 
 import type { LoadedProxyConfig } from "../config.js";
 import type { ProxySandbox } from "./ProxySandbox.js";
+import {
+  readNativeRegistry,
+  removeNativeRegistryEntry,
+  upsertNativeRegistryEntry,
+} from "./nativeRegistry.js";
 import type {
   EnsureInstanceRunningOpts,
   ListInstancesOpts,
@@ -117,6 +122,15 @@ function processHandleFromChildProcess(proc: ChildProcessWithoutNullStreams): Pr
   };
 }
 
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class HostProcessProxySandbox implements ProxySandbox {
   readonly provider = "host_process" as const;
   readonly runtime = null;
@@ -135,6 +149,11 @@ export class HostProcessProxySandbox implements ProxySandbox {
     if (!rootRaw) throw new Error("sandbox.workspaceHostRoot missing");
     const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
     return path.resolve(root);
+  }
+
+  private resolveRegistryPath(): string {
+    const root = this.resolveWorkspaceHostRoot();
+    return path.join(root, ".acp-proxy", "registry.json");
   }
 
   private resolveWorkspaceHostPath(opts: {
@@ -251,11 +270,33 @@ export class HostProcessProxySandbox implements ProxySandbox {
     const instances = Array.from(this.instances.values()).filter((inst) =>
       prefix ? inst.instanceName.startsWith(prefix) : true,
     );
-    return instances.map((inst) => ({
-      instanceName: inst.instanceName,
-      status: "running",
-      createdAt: inst.createdAt,
-    }));
+
+    const known = new Set<string>();
+    const out: SandboxInstanceInfo[] = [];
+
+    for (const inst of instances) {
+      known.add(inst.instanceName);
+      out.push({
+        instanceName: inst.instanceName,
+        status: "running",
+        createdAt: inst.createdAt,
+      });
+    }
+
+    const registryPath = this.resolveRegistryPath();
+    const registry = await readNativeRegistry(registryPath).catch(() => []);
+    for (const entry of registry) {
+      if (known.has(entry.instanceName)) continue;
+      if (prefix && !entry.instanceName.startsWith(prefix)) continue;
+      known.add(entry.instanceName);
+      out.push({
+        instanceName: entry.instanceName,
+        status: isPidAlive(entry.pid) ? "running" : "missing",
+        createdAt: entry.startedAt,
+      });
+    }
+
+    return out;
   }
 
   async stopInstance(instanceName: string): Promise<void> {
@@ -269,8 +310,23 @@ export class HostProcessProxySandbox implements ProxySandbox {
   }
 
   async removeInstance(instanceName: string): Promise<void> {
+    const registryPath = this.resolveRegistryPath();
+    const registryEntry = await readNativeRegistry(registryPath)
+      .then((rows) => rows.find((r) => r.instanceName === instanceName) ?? null)
+      .catch(() => null);
+
     await this.stopInstance(instanceName);
+
+    if (registryEntry?.pid) {
+      try {
+        process.kill(registryEntry.pid);
+      } catch {
+        // ignore
+      }
+    }
+
     this.instances.delete(instanceName);
+    await removeNativeRegistryEntry(registryPath, instanceName).catch(() => {});
   }
 
   async removeImage(_image: string): Promise<void> {
@@ -389,6 +445,17 @@ export class HostProcessProxySandbox implements ProxySandbox {
     record.agentHandle = handle;
     record.createdAt = createdAt;
     this.instances.set(opts.instanceName, record);
+
+    if (proc.pid) {
+      await upsertNativeRegistryEntry(this.resolveRegistryPath(), {
+        instanceName: opts.instanceName,
+        pid: proc.pid,
+        workspaceHostPath,
+        startedAt: createdAt,
+      }).catch((err) => {
+        this.opts.log("host_process registry write failed", { instanceName: opts.instanceName, err: String(err) });
+      });
+    }
 
     handle.onExit?.(() => {
       const latest = this.instances.get(opts.instanceName);
