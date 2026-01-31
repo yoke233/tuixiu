@@ -1070,6 +1070,7 @@ export function createWebSocketGateway(deps: {
             const status = "missing";
             const lastSeenAt = capturedAt;
             const lastError = "deleted";
+            const deletedAt = capturedAt;
             const provider =
               typeof inst.provider === "string" && inst.provider.trim()
                 ? inst.provider.trim()
@@ -1093,6 +1094,7 @@ export function createWebSocketGateway(deps: {
                     status: status as any,
                     lastSeenAt,
                     lastError,
+                    deletedAt,
                   } as any,
                   update: {
                     ...(opts.runExists && runId ? { runId } : {}),
@@ -1101,6 +1103,7 @@ export function createWebSocketGateway(deps: {
                     status: status as any,
                     lastSeenAt,
                     lastError,
+                    deletedAt,
                   } as any,
                 } as any)
                 .catch(() => {});

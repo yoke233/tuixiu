@@ -548,7 +548,7 @@ describe("WebSocketGateway", () => {
     });
   });
 
-  it("sandbox_inventory accepts deleted_instances and marks them as deleted/missing", async () => {
+  it("sandbox_inventory accepts deleted_instances and writes deletedAt", async () => {
     const prisma = {
       agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
       run: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
@@ -589,6 +589,7 @@ describe("WebSocketGateway", () => {
           runId: "r3",
           status: "missing",
           lastError: "deleted",
+          deletedAt: expect.any(Date),
         }),
       }),
     );
