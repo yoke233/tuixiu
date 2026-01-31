@@ -137,6 +137,13 @@ type SandboxInventoryMessage = {
   }>;
 };
 
+type WorkspaceInventoryMessage = {
+  type: "workspace_inventory";
+  inventory_id?: unknown;
+  captured_at?: unknown;
+  workspaces?: unknown;
+};
+
 type AnyAgentMessage =
   | AgentRegisterMessage
   | AgentHeartbeatMessage
@@ -148,7 +155,8 @@ type AnyAgentMessage =
   | SandboxControlResultMessage
   | BranchCreatedMessage
   | AcpExitMessage
-  | SandboxInventoryMessage;
+  | SandboxInventoryMessage
+  | WorkspaceInventoryMessage;
 
 type ClientPromptRunMessage = {
   type: "prompt_run";
