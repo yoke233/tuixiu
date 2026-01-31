@@ -1,7 +1,7 @@
 ---
 title: "GitHub SCM 最小状态（无 Artifact）实施计划"
 owner: "@yoke233"
-status: "draft"
+status: "archived"
 last_reviewed: "2026-01-28"
 ---
 

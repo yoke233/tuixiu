@@ -1,7 +1,7 @@
 ---
 title: "ACP Prompt ContentBlock + 附件/大字段落库治理实施计划"
 owner: "@yoke233"
-status: "draft"
+status: "archived"
 last_reviewed: "2026-01-28"
 ---
 

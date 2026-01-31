@@ -1,7 +1,7 @@
 ---
 title: "acp-proxy 新 `proxy/` 目录重写 Implementation Plan"
 owner: "@yoke233"
-status: "draft"
+status: "archived"
 last_reviewed: "2026-01-28"
 ---
 
