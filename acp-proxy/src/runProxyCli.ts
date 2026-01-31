@@ -10,6 +10,7 @@ import { pickArg } from "./utils/args.js";
 import { isRecord } from "./utils/validate.js";
 import { RunManager } from "./runs/runManager.js";
 import { closeAgent, sendSandboxInstanceStatus, sendUpdate } from "./runs/runRuntime.js";
+import { createPlatform } from "./platform/createPlatform.js";
 import { createProxySandbox } from "./sandbox/createProxySandbox.js";
 import { OrchestratorClient } from "./orchestrator/orchestratorClient.js";
 import { handleAcpClose } from "./handlers/handleAcpClose.js";
@@ -24,6 +25,7 @@ import {
 import { handleSessionPermission } from "./handlers/handleSessionPermission.js";
 import { handleSandboxControl } from "./handlers/handleSandboxControl.js";
 import { nowIso, type ProxyContext, WORKSPACE_GUEST_PATH } from "./proxyContext.js";
+import { reportWorkspaceInventory } from "./workspace/workspaceInventory.js";
 
 type RunProxyCliOpts = {
   configPath?: string;
@@ -112,6 +114,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     cfg: runtimeCfg,
     sandbox,
     runs,
+    platform: createPlatform(runtimeCfg),
     send: client.send.bind(client),
     log,
   };
@@ -299,6 +302,17 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     });
   };
 
+  let inventoryTimer: ReturnType<typeof setInterval> | null = null;
+  const clearInventoryTimer = () => {
+    if (!inventoryTimer) return;
+    try {
+      clearInterval(inventoryTimer);
+    } catch {
+      // ignore
+    }
+    inventoryTimer = null;
+  };
+
   const cleanupTimer = setInterval(() => {
     const now = Date.now();
     for (const [runId, run] of runs.entries()) {
@@ -371,16 +385,39 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     await client.connectLoop({
       signal: opts?.signal,
       onMessage,
+      onDisconnected: async () => {
+        clearInventoryTimer();
+      },
       onConnected: async () => {
+        clearInventoryTimer();
         await registerAgent();
         await reportInventory().catch((err) =>
           log("report inventory failed", { err: String(err) }),
         );
-        log("connected & registered");
+        await reportWorkspaceInventory(ctx).catch((err) =>
+          log("report workspace inventory failed", { err: String(err) }),
+        );
+
+        const intervalSeconds =
+          typeof runtimeCfg.inventory_interval_seconds === "number" &&
+          Number.isFinite(runtimeCfg.inventory_interval_seconds)
+            ? Math.max(0, runtimeCfg.inventory_interval_seconds)
+            : 300;
+        if (intervalSeconds > 0) {
+          inventoryTimer = setInterval(() => {
+            void reportInventory().catch((err) =>
+              log("report inventory failed", { err: String(err) }),
+            );
+          }, intervalSeconds * 1000);
+          inventoryTimer.unref?.();
+        }
+
+        log("connected & registered", { inventoryIntervalSeconds: intervalSeconds });
       },
       heartbeatPayload: () => ({ type: "heartbeat", agent_id: cfg.agent.id, timestamp: nowIso() }),
     });
   } finally {
+    clearInventoryTimer();
     try {
       cleanupTimer.unref?.();
     } catch {

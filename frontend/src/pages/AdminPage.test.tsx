@@ -227,4 +227,116 @@ describe("AdminPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Issue 归档", level: 1 })).toBeInTheDocument();
   });
+
+  it("Prune Orphans triggers sandbox control request", async () => {
+    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "admin", role: "admin" } } });
+    mockFetchJsonOnce({ success: true, data: { projects: [] } });
+    mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
+    mockFetchJsonOnce({ success: true, data: { approvals: [] } });
+
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        agents: [
+          {
+            id: "a1",
+            proxyId: "proxy-1",
+            name: "agent-1",
+            status: "online",
+            currentLoad: 0,
+            maxConcurrentRuns: 1,
+            createdAt: "2026-01-25T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    mockFetchJsonOnce({ success: true, data: { total: 0, limit: 500, offset: 0, sandboxes: [] } });
+    mockFetchJsonOnce({ success: true, data: { sessions: [] } });
+
+    mockFetchJsonOnce({ success: true, data: { ok: true, requestId: "r-1" } });
+
+    vi.stubGlobal("alert", vi.fn());
+
+    render(
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/admin"]}>
+            <Routes>
+              <Route path="/admin" element={<AdminPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "ACP Proxies" }));
+
+    const btn = await screen.findByRole("button", { name: "Prune Orphans" });
+    await userEvent.click(btn);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/admin/sandboxes/control"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ action: "prune_orphans", proxyId: "proxy-1" }),
+      })
+    );
+  });
+
+  it("Remove Workspace triggers sandbox control request", async () => {
+    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "admin", role: "admin" } } });
+    mockFetchJsonOnce({ success: true, data: { projects: [] } });
+    mockFetchJsonOnce({ success: true, data: { issues: [], total: 0, limit: 50, offset: 0 } });
+    mockFetchJsonOnce({ success: true, data: { approvals: [] } });
+
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        agents: [
+          {
+            id: "a1",
+            proxyId: "proxy-1",
+            name: "agent-1",
+            status: "online",
+            currentLoad: 0,
+            maxConcurrentRuns: 1,
+            createdAt: "2026-01-25T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    mockFetchJsonOnce({ success: true, data: { total: 0, limit: 500, offset: 0, sandboxes: [] } });
+    mockFetchJsonOnce({ success: true, data: { sessions: [] } });
+
+    mockFetchJsonOnce({ success: true, data: { ok: true, requestId: "r-2" } });
+
+    vi.stubGlobal("prompt", vi.fn().mockReturnValue("00000000-0000-0000-0000-000000000001"));
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+    vi.stubGlobal("alert", vi.fn());
+
+    render(
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/admin"]}>
+            <Routes>
+              <Route path="/admin" element={<AdminPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "ACP Proxies" }));
+
+    const btn = await screen.findByRole("button", { name: "Remove Workspace" });
+    await userEvent.click(btn);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/admin/sandboxes/control"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ action: "remove_workspace", runId: "00000000-0000-0000-0000-000000000001" }),
+      })
+    );
+  });
 });

@@ -26,14 +26,12 @@
 - sandbox 运行环境：
   - BoxLite：Linux/WSL2 需要 `/dev/kvm`；macOS 仅支持 Apple Silicon（arm64）
   - Container：Windows/macOS Intel 需要可用的容器运行时（默认 `docker`，也可用 `podman/nerdctl`）
-- 必须配置 `sandbox.provider`
-  - BoxLite：`sandbox.provider=boxlite_oci`，需 `sandbox.image`
-  - Container：`sandbox.provider=container_oci`，需 `sandbox.image` + `sandbox.runtime`
-  - Host：`sandbox.provider=host_process`（不需要 `sandbox.image`，但仅 PoC）
+- 建议显式配置 `sandbox.provider`（默认 `container_oci`）
+- `sandbox.runtime`（仅 `provider=container_oci`）会自动探测 `docker/podman/nerdctl`（若均不可用会报错）
+- `sandbox.image`（非 `host_process`）默认 `tuixiu-codex-acp:local`
+- 需要把 `OPENAI_API_KEY` 等密钥通过 `sandbox.env` 注入到 guest（不要提交到仓库）
 
 ## 配置
-
-配置文件是 JSON。可以直接参考示例：
 
 配置文件可以是 TOML 或 JSON（推荐 TOML，支持注释）。可以直接参考示例：
 
@@ -42,15 +40,16 @@
 关键字段：
 
 - `orchestrator_url`：后端 WebSocket 地址，例如 `wss://backend.example.com/ws/agent`
-- `agent.id`：这台机器上报到后端的 agent 标识（建议全局唯一）
+- `agent.id`：这台机器上报到后端的 agent 标识（会自动生成并落盘；一般无需手填）
 - `sandbox.terminalEnabled`：是否允许执行终端类指令（建议只在沙盒可信时开启）
   - ACP 约定：Agent 需在 initialize 的 clientCapabilities.terminal 为 true 时才可调用 terminal/*
 - `sandbox.agentMode`：ACP agent 启动模式（`exec`/`entrypoint`）
 - `sandbox.provider`：`boxlite_oci` / `container_oci` / `host_process`（PoC；必须 `terminalEnabled=false` 且 `workspaceMode=mount`）
-- `sandbox.image`：用于运行 ACP 的镜像（`host_process` 不需要）
+- `sandbox.image`：用于运行 ACP 的镜像（`host_process` 不需要；默认 `tuixiu-codex-acp:local`）
 - `agent_command`：在 guest 内执行的 ACP 启动命令
-- `sandbox.runtime`（仅 `provider=container_oci`）：容器运行时（默认 `docker`）
+- `sandbox.runtime`（仅 `provider=container_oci`）：容器运行时（可选；默认自动探测）
 - `sandbox.workingDir`：ACP 工作目录（默认 `/workspace`）
+- `inventory_interval_seconds`：周期性上报 inventory 的间隔秒数（默认 300；设为 0 可关闭）
 
 ### profiles
 
@@ -67,10 +66,20 @@
 - `ACP_PROXY_ORCHESTRATOR_URL`
 - `ACP_PROXY_AUTH_TOKEN`
 - `ACP_PROXY_TERMINAL_ENABLED`（`1`/`true` 为开启）
+- `ACP_PROXY_INVENTORY_INTERVAL_SECONDS`（0 关闭周期性上报）
 - `ACP_PROXY_SANDBOX_PROVIDER`（`boxlite_oci`/`container_oci`/`host_process`）
 - `ACP_PROXY_SANDBOX_IMAGE`
 - `ACP_PROXY_SANDBOX_WORKING_DIR`
-- `ACP_PROXY_CONTAINER_RUNTIME`
+- `ACP_PROXY_SANDBOX_RUNTIME`
+- `ACP_PROXY_CONTAINER_RUNTIME`（兼容旧字段）
+
+## Runbook：清理 orphan 与 workspace
+
+推荐优先使用前端管理后台（Admin → ACP Sessions）进行操作：
+
+- `Prune Orphans`：清理“managed 且不在后端 expected 列表中”的遗留实例（容器/box/host 进程）
+- `Remove Workspace`：按 runId 删除该 Run 的 workspace（`workspaceMode=mount` 会删 `workspaceHostRoot/run-<runId>`；`git_clone` 会删 guest 内 `/workspace/run-<runId>`）
+- 操作后 proxy 会通过 `sandbox_inventory.deleted_instances/deleted_workspaces` 上报删除结果，后端会将其标记为 deleted 并可在筛选中查看
 
 ## 开发
 

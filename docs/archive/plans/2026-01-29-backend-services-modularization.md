@@ -1,7 +1,7 @@
 ---
 title: "backend/src/services 模块化拆分与渐进迁移计划"
 owner: "@tbd"
-status: "draft"
+status: "archived"
 last_reviewed: "2026-01-29"
 superseded_by: ""
 related_issues: []

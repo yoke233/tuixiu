@@ -1,3 +1,10 @@
+---
+title: "ACP Proxy Git Ops Implementation Plan"
+owner: "@yoke233"
+status: "archived"
+last_reviewed: "2026-01-30"
+---
+
 # ACP Proxy Git Ops Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

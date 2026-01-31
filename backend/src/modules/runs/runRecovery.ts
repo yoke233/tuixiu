@@ -1,12 +1,14 @@
 import type { PrismaDeps } from "../../db.js";
 import { parseEnvText } from "../../utils/envText.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
+import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
 import {
   assertRoleGitAuthEnv,
   pickGitAccessToken,
   resolveGitAuthMode,
   resolveGitHttpUsername,
 } from "../../utils/gitAuth.js";
+import { getSandboxWorkspaceMode } from "../../utils/sandboxCaps.js";
 
 type RecoveryInit = {
   script: string;
@@ -106,7 +108,10 @@ export async function buildRecoveryInit(opts: {
     TUIXIU_RUN_ID: String(opts.run?.id ?? ""),
     TUIXIU_RUN_BRANCH: resolveBranchName(opts.run),
     TUIXIU_WORKSPACE: String(opts.run?.workspacePath ?? ""),
-    TUIXIU_WORKSPACE_GUEST: "/workspace",
+    TUIXIU_WORKSPACE_GUEST: resolveAgentWorkspaceCwd({
+      runId: String(opts.run?.id ?? ""),
+      sandboxWorkspaceMode: getSandboxWorkspaceMode((opts.run as any)?.agent?.capabilities),
+    }),
     TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(opts.issue?.projectId ?? "")}`,
   };
   if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);

@@ -187,4 +187,140 @@ describe("Sandboxes admin routes", () => {
 
     await server.close();
   });
+
+  it("POST /api/admin/sandboxes/control supports prune_orphans by proxyId and returns requestId", async () => {
+    const server = createHttpServer();
+
+    const prisma = {
+      sandboxInstance: {
+        findMany: vi.fn().mockResolvedValue([
+          { instanceName: "tuixiu-run-r1", runId: "r1" },
+          { instanceName: "tuixiu-run-r2", runId: null },
+        ]),
+      },
+    } as any;
+
+    const auth = {
+      requireRoles: vi.fn().mockReturnValue(async () => {}),
+    } as any;
+
+    const sendToAgent = vi.fn();
+    await server.register(makeSandboxRoutes({ prisma, auth, sendToAgent }), { prefix: "/api/admin" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/admin/sandboxes/control",
+      payload: { proxyId: "proxy-1", action: "prune_orphans" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toEqual({ success: true, data: { ok: true, requestId: expect.any(String) } });
+    const requestId = body.data.requestId;
+    expect(sendToAgent).toHaveBeenCalledWith(
+      "proxy-1",
+      expect.objectContaining({
+        type: "sandbox_control",
+        action: "prune_orphans",
+        request_id: requestId,
+        expected_instances: [
+          { instance_name: "tuixiu-run-r1", run_id: "r1" },
+          { instance_name: "tuixiu-run-r2", run_id: null },
+        ],
+      }),
+    );
+
+    await server.close();
+  });
+
+  it("POST /api/admin/sandboxes/control supports action=gc by proxyId and returns requestId", async () => {
+    const server = createHttpServer();
+
+    const prisma = {
+      sandboxInstance: {
+        findMany: vi.fn().mockResolvedValue([
+          { instanceName: "tuixiu-run-r1", runId: "r1" },
+          { instanceName: "tuixiu-run-r2", runId: null },
+        ]),
+      },
+    } as any;
+
+    const auth = {
+      requireRoles: vi.fn().mockReturnValue(async () => {}),
+    } as any;
+
+    const sendToAgent = vi.fn();
+    await server.register(makeSandboxRoutes({ prisma, auth, sendToAgent }), { prefix: "/api/admin" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/admin/sandboxes/control",
+      payload: { proxyId: "proxy-1", action: "gc" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toEqual({ success: true, data: { ok: true, requestId: expect.any(String) } });
+    const requestId = body.data.requestId;
+    expect(sendToAgent).toHaveBeenCalledWith(
+      "proxy-1",
+      expect.objectContaining({
+        type: "sandbox_control",
+        action: "gc",
+        request_id: requestId,
+        expected_instances: [
+          { instance_name: "tuixiu-run-r1", run_id: "r1" },
+          { instance_name: "tuixiu-run-r2", run_id: null },
+        ],
+        dry_run: true,
+      }),
+    );
+
+    await server.close();
+  });
+
+  it("POST /api/admin/sandboxes/control supports remove_workspace by runId and returns requestId", async () => {
+    const server = createHttpServer();
+
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "r1",
+          sandboxInstanceName: null,
+          agent: { proxyId: "proxy-1" },
+        }),
+      },
+      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+    } as any;
+
+    const auth = {
+      requireRoles: vi.fn().mockReturnValue(async () => {}),
+    } as any;
+
+    const sendToAgent = vi.fn();
+    await server.register(makeSandboxRoutes({ prisma, auth, sendToAgent }), { prefix: "/api/admin" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/admin/sandboxes/control",
+      payload: { runId: "00000000-0000-0000-0000-000000000001", action: "remove_workspace" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toEqual({ success: true, data: { ok: true, requestId: expect.any(String) } });
+    const requestId = body.data.requestId;
+    expect(sendToAgent).toHaveBeenCalledWith(
+      "proxy-1",
+      expect.objectContaining({
+        type: "sandbox_control",
+        run_id: "r1",
+        instance_name: "tuixiu-run-r1",
+        action: "remove_workspace",
+        request_id: requestId,
+      }),
+    );
+
+    await server.close();
+  });
 });

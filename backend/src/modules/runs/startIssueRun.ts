@@ -13,6 +13,7 @@ import { postGitHubIssueCommentBestEffort } from "../scm/githubIssueComments.js"
 import type { AcpTunnel } from "../acp/acpTunnel.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
 import { getSandboxWorkspaceMode } from "../../utils/sandboxCaps.js";
+import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
 import {
   assertRoleGitAuthEnv,
   pickGitAccessToken,
@@ -279,7 +280,11 @@ export async function startIssueRun(opts: {
     };
   }
 
-  const agentWorkspacePath = "/workspace";
+  const sandboxWorkspaceMode = getSandboxWorkspaceMode((selectedAgent as any)?.capabilities);
+  const agentWorkspacePath = resolveAgentWorkspaceCwd({
+    runId: String((run as any).id ?? ""),
+    sandboxWorkspaceMode,
+  });
 
   const promptParts: string[] = [];
   const projectForPrompt: any = (issue as any).project;
@@ -404,7 +409,6 @@ export async function startIssueRun(opts: {
       TUIXIU_WORKSPACE_GUEST: String(agentWorkspacePath),
       TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String((issue as any).projectId)}`,
     };
-    const sandboxWorkspaceMode = getSandboxWorkspaceMode((selectedAgent as any)?.capabilities);
     if (sandboxWorkspaceMode) {
       initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
       if (sandboxWorkspaceMode === "mount") {

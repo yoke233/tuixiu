@@ -18,7 +18,7 @@ import { isRecord, validateInstanceName, validateRunId } from "../utils/validate
 import { AgentBridge } from "../acp/agentBridge.js";
 
 import type { RunRuntime } from "./runTypes.js";
-import { mapCwdForHostProcess } from "./hostCwd.js";
+import { defaultCwdForRun } from "./workspacePath.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -81,6 +81,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
   run.lastUsedAt = Date.now();
 
   const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
+  const workspaceGuestRoot = defaultCwdForRun({ workspaceMode, runId });
   if (workspaceMode === "mount") {
     const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
     if (!rootRaw) {
@@ -103,7 +104,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
     run.acpClient = new AcpClientFacade({
       runId,
       instanceName,
-      workspaceGuestRoot: WORKSPACE_GUEST_PATH,
+      workspaceGuestRoot,
       workspaceHostRoot: run.hostWorkspacePath,
       sandbox: ctx.sandbox as any,
       log: ctx.log,
@@ -136,7 +137,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
   const info = await ctx.sandbox.ensureInstanceRunning({
     runId,
     instanceName,
-    workspaceGuestPath: WORKSPACE_GUEST_PATH,
+    workspaceGuestPath: workspaceGuestRoot,
     env: undefined,
     mounts: run.workspaceMounts,
   });
@@ -275,7 +276,7 @@ export async function runInitScript(
     proc = await ctx.sandbox.execProcess({
       instanceName: run.instanceName,
       command: ["bash", "-lc", script],
-      cwdInGuest: WORKSPACE_GUEST_PATH,
+      cwdInGuest: defaultCwdForRun({ workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount", runId: run.runId }),
       env,
     });
   } catch (err) {
@@ -421,7 +422,7 @@ export async function startAgent(
   const res = await ctx.sandbox.openAgent({
     runId: run.runId,
     instanceName: run.instanceName,
-    workspaceGuestPath: WORKSPACE_GUEST_PATH,
+    workspaceGuestPath: defaultCwdForRun({ workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount", runId: run.runId }),
     mounts: run.workspaceMounts,
     agentCommand: ctx.cfg.agent_command,
     init,
@@ -439,7 +440,10 @@ export async function startAgent(
     run.acpClient = new AcpClientFacade({
       runId: run.runId,
       instanceName: run.instanceName,
-      workspaceGuestRoot: WORKSPACE_GUEST_PATH,
+      workspaceGuestRoot: defaultCwdForRun({
+        workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount",
+        runId: run.runId,
+      }),
       workspaceHostRoot: run.hostWorkspacePath,
       sandbox: ctx.sandbox as any,
       log: ctx.log,
@@ -799,10 +803,10 @@ export async function ensureSessionForPrompt(
   const initResult = await ensureInitialized(ctx, run);
   const promptCapabilities = getPromptCapabilities(initResult);
 
-  const cwd =
-    ctx.sandbox.provider === "host_process"
-      ? mapCwdForHostProcess(opts.cwd, run.hostWorkspacePath ?? "")
-      : opts.cwd;
+  const cwd = ctx.platform.resolveCwdForAgent({
+    cwd: opts.cwd,
+    runHostWorkspacePath: run.hostWorkspacePath ?? null,
+  });
 
   const sessionId = typeof opts.sessionId === "string" ? opts.sessionId.trim() : "";
   let prompt = opts.prompt;
@@ -817,36 +821,18 @@ export async function ensureSessionForPrompt(
     if (!createdSessionId) throw new Error("session/new 未返回 sessionId");
     run.seenSessionIds.add(createdSessionId);
 
-    // codex-acp (以及一些其他 Agent) 会用 configOptions 来表达“Approval Preset”等配置；
-    // 这里不要强行 set_mode("ask")，否则当 Agent 并不支持该 modeId 时会直接报 Invalid params。
-    if (ctx.sandbox.provider === "host_process") {
-      const configOptions = Array.isArray((created as any)?.configOptions)
-        ? ((created as any).configOptions as any[])
-        : null;
-      const modeOpt = configOptions?.find(
-        (x) => x && typeof x === "object" && (x as any).id === "mode",
-      ) as any;
-      const currentValue = typeof modeOpt?.currentValue === "string" ? modeOpt.currentValue : "";
-      const options = Array.isArray(modeOpt?.options) ? (modeOpt.options as any[]) : null;
-      const hasAuto = !!options?.some(
-        (o) => o && typeof o === "object" && (o as any).value === "auto",
-      );
-
-      if (hasAuto && currentValue && currentValue !== "auto") {
-        await withAuthRetry(run, () =>
-          run.agent!.sendRpc<any>("session/set_config_option", {
-            sessionId: createdSessionId,
-            configId: "mode",
-            value: "auto",
-          }),
-        ).catch((err) => {
-          ctx.log("session/set_config_option(mode=auto) failed", {
-            runId: run.runId,
-            sessionId: createdSessionId,
-            err: String(err),
-          });
-        });
-      }
+    try {
+      await ctx.platform.onSessionCreated?.({
+        run,
+        sessionId: createdSessionId,
+        createdMeta: created,
+      });
+    } catch (err) {
+      ctx.log("platform.onSessionCreated failed", {
+        runId: run.runId,
+        sessionId: createdSessionId,
+        err: String(err),
+      });
     }
     prompt = composePromptWithContext(opts.context, prompt, promptCapabilities);
     return { sessionId: createdSessionId, prompt, created: true };

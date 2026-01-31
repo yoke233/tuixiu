@@ -2,7 +2,7 @@
 title: "ACP 协议集成规范（当前仓库实现）"
 owner: "@tuixiu-maintainers"
 status: "active"
-last_reviewed: "2026-01-27"
+last_reviewed: "2026-01-31"
 ---
 
 # ACP 协议集成规范（当前仓库实现）
@@ -39,7 +39,7 @@ ACP session 是“一段对话/线程”的上下文载体。要跨进程重启�
 
 ### 2.1 初始化
 
-proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 worktree/workspace），并在启动后先发起 `initialize`，确认协议版本与能力（尤其是 `agentCapabilities.loadSession`）。
+proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 workspace；`workspaceMode=git_clone` 时为 `/workspace/run-<runId>`），并在启动后先发起 `initialize`，确认协议版本与能力（尤其是 `agentCapabilities.loadSession`）。
 
 ### 2.2 Session 建立/恢复
 
@@ -87,8 +87,9 @@ proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 worktre
   - 维护 `runId → ACP stream` 的运行态映射
   - 沙箱启动模式：`sandbox.agentMode=exec|entrypoint`（`entrypoint` 下如提供 `acp_open.init.script` 会在 agent 启动前执行）
 - `acp-proxy/src/launchers/*`：Agent 启动抽象（Launcher），便于未来切换不同运行方式
-- `acp-proxy/src/sandbox/*`：Sandbox 抽象（当前实现 `BoxliteSandbox` 与 `ContainerSandbox`）
-- `acp-proxy/src/config.ts`：加载 `config.toml`/`config.json` 并用 zod 校验
+- `acp-proxy/src/platform/*`：平台抽象（选择 provider/runtime、路径方言与 cwd 映射、session 默认策略、workspace 语义等）
+- `acp-proxy/src/sandbox/*`：Sandbox 抽象（当前实现 `boxlite_oci` / `container_oci` / `host_process`）
+- `acp-proxy/src/config.ts`：加载 `config.toml`/`config.json` 并用 convict 校验
 - `acp-proxy/src/types.ts`：WS 消息类型
 
 ### 3.3 Session 生命周期（当前实现）
@@ -117,6 +118,10 @@ Session 的创建/复用/恢复由 `acp-proxy` 托管：
 | Server → Agent | `prompt_send`    | 发起一次对话回合   | `{run_id,prompt_id,session_id?,context?,prompt}`   |
 | Server → Agent | `acp_close`      | 关闭 Run           | `{run_id}`                                        |
 | Agent → Server | `agent_update`   | 事件流转发         | `{run_id,content:any}`                            |
+| Server → Agent | `sandbox_control` | 管理/清理指令（stop/remove/gc/remove_workspace 等） | `{action,run_id?,instance_name?,expected_instances?,dry_run?,gc?,request_id?}` |
+| Agent → Server | `sandbox_control_result` | 回执（含 request_id） | `{ok,request_id?,error?}` |
+| Agent → Server | `sandbox_inventory` | 上报实例清单/缺失/删除（用于对账与追踪删除） | `{inventory_id,captured_at?,instances?,missing_instances?,deleted_instances?,deleted_workspaces?}` |
+| Agent → Server | `workspace_inventory` | 上报 workspace 列表（估算/删除后对账） | `{inventory_id,captured_at,workspace_mode,workspaces:[...]}` |
 
 服务器关键行为摘要：
 
@@ -131,6 +136,19 @@ Session 的创建/复用/恢复由 `acp-proxy` 托管：
   - 管理页 “ACP Sessions” 的手动清理（`GET /api/admin/acp-sessions` / `POST /api/admin/acp-sessions/cancel`）
 
 ---
+
+## 4.1 Inventory / GC / Workspace 语义（本仓库新增的“资源管理”层）
+
+为了止血“遗留实例/工作区膨胀”与“删除不可追踪”，本仓库在 ACP 之外引入了 **inventory + reconciler + workspace manager** 的高层协议：
+
+- **Inventory（清单）**：`acp-proxy` 周期性/按需上报 `sandbox_inventory` / `workspace_inventory`
+- **Reconcile（对账）**：后端把 DB 中“预期存在”的实例列表作为 `expected_instances` 下发给 proxy；proxy 计算出 `missing_instances`（预期有但实际无）
+- **Delete reporting（删除上报）**：proxy 在 remove/gc/remove_workspace 后通过 `deleted_instances` / `deleted_workspaces` 明确上报“已删除”，后端据此把记录标记为 deleted（而不是“神秘消失”）
+
+关键约定：
+
+- `workspaceMode=mount`：宿主机目录 `workspaceHostRoot/run-<runId>`
+- `workspaceMode=git_clone`：guest 内目录 `/workspace/run-<runId>`（删除 workspace 只删该子目录，不再粗暴清空 `/workspace`）
 
 ## 5. 典型消息流（当前实现）
 

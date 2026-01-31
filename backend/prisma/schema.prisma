@@ -314,6 +314,8 @@ model SandboxInstance {
   createdAt    DateTime?
   lastSeenAt   DateTime @default(now())
   lastError    String?  @db.Text
+  deletedAt    DateTime?
+  orphanedAt   DateTime?
 
   @@unique([proxyId, instanceName])
   @@index([proxyId])

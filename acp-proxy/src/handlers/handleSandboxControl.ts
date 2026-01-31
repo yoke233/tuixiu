@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { access } from "node:fs/promises";
+import { access, rm } from "node:fs/promises";
 import path from "node:path";
 
 import type { ProxyContext } from "../proxyContext.js";
@@ -13,7 +13,7 @@ import { validateInstanceName, validateRunId } from "../utils/validate.js";
 
 type ExpectedInstance = {
   instance_name: string;
-  run_id: string;
+  run_id: string | null;
 };
 
 const runQueues = new Map<string, Promise<void>>();
@@ -232,7 +232,11 @@ function parseExpectedInstances(ctx: ProxyContext, raw: unknown): ExpectedInstan
     const record = item as Record<string, unknown>;
     try {
       const instanceName = validateInstanceName(record.instance_name);
-      const runId = validateRunId(record.run_id);
+      const runIdRaw = record.run_id;
+      const runId =
+        runIdRaw === null || runIdRaw === undefined || !String(runIdRaw).trim()
+          ? null
+          : validateRunId(runIdRaw);
       out.push({ instance_name: instanceName, run_id: runId });
     } catch (err) {
       ctx.log("invalid expected_instances entry", { err: String(err) });
@@ -464,6 +468,313 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
         return;
       }
 
+      if (action === "prune_orphans") {
+        const expectedInstances = parseExpectedInstances(ctx, msg?.expected_instances);
+        const expectedSet = new Set(expectedInstances.map((i) => i.instance_name));
+        const known = await ctx.sandbox.listInstances({ managedOnly: true });
+        const orphans = known.filter((i) => !expectedSet.has(i.instanceName));
+
+        const deletedInstances: Array<{ instance_name: string; run_id: string | null; reason: string }> = [];
+        for (const inst of orphans) {
+          try {
+            await ctx.sandbox.removeInstance(inst.instanceName);
+            const inferredRunId = inst.instanceName.startsWith("tuixiu-run-")
+              ? inst.instanceName.slice("tuixiu-run-".length)
+              : null;
+            deletedInstances.push({
+              instance_name: inst.instanceName,
+              run_id: inferredRunId && inferredRunId.trim() ? inferredRunId : null,
+              reason: "prune_orphans",
+            });
+          } catch (err) {
+            ctx.log("prune_orphans failed to remove instance", {
+              instanceName: inst.instanceName,
+              err: String(err),
+            });
+          }
+        }
+
+        if (deletedInstances.length > 0) {
+          ctx.send({
+            type: "sandbox_inventory",
+            inventory_id: randomUUID(),
+            captured_at: nowIso(),
+            provider: ctx.sandbox.provider,
+            runtime: ctx.sandbox.provider === "container_oci" ? (ctx.sandbox.runtime ?? null) : null,
+            deleted_instances: deletedInstances,
+          });
+        }
+
+        reply({ ok: true, deleted_count: deletedInstances.length });
+        return;
+      }
+
+      if (action === "gc") {
+        const dryRun = typeof msg?.dry_run === "boolean" ? msg.dry_run : true;
+        const expectedInstances = parseExpectedInstances(ctx, msg?.expected_instances);
+        const expectedSet = new Set(expectedInstances.map((i) => i.instance_name));
+        const known = await ctx.sandbox.listInstances({ managedOnly: true });
+        const orphans = known.filter((i) => !expectedSet.has(i.instanceName));
+
+        const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
+        const gcConfig = isRecord(msg?.gc) ? (msg.gc as Record<string, unknown>) : {};
+        const removeOrphans = gcConfig.remove_orphans === false ? false : true;
+        const removeWorkspaces = gcConfig.remove_workspaces === false ? false : true;
+        const maxDeleteCount =
+          typeof gcConfig.max_delete_count === "number" && Number.isFinite(gcConfig.max_delete_count)
+            ? Math.max(0, Math.min(10_000, Math.floor(gcConfig.max_delete_count)))
+            : 500;
+
+        const deletes: Array<Record<string, unknown>> = [];
+        for (const inst of orphans) {
+          const inferredRunId = inst.instanceName.startsWith("tuixiu-run-")
+            ? inst.instanceName.slice("tuixiu-run-".length)
+            : null;
+          if (removeOrphans) {
+            deletes.push({
+              kind: "instance",
+              instance_name: inst.instanceName,
+              run_id: inferredRunId && inferredRunId.trim() ? inferredRunId : null,
+            });
+          }
+          if (removeWorkspaces && workspaceMode === "mount" && inferredRunId && inferredRunId.trim()) {
+            deletes.push({
+              kind: "workspace",
+              workspace_mode: workspaceMode,
+              instance_name: inst.instanceName,
+              run_id: inferredRunId,
+            });
+          }
+        }
+
+        const planned = { deletes: deletes.slice(0, maxDeleteCount) };
+        if (dryRun) {
+          reply({ ok: true, planned });
+          return;
+        }
+
+        const deletedInstances: Array<{ instance_name: string; run_id: string | null; reason: string }> = [];
+        const errors: Array<{ kind: string; message: string; instance_name?: string; run_id?: string | null }> = [];
+
+        for (const item of planned.deletes) {
+          if (!item || typeof item !== "object") continue;
+          const kind = String((item as any).kind ?? "");
+          const instanceName =
+            typeof (item as any).instance_name === "string" ? (item as any).instance_name.trim() : "";
+          const runId =
+            typeof (item as any).run_id === "string" && (item as any).run_id.trim()
+              ? (item as any).run_id.trim()
+              : null;
+
+          if (kind === "instance") {
+            try {
+              await ctx.sandbox.removeInstance(instanceName);
+              deletedInstances.push({
+                instance_name: instanceName,
+                run_id: runId,
+                reason: "gc",
+              });
+            } catch (err) {
+              errors.push({
+                kind,
+                message: String(err),
+                ...(instanceName ? { instance_name: instanceName } : {}),
+                run_id: runId,
+              });
+            }
+            continue;
+          }
+
+          if (kind === "workspace" && workspaceMode === "mount") {
+            const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
+            if (!rootRaw) {
+              errors.push({
+                kind,
+                message: "workspaceHostRoot 未配置",
+                ...(instanceName ? { instance_name: instanceName } : {}),
+                run_id: runId,
+              });
+              continue;
+            }
+            if (!runId) continue;
+
+            const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
+            const resolvedRoot = path.resolve(root);
+            const candidate = path.resolve(resolvedRoot, `run-${runId}`);
+            const rootPrefix = resolvedRoot.endsWith(path.sep) ? resolvedRoot : `${resolvedRoot}${path.sep}`;
+            if (!candidate.startsWith(rootPrefix)) {
+              errors.push({
+                kind,
+                message: `workspace path escape: ${candidate}`,
+                ...(instanceName ? { instance_name: instanceName } : {}),
+                run_id: runId,
+              });
+              continue;
+            }
+
+            try {
+              await rm(candidate, { recursive: true, force: true });
+            } catch (err) {
+              errors.push({
+                kind,
+                message: String(err),
+                ...(instanceName ? { instance_name: instanceName } : {}),
+                run_id: runId,
+              });
+            }
+            continue;
+          }
+        }
+
+        if (deletedInstances.length > 0) {
+          ctx.send({
+            type: "sandbox_inventory",
+            inventory_id: randomUUID(),
+            captured_at: nowIso(),
+            provider: ctx.sandbox.provider,
+            runtime: ctx.sandbox.provider === "container_oci" ? (ctx.sandbox.runtime ?? null) : null,
+            deleted_instances: deletedInstances,
+          });
+        }
+        await reportInventory(ctx, msg?.expected_instances);
+
+        reply({
+          ok: errors.length === 0,
+          planned,
+          deleted: { instances: deletedInstances.length },
+          ...(errors.length > 0 ? { errors } : {}),
+        });
+        return;
+      }
+
+      if (action === "remove_workspace") {
+        const workspaceModeRaw =
+          typeof msg?.workspace_mode === "string" ? String(msg.workspace_mode).trim() : "";
+        const workspaceMode =
+          workspaceModeRaw === "mount" || workspaceModeRaw === "git_clone"
+            ? workspaceModeRaw
+            : (ctx.cfg.sandbox.workspaceMode ?? "mount");
+        const effectiveRunId = queueRunId;
+
+        const reportDeletedWorkspace = (opts: { instanceName?: string | null; runId?: string | null }) => {
+          ctx.send({
+            type: "sandbox_inventory",
+            inventory_id: randomUUID(),
+            captured_at: nowIso(),
+            provider: ctx.sandbox.provider,
+            runtime: ctx.sandbox.provider === "container_oci" ? (ctx.sandbox.runtime ?? null) : null,
+            deleted_workspaces: [
+              {
+                instance_name: opts.instanceName ?? null,
+                run_id: opts.runId ?? null,
+                workspace_mode: workspaceMode,
+                deleted_at: nowIso(),
+                reason: "remove_workspace",
+              },
+            ],
+          });
+        };
+
+        if (workspaceMode === "mount") {
+          if (!effectiveRunId) {
+            reply({ ok: false, error: "run_id 为空" });
+            return;
+          }
+          const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
+          if (!rootRaw) {
+            reply({ ok: false, error: "workspaceHostRoot 未配置" });
+            return;
+          }
+          const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
+          const resolvedRoot = path.resolve(root);
+          const rootPrefix = resolvedRoot.endsWith(path.sep) ? resolvedRoot : `${resolvedRoot}${path.sep}`;
+          const hostWorkspace = path.resolve(resolvedRoot, `run-${effectiveRunId}`);
+          if (!hostWorkspace.startsWith(rootPrefix)) {
+            reply({ ok: false, error: `workspace path escape: ${hostWorkspace}` });
+            return;
+          }
+          await rm(hostWorkspace, { recursive: true, force: true });
+          reportDeletedWorkspace({ runId: effectiveRunId });
+          reply({ ok: true });
+          return;
+        }
+
+        const instanceName = validateInstanceName(instanceNameRaw);
+        if (!effectiveRunId) {
+          reply({ ok: false, error: "run_id 为空" });
+          return;
+        }
+
+        const guestWs = `/workspace/run-${effectiveRunId}`;
+        const guestWsEscaped = guestWs.replaceAll("'", "'\\''");
+
+        let proc: any;
+        try {
+          proc = await ctx.sandbox.execProcess({
+            instanceName,
+            command: ["bash", "-lc", `rm -rf '${guestWsEscaped}'`],
+            cwdInGuest: WORKSPACE_GUEST_PATH,
+            env: undefined,
+          });
+        } catch (err) {
+          reply({ ok: false, error: String(err) });
+          return;
+        }
+
+        const exitP = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+          proc.onExit?.((info: { code: number | null; signal: string | null }) => resolve(info));
+          if (!proc.onExit) resolve({ code: null, signal: null });
+        });
+
+        const outP = readAllText(proc.stdout);
+        const errP = readAllText(proc.stderr);
+
+        const raced = await Promise.race([
+          exitP.then((r) => ({ kind: "exit" as const, ...r })),
+          delay(60_000).then(() => ({ kind: "timeout" as const })),
+        ]);
+
+        if (raced.kind === "timeout") {
+          await proc.close?.().catch(() => {});
+          const [stdout, stderr] = await Promise.allSettled([outP, errP]).then((res) => [
+            res[0].status === "fulfilled" ? res[0].value : "",
+            res[1].status === "fulfilled" ? res[1].value : "",
+          ]);
+          reply({
+            ok: false,
+            error: "timeout after 60s",
+            stdout: trimOutput(stdout),
+            stderr: trimOutput(stderr),
+          });
+          return;
+        }
+
+        const [stdout, stderr] = await Promise.all([outP, errP]);
+        const code = raced.code ?? null;
+        const signal = raced.signal ?? null;
+        if (code !== 0) {
+          reply({
+            ok: false,
+            error: `exitCode=${code ?? "unknown"}${signal ? ` signal=${signal}` : ""}`,
+            stdout: trimOutput(stdout),
+            stderr: trimOutput(stderr),
+            code,
+            signal,
+          });
+          return;
+        }
+
+        reportDeletedWorkspace({ instanceName, runId: effectiveRunId });
+        reply({
+          ok: true,
+          stdout: trimOutput(stdout),
+          stderr: trimOutput(stderr),
+          code,
+          signal,
+        });
+        return;
+      }
+
       const instanceName = validateInstanceName(instanceNameRaw);
 
       if (action === "inspect") {
@@ -524,6 +835,21 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
           ctx.runs.delete(runId);
         }
         await ctx.sandbox.removeInstance(instanceName);
+        await reportInventory(ctx);
+        ctx.send({
+          type: "sandbox_inventory",
+          inventory_id: randomUUID(),
+          captured_at: nowIso(),
+          provider: ctx.sandbox.provider,
+          runtime: ctx.sandbox.provider === "container_oci" ? (ctx.sandbox.runtime ?? null) : null,
+          deleted_instances: [
+            {
+              instance_name: instanceName,
+              run_id: runId || null,
+              reason: "sandbox_control_remove",
+            },
+          ],
+        });
         if (runId) {
           sendSandboxInstanceStatus(ctx, {
             runId,

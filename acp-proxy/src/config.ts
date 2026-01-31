@@ -1,8 +1,11 @@
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parse as parseToml } from "@iarna/toml";
 import convict from "convict";
+
+import { loadOrCreateAgentId } from "./identity/agentIdentity.js";
 
 export type VolumeConfig = {
   hostPath: string;
@@ -52,6 +55,7 @@ export type ProxyConfig = {
   bootstrap_token?: string;
   auth_token?: string;
   heartbeat_seconds: number;
+  inventory_interval_seconds: number;
   mock_mode: boolean;
   sandbox: SandboxConfig;
   agent_command: string[];
@@ -351,6 +355,12 @@ function buildSchema() {
       default: 30,
       env: "ACP_PROXY_HEARTBEAT_SECONDS",
     },
+    inventory_interval_seconds: {
+      doc: "Sandbox inventory report interval seconds (0 disables periodic reporting)",
+      format: "int",
+      default: 300,
+      env: "ACP_PROXY_INVENTORY_INTERVAL_SECONDS",
+    },
     mock_mode: {
       doc: "Enable mock mode",
       format: "boolean-ish",
@@ -504,7 +514,7 @@ function buildSchema() {
     agent: {
       id: {
         doc: "Agent id",
-        format: "non-empty-string",
+        format: "String",
         default: "",
         env: "ACP_PROXY_AGENT_ID",
       },
@@ -535,6 +545,14 @@ function applyRuntimeCompat() {
   if (!compat) return;
   if (process.env.ACP_PROXY_SANDBOX_RUNTIME?.trim()) return;
   process.env.ACP_PROXY_SANDBOX_RUNTIME = compat;
+}
+
+function detectContainerRuntime(): string | null {
+  for (const candidate of ["docker", "podman", "nerdctl"]) {
+    const res = spawnSync(candidate, ["--version"], { stdio: "ignore", windowsHide: true });
+    if (res.status === 0) return candidate;
+  }
+  return null;
 }
 
 function cleanOptionalFields(cfg: ProxyConfigRaw): ProxyConfig {
@@ -617,12 +635,6 @@ export async function loadConfig(
   schema.validate({ allowed: "warn" });
 
   const effective = cleanOptionalFields(normalizeConfig(schema.getProperties() as ProxyConfigRaw));
-  if (effective.sandbox.provider === "container_oci" && !effective.sandbox.runtime?.trim()) {
-    throw new Error("sandbox.provider=container_oci 时必须配置 sandbox.runtime");
-  }
-  if (effective.sandbox.provider !== "host_process" && !effective.sandbox.image?.trim()) {
-    throw new Error("sandbox.provider!=host_process 时必须配置 sandbox.image");
-  }
   if (
     effective.sandbox.provider === "host_process" &&
     effective.sandbox.workspaceMode === "git_clone"
@@ -630,11 +642,37 @@ export async function loadConfig(
     throw new Error("sandbox.provider=host_process 不支持 workspaceMode=git_clone");
   }
 
+  const sandboxProvider = effective.sandbox.provider;
+  let runtime = effective.sandbox.runtime?.trim() ? effective.sandbox.runtime.trim() : "";
+  if (sandboxProvider === "container_oci" && !runtime) {
+    const detected = detectContainerRuntime();
+    if (!detected) {
+      throw new Error(
+        "sandbox.provider=container_oci 且未配置 sandbox.runtime，且未探测到 docker/podman/nerdctl；请配置 sandbox.runtime 或安装其中之一",
+      );
+    }
+    runtime = detected;
+  }
+
+  let image = effective.sandbox.image?.trim() ? effective.sandbox.image.trim() : "";
+  if (sandboxProvider !== "host_process" && !image) {
+    image = "tuixiu-codex-acp:local";
+  }
+
+  const agentId = String(effective.agent.id ?? "").trim() || (await loadOrCreateAgentId());
+  const agentName = effective.agent.name?.trim() ? effective.agent.name.trim() : agentId;
+
   return {
     ...effective,
+    sandbox: {
+      ...effective.sandbox,
+      ...(sandboxProvider === "container_oci" ? { runtime } : {}),
+      ...(image ? { image } : {}),
+    },
     agent: {
       ...effective.agent,
-      name: effective.agent.name?.trim() ? effective.agent.name.trim() : effective.agent.id,
+      id: agentId,
+      name: agentName,
       capabilities: effective.agent.capabilities ?? {},
     },
   };
