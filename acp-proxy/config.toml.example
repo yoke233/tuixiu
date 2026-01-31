@@ -79,9 +79,12 @@ OPENAI_API_KEY = "<set-me>"
 
 
 [agent]
-# 上报到 orchestrator 的 agent 识别信息（建议全局唯一 id）
-id = "codex-agent-1"
-name = "codex-agent-1"
+# 上报到 orchestrator 的 agent 识别信息：
+# - id 可省略（首次启动会自动生成并写入 ~/.tuixiu/acp-proxy/identity.json）
+# - 或通过环境变量 ACP_PROXY_AGENT_ID 强制指定
+# id = "codex-agent-1"
+# name 默认等于 id
+# name = "codex-agent-1"
 max_concurrent = 5
 
 [agent.capabilities]

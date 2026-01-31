@@ -4,6 +4,8 @@ import path from "node:path";
 import { parse as parseToml } from "@iarna/toml";
 import convict from "convict";
 
+import { loadOrCreateAgentId } from "./identity/agentIdentity.js";
+
 export type VolumeConfig = {
   hostPath: string;
   guestPath: string;
@@ -504,7 +506,7 @@ function buildSchema() {
     agent: {
       id: {
         doc: "Agent id",
-        format: "non-empty-string",
+        format: "String",
         default: "",
         env: "ACP_PROXY_AGENT_ID",
       },
@@ -630,11 +632,15 @@ export async function loadConfig(
     throw new Error("sandbox.provider=host_process 不支持 workspaceMode=git_clone");
   }
 
+  const agentId = String(effective.agent.id ?? "").trim() || (await loadOrCreateAgentId());
+  const agentName = effective.agent.name?.trim() ? effective.agent.name.trim() : agentId;
+
   return {
     ...effective,
     agent: {
       ...effective.agent,
-      name: effective.agent.name?.trim() ? effective.agent.name.trim() : effective.agent.id,
+      id: agentId,
+      name: agentName,
       capabilities: effective.agent.capabilities ?? {},
     },
   };

@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -228,5 +228,45 @@ describe("loadConfig", () => {
     const cfg = await loadConfig(p, { profile: "sandboxed" });
     expect(cfg.orchestrator_url).toBe("ws://example.com/ws/agent");
     expect(cfg.sandbox.terminalEnabled).toBe(true);
+  });
+
+  it("agent.id auto generates stable id when missing", async () => {
+    const p = path.join(tmpdir(), `acp-proxy-config-${Date.now()}-${Math.random()}.json`);
+    await writeFile(
+      p,
+      JSON.stringify({
+        orchestrator_url: "ws://localhost:3000/ws/agent",
+        heartbeat_seconds: 30,
+        mock_mode: true,
+        agent_command: ["node", "--version"],
+        agent: { max_concurrent: 2 },
+        sandbox: {
+          provider: "container_oci",
+          runtime: "docker",
+          image: "alpine:latest",
+        },
+      }),
+      "utf8",
+    );
+
+    const identityDir = await mkdtemp(path.join(tmpdir(), "acp-proxy-identity-"));
+    const prevIdentityPath = process.env.ACP_PROXY_IDENTITY_PATH;
+    const prevAgentId = process.env.ACP_PROXY_AGENT_ID;
+    process.env.ACP_PROXY_IDENTITY_PATH = path.join(identityDir, "identity.json");
+    delete process.env.ACP_PROXY_AGENT_ID;
+
+    try {
+      const cfg1 = await loadConfig(p);
+      expect(cfg1.agent.id).toBeTruthy();
+
+      const cfg2 = await loadConfig(p);
+      expect(cfg2.agent.id).toBe(cfg1.agent.id);
+    } finally {
+      if (prevIdentityPath === undefined) delete process.env.ACP_PROXY_IDENTITY_PATH;
+      else process.env.ACP_PROXY_IDENTITY_PATH = prevIdentityPath;
+      if (prevAgentId === undefined) delete process.env.ACP_PROXY_AGENT_ID;
+      else process.env.ACP_PROXY_AGENT_ID = prevAgentId;
+      await rm(identityDir, { recursive: true, force: true });
+    }
   });
 });
