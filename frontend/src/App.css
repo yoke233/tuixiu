@@ -1,7 +1,18 @@
 #root {
   min-height: 100vh;
-  background: var(--bg);
   color: var(--fg);
+  background:
+    radial-gradient(
+      900px circle at 12% -10%,
+      color-mix(in oklab, var(--primary), transparent 92%),
+      transparent 55%
+    ),
+    radial-gradient(
+      900px circle at 88% 0%,
+      color-mix(in oklab, var(--info), transparent 92%),
+      transparent 55%
+    ),
+    var(--bg);
 }
 
 .container {
@@ -103,9 +114,9 @@
 }
 
 .adminNavItem.active {
-  border-color: color-mix(in oklab, var(--accent), var(--card-border) 40%);
-  background: color-mix(in oklab, var(--accent), transparent 92%);
-  box-shadow: inset 3px 0 0 color-mix(in oklab, var(--accent), transparent 35%);
+  border-color: color-mix(in oklab, var(--primary), var(--card-border) 40%);
+  background: color-mix(in oklab, var(--primary), transparent 92%);
+  box-shadow: inset 3px 0 0 color-mix(in oklab, var(--primary), transparent 35%);
 }
 
 .adminMain {
@@ -134,8 +145,8 @@
 }
 
 .adminListItem.selected {
-  border-color: color-mix(in oklab, var(--accent), var(--card-border) 30%);
-  background: color-mix(in oklab, var(--accent), transparent 94%);
+  border-color: color-mix(in oklab, var(--primary), var(--card-border) 30%);
+  background: color-mix(in oklab, var(--primary), transparent 94%);
 }
 
 .adminListItemButton {
@@ -212,6 +223,7 @@
   border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 16px;
+  box-shadow: var(--shadow-soft);
   backdrop-filter: blur(8px);
 }
 
@@ -352,8 +364,8 @@ textarea:not([data-ui]) {
 }
 
 button:not([class]) {
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--primary);
+  color: var(--primary-foreground);
   border: 0;
   border-radius: 10px;
   padding: 10px 12px;
@@ -625,8 +637,8 @@ a:hover {
 }
 
 .commandMenuItem.isActive {
-  border-color: color-mix(in oklab, var(--accent), var(--card-border) 60%);
-  background: color-mix(in oklab, var(--card-bg), var(--accent) 8%);
+  border-color: color-mix(in oklab, var(--primary), var(--card-border) 60%);
+  background: color-mix(in oklab, var(--card-bg), var(--primary) 8%);
 }
 
 .commandMenuName {
@@ -658,9 +670,9 @@ a:hover {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
-  background: color-mix(in oklab, var(--accent), transparent 70%);
-  color: color-mix(in oklab, var(--accent), var(--fg) 30%);
-  border: 1px solid color-mix(in oklab, var(--accent), var(--card-border) 60%);
+  background: color-mix(in oklab, var(--primary), transparent 70%);
+  color: color-mix(in oklab, var(--primary), var(--fg) 30%);
+  border: 1px solid color-mix(in oklab, var(--primary), var(--card-border) 60%);
 }
 
 .consoleSendStatus {
@@ -673,11 +685,11 @@ a:hover {
 }
 
 .consoleSendStatus.ok {
-  color: color-mix(in oklab, var(--accent), var(--fg) 35%);
+  color: color-mix(in oklab, var(--primary), var(--fg) 35%);
 }
 
 .consoleSendStatus.pending {
-  color: color-mix(in oklab, var(--accent), var(--muted-foreground) 50%);
+  color: color-mix(in oklab, var(--primary), var(--muted-foreground) 50%);
 }
 
 .consoleSendStatus.error {
@@ -1285,8 +1297,8 @@ a:hover {
 }
 
 .kanbanCol.dropTarget {
-  border-color: color-mix(in oklab, var(--accent), var(--card-border) 40%);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 85%);
+  border-color: color-mix(in oklab, var(--primary), var(--card-border) 40%);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary), transparent 85%);
 }
 
 .kanbanColHeader {
@@ -1358,10 +1370,12 @@ a:hover {
   background: var(--card-bg);
   text-decoration: none;
   color: inherit;
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--card-border), transparent 50%);
   transition:
     transform 120ms ease,
     border-color 120ms ease,
-    background 120ms ease;
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .issueCardWrap {
@@ -1423,6 +1437,7 @@ a:hover {
 
 .issueCard:hover {
   transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
 }
 
 @media (hover: none) and (pointer: coarse) {
@@ -1440,8 +1455,8 @@ a:hover {
 }
 
 .issueCard.selected {
-  border-color: color-mix(in oklab, var(--accent), var(--card-border) 50%);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 80%);
+  border-color: color-mix(in oklab, var(--primary), var(--card-border) 50%);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary), transparent 80%);
 }
 
 .issueTitle {
@@ -1533,8 +1548,8 @@ a:hover {
 }
 
 .fileRow.active {
-  background: color-mix(in oklab, var(--accent), transparent 92%);
-  box-shadow: inset 3px 0 0 color-mix(in oklab, var(--accent), transparent 35%);
+  background: color-mix(in oklab, var(--primary), transparent 92%);
+  box-shadow: inset 3px 0 0 color-mix(in oklab, var(--primary), transparent 35%);
 }
 
 .fileStatus {

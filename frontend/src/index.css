@@ -17,18 +17,18 @@
   /* shadcn/ui tokens */
   --background: hsl(210 40% 98%);
   --foreground: hsl(222.2 47.4% 11.2%);
-  --card: hsl(0 0% 100%);
+  --card: hsl(0 0% 100% / 0.86);
   --card-foreground: hsl(222.2 47.4% 11.2%);
-  --popover: hsl(0 0% 100%);
+  --popover: hsl(0 0% 100% / 0.96);
   --popover-foreground: hsl(222.2 47.4% 11.2%);
-  --primary: hsl(173.4 80.4% 40%);
-  --primary-foreground: hsl(178.6 84.3% 10%);
-  --secondary: hsl(222.2 47.4% 11.2% / 0.03);
-  --secondary-foreground: hsl(222.2 47.4% 11.2%);
-  --muted: hsl(222.2 47.4% 11.2% / 0.03);
-  --muted-foreground: hsl(222.2 47.4% 11.2% / 0.64);
-  --accent: hsl(173.4 80.4% 40%);
-  --accent-foreground: hsl(178.6 84.3% 10%);
+  --primary: hsl(173.4 80.4% 36%);
+  --primary-foreground: hsl(210 40% 98%);
+  --secondary: hsl(210 40% 96.1%);
+  --secondary-foreground: var(--foreground);
+  --muted: hsl(210 40% 96.1%);
+  --muted-foreground: hsl(215.4 16.3% 46.9%);
+  --accent: hsl(173.4 70% 94%);
+  --accent-foreground: var(--foreground);
   --destructive: hsl(0 84.2% 60.2%);
   --destructive-foreground: hsl(210 40% 98%);
   --success: hsl(142.1 70.6% 45.3%);
@@ -37,28 +37,30 @@
   --warning-foreground: hsl(222.2 47.4% 11.2%);
   --info: hsl(201.3 96.3% 32.2%);
   --info-foreground: hsl(210 40% 98%);
-  --border: hsl(222.2 47.4% 11.2% / 0.12);
-  --input: hsl(222.2 47.4% 11.2% / 0.14);
-  --ring: hsl(173.4 80.4% 40%);
+  --border: hsl(222.2 47.4% 11.2% / 0.14);
+  --input: hsl(222.2 47.4% 11.2% / 0.18);
+  --ring: var(--primary);
   --radius: 0.75rem;
+  --shadow-soft: 0 12px 30px hsl(222.2 47.4% 11.2% / 0.10),
+    0 2px 6px hsl(222.2 47.4% 11.2% / 0.06);
 
   /* Legacy app tokens (keep existing CSS working) */
   --bg: var(--background);
   --fg: var(--foreground);
   --card-bg: var(--card);
   --card-border: var(--border);
-  --list-bg: hsl(222.2 47.4% 11.2% / 0.03);
-  --input-bg: hsl(222.2 47.4% 11.2% / 0.03);
+  --list-bg: var(--secondary);
+  --input-bg: var(--secondary);
   --input-border: var(--input);
-  --link: hsl(201.3 96.3% 32.2%);
+  --link: var(--primary);
   --accent-text: var(--primary-foreground);
   --danger-bg: hsl(0 84.2% 60.2% / 0.12);
   --danger-border: hsl(0 84.2% 60.2% / 0.22);
-  --pre-bg: hsl(222.2 47.4% 11.2% / 0.05);
-  --console-bg: hsl(222.2 47.4% 11.2% / 0.05);
-  --console-user-bg: hsl(173.4 80.4% 40% / 0.18);
+  --pre-bg: hsl(222.2 47.4% 11.2% / 0.06);
+  --console-bg: hsl(222.2 47.4% 11.2% / 0.06);
+  --console-user-bg: hsl(173.4 80.4% 36% / 0.14);
   --console-user-text: var(--fg);
-  --console-system-bg: hsl(222.2 47.4% 11.2% / 0.03);
+  --console-system-bg: hsl(222.2 47.4% 11.2% / 0.04);
 
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -74,18 +76,18 @@
   /* shadcn/ui tokens */
   --background: hsl(220 48.8% 8.4%);
   --foreground: hsl(215.3 51.5% 93.5%);
-  --card: hsl(0 0% 100% / 0.06);
+  --card: hsl(0 0% 100% / 0.08);
   --card-foreground: hsl(215.3 51.5% 93.5%);
-  --popover: hsl(0 0% 100% / 0.08);
+  --popover: hsl(0 0% 100% / 0.10);
   --popover-foreground: hsl(215.3 51.5% 93.5%);
   --primary: hsl(172.5 66% 50.4%);
   --primary-foreground: hsl(168.5 68.4% 7.5%);
-  --secondary: hsl(0 0% 100% / 0.06);
+  --secondary: hsl(0 0% 100% / 0.08);
   --secondary-foreground: hsl(215.3 51.5% 93.5%);
-  --muted: hsl(0 0% 100% / 0.04);
+  --muted: hsl(0 0% 100% / 0.06);
   --muted-foreground: hsl(215.3 51.5% 93.5% / 0.72);
-  --accent: hsl(172.5 66% 50.4%);
-  --accent-foreground: hsl(168.5 68.4% 7.5%);
+  --accent: hsl(172.5 66% 50.4% / 0.14);
+  --accent-foreground: var(--foreground);
   --destructive: hsl(0 84.2% 60.2%);
   --destructive-foreground: hsl(215.3 51.5% 93.5%);
   --success: hsl(142.1 70.6% 45.3%);
@@ -94,27 +96,29 @@
   --warning-foreground: hsl(168.5 68.4% 7.5%);
   --info: hsl(199.4 95.5% 73.9%);
   --info-foreground: hsl(168.5 68.4% 7.5%);
-  --border: hsl(0 0% 100% / 0.12);
-  --input: hsl(0 0% 100% / 0.14);
-  --ring: hsl(172.5 66% 50.4%);
+  --border: hsl(0 0% 100% / 0.16);
+  --input: hsl(0 0% 100% / 0.18);
+  --ring: var(--primary);
+  --shadow-soft: 0 16px 50px hsl(0 0% 0% / 0.65),
+    0 2px 10px hsl(0 0% 0% / 0.35);
 
   /* Legacy app tokens */
   --bg: var(--background);
   --fg: var(--foreground);
   --card-bg: var(--card);
   --card-border: var(--border);
-  --list-bg: hsl(0 0% 100% / 0.04);
-  --input-bg: hsl(0 0% 100% / 0.06);
+  --list-bg: var(--secondary);
+  --input-bg: var(--secondary);
   --input-border: var(--input);
   --link: hsl(199.4 95.5% 73.9%);
   --accent-text: var(--primary-foreground);
   --danger-bg: hsl(0 84.2% 60.2% / 0.16);
   --danger-border: hsl(0 84.2% 60.2% / 0.35);
-  --pre-bg: hsl(0 0% 0% / 0.25);
-  --console-bg: hsl(0 0% 0% / 0.32);
+  --pre-bg: hsl(0 0% 0% / 0.26);
+  --console-bg: hsl(0 0% 0% / 0.36);
   --console-user-bg: hsl(172.5 66% 50.4% / 0.14);
   --console-user-text: var(--fg);
-  --console-system-bg: hsl(0 0% 100% / 0.06);
+  --console-system-bg: hsl(0 0% 100% / 0.08);
 }
 
 /* Map CSS variables to Tailwind theme with @theme inline */
