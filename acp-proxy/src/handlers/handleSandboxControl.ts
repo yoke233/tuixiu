@@ -700,12 +700,19 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
         }
 
         const instanceName = validateInstanceName(instanceNameRaw);
+        if (!effectiveRunId) {
+          reply({ ok: false, error: "run_id 为空" });
+          return;
+        }
+
+        const guestWs = `/workspace/run-${effectiveRunId}`;
+        const guestWsEscaped = guestWs.replaceAll("'", "'\\''");
 
         let proc: any;
         try {
           proc = await ctx.sandbox.execProcess({
             instanceName,
-            command: ["bash", "-lc", "rm -rf /workspace/*"],
+            command: ["bash", "-lc", `rm -rf '${guestWsEscaped}'`],
             cwdInGuest: WORKSPACE_GUEST_PATH,
             env: undefined,
           });

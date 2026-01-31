@@ -167,7 +167,7 @@ describe("handleSandboxControl", () => {
     }
   });
 
-  it("remove_workspace clears /workspace in git_clone mode", async () => {
+  it("remove_workspace runs rm -rf /workspace/run-r1 in git_clone mode", async () => {
     const messages: any[] = [];
 
     const sandbox: ProxySandbox = {
@@ -218,7 +218,7 @@ describe("handleSandboxControl", () => {
     expect(sandbox.execProcess).toHaveBeenCalledWith(
       expect.objectContaining({
         instanceName: "tuixiu-run-r1",
-        command: ["bash", "-lc", "rm -rf /workspace/*"],
+        command: ["bash", "-lc", "rm -rf '/workspace/run-r1'"],
       }),
     );
 
