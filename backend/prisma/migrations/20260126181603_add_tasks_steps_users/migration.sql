@@ -14,7 +14,7 @@ CREATE TYPE "StepStatus" AS ENUM ('pending', 'ready', 'running', 'waiting_ci', '
 ALTER TABLE "Run" DROP CONSTRAINT "Run_agentId_fkey";
 
 -- DropIndex
-DROP INDEX "Issue_archivedAt_idx";
+DROP INDEX IF EXISTS "Issue_archivedAt_idx";
 
 -- AlterTable
 ALTER TABLE "Run" ADD COLUMN     "attempt" INTEGER NOT NULL DEFAULT 1,

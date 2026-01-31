@@ -27,6 +27,7 @@ import { PolicySection } from "./sections/PolicySection";
 import { ProjectsSection } from "./sections/ProjectsSection";
 import { RolesSection } from "./sections/RolesSection";
 import { SettingsSection } from "./sections/SettingsSection";
+import { SkillsSection } from "./sections/SkillsSection";
 import { TextTemplatesSection } from "./sections/TextTemplatesSection";
 
 export function AdminPage() {
@@ -58,6 +59,8 @@ export function AdminPage() {
 
   const [acpSessionsReloadToken, setAcpSessionsReloadToken] = useState(0);
   const [acpSessionsLoading, setAcpSessionsLoading] = useState(false);
+  const [skillsReloadToken, setSkillsReloadToken] = useState(0);
+  const [skillsLoading, setSkillsLoading] = useState(false);
   const [textTemplatesReloadToken, setTextTemplatesReloadToken] = useState(0);
   const [textTemplatesLoading, setTextTemplatesLoading] = useState(false);
 
@@ -177,6 +180,10 @@ export function AdminPage() {
       setAcpSessionsReloadToken((v) => v + 1);
       return;
     }
+    if (activeSection === "skills") {
+      setSkillsReloadToken((v) => v + 1);
+      return;
+    }
     if (activeSection === "textTemplates") {
       setTextTemplatesReloadToken((v) => v + 1);
       return;
@@ -189,7 +196,7 @@ export function AdminPage() {
   const navGroups: Array<{ label: string; items: AdminSectionKey[] }> = [
     { label: "待办", items: ["approvals", "issues"] },
     { label: "运行", items: ["acpSessions"] },
-    { label: "配置", items: ["projects", "roles", "policy", "textTemplates", "settings"] },
+    { label: "配置", items: ["projects", "skills", "roles", "policy", "textTemplates", "settings"] },
     { label: "归档", items: ["archive"] },
   ];
 
@@ -328,6 +335,8 @@ export function AdminPage() {
                 disabled={
                   activeSection === "acpSessions"
                     ? acpSessionsLoading
+                    : activeSection === "skills"
+                      ? skillsLoading
                     : activeSection === "textTemplates"
                       ? textTemplatesLoading
                       : loading
@@ -411,6 +420,14 @@ export function AdminPage() {
               requireAdmin={requireAdmin}
               setError={setError}
               onRefreshGlobal={refresh}
+            />
+
+            <SkillsSection
+              active={activeSection === "skills"}
+              reloadToken={skillsReloadToken}
+              requireAdmin={requireAdmin}
+              setError={setError}
+              onLoadingChange={setSkillsLoading}
             />
 
             <RolesSection

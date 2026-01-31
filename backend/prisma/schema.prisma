@@ -133,6 +133,11 @@ enum ApprovalStatus {
   failed
 }
 
+enum SkillVersionPolicy {
+  latest
+  pinned
+}
+
 model Project {
   id                     String   @id @default(uuid()) @db.Uuid
   name                   String   @db.VarChar(255)
@@ -400,8 +405,66 @@ model RoleTemplate {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
+  skillBindings      RoleSkillBinding[]
+
   @@unique([projectId, key])
   @@index([projectId])
+}
+
+model Skill {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(200)
+  description String?  @db.Text
+  tags        String[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions    SkillVersion[]
+  roleBindings RoleSkillBinding[]
+
+  @@index([updatedAt])
+}
+
+model SkillVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  skillId     String   @db.Uuid
+  skill       Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  contentHash String   @db.VarChar(128)
+  storageUri  String?  @db.VarChar(500)
+  source      Json?
+
+  importedAt  DateTime @default(now())
+
+  roleBindings RoleSkillBinding[]
+
+  @@unique([skillId, contentHash])
+  @@index([skillId, importedAt(sort: Desc)])
+}
+
+model RoleSkillBinding {
+  id              String            @id @default(uuid()) @db.Uuid
+
+  roleTemplateId  String            @db.Uuid
+  roleTemplate    RoleTemplate      @relation(fields: [roleTemplateId], references: [id], onDelete: Cascade)
+
+  skillId         String            @db.Uuid
+  skill           Skill             @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  versionPolicy   SkillVersionPolicy @default(latest)
+  pinnedVersionId String?           @db.Uuid
+  pinnedVersion   SkillVersion?     @relation(fields: [pinnedVersionId], references: [id], onDelete: SetNull)
+
+  enabled         Boolean           @default(true)
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([roleTemplateId, skillId])
+  @@index([roleTemplateId])
+  @@index([skillId])
+  @@index([pinnedVersionId])
 }
 
 model PlatformTextTemplate {

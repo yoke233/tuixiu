@@ -68,7 +68,7 @@ export function AcpSessionsSection(props: Props) {
   const [onlyStale, setOnlyStale] = useState(false);
   const [agentFilter, setAgentFilter] = useState<string>("");
   const [selectedSessionKey, setSelectedSessionKey] = useState<string>("");
-  const [view, setView] = useState<"sessions" | "proxies" | "both">("sessions");
+  const [view, setView] = useState<"sessions" | "proxies" | "both">("both");
 
   const loading = loadingAcpSessions || loadingAcpProxies;
 

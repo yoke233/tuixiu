@@ -31,6 +31,8 @@ import { makeProjectRoutes } from "./routes/projects.js";
 import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
 import { makeRunRoutes } from "./routes/runs.js";
 import { makeSandboxRoutes } from "./routes/sandboxes.js";
+import { makeSkillRoutes } from "./routes/skills.js";
+import { makeRoleSkillBindingRoutes } from "./routes/roleSkillBindings.js";
 import { makeStepRoutes } from "./routes/steps.js";
 import { makeTaskRoutes } from "./routes/tasks.js";
 import { makeTextTemplateRoutes } from "./routes/textTemplates.js";
@@ -354,6 +356,8 @@ server.register(
 server.register(makeSandboxRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, auth }), {
   prefix: "/api/admin",
 });
+server.register(makeSkillRoutes({ prisma, auth }), { prefix: "/api/admin" });
+server.register(makeRoleSkillBindingRoutes({ prisma, auth }), { prefix: "/api/admin" });
 server.register(makeTextTemplateRoutes({ prisma, auth }), { prefix: "/api/admin" });
 server.register(makeAcpProxyRoutes({ bootstrapToken: env.ACP_PROXY_BOOTSTRAP_TOKEN }), {
   prefix: "/api/admin/acp-proxy",
