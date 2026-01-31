@@ -2,7 +2,7 @@
 title: "环境搭建（当前仓库）"
 owner: "@tuixiu-maintainers"
 status: "active"
-last_reviewed: "2026-01-27"
+last_reviewed: "2026-01-31"
 ---
 
 # 环境搭建文档（当前仓库）
@@ -123,15 +123,37 @@ notepad config.toml
 pnpm dev
 ```
 
-`config.toml` 最关键字段：
+#### 5.2.0 最小配置示例（只填 2~3 项即可跑）
+
+你可以从 `config.toml.example` 精简到类似下面的最小配置：
+
+```toml
+orchestrator_url = "ws://localhost:3000/ws/agent"
+
+[sandbox]
+# Windows/macOS Intel：默认 container_oci（可省略 provider）
+# Linux/WSL2/macOS Apple Silicon：可改为 boxlite_oci
+provider = "container_oci"
+
+# 把 API Key 注入到 guest（不要提交到仓库）
+env = { OPENAI_API_KEY = "<your key>" }
+```
+
+说明（对应本仓库当前实现）：
+
+- `agent.id` 会自动生成并落盘（无需手填）
+- `sandbox.runtime`（container_oci）会自动探测 `docker/podman/nerdctl`（找不到会报错）
+- `sandbox.image`（非 host_process）默认 `tuixiu-codex-acp:local`
+
+`config.toml` 其他常用字段：
 
 - `orchestrator_url`: `ws://localhost:3000/ws/agent`
-- `sandbox.provider`: `container_oci`（Windows/macOS Intel）或 `boxlite_oci`（Linux/WSL2/macOS Apple Silicon）
-- `sandbox.image`: `tuixiu-codex-acp:local`
-- `sandbox.runtime`: `docker`/`podman`/`nerdctl`（仅 `provider=container_oci` 需要）
+- `sandbox.provider`: `container_oci`（Windows/macOS Intel 默认）或 `boxlite_oci`（Linux/WSL2/macOS Apple Silicon）
+- `sandbox.image`: ACP Agent 镜像（可选；默认 `tuixiu-codex-acp:local`）
+- `sandbox.runtime`: `docker`/`podman`/`nerdctl`（可选；`provider=container_oci` 时会自动探测）
 - `sandbox.agentMode`: `exec`（默认，通过 `docker exec` 启动 agent）或 `entrypoint`（容器主进程为 agent；如提供 `acp_open.init.script` 会在 agent 启动前执行）
 - `pathMapping`: 可选（仅当你在 WSL 内运行 proxy 且后端传入 Windows 路径时使用）
-- `agent_command`: 默认 `["codex-acp"]`
+- `agent_command`: 默认 `["npx","--yes","@zed-industries/codex-acp"]`
 
 #### 5.2.1 WSL2 运行 proxy（A 形态）
 
