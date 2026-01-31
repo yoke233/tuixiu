@@ -9,6 +9,19 @@ heartbeat_seconds = 30
 inventory_interval_seconds = 300
 mock_mode = false
 
+# 运行时 skills 挂载（灰度开关）。需要同时满足：
+# 1) backend 项目级开关 enableRuntimeSkillsMounting=true
+# 2) acp-proxy 侧 skills_mounting_enabled=true
+skills_mounting_enabled = false
+
+# skills 包下载体积上限（字节）；0 表示不限制。
+# 建议与 backend 的 SKILL_PACKAGES_MAX_BYTES 保持一致，或设置更小值以降低磁盘风险。
+# skills_download_max_bytes = 209715200
+
+# 仅透传给 agent 的 init.env 白名单（仅记录 key，不记录 value）。
+# 默认已包含本项目运行所需的 TUIXIU_* 与常用 Token。
+# agent_env_allowlist = ["CODEX_HOME", "TUIXIU_PROJECT_ID", "TUIXIU_REPO_URL"]
+
 # 在 sandbox 内启动 ACP agent 的命令（建议镜像内预装 codex-acp，然后直接运行）
 agent_command = ["codex-acp"]
 

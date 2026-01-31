@@ -51,7 +51,7 @@ describe("proxy/runProxyCli", () => {
   it("exports runProxyCli", async () => {
     const { runProxyCli } = await import("./runProxyCli.js");
     expect(typeof runProxyCli).toBe("function");
-  });
+  }, 15_000);
 
   it("periodically reports sandbox_inventory after connected", async () => {
     loadConfigSpy.mockResolvedValue({

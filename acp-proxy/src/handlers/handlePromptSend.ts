@@ -68,7 +68,7 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
       if (ctx.sandbox.agentMode === "exec") {
         const initOk = await runInitScript(ctx, run, init);
         if (!initOk) throw new Error("init_failed");
-        await startAgent(ctx, run);
+        await startAgent(ctx, run, init);
       } else {
         await startAgent(ctx, run, init);
       }

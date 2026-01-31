@@ -1,4 +1,5 @@
 import type { ApiEnvelope } from "../types";
+import { getStoredToken } from "../auth/storage";
 export function getApiBaseUrl(): string {
   const base = import.meta.env.VITE_API_URL as string | undefined;
   if (base && base.trim()) {
@@ -18,13 +19,18 @@ export function apiUrl(path: string): string {
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${getApiBaseUrl()}${path.startsWith("/") ? "" : "/"}${path}`;
 
+  const headers = new Headers(init?.headers ?? {});
+  if (!headers.has("content-type")) headers.set("content-type", "application/json");
+
+  const token = getStoredToken();
+  if (token && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
+
   const res = await fetch(url, {
     ...init,
     credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      ...(init?.headers ?? {})
-    }
+    headers,
   });
 
   const text = await res.text();

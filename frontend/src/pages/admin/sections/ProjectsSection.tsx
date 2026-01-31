@@ -86,6 +86,7 @@ export function ProjectsSection(props: Props) {
     useState<WorkspaceNoticeMode>("default");
   const [projectAgentWorkspaceNoticeTemplate, setProjectAgentWorkspaceNoticeTemplate] =
     useState("");
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     if (!effectiveProject) return;
@@ -123,6 +124,12 @@ export function ProjectsSection(props: Props) {
       setEditWorkspaceNoticeTemplate(String(raw));
     }
   }, [effectiveProject, effectiveProjectId]);
+
+  useEffect(() => {
+    if (!active) return;
+    if (loading) return;
+    if (!projects.length) setCreateOpen(true);
+  }, [active, loading, projects.length]);
 
   const onResetProjectEdit = useCallback(() => {
     if (!effectiveProject) return;
@@ -204,6 +211,7 @@ export function ProjectsSection(props: Props) {
         setProjectAgentWorkspaceNoticeTemplate("");
         await onRefreshGlobal();
         onSelectedProjectIdChange(p.id);
+        setCreateOpen(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -660,9 +668,19 @@ export function ProjectsSection(props: Props) {
           </div>
         )}
 
-        <details style={{ marginTop: 14 }} open={!projects.length}>
-          <summary>创建 Project</summary>
-          <form onSubmit={(e) => void onCreateProject(e)} className="form" style={{ marginTop: 10 }}>
+        <div className="rounded-lg border bg-card p-4" style={{ marginTop: 14 }}>
+          <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 800 }}>创建 Project</div>
+              <div className="muted">用于配置仓库、SCM、认证方式等。</div>
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setCreateOpen((v) => !v)}>
+              {createOpen ? "收起" : "展开"}
+            </Button>
+          </div>
+
+          {createOpen ? (
+            <form onSubmit={(e) => void onCreateProject(e)} className="form" style={{ marginTop: 12 }}>
             <div className="grid2" style={{ marginBottom: 0 }}>
               <div>
                 <label className="label">
@@ -788,8 +806,13 @@ export function ProjectsSection(props: Props) {
             <Button type="submit" disabled={!projectName.trim() || !projectRepoUrl.trim()}>
               创建
             </Button>
-          </form>
-        </details>
+            </form>
+          ) : (
+            <div className="muted" style={{ marginTop: 12 }}>
+              点击右上角「展开」开始创建。
+            </div>
+          )}
+        </div>
       </section>
     </>
   );

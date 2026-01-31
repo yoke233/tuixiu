@@ -409,6 +409,73 @@ export async function startIssueRun(opts: {
       TUIXIU_WORKSPACE_GUEST: String(agentWorkspacePath),
       TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String((issue as any).projectId)}`,
     };
+
+    const enableRuntimeSkillsMounting = project?.enableRuntimeSkillsMounting === true;
+    let skillsManifest: any | null = null;
+    if (enableRuntimeSkillsMounting && role?.id) {
+      const bindings = await opts.prisma.roleSkillBinding.findMany({
+        where: { roleTemplateId: role.id, enabled: true } as any,
+        orderBy: { createdAt: "asc" },
+        select: { skillId: true, versionPolicy: true, pinnedVersionId: true },
+      });
+
+      if (bindings.length) {
+        const skillIds = bindings.map((b: any) => String(b.skillId ?? "")).filter(Boolean);
+        const skills = await opts.prisma.skill.findMany({
+          where: { id: { in: skillIds } } as any,
+          select: { id: true, name: true, latestVersionId: true },
+        });
+        const skillById = new Map<string, any>();
+        for (const s of skills as any[]) skillById.set(String(s.id ?? ""), s);
+
+        const resolved = bindings.map((b: any) => {
+          const skillId = String(b.skillId ?? "");
+          const skill = skillById.get(skillId) ?? null;
+          if (!skill) throw new Error(`role skills 配置包含不存在的 skillId: ${skillId}`);
+
+          const policy = String(b.versionPolicy ?? "latest");
+          if (policy === "pinned") {
+            const pinnedVersionId = String(b.pinnedVersionId ?? "").trim();
+            if (!pinnedVersionId) throw new Error(`role skills 配置 pinned 缺少 pinnedVersionId（skillId=${skillId}）`);
+            return { skillId, skillName: String(skill.name ?? ""), skillVersionId: pinnedVersionId };
+          }
+
+          const latestVersionId = String(skill.latestVersionId ?? "").trim();
+          if (!latestVersionId) throw new Error(`role skills 配置 latest 但 Skill 未发布 latestVersionId（skillId=${skillId}）`);
+          return { skillId, skillName: String(skill.name ?? ""), skillVersionId: latestVersionId };
+        });
+
+        const versionIds = Array.from(new Set(resolved.map((x) => x.skillVersionId)));
+        const versions = await opts.prisma.skillVersion.findMany({
+          where: { id: { in: versionIds } } as any,
+          select: { id: true, skillId: true, contentHash: true, storageUri: true },
+        });
+        const versionById = new Map<string, any>();
+        for (const v of versions as any[]) versionById.set(String(v.id ?? ""), v);
+
+        const missing = versionIds.filter((id) => !versionById.has(id));
+        if (missing.length) throw new Error(`role skills 解析失败：SkillVersion 不存在: ${missing.join(", ")}`);
+
+        const skillVersions = resolved.map((x) => {
+          const v = versionById.get(x.skillVersionId);
+          if (!v) throw new Error("unreachable");
+          if (String(v.skillId ?? "") !== x.skillId) {
+            throw new Error(`role skills 解析失败：SkillVersion 不属于该 Skill（skillId=${x.skillId}, skillVersionId=${x.skillVersionId}）`);
+          }
+          const storageUri = typeof v.storageUri === "string" ? String(v.storageUri).trim() : "";
+          if (!storageUri) throw new Error(`role skills 解析失败：SkillVersion.storageUri 为空（skillVersionId=${x.skillVersionId}）`);
+          return {
+            skillId: x.skillId,
+            skillName: x.skillName,
+            skillVersionId: x.skillVersionId,
+            contentHash: String(v.contentHash ?? ""),
+            storageUri,
+          };
+        });
+
+        skillsManifest = { runId: String((run as any).id), skillVersions };
+      }
+    }
     if (sandboxWorkspaceMode) {
       initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
       if (sandboxWorkspaceMode === "mount") {
@@ -439,6 +506,7 @@ export async function startIssueRun(opts: {
       script: mergeInitScripts(baseInitScript, roleInitScript),
       timeout_seconds: role?.initTimeoutSeconds,
       env: initEnv,
+      ...(skillsManifest ? { skillsManifest } : {}),
     };
 
     await opts.acp.promptRun({

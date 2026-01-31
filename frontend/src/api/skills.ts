@@ -1,4 +1,4 @@
-import { apiGet } from "./client";
+import { apiGet, apiPost } from "./client";
 
 export type SkillLatestVersion = {
   versionId: string;
@@ -13,6 +13,13 @@ export type SkillSearchItem = {
   tags: string[];
   installed: boolean;
   latestVersion: SkillLatestVersion | null;
+  installs?: number | null;
+  sourceType?: string;
+  sourceKey?: string;
+  sourceRef?: string;
+  sourceRevision?: string | null;
+  githubRepoUrl?: string;
+  skillDir?: string;
 };
 
 export type SkillSearchResult = {
@@ -35,7 +42,73 @@ export type SkillVersion = {
   contentHash: string;
   storageUri: string | null;
   source: unknown | null;
+  sourceRevision: string | null;
+  packageSize: number | null;
+  manifestJson: unknown | null;
   importedAt: string;
+};
+
+export type SkillImportResponse = {
+  mode: string;
+  source: {
+    sourceType: string;
+    sourceKey: string;
+    sourceRef: string;
+    owner: string;
+    repo: string;
+    skill: string;
+    githubRepoUrl: string;
+    skillDir: string;
+  };
+  meta: { name: string; description: string | null; tags: string[] };
+  contentHash: string;
+  fileCount: number;
+  totalBytes: number;
+  skill?: {
+    id: string;
+    name: string;
+    description: string | null;
+    tags: string[];
+    sourceType: string | null;
+    sourceKey: string | null;
+    latestVersionId: string | null;
+  };
+  skillVersion?: {
+    id: string;
+    contentHash: string;
+    storageUri: string | null;
+    importedAt: string;
+  };
+  createdSkill?: boolean;
+  createdVersion?: boolean;
+  published?: boolean;
+};
+
+export type SkillCheckUpdatesResponse = {
+  items: Array<{
+    skillId: string;
+    name: string;
+    sourceType: string;
+    sourceKey: string;
+    current: { versionId: string; contentHash: string } | null;
+    candidate: { contentHash: string; fileCount: number; totalBytes: number } | null;
+    hasUpdate?: boolean;
+    error?: string;
+  }>;
+};
+
+export type SkillUpdateResponse = {
+  publishLatest: boolean;
+  results: Array<{
+    skillId: string;
+    ok: boolean;
+    error?: string;
+    createdVersion?: boolean;
+    published?: boolean;
+    contentHash?: string;
+    storageUri?: string;
+    skillVersionId?: string;
+  }>;
 };
 
 export async function searchSkills(input: {
@@ -66,3 +139,18 @@ export async function listSkillVersions(skillId: string): Promise<SkillVersion[]
   return Array.isArray(data.versions) ? data.versions : [];
 }
 
+export async function importSkill(input: {
+  provider: string;
+  sourceRef: string;
+  mode?: "dry-run" | "new-skill" | "new-version";
+}): Promise<SkillImportResponse> {
+  return await apiPost<SkillImportResponse>("/admin/skills/import", input);
+}
+
+export async function checkSkillUpdates(input: { skillIds?: string[]; sourceType?: string }): Promise<SkillCheckUpdatesResponse> {
+  return await apiPost<SkillCheckUpdatesResponse>("/admin/skills/check-updates", input);
+}
+
+export async function updateSkills(input: { skillIds: string[]; publishLatest?: boolean }): Promise<SkillUpdateResponse> {
+  return await apiPost<SkillUpdateResponse>("/admin/skills/update", input);
+}

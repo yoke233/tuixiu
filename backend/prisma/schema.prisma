@@ -138,6 +138,15 @@ enum SkillVersionPolicy {
   pinned
 }
 
+enum SkillAuditAction {
+  import
+  check_updates
+  update
+  publish_latest
+  rollback_latest
+  bind_change
+}
+
 model Project {
   id                     String   @id @default(uuid()) @db.Uuid
   name                   String   @db.VarChar(255)
@@ -153,6 +162,7 @@ model Project {
   githubAccessToken      String?  @db.Text
   githubPollingEnabled   Boolean  @default(false)
   githubPollingCursor    DateTime?
+  enableRuntimeSkillsMounting Boolean @default(false)
   branchProtection       Json?
   agentAllocationStrategy String? @db.VarChar(20)
   agentWorkspaceNoticeTemplate String? @db.Text
@@ -162,6 +172,7 @@ model Project {
   issues Issue[]
   roles RoleTemplate[]
   textTemplates ProjectTextTemplate[]
+  skillAuditLogs SkillAuditLog[]
 
   @@index([gitlabProjectId])
   @@index([githubPollingEnabled])
@@ -406,6 +417,7 @@ model RoleTemplate {
   updatedAt          DateTime @updatedAt
 
   skillBindings      RoleSkillBinding[]
+  skillAuditLogs     SkillAuditLog[]
 
   @@unique([projectId, key])
   @@index([projectId])
@@ -417,13 +429,21 @@ model Skill {
   description String?  @db.Text
   tags        String[]
 
+  sourceType       String? @db.VarChar(50)
+  sourceKey        String? @db.VarChar(300)
+  latestVersionId  String? @db.Uuid
+  latestVersion    SkillVersion? @relation("SkillLatestVersion", fields: [latestVersionId], references: [id], onDelete: SetNull)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   versions    SkillVersion[]
   roleBindings RoleSkillBinding[]
+  auditLogs   SkillAuditLog[]
 
+  @@unique([sourceType, sourceKey])
   @@index([updatedAt])
+  @@index([latestVersionId])
 }
 
 model SkillVersion {
@@ -434,10 +454,15 @@ model SkillVersion {
   contentHash String   @db.VarChar(128)
   storageUri  String?  @db.VarChar(500)
   source      Json?
+  sourceRevision String? @db.VarChar(100)
+  packageSize Int?
+  manifestJson Json?
 
   importedAt  DateTime @default(now())
 
   roleBindings RoleSkillBinding[]
+  latestForSkills Skill[] @relation("SkillLatestVersion")
+  auditLogs   SkillAuditLog[]
 
   @@unique([skillId, contentHash])
   @@index([skillId, importedAt(sort: Desc)])
@@ -465,6 +490,42 @@ model RoleSkillBinding {
   @@index([roleTemplateId])
   @@index([skillId])
   @@index([pinnedVersionId])
+}
+
+model SkillAuditLog {
+  id             String          @id @default(uuid()) @db.Uuid
+  action         SkillAuditAction
+
+  actorUserId    String?         @db.Uuid
+  actorUsername  String?         @db.VarChar(100)
+
+  skillId        String?         @db.Uuid
+  skill          Skill?          @relation(fields: [skillId], references: [id], onDelete: SetNull)
+
+  skillVersionId String?         @db.Uuid
+  skillVersion   SkillVersion?   @relation(fields: [skillVersionId], references: [id], onDelete: SetNull)
+
+  projectId      String?         @db.Uuid
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  roleTemplateId String?         @db.Uuid
+  roleTemplate   RoleTemplate?   @relation(fields: [roleTemplateId], references: [id], onDelete: SetNull)
+
+  sourceType     String?         @db.VarChar(50)
+  sourceKey      String?         @db.VarChar(300)
+  sourceRevision String?         @db.VarChar(100)
+
+  fromVersionId  String?         @db.Uuid
+  toVersionId    String?         @db.Uuid
+
+  payload        Json?
+  createdAt      DateTime        @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([skillId, createdAt(sort: Desc)])
+  @@index([projectId, roleTemplateId, createdAt(sort: Desc)])
+  @@index([sourceType, sourceKey])
 }
 
 model PlatformTextTemplate {

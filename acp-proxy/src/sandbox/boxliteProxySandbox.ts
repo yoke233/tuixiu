@@ -153,11 +153,15 @@ export class BoxliteProxySandbox implements ProxySandbox {
       instanceName: opts.instanceName,
       cmd: opts.agentCommand[0],
     });
+    const env =
+      opts.init?.env && typeof opts.init.env === "object" && !Array.isArray(opts.init.env)
+        ? { ...(opts.init.env as Record<string, string>) }
+        : undefined;
     const handle = await this.boxlite.execProcess({
       instanceName: opts.instanceName,
       command: opts.agentCommand,
       cwdInGuest: opts.workspaceGuestPath,
-      env: undefined,
+      env,
     });
 
     return { handle, created, initPending: false };

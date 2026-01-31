@@ -19,6 +19,7 @@ import { AgentBridge } from "../acp/agentBridge.js";
 
 import type { RunRuntime } from "./runTypes.js";
 import { defaultCwdForRun } from "./workspacePath.js";
+import { filterAgentInitEnv } from "./agentEnv.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -262,7 +263,11 @@ export async function runInitScript(
     ? Math.max(1, Math.min(3600, Number(timeoutSecondsRaw)))
     : 300;
 
-  const env = init?.env ? { ...init.env } : undefined;
+  const envRaw =
+    init?.env && typeof init.env === "object" && !Array.isArray(init.env)
+      ? { ...(init.env as Record<string, string>) }
+      : undefined;
+  const env = envRaw ? filterAgentInitEnv(ctx, run.runId, envRaw) : undefined;
   const secrets = pickSecretValues(env);
   const redact = (line: string) => redactSecrets(line, secrets);
 
@@ -395,10 +400,12 @@ export async function startAgent(
   const timeoutSeconds = Number.isFinite(timeoutSecondsRaw)
     ? Math.max(1, Math.min(3600, Number(timeoutSecondsRaw)))
     : 300;
-  const initEnv: Record<string, string> | undefined =
+  const initEnvRaw =
     init?.env && typeof init.env === "object" && !Array.isArray(init.env)
       ? { ...(init.env as Record<string, string>) }
       : undefined;
+  const initEnv = initEnvRaw ? filterAgentInitEnv(ctx, run.runId, initEnvRaw) : undefined;
+  const effectiveInit = initEnv ? ({ ...(init ?? {}), env: initEnv } as AgentInit) : init;
 
   if (ctx.sandbox.agentMode === "entrypoint") {
     const before = await ctx.sandbox.inspectInstance(run.instanceName);
@@ -425,7 +432,7 @@ export async function startAgent(
     workspaceGuestPath: defaultCwdForRun({ workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount", runId: run.runId }),
     mounts: run.workspaceMounts,
     agentCommand: ctx.cfg.agent_command,
-    init,
+    init: effectiveInit,
   });
 
   const secrets: string[] = [

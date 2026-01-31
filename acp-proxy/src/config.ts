@@ -57,6 +57,9 @@ export type ProxyConfig = {
   heartbeat_seconds: number;
   inventory_interval_seconds: number;
   mock_mode: boolean;
+  skills_mounting_enabled: boolean;
+  skills_download_max_bytes: number;
+  agent_env_allowlist: string[];
   sandbox: SandboxConfig;
   agent_command: string[];
   agent: AgentConfig;
@@ -366,6 +369,47 @@ function buildSchema() {
       format: "boolean-ish",
       default: false,
       env: "ACP_PROXY_MOCK_MODE",
+    },
+    skills_mounting_enabled: {
+      doc: "Enable runtime skills mounting (requires backend project flag too)",
+      format: "boolean-ish",
+      default: false,
+      env: "ACP_PROXY_SKILLS_MOUNTING_ENABLED",
+    },
+    skills_download_max_bytes: {
+      doc: "Max bytes allowed for downloading a skills zip (0 disables)",
+      format: "int",
+      default: 200 * 1024 * 1024,
+      env: "ACP_PROXY_SKILLS_DOWNLOAD_MAX_BYTES",
+    },
+    agent_env_allowlist: {
+      doc: "Allowlist of env keys passed to agent (from init.env)",
+      format: "string-array",
+      default: [
+        "CODEX_HOME",
+        "TUIXIU_PROJECT_ID",
+        "TUIXIU_PROJECT_NAME",
+        "TUIXIU_REPO_URL",
+        "TUIXIU_SCM_TYPE",
+        "TUIXIU_DEFAULT_BRANCH",
+        "TUIXIU_BASE_BRANCH",
+        "TUIXIU_RUN_ID",
+        "TUIXIU_RUN_BRANCH",
+        "TUIXIU_WORKSPACE",
+        "TUIXIU_WORKSPACE_GUEST",
+        "TUIXIU_PROJECT_HOME_DIR",
+        "TUIXIU_WORKSPACE_MODE",
+        "TUIXIU_SKIP_WORKSPACE_INIT",
+        "TUIXIU_ROLE_KEY",
+        "TUIXIU_GIT_AUTH_MODE",
+        "TUIXIU_GIT_HTTP_USERNAME",
+        "TUIXIU_GIT_HTTP_PASSWORD",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GITLAB_TOKEN",
+        "GITLAB_ACCESS_TOKEN",
+      ],
+      env: "ACP_PROXY_AGENT_ENV_ALLOWLIST",
     },
     sandbox: {
       terminalEnabled: {

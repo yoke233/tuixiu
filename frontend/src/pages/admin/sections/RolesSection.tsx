@@ -2,12 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createRole, deleteRole, listRoles, updateRole } from "../../../api/roles";
 import { getRoleSkills, putRoleSkills, type RoleSkillItem } from "../../../api/roleSkills";
-import { searchSkills, type SkillSearchItem } from "../../../api/skills";
+import { listSkillVersions, searchSkills, type SkillSearchItem, type SkillVersion } from "../../../api/skills";
 import type { RoleTemplate } from "../../../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
@@ -53,6 +60,9 @@ export function RolesSection(props: Props) {
   const [roleSkillsSearchLoading, setRoleSkillsSearchLoading] = useState(false);
   const [roleSkillsSearchError, setRoleSkillsSearchError] = useState<string | null>(null);
   const [roleSkillsSearchResults, setRoleSkillsSearchResults] = useState<SkillSearchItem[]>([]);
+
+  const [roleSkillVersionsById, setRoleSkillVersionsById] = useState<Record<string, SkillVersion[]>>({});
+  const [roleSkillVersionsLoadingById, setRoleSkillVersionsLoadingById] = useState<Record<string, boolean>>({});
 
   const editingRole = useMemo(() => roles.find((role) => role.id === roleEditingId) ?? null, [roleEditingId, roles]);
 
@@ -313,13 +323,53 @@ export function RolesSection(props: Props) {
         {
           skillId: it.skillId,
           name: it.name,
-          versionPolicy: "latest",
+          versionPolicy: it.latestVersion ? "latest" : "pinned",
           pinnedVersionId: null,
           enabled: true,
         },
       ];
     });
   }, []);
+
+  const ensureRoleSkillVersions = useCallback(
+    async (skillId: string) => {
+      if (!requireAdmin()) return;
+      if (roleSkillVersionsById[skillId]) return;
+
+      setRoleSkillVersionsLoadingById((prev) => ({ ...prev, [skillId]: true }));
+      try {
+        const vs = await listSkillVersions(skillId);
+        setRoleSkillVersionsById((prev) => ({ ...prev, [skillId]: vs }));
+        setRoleSkills((prev) => {
+          const idx = prev.findIndex((x) => x.skillId === skillId);
+          if (idx < 0) return prev;
+          const item = prev[idx];
+          if (!item) return prev;
+          if (item.versionPolicy !== "pinned") return prev;
+          if (item.pinnedVersionId) return prev;
+          const first = vs[0]?.id ?? null;
+          if (!first) return prev;
+          const next = [...prev];
+          next[idx] = { ...item, pinnedVersionId: first };
+          return next;
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setRoleSkillVersionsLoadingById((prev) => ({ ...prev, [skillId]: false }));
+      }
+    },
+    [listSkillVersions, requireAdmin, roleSkillVersionsById, setError],
+  );
+
+  useEffect(() => {
+    if (!active) return;
+    for (const it of roleSkills) {
+      if (it.versionPolicy !== "pinned") continue;
+      if (roleSkillVersionsById[it.skillId]) continue;
+      void ensureRoleSkillVersions(it.skillId);
+    }
+  }, [active, ensureRoleSkillVersions, roleSkillVersionsById, roleSkills]);
 
   const removeRoleSkill = useCallback((skillId: string) => {
     setRoleSkills((prev) => prev.filter((x) => x.skillId !== skillId));
@@ -329,6 +379,15 @@ export function RolesSection(props: Props) {
     setError(null);
     if (!requireAdmin()) return;
     if (!effectiveProjectId || !roleEditingId) return;
+
+    const missingPinned = roleSkills.filter((x) => x.versionPolicy === "pinned" && !x.pinnedVersionId);
+    if (missingPinned.length) {
+      setError("存在 pinned 技能未选择版本，请先选择 pinnedVersionId");
+      for (const it of missingPinned) {
+        void ensureRoleSkillVersions(it.skillId);
+      }
+      return;
+    }
 
     setRoleSkillsSaving(true);
     try {
@@ -348,7 +407,7 @@ export function RolesSection(props: Props) {
     } finally {
       setRoleSkillsSaving(false);
     }
-  }, [effectiveProjectId, putRoleSkills, requireAdmin, roleEditingId, roleSkills, setError]);
+  }, [effectiveProjectId, ensureRoleSkillVersions, putRoleSkills, requireAdmin, roleEditingId, roleSkills, setError]);
 
   const onStartCreate = useCallback(() => {
     resetRoleEdit();
@@ -542,9 +601,85 @@ export function RolesSection(props: Props) {
                   ) : roleSkills.length ? (
                     <div className="row" style={{ marginTop: 10, flexWrap: "wrap", gap: 8 }}>
                       {roleSkills.map((s) => (
-                        <div key={s.skillId} className="row" style={{ gap: 8 }}>
+                        <div key={s.skillId} className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <Badge variant="outline">{s.name || s.skillId}</Badge>
-                          <Button type="button" variant="outline" size="sm" onClick={() => removeRoleSkill(s.skillId)} disabled={roleSkillsSaving}>
+
+                          <Select
+                            value={s.versionPolicy}
+                            onValueChange={(v) => {
+                              const nextPolicy = v === "pinned" ? "pinned" : "latest";
+                              setRoleSkills((prev) =>
+                                prev.map((x) =>
+                                  x.skillId === s.skillId
+                                    ? {
+                                        ...x,
+                                        versionPolicy: nextPolicy,
+                                        pinnedVersionId: nextPolicy === "pinned" ? x.pinnedVersionId : null,
+                                      }
+                                    : x,
+                                ),
+                              );
+                              if (nextPolicy === "pinned") void ensureRoleSkillVersions(s.skillId);
+                            }}
+                          >
+                            <SelectTrigger className="w-[160px]">
+                              <SelectValue placeholder="版本策略" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="latest">latest</SelectItem>
+                              <SelectItem value="pinned">pinned</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          {s.versionPolicy === "pinned" ? (
+                            <Select
+                              value={s.pinnedVersionId ?? ""}
+                              onValueChange={(v) =>
+                                setRoleSkills((prev) =>
+                                  prev.map((x) =>
+                                    x.skillId === s.skillId ? { ...x, pinnedVersionId: v } : x,
+                                  ),
+                                )
+                              }
+                            >
+                              <SelectTrigger className="w-[260px]" disabled={roleSkillVersionsLoadingById[s.skillId] === true}>
+                                <SelectValue
+                                  placeholder={
+                                    roleSkillVersionsLoadingById[s.skillId] === true
+                                      ? "加载版本中…"
+                                      : "选择版本"
+                                  }
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(roleSkillVersionsById[s.skillId] ?? []).map((v) => (
+                                  <SelectItem key={v.id} value={v.id}>
+                                    {new Date(v.importedAt).toLocaleString()} · {v.contentHash.slice(0, 8)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : null}
+
+                          <label className="row" style={{ gap: 8, alignItems: "center" }}>
+                            <Checkbox
+                              checked={s.enabled}
+                              onCheckedChange={(v) =>
+                                setRoleSkills((prev) =>
+                                  prev.map((x) => (x.skillId === s.skillId ? { ...x, enabled: v === true } : x)),
+                                )
+                              }
+                            />
+                            <span className="muted">启用</span>
+                          </label>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeRoleSkill(s.skillId)}
+                            disabled={roleSkillsSaving}
+                          >
                             移除
                           </Button>
                         </div>

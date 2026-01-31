@@ -404,6 +404,11 @@ export class HostProcessProxySandbox implements ProxySandbox {
 
     const [cmd, ...args] = opts.agentCommand;
     const env = { ...process.env, ...this.opts.config.env };
+    const initEnv =
+      opts.init?.env && typeof opts.init.env === "object" && !Array.isArray(opts.init.env)
+        ? { ...(opts.init.env as Record<string, string>) }
+        : null;
+    if (initEnv) Object.assign(env, initEnv);
 
     const useCmdShim = needsCmdShimOnWindows(cmd);
     const resolved = useCmdShim

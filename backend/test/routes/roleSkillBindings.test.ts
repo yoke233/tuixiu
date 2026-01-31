@@ -163,8 +163,8 @@ describe("RoleSkillBinding routes", () => {
       roleTemplate: { findFirst: vi.fn().mockResolvedValue({ id: "r1" }) },
       skill: {
         findMany: vi.fn().mockResolvedValue([
-          { id: "00000000-0000-0000-0000-000000000001" },
-          { id: "00000000-0000-0000-0000-000000000002" },
+          { id: "00000000-0000-0000-0000-000000000001", latestVersionId: "00000000-0000-0000-0000-000000000201" },
+          { id: "00000000-0000-0000-0000-000000000002", latestVersionId: null },
         ]),
       },
       skillVersion: {

@@ -51,11 +51,13 @@ describe("Projects routes", () => {
         workspaceMode: "worktree",
         gitAuthMode: "https_pat",
         defaultRoleKey: undefined,
+        agentWorkspaceNoticeTemplate: undefined,
         gitlabProjectId: undefined,
         gitlabAccessToken: undefined,
         gitlabWebhookSecret: undefined,
         githubAccessToken: undefined,
         githubPollingEnabled: false,
+        enableRuntimeSkillsMounting: false,
       }
     });
     await server.close();

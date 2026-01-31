@@ -32,6 +32,7 @@ import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
 import { makeRunRoutes } from "./routes/runs.js";
 import { makeSandboxRoutes } from "./routes/sandboxes.js";
 import { makeSkillRoutes } from "./routes/skills.js";
+import { makeSkillPackageRoutes } from "./routes/skillPackages.js";
 import { makeRoleSkillBindingRoutes } from "./routes/roleSkillBindings.js";
 import { makeStepRoutes } from "./routes/steps.js";
 import { makeTaskRoutes } from "./routes/tasks.js";
@@ -41,6 +42,8 @@ import { createAcpTunnel } from "./modules/acp/acpTunnel.js";
 import { createSandboxControlClient } from "./modules/sandbox/sandboxControl.js";
 import { startGitHubPollingLoop } from "./modules/scm/githubPolling.js";
 import { createLocalAttachmentStore } from "./modules/attachments/localAttachmentStore.js";
+import { createLocalSkillPackageStore } from "./modules/skills/skillPackageStore.js";
+import { createNpxSkillsCliRunner } from "./modules/skills/npxSkillsCli.js";
 import { resolveGitAuthMode } from "./utils/gitAuth.js";
 import { defaultRunBranchName } from "./utils/gitWorkspace.js";
 import { buildSandboxGitPushEnv } from "./utils/sandboxGitPush.js";
@@ -52,6 +55,17 @@ const env = loadEnv();
 const attachments = createLocalAttachmentStore({
   rootDir: env.ATTACHMENTS_ROOT,
   maxBytes: env.ATTACHMENTS_MAX_BYTES,
+});
+
+const skillPackages = createLocalSkillPackageStore({
+  rootDir: env.SKILL_PACKAGES_ROOT,
+  basePath: "/api/acp-proxy/skills/packages",
+  maxBytes: env.SKILL_PACKAGES_MAX_BYTES,
+});
+
+const skillsCli = createNpxSkillsCliRunner({
+  npxPackageSpec: env.SKILLS_CLI_NPX_PACKAGE,
+  defaultTimeoutMs: env.SKILLS_CLI_TIMEOUT_MS,
 });
 
 const server = Fastify({
@@ -356,12 +370,13 @@ server.register(
 server.register(makeSandboxRoutes({ prisma, sendToAgent: wsGateway.sendToAgent, auth }), {
   prefix: "/api/admin",
 });
-server.register(makeSkillRoutes({ prisma, auth }), { prefix: "/api/admin" });
+server.register(makeSkillRoutes({ prisma, auth, skillsCli, packages: skillPackages }), { prefix: "/api/admin" });
 server.register(makeRoleSkillBindingRoutes({ prisma, auth }), { prefix: "/api/admin" });
 server.register(makeTextTemplateRoutes({ prisma, auth }), { prefix: "/api/admin" });
 server.register(makeAcpProxyRoutes({ bootstrapToken: env.ACP_PROXY_BOOTSTRAP_TOKEN }), {
   prefix: "/api/admin/acp-proxy",
 });
+server.register(makeSkillPackageRoutes({ packages: skillPackages }), { prefix: "/api/acp-proxy" });
 
 server.setNotFoundHandler(async (request, reply) => {
   const url = String(request.url ?? "");

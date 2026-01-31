@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { AuthHelpers } from "../auth.js";
 import type { PrismaDeps } from "../db.js";
+import { writeSkillAuditLog } from "../modules/skills/skillAudit.js";
 
 type VersionPolicy = "latest" | "pinned";
 
@@ -78,6 +79,10 @@ export function makeRoleSkillBindingRoutes(deps: { prisma: PrismaDeps; auth: Aut
         const { projectId, roleId } = paramsSchema.parse(request.params);
         const body = bodySchema.parse(request.body ?? {});
 
+        const actor = (request as any)?.user && typeof (request as any).user === "object"
+          ? { userId: String(((request as any).user as any).userId ?? ""), username: String(((request as any).user as any).username ?? "") }
+          : null;
+
         const role = await deps.prisma.roleTemplate.findFirst({
           where: { id: roleId, projectId },
           select: { id: true },
@@ -105,10 +110,13 @@ export function makeRoleSkillBindingRoutes(deps: { prisma: PrismaDeps; auth: Aut
         }
 
         const skillIds = normalized.map((it) => it.skillId);
+        const latestPolicySkillIds = normalized
+          .filter((it) => it.versionPolicy === "latest")
+          .map((it) => it.skillId);
         if (skillIds.length) {
           const found = await deps.prisma.skill.findMany({
             where: { id: { in: skillIds } },
-            select: { id: true },
+            select: { id: true, latestVersionId: true },
           });
           const foundSet = new Set((found as any[]).map((s) => String((s as any).id ?? "")));
           const missing = skillIds.filter((id) => !foundSet.has(id));
@@ -117,6 +125,20 @@ export function makeRoleSkillBindingRoutes(deps: { prisma: PrismaDeps; auth: Aut
               success: false,
               error: { code: "BAD_INPUT", message: `skillId 不存在: ${missing.join(", ")}` },
             };
+          }
+
+          if (latestPolicySkillIds.length) {
+            const latestMap = new Map<string, string | null>();
+            for (const s of found as any[]) {
+              latestMap.set(String((s as any).id ?? ""), (s as any).latestVersionId ?? null);
+            }
+            const noLatest = latestPolicySkillIds.filter((id) => !latestMap.get(id));
+            if (noLatest.length) {
+              return {
+                success: false,
+                error: { code: "BAD_INPUT", message: `versionPolicy=latest 但 Skill 未发布 latestVersionId: ${noLatest.join(", ")}` },
+              };
+            }
           }
         }
 
@@ -164,6 +186,12 @@ export function makeRoleSkillBindingRoutes(deps: { prisma: PrismaDeps; auth: Aut
           }
         }
 
+        const beforeBindings = await deps.prisma.roleSkillBinding.findMany({
+          where: { roleTemplateId: roleId },
+          orderBy: { createdAt: "asc" },
+          select: { skillId: true, versionPolicy: true, pinnedVersionId: true, enabled: true },
+        });
+
         await deps.prisma.$transaction(async (tx: any) => {
           await tx.roleSkillBinding.deleteMany({ where: { roleTemplateId: roleId } });
           if (!normalized.length) return;
@@ -184,6 +212,27 @@ export function makeRoleSkillBindingRoutes(deps: { prisma: PrismaDeps; auth: Aut
           include: { skill: { select: { id: true, name: true } } },
         });
 
+        await writeSkillAuditLog(deps.prisma, {
+          action: "bind_change",
+          actor,
+          projectId,
+          roleTemplateId: roleId,
+          payload: {
+            from: (beforeBindings as any[]).map((b) => ({
+              skillId: String((b as any).skillId ?? ""),
+              versionPolicy: String((b as any).versionPolicy ?? "latest"),
+              pinnedVersionId: (b as any).pinnedVersionId ?? null,
+              enabled: (b as any).enabled === true,
+            })),
+            to: (bindings as any[]).map((b) => ({
+              skillId: String((b as any).skillId ?? ""),
+              versionPolicy: String((b as any).versionPolicy ?? "latest"),
+              pinnedVersionId: (b as any).pinnedVersionId ?? null,
+              enabled: (b as any).enabled === true,
+            })),
+          },
+        });
+
         return {
           success: true,
           data: {
@@ -202,4 +251,3 @@ export function makeRoleSkillBindingRoutes(deps: { prisma: PrismaDeps; auth: Aut
     );
   };
 }
-

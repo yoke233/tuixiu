@@ -22,6 +22,7 @@ const createProjectBodySchema = z.object({
   gitlabWebhookSecret: z.string().min(1).optional(),
   githubAccessToken: z.string().min(1).optional(),
   githubPollingEnabled: z.boolean().optional(),
+  enableRuntimeSkillsMounting: z.boolean().optional(),
 });
 
 export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAsync {
@@ -49,6 +50,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
           gitlabWebhookSecret: body.gitlabWebhookSecret,
           githubAccessToken: body.githubAccessToken,
           githubPollingEnabled: body.githubPollingEnabled ?? false,
+          enableRuntimeSkillsMounting: body.enableRuntimeSkillsMounting ?? false,
         }
       });
       return { success: true, data: { project: toPublicProject(project as any) } };
@@ -70,6 +72,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
         gitlabWebhookSecret: z.string().min(1).nullable().optional(),
         githubAccessToken: z.string().min(1).nullable().optional(),
         githubPollingEnabled: z.boolean().optional(),
+        enableRuntimeSkillsMounting: z.boolean().optional(),
       });
 
       const { id } = paramsSchema.parse(request.params);
@@ -94,6 +97,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
       if (body.gitlabWebhookSecret !== undefined) data.gitlabWebhookSecret = body.gitlabWebhookSecret;
       if (body.githubAccessToken !== undefined) data.githubAccessToken = body.githubAccessToken;
       if (body.githubPollingEnabled !== undefined) data.githubPollingEnabled = body.githubPollingEnabled;
+      if (body.enableRuntimeSkillsMounting !== undefined) data.enableRuntimeSkillsMounting = body.enableRuntimeSkillsMounting;
 
       const project = await deps.prisma.project.update({
         where: { id },

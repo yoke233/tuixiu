@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,9 +26,7 @@ describe("SkillsSection", () => {
       <SkillsSection active reloadToken={0} requireAdmin={() => true} setError={() => undefined} />,
     );
 
-    expect(
-      await screen.findByText("暂无匹配技能。若这是首次使用，请先导入/入库 skills（后续迭代提供上传/同步能力）。"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("暂无匹配技能。")).toBeInTheDocument();
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(1));
   });
@@ -88,5 +86,99 @@ describe("SkillsSection", () => {
     expect(await screen.findByText("Skill ID")).toBeInTheDocument();
     expect((await screen.findAllByText(skillId)).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText("h1")).toBeInTheDocument();
+  });
+
+  it("can import a skills.sh search result", async () => {
+    const jsonRes = (body: unknown) =>
+      new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+
+    (globalThis.fetch as any).mockImplementation(async (url: any, init?: RequestInit) => {
+      const u = new URL(String(url));
+      const method = String(init?.method ?? "GET").toUpperCase();
+
+      if (u.pathname.endsWith("/api/admin/skills/import") && method === "POST") {
+        return jsonRes({
+          success: true,
+          data: {
+            mode: "new-skill",
+            source: {
+              sourceType: "skills.sh",
+              sourceKey: "vercel-labs/agent-skills@vercel-react-best-practices",
+              sourceRef: "https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices",
+              owner: "vercel-labs",
+              repo: "agent-skills",
+              skill: "vercel-react-best-practices",
+              githubRepoUrl: "https://github.com/vercel-labs/agent-skills",
+              skillDir: "skills/vercel-react-best-practices",
+            },
+            meta: { name: "vercel-react-best-practices", description: null, tags: [] },
+            contentHash: "h1",
+            fileCount: 1,
+            totalBytes: 123,
+          },
+        });
+      }
+
+      if (u.pathname.endsWith("/api/admin/skills/search") && method === "GET") {
+        const provider = u.searchParams.get("provider") ?? "registry";
+        const q = u.searchParams.get("q") ?? "";
+
+        if (provider === "skills.sh" && q === "react") {
+          return jsonRes({
+            success: true,
+            data: {
+              provider: "skills.sh",
+              items: [
+                {
+                  skillId: "external:skills.sh:vercel-labs/agent-skills@vercel-react-best-practices",
+                  name: "vercel-react-best-practices",
+                  description: null,
+                  tags: [],
+                  installed: false,
+                  latestVersion: null,
+                  installs: 1234,
+                  sourceType: "skills.sh",
+                  sourceKey: "vercel-labs/agent-skills@vercel-react-best-practices",
+                  sourceRef: "https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices",
+                  githubRepoUrl: "https://github.com/vercel-labs/agent-skills",
+                  skillDir: "skills/vercel-react-best-practices",
+                },
+              ],
+              nextCursor: null,
+            },
+          });
+        }
+
+        return jsonRes({ success: true, data: { provider, items: [], nextCursor: null } });
+      }
+
+      return jsonRes({ success: true, data: { ok: true } });
+    });
+
+    render(
+      <SkillsSection active reloadToken={0} requireAdmin={() => true} setError={() => undefined} />,
+    );
+
+    await userEvent.click(await screen.findByRole("combobox"));
+    await userEvent.click(await screen.findByRole("option", { name: "skills.sh" }));
+
+    await userEvent.type(await screen.findByPlaceholderText("关键词（skills.sh）"), "react");
+    await userEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+    const row = await screen.findByText("vercel-react-best-practices");
+    const listItem = row.closest("li");
+    expect(listItem).toBeTruthy();
+
+    const importBtn = within(listItem as HTMLElement).getByRole("button", { name: "导入" });
+    await userEvent.click(importBtn);
+
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/admin/skills/import"),
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+
+    expect(await screen.findByText(/导入成功/)).toBeInTheDocument();
   });
 });

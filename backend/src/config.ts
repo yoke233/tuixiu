@@ -5,6 +5,7 @@ import path from "node:path";
 const defaultWorkspacesRoot = path.join(os.homedir(), ".tuixiu", "workspaces");
 const defaultRepoCacheRoot = path.join(os.homedir(), ".tuixiu", "repo-cache");
 const defaultAttachmentsRoot = path.join(os.homedir(), ".tuixiu", "attachments");
+const defaultSkillPackagesRoot = path.join(os.homedir(), ".tuixiu", "skill-packages");
 
 function pathWithDefault(defaultValue: string) {
   return z.preprocess((v) => {
@@ -29,6 +30,10 @@ const envSchema = z.object({
   CLEANUP_INTERVAL_SECONDS: z.coerce.number().int().positive().default(60 * 60),
   ATTACHMENTS_ROOT: pathWithDefault(defaultAttachmentsRoot),
   ATTACHMENTS_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  SKILL_PACKAGES_ROOT: pathWithDefault(defaultSkillPackagesRoot),
+  SKILL_PACKAGES_MAX_BYTES: z.coerce.number().int().positive().default(200 * 1024 * 1024),
+  SKILLS_CLI_NPX_PACKAGE: z.string().min(1).default("skills@latest"),
+  SKILLS_CLI_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   GITLAB_URL: z.string().optional(),
   GITLAB_ACCESS_TOKEN: z.string().optional(),
   GITLAB_PROJECT_ID: z.string().optional(),

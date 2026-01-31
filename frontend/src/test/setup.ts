@@ -6,6 +6,19 @@ afterEach(() => {
   cleanup();
 });
 
+// Radix UI components rely on Pointer Events APIs that jsdom doesn't fully implement.
+// Polyfill minimal stubs to prevent test crashes (e.g. Radix Select).
+if (typeof HTMLElement !== "undefined") {
+  const proto = HTMLElement.prototype as any;
+  if (typeof proto.hasPointerCapture !== "function") proto.hasPointerCapture = () => false;
+  if (typeof proto.setPointerCapture !== "function") proto.setPointerCapture = () => undefined;
+  if (typeof proto.releasePointerCapture !== "function") proto.releasePointerCapture = () => undefined;
+}
+if (typeof Element !== "undefined") {
+  const proto = Element.prototype as any;
+  if (typeof proto.scrollIntoView !== "function") proto.scrollIntoView = () => undefined;
+}
+
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
 

@@ -337,9 +337,9 @@ export function AdminPage() {
                     ? acpSessionsLoading
                     : activeSection === "skills"
                       ? skillsLoading
-                    : activeSection === "textTemplates"
-                      ? textTemplatesLoading
-                      : loading
+                      : activeSection === "textTemplates"
+                        ? textTemplatesLoading
+                        : loading
                 }
               >
                 刷新
@@ -391,6 +391,14 @@ export function AdminPage() {
             onLoadingChange={setTextTemplatesLoading}
           />
 
+          <SkillsSection
+            active={activeSection === "skills"}
+            reloadToken={skillsReloadToken}
+            requireAdmin={requireAdmin}
+            setError={setError}
+            onLoadingChange={setSkillsLoading}
+          />
+
           <div
             className="grid2"
             hidden={
@@ -398,6 +406,7 @@ export function AdminPage() {
               activeSection === "settings" ||
               activeSection === "acpSessions" ||
               activeSection === "policy" ||
+              activeSection === "skills" ||
               activeSection === "textTemplates"
             }
           >
@@ -420,14 +429,6 @@ export function AdminPage() {
               requireAdmin={requireAdmin}
               setError={setError}
               onRefreshGlobal={refresh}
-            />
-
-            <SkillsSection
-              active={activeSection === "skills"}
-              reloadToken={skillsReloadToken}
-              requireAdmin={requireAdmin}
-              setError={setError}
-              onLoadingChange={setSkillsLoading}
             />
 
             <RolesSection
