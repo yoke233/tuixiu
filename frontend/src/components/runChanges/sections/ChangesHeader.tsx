@@ -1,5 +1,7 @@
 import type { RunChangesController } from "../useRunChangesController";
 
+import { Button } from "@/components/ui/button";
+
 export function ChangesHeader(props: { model: RunChangesController }) {
   const {
     canUseApi,
@@ -27,63 +29,75 @@ export function ChangesHeader(props: { model: RunChangesController }) {
         {changes ? `${changes.baseBranch} → ${changes.branch} · ${changes.files.length} files` : "变更与 diff"}
       </div>
       <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-        <button onClick={refresh} disabled={loading}>
+        <Button type="button" variant="secondary" size="sm" onClick={refresh} disabled={loading}>
           刷新
-        </button>
-        <button onClick={onAutoReview} disabled={reviewLoading}>
+        </Button>
+        <Button type="button" variant="secondary" size="sm" onClick={onAutoReview} disabled={reviewLoading}>
           {reviewLoading ? "验收中…" : "自动验收"}
-        </button>
+        </Button>
         {prInfo ? (
           <>
-            <a className="buttonSecondary" href={prInfo.webUrl || "#"} target="_blank" rel="noreferrer">
-              打开 {providerLabel}
-              {prInfo.num ? ` #${prInfo.num}` : ""}
-            </a>
+            <Button asChild variant="secondary" size="sm">
+              <a href={prInfo.webUrl || "#"} target="_blank" rel="noreferrer">
+                打开 {providerLabel}
+                {prInfo.num ? ` #${prInfo.num}` : ""}
+              </a>
+            </Button>
             {canUseApi ? (
               <>
-                <button onClick={onSyncPr} disabled={prLoading}>
+                <Button type="button" size="sm" onClick={onSyncPr} disabled={prLoading}>
                   同步 {providerLabel} 状态
-                </button>
+                </Button>
                 {prInfo.mergeableState === "dirty" || prInfo.mergeableState === "behind" ? (
-                  <button onClick={onAskAgentToFixMerge} disabled={prLoading}>
+                  <Button type="button" size="sm" onClick={onAskAgentToFixMerge} disabled={prLoading}>
                     让 Agent {prInfo.mergeableState === "dirty" ? "解决冲突" : "更新分支"}
-                  </button>
+                  </Button>
                 ) : null}
                 {mergeApproval?.content?.status === "pending" ? (
                   <>
                     <span className="muted" style={{ marginLeft: 4 }}>
                       待审批
                     </span>
-                    <button onClick={onApproveMerge} disabled={prLoading}>
+                    <Button type="button" size="sm" onClick={onApproveMerge} disabled={prLoading}>
                       批准并合并
-                    </button>
-                    <button onClick={onRejectMerge} disabled={prLoading}>
+                    </Button>
+                    <Button type="button" size="sm" variant="secondary" onClick={onRejectMerge} disabled={prLoading}>
                       拒绝
-                    </button>
+                    </Button>
                   </>
                 ) : mergeApproval?.content?.status === "executing" ? (
-                  <button disabled>正在合并…</button>
+                  <Button type="button" size="sm" variant="secondary" disabled>
+                    正在合并…
+                  </Button>
                 ) : mergeApproval?.content?.status === "executed" ? (
-                  <button disabled>已合并</button>
+                  <Button type="button" size="sm" variant="secondary" disabled>
+                    已合并
+                  </Button>
                 ) : (
-                  <button onClick={onMergePr} disabled={prLoading || prInfo.mergeableState === "dirty" || prInfo.mergeable === false}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={onMergePr}
+                    disabled={prLoading || prInfo.mergeableState === "dirty" || prInfo.mergeable === false}
+                  >
                     发起合并审批
-                  </button>
+                  </Button>
                 )}
               </>
             ) : null}
           </>
         ) : canUseApi ? (
-          <button onClick={onCreatePr} disabled={prLoading}>
+          <Button type="button" size="sm" onClick={onCreatePr} disabled={prLoading}>
             创建 {providerLabel}
-          </button>
+          </Button>
         ) : createPrUrl ? (
-          <a className="buttonSecondary" href={createPrUrl} target="_blank" rel="noreferrer">
-            打开 PR 页面
-          </a>
+          <Button asChild variant="secondary" size="sm">
+            <a href={createPrUrl} target="_blank" rel="noreferrer">
+              打开 PR 页面
+            </a>
+          </Button>
         ) : null}
       </div>
     </div>
   );
 }
-

@@ -1,15 +1,18 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { Event } from "../types";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { buildConsoleItems } from "./runConsole/buildConsoleItems";
 import { ConsoleDetailsBlock } from "./runConsole/ConsoleDetailsBlock";
 import {
-  exitToBadgeClass,
+  type BadgeTone,
+  exitToTone,
   getToolTitle,
-  kindToBadgeClass,
-  priorityToBadgeClass,
-  statusToBadgeClass,
+  kindToTone,
+  priorityToTone,
+  statusToTone,
 } from "./runConsole/toolCallInfo";
 import { parseSandboxInstanceStatusText } from "../utils/sandboxStatus";
 
@@ -27,12 +30,38 @@ const INIT_STATUS_LABELS: Record<string, string> = {
   error: "失败",
 };
 
-function initStatusClass(status: string): string {
-  if (status === "done") return "badge green";
-  if (status === "start") return "badge blue";
-  if (status === "progress") return "badge orange";
-  if (status === "error" || status === "failed") return "badge red";
-  return "badge gray";
+function ToneBadge(props: { tone: BadgeTone; children: ReactNode }) {
+  if (props.tone === "success") {
+    return (
+      <Badge className="bg-success text-success-foreground hover:bg-success/80">
+        {props.children}
+      </Badge>
+    );
+  }
+  if (props.tone === "warning") {
+    return (
+      <Badge className="bg-warning text-warning-foreground hover:bg-warning/80">
+        {props.children}
+      </Badge>
+    );
+  }
+  if (props.tone === "danger") {
+    return <Badge variant="destructive">{props.children}</Badge>;
+  }
+  if (props.tone === "info") {
+    return (
+      <Badge className="bg-info text-info-foreground hover:bg-info/80">{props.children}</Badge>
+    );
+  }
+  return <Badge variant="secondary">{props.children}</Badge>;
+}
+
+function initStatusTone(status: string): BadgeTone {
+  if (status === "done") return "success";
+  if (status === "start") return "info";
+  if (status === "progress") return "warning";
+  if (status === "error" || status === "failed") return "danger";
+  return "neutral";
 }
 
 function extractPermissionReason(toolCall: unknown): string | null {
@@ -156,9 +185,10 @@ export function RunConsole(props: {
       {hiddenCount > 0 ? (
         <div className="consoleTrimBar">
           <span className="consoleTrimText">已隐藏 {hiddenCount} 条旧日志</span>
-          <button
+          <Button
             type="button"
-            className="buttonSecondary"
+            variant="secondary"
+            size="sm"
             onClick={() => {
               const el = ref.current;
               if (el)
@@ -167,10 +197,11 @@ export function RunConsole(props: {
             }}
           >
             显示更多
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="buttonSecondary"
+            variant="secondary"
+            size="sm"
             onClick={() => {
               const el = ref.current;
               if (el)
@@ -179,14 +210,15 @@ export function RunConsole(props: {
             }}
           >
             显示全部
-          </button>
+          </Button>
         </div>
       ) : showAll && filteredItems.length > defaultVisibleCount ? (
         <div className="consoleTrimBar">
           <span className="consoleTrimText">已显示全部 {filteredItems.length} 条日志</span>
-          <button
+          <Button
             type="button"
-            className="buttonSecondary"
+            variant="secondary"
+            size="sm"
             onClick={() => {
               stickToBottomRef.current = true;
               setShowAll(false);
@@ -194,7 +226,7 @@ export function RunConsole(props: {
             }}
           >
             仅显示最新 {defaultVisibleCount} 条
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -217,15 +249,15 @@ export function RunConsole(props: {
               defaultOpen
               summary={
                 <>
-                  <span className="badge gray">PLAN</span>
+                  <ToneBadge tone="neutral">PLAN</ToneBadge>
                   <span className="toolSummaryTitle">
                     计划（{counts.completed}/{entries.length}）
                   </span>
                   {counts.in_progress ? (
-                    <span className="badge orange">in_progress {counts.in_progress}</span>
+                    <ToneBadge tone="warning">in_progress {counts.in_progress}</ToneBadge>
                   ) : null}
                   {counts.pending ? (
-                    <span className="badge gray">pending {counts.pending}</span>
+                    <ToneBadge tone="neutral">pending {counts.pending}</ToneBadge>
                   ) : null}
                 </>
               }
@@ -234,9 +266,9 @@ export function RunConsole(props: {
                 <div className="planList">
                   {entries.map((e, idx) => (
                     <div key={`${idx}-${e.status}-${e.content}`} className="planItem">
-                      <span className={statusToBadgeClass(e.status)}>{e.status}</span>
+                      <ToneBadge tone={statusToTone(e.status)}>{e.status}</ToneBadge>
                       {e.priority ? (
-                        <span className={priorityToBadgeClass(e.priority)}>{e.priority}</span>
+                        <ToneBadge tone={priorityToTone(e.priority)}>{e.priority}</ToneBadge>
                       ) : null}
                       <span className="planContent">{e.content}</span>
                     </div>
@@ -251,8 +283,8 @@ export function RunConsole(props: {
           const statusLabel = INIT_STATUS_LABELS[item.initStep.status] ?? item.initStep.status;
           return (
             <div key={item.id} className="consoleItem system consoleInitStep">
-              <span className="badge gray">INIT</span>
-              <span className={initStatusClass(item.initStep.status)}>{statusLabel}</span>
+              <ToneBadge tone="neutral">INIT</ToneBadge>
+              <ToneBadge tone={initStatusTone(item.initStep.status)}>{statusLabel}</ToneBadge>
               <span className="toolSummaryTitle">{stageLabel}</span>
               {item.initStep.message ? (
                 <span className="consoleInitMessage">{item.initStep.message}</span>
@@ -291,14 +323,14 @@ export function RunConsole(props: {
               style={{ display: "grid", gap: 6, whiteSpace: "normal" }}
             >
               <div className="row gap" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
-                <span className="badge orange">PERMISSION</span>
-                {kind ? <span className={kindToBadgeClass(kind)}>{kind}</span> : null}
+                <ToneBadge tone="warning">PERMISSION</ToneBadge>
+                {kind ? <ToneBadge tone={kindToTone(kind)}>{kind}</ToneBadge> : null}
                 {resolved ? (
-                  <span className="badge green">resolved</span>
+                  <ToneBadge tone="success">resolved</ToneBadge>
                 ) : busy ? (
-                  <span className="badge orange">processing</span>
+                  <ToneBadge tone="warning">processing</ToneBadge>
                 ) : (
-                  <span className="badge gray">pending</span>
+                  <ToneBadge tone="neutral">pending</ToneBadge>
                 )}
                 <span className="toolSummaryTitle">{title}</span>
               </div>
@@ -319,10 +351,11 @@ export function RunConsole(props: {
                   const label = (o.name ?? "").trim() || (o.kind ?? "").trim() || o.optionId;
                   const secondary = String(o.kind ?? "").startsWith("reject");
                   return (
-                    <button
+                    <Button
                       key={o.optionId}
                       type="button"
-                      className={secondary ? "buttonSecondary" : undefined}
+                      variant={secondary ? "secondary" : "default"}
+                      size="sm"
                       disabled={!canDecide}
                       title={titleHint}
                       onClick={() =>
@@ -335,14 +368,15 @@ export function RunConsole(props: {
                       }
                     >
                       {label}
-                    </button>
+                    </Button>
                   );
                 })}
 
                 {!req.options.length ? (
-                  <button
+                  <Button
                     type="button"
-                    className="buttonSecondary"
+                    variant="secondary"
+                    size="sm"
                     disabled={!canDecide}
                     title={titleHint}
                     onClick={() =>
@@ -354,7 +388,7 @@ export function RunConsole(props: {
                     }
                   >
                     取消
-                  </button>
+                  </Button>
                 ) : null}
 
                 {!props.permission?.onDecide ? (
@@ -387,7 +421,7 @@ export function RunConsole(props: {
               defaultOpen={Boolean(item.live)}
               summary={
                 <>
-                  <span className="badge gray">THINK</span>
+                  <ToneBadge tone="neutral">THINK</ToneBadge>
                   <span className="toolSummaryTitle">思考</span>
                 </>
               }
@@ -402,7 +436,7 @@ export function RunConsole(props: {
               className={`consoleItem ${item.role}`}
               summary={
                 <>
-                  <span className="badge gray">INFO</span>
+                  <ToneBadge tone="neutral">INFO</ToneBadge>
                   <span className="toolSummaryTitle">{item.detailsTitle}</span>
                 </>
               }
@@ -421,21 +455,19 @@ export function RunConsole(props: {
               className={`consoleItem ${item.role}`}
               summary={
                 <>
-                  <span className="badge gray">TOOL</span>
+                  <ToneBadge tone="neutral">TOOL</ToneBadge>
                   {item.toolCallInfo.kind ? (
-                    <span className={kindToBadgeClass(item.toolCallInfo.kind)}>
-                      {item.toolCallInfo.kind}
-                    </span>
+                    <ToneBadge tone={kindToTone(item.toolCallInfo.kind)}>{item.toolCallInfo.kind}</ToneBadge>
                   ) : null}
                   {item.toolCallInfo.status ? (
-                    <span className={statusToBadgeClass(item.toolCallInfo.status)}>
+                    <ToneBadge tone={statusToTone(item.toolCallInfo.status)}>
                       {item.toolCallInfo.status}
-                    </span>
+                    </ToneBadge>
                   ) : null}
                   {typeof item.toolCallInfo.exitCode === "number" ? (
-                    <span className={exitToBadgeClass(item.toolCallInfo.exitCode)}>
+                    <ToneBadge tone={exitToTone(item.toolCallInfo.exitCode)}>
                       exit {item.toolCallInfo.exitCode}
-                    </span>
+                    </ToneBadge>
                   ) : null}
                   <span className="toolSummaryTitle">{getToolTitle(item.toolCallInfo)}</span>
                 </>

@@ -1,5 +1,7 @@
 import type { ToolCallInfo } from "./types";
 
+export type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
+
 export function extractToolCallInfo(update: any): ToolCallInfo | null {
   if (!update || typeof update !== "object") return null;
 
@@ -85,36 +87,36 @@ export function getToolTitle(info: ToolCallInfo): string {
   return (info.title || info.command || info.toolCallId || "tool_call").substring(0, 110);
 }
 
-export function kindToBadgeClass(kind: string): string {
-  if (kind === "delete") return "badge red";
-  if (kind === "edit") return "badge orange";
-  if (kind === "execute") return "badge blue";
-  if (kind === "read") return "badge purple";
-  if (kind === "search") return "badge blue";
-  if (kind === "fetch") return "badge blue";
-  if (kind === "move") return "badge blue";
-  if (kind === "think") return "badge gray";
-  return "badge gray";
+export function kindToTone(kind: string): BadgeTone {
+  if (kind === "delete") return "danger";
+  if (kind === "edit") return "warning";
+  if (kind === "execute") return "info";
+  if (kind === "read") return "neutral";
+  if (kind === "search") return "info";
+  if (kind === "fetch") return "info";
+  if (kind === "move") return "info";
+  if (kind === "think") return "neutral";
+  return "neutral";
 }
 
-export function statusToBadgeClass(status: string): string {
-  if (status === "pending") return "badge gray";
-  if (status === "in_progress") return "badge orange";
-  if (status === "completed") return "badge green";
-  if (status === "failed") return "badge red";
-  if (status === "cancelled") return "badge gray";
-  return "badge gray";
+export function statusToTone(status: string): BadgeTone {
+  if (status === "pending") return "neutral";
+  if (status === "in_progress") return "warning";
+  if (status === "completed") return "success";
+  if (status === "failed") return "danger";
+  if (status === "cancelled") return "neutral";
+  return "neutral";
 }
 
-export function priorityToBadgeClass(priority: string): string {
-  if (priority === "high") return "badge red";
-  if (priority === "medium") return "badge orange";
-  if (priority === "low") return "badge gray";
-  return "badge gray";
+export function priorityToTone(priority: string): BadgeTone {
+  if (priority === "high") return "danger";
+  if (priority === "medium") return "warning";
+  if (priority === "low") return "neutral";
+  return "neutral";
 }
 
-export function exitToBadgeClass(exitCode: number): string {
-  return exitCode === 0 ? "badge green" : "badge red";
+export function exitToTone(exitCode: number): BadgeTone {
+  return exitCode === 0 ? "success" : "danger";
 }
 
 export function mergeToolCallInfo(a: ToolCallInfo, b: ToolCallInfo): ToolCallInfo {

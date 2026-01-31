@@ -39,7 +39,7 @@ export function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [approvalBusyId, setApprovalBusyId] = useState<string>("");
   const [activeSection, setActiveSection] = useState<AdminSectionKey>(
-    () => getSectionFromSearch(location.search) ?? "projects",
+    () => getSectionFromSearch(location.search) ?? "issues",
   );
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
 
@@ -86,6 +86,17 @@ export function AdminPage() {
     if (!fromUrl) return;
     setActiveSection((prev) => (prev === fromUrl ? prev : fromUrl));
   }, [location.search]);
+
+  useEffect(() => {
+    setError(null);
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    if (ua.includes("jsdom")) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [activeSection]);
 
   const setActiveSectionWithUrl = useCallback(
     (next: AdminSectionKey) => {
@@ -158,6 +169,12 @@ export function AdminPage() {
 
   const activeSectionMeta = ADMIN_SECTION_META[activeSection];
 
+  const navGroups: Array<{ label: string; items: AdminSectionKey[] }> = [
+    { label: "需求", items: ["issues", "archive"] },
+    { label: "运行", items: ["acpSessions", "approvals"] },
+    { label: "配置", items: ["projects", "roles", "textTemplates", "policy", "settings"] },
+  ];
+
   return (
     <div className="adminShell">
       <aside className="adminSidebar">
@@ -207,74 +224,35 @@ export function AdminPage() {
         </div>
 
         <nav className="adminNav" aria-label="管理菜单">
-          <button
-            type="button"
-            className={`adminNavItem ${activeSection === "acpSessions" ? "active" : ""}`}
-            onClick={() => setActiveSectionWithUrl("acpSessions")}
-          >
-            <span>ACP Proxies</span>
-          </button>
-          <button
-            type="button"
-            className={`adminNavItem ${activeSection === "approvals" ? "active" : ""}`}
-            onClick={() => setActiveSectionWithUrl("approvals")}
-          >
-            <span>审批队列</span>
-            {approvals.length ? (
-              <Badge className="bg-warning text-warning-foreground hover:bg-warning/80">
-                {approvals.length}
-              </Badge>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            className={`adminNavItem ${activeSection === "settings" ? "active" : ""}`}
-            onClick={() => setActiveSectionWithUrl("settings")}
-          >
-            <span>平台设置</span>
-          </button>
-          <button
-            type="button"
-            className={`adminNavItem ${activeSection === "policy" ? "active" : ""}`}
-            onClick={() => setActiveSectionWithUrl("policy")}
-          >
-            <span>策略</span>
-          </button>
-          <button
-            type="button"
-            className={`adminNavItem ${activeSection === "projects" ? "active" : ""}`}
-            onClick={() => setActiveSectionWithUrl("projects")}
-          >
-            <span>项目管理</span>
-          </button>
-          <button
-            type="button"
-            className={`adminNavItem ${activeSection === "issues" ? "active" : ""}`}
-            onClick={() => setActiveSectionWithUrl("issues")}
-          >
-            <span>Issue 管理</span>
-          </button>
-          <button
-            type="button"
-            className={`adminNavItem ${activeSection === "roles" ? "active" : ""}`}
-            onClick={() => setActiveSectionWithUrl("roles")}
-          >
-            <span>角色模板</span>
-          </button>
-          <button
-            type="button"
-            className={`adminNavItem ${activeSection === "textTemplates" ? "active" : ""}`}
-            onClick={() => setActiveSectionWithUrl("textTemplates")}
-          >
-            <span>文本模板</span>
-          </button>
-          <button
-            type="button"
-            className={`adminNavItem ${activeSection === "archive" ? "active" : ""}`}
-            onClick={() => setActiveSectionWithUrl("archive")}
-          >
-            <span>Issue 归档</span>
-          </button>
+          {navGroups.map((group) => (
+            <div key={group.label} className="adminNavGroup">
+              <div className="adminNavGroupLabel">{group.label}</div>
+              <div className="adminNavGroupItems">
+                {group.items.map((key) => {
+                  const meta = ADMIN_SECTION_META[key];
+                  const label = meta.nav ?? meta.title;
+                  const isActive = activeSection === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`adminNavItem ${isActive ? "active" : ""}`}
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={() => setActiveSectionWithUrl(key)}
+                      title={meta.desc}
+                    >
+                      <span>{label}</span>
+                      {key === "approvals" && approvals.length ? (
+                        <Badge className="bg-warning text-warning-foreground hover:bg-warning/80">
+                          {approvals.length}
+                        </Badge>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
       </aside>
 
@@ -283,7 +261,18 @@ export function AdminPage() {
           <div className="header">
             <div>
               <h1>{activeSectionMeta.title}</h1>
-              <div className="muted">{activeSectionMeta.desc}</div>
+              <div className="muted">
+                {activeSectionMeta.desc}
+                {effectiveProject ? (
+                  <>
+                    {" · "}Project: <code>{effectiveProject.name}</code>
+                  </>
+                ) : effectiveProjectId ? (
+                  <>
+                    {" · "}projectId: <code>{effectiveProjectId}</code>
+                  </>
+                ) : null}
+              </div>
             </div>
             <div className="row gap">
               <Button variant="link" size="sm" asChild>

@@ -99,7 +99,7 @@ export function IssuesSection(props: Props) {
 
   return (
     <>
-      <section id="issue-github-import" className="card" style={{ gridColumn: "1 / -1" }} hidden={!active}>
+      <section id="issue-github-import" className="card" hidden={!active}>
         <h2 style={{ marginTop: 0 }}>导入 GitHub Issue</h2>
         {effectiveProject?.scmType?.toLowerCase() === "github" ? (
           <form onSubmit={(e) => void onImportGithubIssue(e)} className="form">
@@ -120,7 +120,7 @@ export function IssuesSection(props: Props) {
         )}
       </section>
 
-      <section id="issue-create" className="card" style={{ gridColumn: "1 / -1" }} hidden={!active}>
+      <section id="issue-create" className="card" hidden={!active}>
         <h2 style={{ marginTop: 0 }}>创建 Issue（进入需求池）</h2>
         <form onSubmit={(e) => void onCreateIssue(e)} className="form">
           <label className="label">
@@ -129,11 +129,11 @@ export function IssuesSection(props: Props) {
           </label>
           <label className="label">
             描述
-            <Textarea value={issueDescription} onChange={(e) => setIssueDescription(e.target.value)} />
+            <Textarea value={issueDescription} onChange={(e) => setIssueDescription(e.target.value)} rows={6} />
           </label>
           <label className="label">
             验收标准（每行一条）
-            <Textarea value={issueCriteria} onChange={(e) => setIssueCriteria(e.target.value)} />
+            <Textarea value={issueCriteria} onChange={(e) => setIssueCriteria(e.target.value)} rows={6} />
           </label>
           <Button type="submit" disabled={!effectiveProjectId}>
             提交

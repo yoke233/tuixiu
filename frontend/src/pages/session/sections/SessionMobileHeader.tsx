@@ -5,6 +5,7 @@ import { StatusBadge } from "../../../components/StatusBadge";
 import { ThemeToggle } from "../../../components/ThemeToggle";
 import type { SessionController } from "../useSessionController";
 import { SessionSidebarContent } from "./SessionSidebarContent";
+import { Button } from "@/components/ui/button";
 
 export function SessionMobileHeader(props: { model: SessionController }) {
   const { issue, refreshing, run, sessionState, ws } = props.model;
@@ -25,22 +26,24 @@ export function SessionMobileHeader(props: { model: SessionController }) {
   return (
     <section className="sessionMobileHeader">
       <div className="sessionMobileHeaderRow">
-        <Link className="buttonSecondary sessionBackButton" to="/issues">
-          ← 看板
-        </Link>
+        <Button asChild variant="secondary" size="sm" className="sessionBackButton">
+          <Link to="/issues">← 看板</Link>
+        </Button>
         <div className="sessionMobileTitle">
           <div className="sessionMobileTitleText">{issue?.title ?? "—"}</div>
         </div>
         <div className="sessionMobileMenu" ref={menuRef}>
-          <button
+          <Button
             type="button"
-            className="buttonSecondary sessionMenuButton"
+            variant="secondary"
+            size="icon"
+            className="sessionMenuButton"
             onClick={() => setMenuOpen((open) => !open)}
             aria-label="更多"
             aria-expanded={menuOpen}
           >
             ⋯
-          </button>
+          </Button>
           {menuOpen ? (
             <div className="sessionMobileMenuPanel">
               <div className="sessionMobileMenuMeta">

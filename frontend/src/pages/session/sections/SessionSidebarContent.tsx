@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 
 import { StatusBadge } from "../../../components/StatusBadge";
 import type { SessionController } from "../useSessionController";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type SessionSidebarContentProps = {
   model: SessionController;
@@ -43,33 +45,36 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
       <section className="card">
         <div className="row spaceBetween" style={{ alignItems: "baseline" }}>
           <div style={{ fontWeight: 800 }}>导航</div>
-          <button
+          <Button
             type="button"
-            className="buttonSecondary"
+            variant="secondary"
+            size="sm"
             onClick={() => void refresh()}
             disabled={refreshing || !runId}
           >
             刷新
-          </button>
+          </Button>
         </div>
         <div className="row gap" style={{ marginTop: 10 }}>
           {showBackLink ? (
-            <Link className="buttonSecondary" to="/issues" onClick={handleNavigate}>
-              ← 看板
-            </Link>
+            <Button asChild variant="secondary" size="sm">
+              <Link to="/issues" onClick={handleNavigate}>
+                ← 看板
+              </Link>
+            </Button>
           ) : null}
           {issue?.id ? (
-            <Link className="buttonSecondary" to={`/issues/${issue.id}`} onClick={handleNavigate}>
-              Issue 详情
-            </Link>
+            <Button asChild variant="secondary" size="sm">
+              <Link to={`/issues/${issue.id}`} onClick={handleNavigate}>
+                Issue 详情
+              </Link>
+            </Button>
           ) : null}
-          <Link
-            className="buttonSecondary"
-            to="/admin?section=acpSessions"
-            onClick={handleNavigate}
-          >
-            ACP Proxies
-          </Link>
+          <Button asChild variant="secondary" size="sm">
+            <Link to="/admin?section=acpSessions" onClick={handleNavigate}>
+              ACP Proxies
+            </Link>
+          </Button>
         </div>
       </section>
 
@@ -162,7 +167,7 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
                       style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}
                     >
                       modeId
-                      <input
+                      <Input
                         value={modeDraft}
                         onChange={(e) => setModeDraft(e.target.value)}
                         placeholder={
@@ -172,22 +177,24 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
                         }
                       />
                     </label>
-                    <button
+                    <Button
                       type="button"
-                      className="buttonSecondary"
+                      variant="secondary"
+                      size="sm"
                       onClick={() => setModeDraft(sessionState.currentModeId ?? "")}
                       disabled={settingMode || settingModel}
                       title="把当前 mode 填入输入框"
                     >
                       填入当前
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       onClick={() => void onSetMode(modeDraft)}
                       disabled={!modeDraft.trim() || settingMode || settingModel}
+                      size="sm"
                     >
                       {settingMode ? "设置中…" : "设置 mode"}
-                    </button>
+                    </Button>
                   </div>
 
                   <div className="row gap" style={{ alignItems: "flex-end" }}>
@@ -196,7 +203,7 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
                       style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}
                     >
                       modelId
-                      <input
+                      <Input
                         value={modelDraft}
                         onChange={(e) => setModelDraft(e.target.value)}
                         placeholder={
@@ -206,22 +213,24 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
                         }
                       />
                     </label>
-                    <button
+                    <Button
                       type="button"
-                      className="buttonSecondary"
+                      variant="secondary"
+                      size="sm"
                       onClick={() => setModelDraft(sessionState.currentModelId ?? "")}
                       disabled={settingMode || settingModel}
                       title="把当前 model 填入输入框"
                     >
                       填入当前
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       onClick={() => void onSetModel(modelDraft)}
                       disabled={!modelDraft.trim() || settingMode || settingModel}
+                      size="sm"
                     >
                       {settingModel ? "设置中…" : "设置 model"}
-                    </button>
+                    </Button>
                   </div>
 
                   <div className="muted">
@@ -280,7 +289,7 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
                   </div>
 
                   <div className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
-                    <button
+                    <Button
                       type="button"
                       onClick={() =>
                         allowOption
@@ -292,12 +301,13 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
                       }
                       disabled={!isAdmin || busy || !allowOption}
                       title={!isAdmin ? "需要管理员权限" : ""}
+                      size="sm"
                     >
                       {busy ? "处理中…" : "同意"}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className="buttonSecondary"
+                      variant="secondary"
                       onClick={() =>
                         rejectOption
                           ? onResolvePermission(req, {
@@ -308,9 +318,10 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
                       }
                       disabled={!isAdmin || busy}
                       title={!isAdmin ? "需要管理员权限" : ""}
+                      size="sm"
                     >
                       {rejectOption ? "拒绝" : "取消"}
-                    </button>
+                    </Button>
                     {!isAdmin ? (
                       <span className="muted">仅管理员可审批</span>
                     ) : null}

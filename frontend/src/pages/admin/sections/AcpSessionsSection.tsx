@@ -14,6 +14,7 @@ import { StatusBadge } from "../../../components/StatusBadge";
 import type { AcpSessionSummary, Agent, SandboxSummary } from "../../../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -583,11 +584,7 @@ export function AcpSessionsSection(props: Props) {
                 </label>
                 <label className="label" style={{ margin: 0 }}>
                   <span className="row gap" style={{ alignItems: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={onlyStale}
-                      onChange={(e) => setOnlyStale(e.target.checked)}
-                    />
+                    <Checkbox checked={onlyStale} onCheckedChange={(v) => setOnlyStale(v === true)} />
                     仅 stale（{" > "}90s 未更新）
                   </span>
                 </label>
