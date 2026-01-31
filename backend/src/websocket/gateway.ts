@@ -1131,6 +1131,29 @@ export function createWebSocketGateway(deps: {
           return;
         }
 
+        if (message.type === "workspace_inventory") {
+          if (!proxyId) return;
+
+          const inventoryId =
+            typeof message.inventory_id === "string" && message.inventory_id.trim()
+              ? message.inventory_id.trim()
+              : null;
+          const capturedAt =
+            typeof message.captured_at === "string" && message.captured_at.trim()
+              ? message.captured_at.trim()
+              : null;
+          const workspaces = Array.isArray(message.workspaces) ? message.workspaces : [];
+
+          broadcastToClients({
+            type: "workspace_inventory",
+            proxy_id: proxyId,
+            inventory_id: inventoryId,
+            captured_at: capturedAt,
+            workspaces,
+          });
+          return;
+        }
+
         if (message.type === "agent_update") {
           const chunkSeg = extractChunkSegment(message.content);
           if (chunkSeg) {

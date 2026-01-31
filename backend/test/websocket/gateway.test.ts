@@ -594,6 +594,44 @@ describe("WebSocketGateway", () => {
     );
   });
 
+  it("workspace_inventory broadcasts to clients", async () => {
+    const prisma = {
+      agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    const clientSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+    gateway.__testing.handleClientConnection(clientSocket as any);
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({ type: "register_agent", agent: { id: "proxy-1", name: "codex-1" } }),
+      ),
+    );
+    await flushMicrotasks();
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "workspace_inventory",
+          inventory_id: "ws-1",
+          captured_at: "2026-01-31T12:00:00.000Z",
+          workspaces: [{ run_id: "r1", host_path: "C:/repo/run-r1", exists: true }],
+        }),
+      ),
+    );
+    await flushMicrotasks();
+
+    const msg = clientSocket.sent.map((s) => JSON.parse(s)).find((m) => m.type === "workspace_inventory");
+    expect(msg).toBeTruthy();
+    expect(msg.proxy_id).toBe("proxy-1");
+    expect(msg.inventory_id).toBe("ws-1");
+  });
+
   it("prompt_update broadcasts acp.prompt_update to clients", async () => {
     const prisma = {
       agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },

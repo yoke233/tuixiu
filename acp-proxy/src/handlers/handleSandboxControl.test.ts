@@ -27,6 +27,14 @@ function baseConfig(): any {
   };
 }
 
+function emptyReadableStream(): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.close();
+    },
+  });
+}
+
 describe("handleSandboxControl", () => {
   it("sandbox_control remove emits sandbox_inventory.deleted_instances and ok result", async () => {
     const messages: any[] = [];
@@ -45,7 +53,7 @@ describe("handleSandboxControl", () => {
         status: "running",
         createdAt: null,
       }),
-      listInstances: vi.fn(async () => []),
+      listInstances: async () => [],
       stopInstance: async () => {},
       removeInstance: vi.fn(async () => {}),
       removeImage: async () => {},
@@ -114,7 +122,7 @@ describe("handleSandboxControl", () => {
         status: "running",
         createdAt: null,
       }),
-      listInstances: vi.fn(async () => []),
+      listInstances: async () => [],
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
       removeImage: async () => {},
@@ -184,14 +192,14 @@ describe("handleSandboxControl", () => {
         status: "running",
         createdAt: null,
       }),
-      listInstances: vi.fn(async () => []),
+      listInstances: async () => [],
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
       removeImage: async () => {},
       execProcess: vi.fn(async () => ({
         stdin: new WritableStream<Uint8Array>({ write() {} }),
-        stdout: undefined,
-        stderr: undefined,
+        stdout: emptyReadableStream(),
+        stderr: emptyReadableStream(),
         close: async () => {},
         onExit: (cb: any) => cb({ code: 0, signal: null }),
       })),
@@ -245,10 +253,10 @@ describe("handleSandboxControl", () => {
         status: "running",
         createdAt: null,
       }),
-      listInstances: vi.fn(async () => [
+      listInstances: async () => [
         { instanceName: "tuixiu-run-a", status: "running", createdAt: null },
         { instanceName: "tuixiu-run-b", status: "running", createdAt: null },
-      ]),
+      ],
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
       removeImage: async () => {},
@@ -305,10 +313,10 @@ describe("handleSandboxControl", () => {
         status: "running",
         createdAt: null,
       }),
-      listInstances: vi.fn(async () => [
+      listInstances: async () => [
         { instanceName: "tuixiu-run-a", status: "running", createdAt: null },
         { instanceName: "tuixiu-run-b", status: "running", createdAt: null },
-      ]),
+      ],
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
       removeImage: async () => {},
@@ -359,10 +367,10 @@ describe("handleSandboxControl", () => {
         status: "running",
         createdAt: null,
       }),
-      listInstances: vi.fn(async () => [
+      listInstances: async () => [
         { instanceName: "tuixiu-run-a", status: "running", createdAt: null },
         { instanceName: "tuixiu-run-b", status: "running", createdAt: null },
-      ]),
+      ],
       stopInstance: vi.fn(async () => {}),
       removeInstance: vi.fn(async () => {}),
       removeImage: async () => {},

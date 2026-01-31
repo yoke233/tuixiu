@@ -25,6 +25,7 @@ import {
 import { handleSessionPermission } from "./handlers/handleSessionPermission.js";
 import { handleSandboxControl } from "./handlers/handleSandboxControl.js";
 import { nowIso, type ProxyContext, WORKSPACE_GUEST_PATH } from "./proxyContext.js";
+import { reportWorkspaceInventory } from "./workspace/workspaceInventory.js";
 
 type RunProxyCliOpts = {
   configPath?: string;
@@ -377,6 +378,9 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
         await registerAgent();
         await reportInventory().catch((err) =>
           log("report inventory failed", { err: String(err) }),
+        );
+        await reportWorkspaceInventory(ctx).catch((err) =>
+          log("report workspace inventory failed", { err: String(err) }),
         );
         log("connected & registered");
       },
