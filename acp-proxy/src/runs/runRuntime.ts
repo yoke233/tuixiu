@@ -821,36 +821,18 @@ export async function ensureSessionForPrompt(
     if (!createdSessionId) throw new Error("session/new 未返回 sessionId");
     run.seenSessionIds.add(createdSessionId);
 
-    // codex-acp (以及一些其他 Agent) 会用 configOptions 来表达“Approval Preset”等配置；
-    // 这里不要强行 set_mode("ask")，否则当 Agent 并不支持该 modeId 时会直接报 Invalid params。
-    if (ctx.sandbox.provider === "host_process") {
-      const configOptions = Array.isArray((created as any)?.configOptions)
-        ? ((created as any).configOptions as any[])
-        : null;
-      const modeOpt = configOptions?.find(
-        (x) => x && typeof x === "object" && (x as any).id === "mode",
-      ) as any;
-      const currentValue = typeof modeOpt?.currentValue === "string" ? modeOpt.currentValue : "";
-      const options = Array.isArray(modeOpt?.options) ? (modeOpt.options as any[]) : null;
-      const hasAuto = !!options?.some(
-        (o) => o && typeof o === "object" && (o as any).value === "auto",
-      );
-
-      if (hasAuto && currentValue && currentValue !== "auto") {
-        await withAuthRetry(run, () =>
-          run.agent!.sendRpc<any>("session/set_config_option", {
-            sessionId: createdSessionId,
-            configId: "mode",
-            value: "auto",
-          }),
-        ).catch((err) => {
-          ctx.log("session/set_config_option(mode=auto) failed", {
-            runId: run.runId,
-            sessionId: createdSessionId,
-            err: String(err),
-          });
-        });
-      }
+    try {
+      await ctx.platform.onSessionCreated?.({
+        run,
+        sessionId: createdSessionId,
+        createdMeta: created,
+      });
+    } catch (err) {
+      ctx.log("platform.onSessionCreated failed", {
+        runId: run.runId,
+        sessionId: createdSessionId,
+        err: String(err),
+      });
     }
     prompt = composePromptWithContext(opts.context, prompt, promptCapabilities);
     return { sessionId: createdSessionId, prompt, created: true };
