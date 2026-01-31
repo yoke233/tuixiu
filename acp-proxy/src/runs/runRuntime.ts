@@ -19,6 +19,7 @@ import { AgentBridge } from "../acp/agentBridge.js";
 
 import type { RunRuntime } from "./runTypes.js";
 import { mapCwdForHostProcess } from "./hostCwd.js";
+import { defaultCwdForRun } from "./workspacePath.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -81,6 +82,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
   run.lastUsedAt = Date.now();
 
   const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
+  const workspaceGuestRoot = defaultCwdForRun({ workspaceMode, runId });
   if (workspaceMode === "mount") {
     const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
     if (!rootRaw) {
@@ -103,7 +105,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
     run.acpClient = new AcpClientFacade({
       runId,
       instanceName,
-      workspaceGuestRoot: WORKSPACE_GUEST_PATH,
+      workspaceGuestRoot,
       workspaceHostRoot: run.hostWorkspacePath,
       sandbox: ctx.sandbox as any,
       log: ctx.log,
@@ -136,7 +138,7 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
   const info = await ctx.sandbox.ensureInstanceRunning({
     runId,
     instanceName,
-    workspaceGuestPath: WORKSPACE_GUEST_PATH,
+    workspaceGuestPath: workspaceGuestRoot,
     env: undefined,
     mounts: run.workspaceMounts,
   });
@@ -275,7 +277,7 @@ export async function runInitScript(
     proc = await ctx.sandbox.execProcess({
       instanceName: run.instanceName,
       command: ["bash", "-lc", script],
-      cwdInGuest: WORKSPACE_GUEST_PATH,
+      cwdInGuest: defaultCwdForRun({ workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount", runId: run.runId }),
       env,
     });
   } catch (err) {
@@ -421,7 +423,7 @@ export async function startAgent(
   const res = await ctx.sandbox.openAgent({
     runId: run.runId,
     instanceName: run.instanceName,
-    workspaceGuestPath: WORKSPACE_GUEST_PATH,
+    workspaceGuestPath: defaultCwdForRun({ workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount", runId: run.runId }),
     mounts: run.workspaceMounts,
     agentCommand: ctx.cfg.agent_command,
     init,
@@ -439,7 +441,10 @@ export async function startAgent(
     run.acpClient = new AcpClientFacade({
       runId: run.runId,
       instanceName: run.instanceName,
-      workspaceGuestRoot: WORKSPACE_GUEST_PATH,
+      workspaceGuestRoot: defaultCwdForRun({
+        workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount",
+        runId: run.runId,
+      }),
       workspaceHostRoot: run.hostWorkspacePath,
       sandbox: ctx.sandbox as any,
       log: ctx.log,

@@ -548,6 +548,52 @@ describe("WebSocketGateway", () => {
     });
   });
 
+  it("sandbox_inventory accepts deleted_instances and marks them as deleted/missing", async () => {
+    const prisma = {
+      agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
+      run: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      sandboxInstance: { upsert: vi.fn().mockResolvedValue({}) },
+    } as any;
+
+    const gateway = createWebSocketGateway({ prisma });
+    const agentSocket = new FakeSocket();
+    gateway.__testing.handleAgentConnection(agentSocket as any, vi.fn());
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({ type: "register_agent", agent: { id: "proxy-1", name: "codex-1" } }),
+      ),
+    );
+    await flushMicrotasks();
+
+    agentSocket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "sandbox_inventory",
+          inventory_id: "inv-3",
+          captured_at: "2026-01-31T12:00:00.000Z",
+          deleted_instances: [{ instance_name: "tuixiu-run-r3", run_id: "r3" }],
+        }),
+      ),
+    );
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(prisma.sandboxInstance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          proxyId: "proxy-1",
+          instanceName: "tuixiu-run-r3",
+          runId: "r3",
+          status: "missing",
+          lastError: "deleted",
+        }),
+      }),
+    );
+  });
+
   it("prompt_update broadcasts acp.prompt_update to clients", async () => {
     const prisma = {
       agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },

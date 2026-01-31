@@ -215,6 +215,45 @@ describe("acpAgentExecutor", () => {
     expect(promptText).toContain("测试要求:");
   });
 
+  it("git_clone uses per-run workspace dir in init env (workspace/run-)", async () => {
+    const run = makeRun({ kind: "test.run" });
+    const role = makeRoleTemplate({
+      initScript: "echo hi",
+      initTimeoutSeconds: 10,
+    });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
+
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
+    } as any;
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([agent]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      issue: { update: vi.fn().mockResolvedValue(undefined) },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(role) },
+      task: { update: vi.fn().mockResolvedValue(undefined) },
+    } as any;
+
+    await startAcpAgentExecution({ prisma, acp }, "r1");
+
+    expect(acp.promptRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "r1",
+        init: expect.objectContaining({
+          env: expect.objectContaining({
+            TUIXIU_WORKSPACE_GUEST: "/workspace/run-r1",
+          }),
+        }),
+      }),
+    );
+  });
+
   it("uses code.review template vars", async () => {
     const run = makeRun({
       kind: "code.review",

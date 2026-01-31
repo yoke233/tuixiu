@@ -87,6 +87,9 @@ export function makeSandboxRoutes(deps: {
           "ensure_running",
           "stop",
           "remove",
+          "prune_orphans",
+          "gc",
+          "remove_workspace",
           "report_inventory",
           "remove_image",
         ]),
@@ -118,6 +121,56 @@ export function makeSandboxRoutes(deps: {
             instance_name: item.instanceName,
             run_id: item.runId ?? null,
           })),
+        } as any);
+        return { success: true, data: { ok: true } };
+      }
+
+      if (body.action === "prune_orphans") {
+        if (!body.proxyId) {
+          return {
+            success: false,
+            error: { code: "BAD_REQUEST", message: "action=prune_orphans 需要 proxyId" },
+          };
+        }
+        const expected = await deps.prisma.sandboxInstance.findMany({
+          where: { proxyId: body.proxyId } as any,
+          select: { instanceName: true, runId: true } as any,
+          take: 500,
+        } as any);
+
+        await deps.sendToAgent(body.proxyId, {
+          type: "sandbox_control",
+          action: "prune_orphans",
+          expected_instances: (expected as any[]).map((item) => ({
+            instance_name: item.instanceName,
+            run_id: item.runId ?? null,
+          })),
+        } as any);
+        return { success: true, data: { ok: true } };
+      }
+
+      if (body.action === "gc") {
+        if (!body.proxyId) {
+          return {
+            success: false,
+            error: { code: "BAD_REQUEST", message: "action=gc 需要 proxyId" },
+          };
+        }
+        const expected = await deps.prisma.sandboxInstance.findMany({
+          where: { proxyId: body.proxyId } as any,
+          select: { instanceName: true, runId: true } as any,
+          take: 500,
+        } as any);
+
+        await deps.sendToAgent(body.proxyId, {
+          type: "sandbox_control",
+          action: "gc",
+          request_id: uuidv7(),
+          expected_instances: (expected as any[]).map((item) => ({
+            instance_name: item.instanceName,
+            run_id: item.runId ?? null,
+          })),
+          dry_run: true,
         } as any);
         return { success: true, data: { ok: true } };
       }

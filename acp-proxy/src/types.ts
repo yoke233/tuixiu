@@ -95,17 +95,50 @@ export type SandboxControlMessage = {
     | "ensure_running"
     | "stop"
     | "remove"
+    | "prune_orphans"
+    | "gc"
+    | "remove_workspace"
     | "report_inventory"
     | "remove_image"
     | "git_push";
   image?: string;
-  expected_instances?: Array<{ instance_name: string; run_id: string }>;
+  expected_instances?: Array<{ instance_name: string; run_id: string | null }>;
+  dry_run?: boolean;
+  gc?: {
+    remove_orphans?: boolean;
+    remove_workspaces?: boolean;
+    max_delete_count?: number;
+  };
+  workspace_mode?: "mount" | "git_clone";
   request_id?: string;
   branch?: string;
   cwd?: string;
   env?: Record<string, string>;
   timeout_seconds?: number;
   remote?: string;
+};
+
+export type SandboxInventoryMessage = {
+  type: "sandbox_inventory";
+  inventory_id: string;
+  captured_at?: string;
+  provider?: string;
+  runtime?: string;
+  instances?: Array<{ instance_name: string; run_id?: string | null; status?: string }>;
+  missing_instances?: Array<{ instance_name: string; run_id?: string | null }>;
+  deleted_instances?: Array<{
+    instance_name: string;
+    run_id?: string | null;
+    deleted_at?: string;
+    reason?: string;
+  }>;
+  deleted_workspaces?: Array<{
+    instance_name?: string | null;
+    run_id?: string | null;
+    workspace_mode?: string | null;
+    deleted_at?: string;
+    reason?: string;
+  }>;
 };
 
 export type IncomingMessage =

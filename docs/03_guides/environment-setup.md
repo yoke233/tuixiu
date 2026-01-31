@@ -161,7 +161,7 @@ BoxLite Node SDK 已作为 `acp-proxy` 依赖（`pnpm install` 后即可）。�
 
 BoxLite 支持两种工作区模式（`sandbox.boxlite.workspaceMode`）：
 
-- `git_clone`（推荐，不挂载）：VM 内 `git clone` + 在运行分支上修改并 `git push`；后端通过 `git fetch` 拉取该分支来展示 diff/创建 PR。
+- `git_clone`（推荐，不挂载）：VM 内 `git clone` 到 `/workspace/run-<runId>` + 在运行分支上修改并 `git push`；后端通过 `git fetch` 拉取该分支来展示 diff/创建 PR。
 - `mount`（挂载）：通过 `sandbox.boxlite.volumes` 把宿主机 worktree 挂到 VM（例如 `/workspace`），Agent 的文件改动直接落到宿主机，后端从本地 worktree 读取 diff/提交并创建 PR。
 
 准备一个可运行的 ACP Agent 镜像（推荐）：

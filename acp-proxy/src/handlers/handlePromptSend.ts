@@ -1,5 +1,4 @@
 import type { ProxyContext } from "../proxyContext.js";
-import { WORKSPACE_GUEST_PATH } from "../proxyContext.js";
 import {
   assertPromptBlocksSupported,
   composePromptWithContext,
@@ -13,6 +12,7 @@ import {
   withAuthRetry,
 } from "../runs/runRuntime.js";
 import { mapCwdForHostProcess } from "../runs/hostCwd.js";
+import { defaultCwdForRun } from "../runs/workspacePath.js";
 
 export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<void> {
   const runId = String(msg?.run_id ?? "").trim();
@@ -48,8 +48,10 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
     const init =
       msg?.init && typeof msg.init === "object" && !Array.isArray(msg.init) ? msg.init : undefined;
 
+    const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
+    const defaultCwd = defaultCwdForRun({ workspaceMode, runId });
     const cwd =
-      typeof msg?.cwd === "string" && msg.cwd.trim() ? msg.cwd.trim() : WORKSPACE_GUEST_PATH;
+      typeof msg?.cwd === "string" && msg.cwd.trim() ? msg.cwd.trim() : defaultCwd;
     const cwdForAgent =
       ctx.sandbox.provider === "host_process"
         ? mapCwdForHostProcess(cwd, run.hostWorkspacePath ?? "")

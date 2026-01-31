@@ -8,6 +8,8 @@ import type { CreateWorkspace } from "../executors/types.js";
 import { dispatchExecutionForRun } from "../modules/workflow/executionDispatch.js";
 import { TaskEngineError, createTaskFromTemplate, startStep } from "../modules/workflow/taskEngine.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { getSandboxWorkspaceMode } from "../utils/sandboxCaps.js";
+import { resolveAgentWorkspaceCwd } from "../utils/agentWorkspaceCwd.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -260,11 +262,11 @@ export function makeAcpSessionRoutes(deps: {
           return { success: false, error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法关闭 session" } };
         }
 
+        const cwd = resolveAgentWorkspaceCwd({
+          runId,
+          sandboxWorkspaceMode: getSandboxWorkspaceMode((run as any).agent?.capabilities),
+        });
         try {
-          const cwd = typeof (run as any).workspacePath === "string" && (run as any).workspacePath.trim()
-            ? String((run as any).workspacePath)
-            : "/workspace";
-
           await deps.acp.cancelSession({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId });
 
           await deps.prisma.run
@@ -394,8 +396,12 @@ export function makeAcpSessionRoutes(deps: {
           return { success: false, error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法设置 mode" } };
         }
 
+        const cwd = resolveAgentWorkspaceCwd({
+          runId,
+          sandboxWorkspaceMode: getSandboxWorkspaceMode((run as any).agent?.capabilities),
+        });
         try {
-          await deps.acp.setSessionMode({ proxyId: (run as any).agent.proxyId, runId, cwd: "/workspace", sessionId, modeId });
+          await deps.acp.setSessionMode({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId, modeId });
         } catch (error) {
           return {
             success: false,
@@ -439,8 +445,12 @@ export function makeAcpSessionRoutes(deps: {
           return { success: false, error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法设置 model" } };
         }
 
+        const cwd = resolveAgentWorkspaceCwd({
+          runId,
+          sandboxWorkspaceMode: getSandboxWorkspaceMode((run as any).agent?.capabilities),
+        });
         try {
-          await deps.acp.setSessionModel({ proxyId: (run as any).agent.proxyId, runId, cwd: "/workspace", sessionId, modelId });
+          await deps.acp.setSessionModel({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId, modelId });
         } catch (error) {
           return {
             success: false,

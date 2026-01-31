@@ -261,4 +261,81 @@ describe("proxy/handlers", () => {
       ),
     ).toBe(true);
   });
+
+  it("handlePromptSend uses per-run cwd for git_clone (workspace/run-)", async () => {
+    const h = createHarness();
+    const messages: any[] = [];
+
+    const sandbox: ProxySandbox = {
+      provider: "boxlite_oci",
+      runtime: null,
+      agentMode: "exec",
+      inspectInstance: async (instanceName) => ({
+        instanceName,
+        status: "running",
+        createdAt: null,
+      }),
+      ensureInstanceRunning: async (opts) => ({
+        instanceName: opts.instanceName,
+        status: "running",
+        createdAt: null,
+      }),
+      listInstances: async () => [],
+      stopInstance: async () => {},
+      removeInstance: async () => {},
+      removeImage: async () => {},
+      execProcess: async () => {
+        throw new Error("not implemented");
+      },
+      openAgent: async () => ({ handle: h.handle, created: true, initPending: false }),
+    };
+
+    const ctx = {
+      cfg: { ...baseConfig(), sandbox: { ...baseConfig().sandbox, workspaceMode: "git_clone" } },
+      sandbox,
+      runs: new RunManager(),
+      send: (payload: unknown) => messages.push(payload),
+      log: () => {},
+    };
+
+    const p = handlePromptSend(ctx as any, {
+      type: "prompt_send",
+      run_id: "r1",
+      prompt_id: "p1",
+      prompt: [{ type: "text", text: "1+1=?" }],
+    });
+
+    const initReq = await waitFor(() => h.received.find((m) => m.method === "initialize"), 2_000);
+    await h.sendStdout({
+      jsonrpc: "2.0",
+      id: initReq.id,
+      result: {
+        agentCapabilities: { loadSession: false, promptCapabilities: {} },
+        authMethods: [],
+      },
+    });
+
+    const newReq = await waitFor(() => h.received.find((m) => m.method === "session/new"), 2_000);
+    expect(newReq?.params?.cwd).toBe("/workspace/run-r1");
+    await h.sendStdout({ jsonrpc: "2.0", id: newReq.id, result: { sessionId: "s1" } });
+
+    const promptReq = await waitFor(
+      () => h.received.find((m) => m.method === "session/prompt"),
+      2_000,
+    );
+    await h.sendStdout({ jsonrpc: "2.0", id: promptReq.id, result: { stopReason: "end_turn" } });
+
+    await p;
+
+    expect(
+      messages.some(
+        (m) =>
+          m &&
+          typeof m === "object" &&
+          (m as any).type === "prompt_result" &&
+          (m as any).run_id === "r1" &&
+          (m as any).ok === true,
+      ),
+    ).toBe(true);
+  });
 });

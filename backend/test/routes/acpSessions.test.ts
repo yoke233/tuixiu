@@ -197,7 +197,7 @@ describe("ACP session admin routes", () => {
           workspacePath: "C:/repo/.worktrees/run-1",
           acpSessionId: "s1",
           metadata: null,
-          agent: { proxyId: "proxy-1" },
+          agent: { proxyId: "proxy-1", capabilities: { sandbox: { workspaceMode: "git_clone" } } },
         }),
         update: vi.fn().mockResolvedValue({ id: runId }),
       },
@@ -223,7 +223,7 @@ describe("ACP session admin routes", () => {
     expect(acp.cancelSession).toHaveBeenCalledWith({
       proxyId: "proxy-1",
       runId,
-      cwd: "C:/repo/.worktrees/run-1",
+      cwd: `/workspace/run-${runId}`,
       sessionId: "s1",
     });
     expect(prisma.run.update).toHaveBeenCalledWith(
@@ -276,6 +276,86 @@ describe("ACP session admin routes", () => {
         }),
       }),
     );
+
+    await server.close();
+  });
+
+  it("POST /api/admin/acp-sessions/set-mode uses per-run cwd for git_clone", async () => {
+    const server = createHttpServer();
+    const runId = "00000000-0000-0000-0000-000000000003";
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: runId,
+          agent: { proxyId: "proxy-1", capabilities: { sandbox: { workspaceMode: "git_clone" } } },
+        }),
+      },
+    } as any;
+    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+    const acp = {
+      setSessionMode: vi.fn().mockResolvedValue(undefined),
+    } as any;
+    const auth = {
+      requireRoles: vi.fn().mockReturnValue(async () => {}),
+    } as any;
+
+    await server.register(makeAcpSessionRoutes({ prisma, sendToAgent, acp, auth }), { prefix: "/api/admin" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/admin/acp-sessions/set-mode",
+      payload: { runId, sessionId: "s1", modeId: "auto" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { ok: true } });
+    expect(acp.setSessionMode).toHaveBeenCalledWith({
+      proxyId: "proxy-1",
+      runId,
+      cwd: `/workspace/run-${runId}`,
+      sessionId: "s1",
+      modeId: "auto",
+    });
+
+    await server.close();
+  });
+
+  it("POST /api/admin/acp-sessions/set-model uses per-run cwd for git_clone", async () => {
+    const server = createHttpServer();
+    const runId = "00000000-0000-0000-0000-000000000003";
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: runId,
+          agent: { proxyId: "proxy-1", capabilities: { sandbox: { workspaceMode: "git_clone" } } },
+        }),
+      },
+    } as any;
+    const sendToAgent = vi.fn().mockResolvedValue(undefined);
+    const acp = {
+      setSessionModel: vi.fn().mockResolvedValue(undefined),
+    } as any;
+    const auth = {
+      requireRoles: vi.fn().mockReturnValue(async () => {}),
+    } as any;
+
+    await server.register(makeAcpSessionRoutes({ prisma, sendToAgent, acp, auth }), { prefix: "/api/admin" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/admin/acp-sessions/set-model",
+      payload: { runId, sessionId: "s1", modelId: "gpt-4.1" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { ok: true } });
+    expect(acp.setSessionModel).toHaveBeenCalledWith({
+      proxyId: "proxy-1",
+      runId,
+      cwd: `/workspace/run-${runId}`,
+      sessionId: "s1",
+      modelId: "gpt-4.1",
+    });
 
     await server.close();
   });

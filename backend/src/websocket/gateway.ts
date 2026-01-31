@@ -127,6 +127,14 @@ type SandboxInventoryMessage = {
     provider?: string;
     runtime?: string;
   }>;
+  deleted_instances?: Array<{
+    instance_name: string;
+    run_id?: string | null;
+    deleted_at?: string;
+    reason?: string;
+    provider?: string;
+    runtime?: string;
+  }>;
 };
 
 type AnyAgentMessage =
@@ -891,6 +899,9 @@ export function createWebSocketGateway(deps: {
           const missingInstances = Array.isArray(message.missing_instances)
             ? message.missing_instances
             : [];
+          const deletedInstances = Array.isArray(message.deleted_instances)
+            ? message.deleted_instances
+            : [];
           const capturedAt = parseTimestamp(message.captured_at) ?? new Date();
           const providerDefault =
             typeof message.provider === "string" && message.provider.trim()
@@ -990,6 +1001,75 @@ export function createWebSocketGateway(deps: {
               typeof inst.last_error === "string" && inst.last_error.trim()
                 ? inst.last_error.trim()
                 : "inventory_missing";
+            const provider =
+              typeof inst.provider === "string" && inst.provider.trim()
+                ? inst.provider.trim()
+                : providerDefault;
+            const runtime =
+              typeof inst.runtime === "string" && inst.runtime.trim()
+                ? inst.runtime.trim()
+                : runtimeDefault;
+
+            const upsert = async (opts: { runExists: boolean }) => {
+              await deps.prisma.sandboxInstance
+                .upsert({
+                  where: { proxyId_instanceName: { proxyId, instanceName } } as any,
+                  create: {
+                    id: uuidv7(),
+                    proxyId,
+                    instanceName,
+                    ...(opts.runExists && runId ? { runId } : {}),
+                    provider,
+                    runtime,
+                    status: status as any,
+                    lastSeenAt,
+                    lastError,
+                  } as any,
+                  update: {
+                    ...(opts.runExists && runId ? { runId } : {}),
+                    provider,
+                    runtime,
+                    status: status as any,
+                    lastSeenAt,
+                    lastError,
+                  } as any,
+                } as any)
+                .catch(() => {});
+            };
+
+            if (runId) {
+              await enqueueRunTask(runId, async () => {
+                const runRes = await deps.prisma.run
+                  .updateMany({
+                    where: { id: runId },
+                    data: {
+                      sandboxInstanceName: instanceName,
+                      sandboxStatus: status as any,
+                      sandboxLastSeenAt: lastSeenAt,
+                      sandboxLastError: lastError,
+                    } as any,
+                  } as any)
+                  .catch(() => ({ count: 0 }));
+
+                await upsert({ runExists: runRes.count > 0 });
+              });
+              continue;
+            }
+
+            await upsert({ runExists: false });
+          }
+
+          for (const inst of deletedInstances) {
+            if (!inst || typeof inst !== "object") continue;
+            const instanceName =
+              typeof inst.instance_name === "string" ? inst.instance_name.trim() : "";
+            if (!instanceName) continue;
+
+            const runId =
+              typeof inst.run_id === "string" && inst.run_id.trim() ? inst.run_id.trim() : null;
+            const status = "missing";
+            const lastSeenAt = capturedAt;
+            const lastError = "deleted";
             const provider =
               typeof inst.provider === "string" && inst.provider.trim()
                 ? inst.provider.trim()

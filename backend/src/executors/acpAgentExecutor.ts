@@ -7,6 +7,7 @@ import { renderTextTemplateFromDb } from "../modules/templates/textTemplates.js"
 import { renderTextTemplate } from "../utils/textTemplate.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../utils/agentInit.js";
 import { getSandboxWorkspaceMode } from "../utils/sandboxCaps.js";
+import { resolveAgentWorkspaceCwd } from "../utils/agentWorkspaceCwd.js";
 import {
   assertRoleGitAuthEnv,
   pickGitAccessToken,
@@ -421,6 +422,11 @@ export async function startAcpAgentExecution(
     repoUrl: project?.repoUrl ?? null,
     gitAuthMode: project?.gitAuthMode ?? null,
   });
+  const sandboxWorkspaceMode = getSandboxWorkspaceMode((agent as any)?.capabilities);
+  const agentWorkspaceCwd = resolveAgentWorkspaceCwd({
+    runId: String(run.id),
+    sandboxWorkspaceMode,
+  });
   const initEnv: Record<string, string> = {
     ...roleEnv,
     TUIXIU_PROJECT_ID: String(issue.projectId),
@@ -432,10 +438,9 @@ export async function startAcpAgentExecution(
     TUIXIU_RUN_ID: String(run.id),
     TUIXIU_RUN_BRANCH: String(workspace.branchName),
     TUIXIU_WORKSPACE: String(workspace.workspacePath),
-    TUIXIU_WORKSPACE_GUEST: "/workspace",
+    TUIXIU_WORKSPACE_GUEST: agentWorkspaceCwd,
     TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(issue.projectId)}`,
   };
-  const sandboxWorkspaceMode = getSandboxWorkspaceMode((agent as any)?.capabilities);
   if (sandboxWorkspaceMode) {
     initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
     if (sandboxWorkspaceMode === "mount") {
@@ -471,7 +476,7 @@ export async function startAcpAgentExecution(
   await deps.acp.promptRun({
     proxyId: String(agent.proxyId ?? ""),
     runId: run.id,
-    cwd: "/workspace",
+    cwd: agentWorkspaceCwd,
     sessionId: (run as any).acpSessionId ?? null,
     prompt: [{ type: "text", text: promptParts.join("\n\n") }],
     init,
