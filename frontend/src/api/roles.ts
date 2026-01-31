@@ -13,7 +13,7 @@ export type CreateRoleTemplateInput = {
 
 export async function listRoles(projectId: string): Promise<RoleTemplate[]> {
   const data = await apiGet<{ roles: RoleTemplate[] }>(`/projects/${projectId}/roles`);
-  return data.roles;
+  return Array.isArray(data.roles) ? data.roles : [];
 }
 
 export async function createRole(projectId: string, input: CreateRoleTemplateInput): Promise<RoleTemplate> {

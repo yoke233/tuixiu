@@ -23,6 +23,8 @@ describe("IssueListPage", () => {
       JSON.stringify({ id: "u1", username: "admin", role: "admin" }),
     );
     vi.stubGlobal("fetch", vi.fn());
+    // AuthProvider 会在 mount 时调用 /auth/me；统一在 beforeEach 提供该响应，避免每个用例依赖调用顺序。
+    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "admin", role: "admin" } } });
   });
 
   afterEach(() => {
@@ -30,7 +32,6 @@ describe("IssueListPage", () => {
   });
 
   it("renders issues list after loading and shows admin quick actions", async () => {
-    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "admin", role: "admin" } } });
     mockFetchJsonOnce({
       success: true,
       data: {

@@ -143,6 +143,16 @@ export class OrchestratorClient {
         ws = new WebSocket(this.url, this.headers ? { headers: this.headers } : undefined);
         this.ws = ws;
 
+        ws.on("close", (code, reason) => {
+          const reasonText =
+            typeof reason === "string" ? reason : reason ? reason.toString() : "";
+          this.log("ws closed", {
+            url: this.url,
+            code,
+            ...(reasonText ? { reason: reasonText } : {}),
+          });
+        });
+
         ws.on("message", (data) => {
           try {
             const text = data.toString();

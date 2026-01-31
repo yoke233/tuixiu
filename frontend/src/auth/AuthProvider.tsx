@@ -5,6 +5,14 @@ import type { User, UserRole } from "../types";
 import { AuthContext, type AuthState } from "./AuthContext";
 import { clearStoredAuth, getStoredToken, getStoredUser, setStoredToken, setStoredUser } from "./storage";
 
+function parseHttpStatusFromError(err: unknown): number | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  const m = /^HTTP\s+(\d+):/.exec(msg);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function AuthProvider(props: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
@@ -19,11 +27,22 @@ export function AuthProvider(props: { children: ReactNode }) {
         setStoredUser(u);
         setStatus("authenticated");
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        clearStoredAuth();
-        setUser(null);
-        setStatus("anonymous");
+        const httpStatus = parseHttpStatusFromError(err);
+        const hadStoredAuth = Boolean(getStoredUser()) || Boolean(getStoredToken());
+
+        // 401/403 视为 token/cookie 已失效：清理并进入匿名状态。
+        if (httpStatus === 401 || httpStatus === 403 || !hadStoredAuth) {
+          clearStoredAuth();
+          setUser(null);
+          setToken(null);
+          setStatus("anonymous");
+          return;
+        }
+
+        // 其他错误（网络/临时故障）：保留本地登录态，避免“瞬间被登出”。
+        setStatus((prev) => (prev === "loading" ? "authenticated" : prev));
       });
 
     return () => {

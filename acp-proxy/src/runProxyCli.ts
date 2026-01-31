@@ -54,7 +54,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
   const isWsl =
     process.platform === "linux" && !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
 
-  const registerProxyToken = async (): Promise<string | null> => {
+  const registerProxyTokenOnce = async (): Promise<string | null> => {
     if (!cfg.register_url?.trim() || !cfg.bootstrap_token?.trim()) return null;
     const res = await fetch(cfg.register_url.trim(), {
       method: "POST",
@@ -71,6 +71,31 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     const json = (await res.json()) as any;
     const token = String(json?.data?.token ?? "").trim();
     return token || null;
+  };
+
+  const registerProxyToken = async (): Promise<string | null> => {
+    const registerUrl = cfg.register_url?.trim() ?? "";
+    const bootstrapToken = cfg.bootstrap_token?.trim() ?? "";
+    if (!registerUrl || !bootstrapToken) return null;
+
+    let attempt = 0;
+    for (;;) {
+      if (opts?.signal?.aborted) return null;
+      attempt += 1;
+      try {
+        const token = await registerProxyTokenOnce();
+        if (token) return token;
+        throw new Error("register returned empty token");
+      } catch (err) {
+        const delayMs = Math.min(10_000, 300 * 2 ** Math.min(6, attempt - 1));
+        log("register failed; retrying", {
+          attempt,
+          delayMs,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        await delay(delayMs, { signal: opts?.signal }).catch(() => {});
+      }
+    }
   };
 
   const authToken = cfg.auth_token?.trim() ? cfg.auth_token.trim() : await registerProxyToken();

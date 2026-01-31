@@ -21,6 +21,7 @@ import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
 import { makeGitHubWebhookRoutes } from "./routes/githubWebhooks.js";
 import { makeGitLabWebhookRoutes } from "./routes/gitlabWebhooks.js";
 import { makeCodeupWebhookRoutes } from "./routes/codeupWebhooks.js";
+import { makeHealthRoutes } from "./routes/health.js";
 import { makeIssueRoutes } from "./routes/issues.js";
 import { makeMessageInboundRoutes } from "./routes/messageInbound.js";
 import { makePmRoutes } from "./routes/pm.js";
@@ -94,12 +95,14 @@ server.register(
   }),
   { prefix: "/api/auth" },
 );
+server.register(makeHealthRoutes(), { prefix: "/api" });
 
 server.addHook("preHandler", async (request, reply) => {
   const url = String(request.url ?? "");
   const pathOnly = url.split("?")[0] ?? url;
   if (!pathOnly.startsWith("/api/")) return;
   if (pathOnly.startsWith("/api/auth/")) return;
+  if (pathOnly === "/api/health") return;
   if (pathOnly.startsWith("/api/webhooks/")) return;
   if (pathOnly.startsWith("/api/integrations/")) return;
   if (pathOnly.startsWith("/api/admin/acp-proxy/register")) return;

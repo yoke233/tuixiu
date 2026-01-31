@@ -18,7 +18,7 @@ export type CreateProjectInput = {
 
 export async function listProjects(): Promise<Project[]> {
   const data = await apiGet<{ projects: Project[] }>("/projects");
-  return data.projects;
+  return Array.isArray(data.projects) ? data.projects : [];
 }
 
 export async function createProject(input: CreateProjectInput): Promise<Project> {

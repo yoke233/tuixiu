@@ -10,6 +10,18 @@ services:
       ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
     ports:
       - "3000:3000"
+    healthcheck:
+      # 不要求登录：只要服务能返回（哪怕是 401）就认为就绪。
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/auth/me').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 2s
+      retries: 30
     depends_on:
       postgres:
         condition: service_healthy
@@ -23,13 +35,14 @@ services:
     container_name: tuixiu-acp-proxy
     restart: always
     volumes:
-      - "./acp-proxy/config-host.toml:/config/config.toml:ro"
+      - "./acp-proxy/config-host-docker.toml:/config/config.toml:ro"
       - "./acp-proxy/.codex:/root/.codex"
     environment:
       ACP_PROXY_REGISTER_URL: http://app:3000/api/admin/acp-proxy/register
       ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     networks:
       - tuixiu-network
   postgres:

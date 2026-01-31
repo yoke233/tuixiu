@@ -19,6 +19,8 @@ describe("IssueDetailPage", () => {
   beforeEach(() => {
     localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "dev", role: "dev" }));
     vi.stubGlobal("fetch", vi.fn());
+    // AuthProvider 会在 mount 时调用 /auth/me；统一在 beforeEach 提供该响应，避免每个用例依赖调用顺序。
+    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "dev", role: "dev" } } });
   });
 
   afterEach(() => {
@@ -26,7 +28,6 @@ describe("IssueDetailPage", () => {
   });
 
   it("renders run, events, artifacts and refreshes on WS message", async () => {
-    mockFetchJsonOnce({ success: true, data: { user: { id: "u1", username: "dev", role: "dev" } } });
     // task templates
     mockFetchJsonOnce({ success: true, data: { templates: [] } });
 

@@ -512,9 +512,50 @@ export function createWebSocketGateway(deps: {
   }
 
   async function sendToAgent(proxyId: string, payload: unknown) {
+    const markAgentOffline = async () => {
+      const agentModel: any = (deps.prisma as any).agent;
+      if (agentModel && typeof agentModel.updateMany === "function") {
+        await agentModel.updateMany({ where: { proxyId }, data: { status: "offline" } }).catch(() => {});
+        return;
+      }
+      if (agentModel && typeof agentModel.update === "function") {
+        await agentModel.update({ where: { proxyId }, data: { status: "offline" } }).catch(() => {});
+      }
+    };
+
     const ws = agentConnections.get(proxyId);
-    if (!ws) throw new Error(`Agent ${proxyId} not connected`);
-    ws.send(JSON.stringify(payload));
+    if (!ws) {
+      await markAgentOffline();
+      throw new Error(`Agent ${proxyId} not connected`);
+    }
+    const readyState = (ws as any).readyState;
+    if (typeof readyState === "number" && readyState !== 1) {
+      await markAgentOffline();
+      throw new Error(`Agent ${proxyId} socket not open (readyState=${readyState})`);
+    }
+
+    const traceEnabled = process.env.ACP_WS_TRACE === "1";
+    if (traceEnabled && deps.log && isRecord(payload)) {
+      const type = typeof payload.type === "string" ? payload.type : "unknown";
+      const runId = typeof (payload as any).run_id === "string" ? String((payload as any).run_id) : null;
+      const promptId =
+        typeof (payload as any).prompt_id === "string" ? String((payload as any).prompt_id) : null;
+      const controlId =
+        typeof (payload as any).control_id === "string" ? String((payload as any).control_id) : null;
+      deps.log("ws sendToAgent", {
+        proxyId,
+        type,
+        runId,
+        ...(promptId ? { promptId } : {}),
+        ...(controlId ? { controlId } : {}),
+      });
+    }
+
+    try {
+      ws.send(JSON.stringify(payload));
+    } catch (err) {
+      throw new Error(`sendToAgent failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   const CHUNK_SESSION_UPDATES = new Set([

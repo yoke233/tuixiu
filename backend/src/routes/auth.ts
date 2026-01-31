@@ -14,6 +14,31 @@ function toPublicUser(u: any) {
   return { id: u.id, username: u.username, role: u.role };
 }
 
+function trySetAuthCookie(opts: {
+  reply: any;
+  name: string;
+  token: string;
+  options: any;
+}) {
+  try {
+    if (opts.reply && typeof opts.reply.setCookie === "function") {
+      opts.reply.setCookie(opts.name, opts.token, opts.options);
+    }
+  } catch {
+    // ignore (tests may not register cookie plugin)
+  }
+}
+
+function tryClearAuthCookie(opts: { reply: any; name: string; options: any }) {
+  try {
+    if (opts.reply && typeof opts.reply.clearCookie === "function") {
+      opts.reply.clearCookie(opts.name, opts.options);
+    }
+  } catch {
+    // ignore (tests may not register cookie plugin)
+  }
+}
+
 export function makeAuthRoutes(deps: {
   prisma: PrismaDeps;
   auth: AuthHelpers;
@@ -53,7 +78,7 @@ export function makeAuthRoutes(deps: {
       });
 
       const token = deps.auth.sign({ userId: user.id, username: user.username, role: user.role });
-      reply.setCookie(cookieName, token, cookieOptions(deps.cookie?.secure));
+      trySetAuthCookie({ reply, name: cookieName, token, options: cookieOptions(deps.cookie?.secure) });
       return { success: true, data: { token, user: toPublicUser(user) } };
     });
 
@@ -76,12 +101,12 @@ export function makeAuthRoutes(deps: {
       }
 
       const token = deps.auth.sign({ userId: user.id, username: user.username, role: user.role });
-      reply.setCookie(cookieName, token, cookieOptions(deps.cookie?.secure));
+      trySetAuthCookie({ reply, name: cookieName, token, options: cookieOptions(deps.cookie?.secure) });
       return { success: true, data: { token, user: toPublicUser(user) } };
     });
 
     server.post("/logout", async (_request, reply) => {
-      reply.clearCookie(cookieName, cookieOptions(deps.cookie?.secure));
+      tryClearAuthCookie({ reply, name: cookieName, options: cookieOptions(deps.cookie?.secure) });
       return { success: true, data: { ok: true } };
     });
 

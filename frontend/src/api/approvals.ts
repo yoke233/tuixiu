@@ -8,7 +8,7 @@ export async function listApprovals(opts?: { status?: string; limit?: number }):
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
 
   const data = await apiGet<{ approvals: Approval[] }>(`/approvals${suffix}`);
-  return data.approvals;
+  return Array.isArray(data.approvals) ? data.approvals : [];
 }
 
 export async function approveApproval(id: string, actor?: string): Promise<{ approval: Approval; pr?: Artifact }> {

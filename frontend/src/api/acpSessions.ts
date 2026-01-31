@@ -8,7 +8,7 @@ export async function listAcpSessions(opts?: { projectId?: string; limit?: numbe
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
 
   const data = await apiGet<{ sessions: AcpSessionSummary[] }>(`/admin/acp-sessions${suffix}`);
-  return data.sessions;
+  return Array.isArray(data.sessions) ? data.sessions : [];
 }
 
 export async function cancelAcpSession(runId: string, sessionId: string): Promise<{ ok: true }> {

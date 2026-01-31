@@ -274,7 +274,7 @@ export class HostProcessProxySandbox implements ProxySandbox {
   }
 
   async removeImage(_image: string): Promise<void> {
-    throw new Error("host_process does not support remove_image");
+    throw new Error(`host_process does not support remove_image (${_image})`);
   }
 
   async execProcess(opts: {

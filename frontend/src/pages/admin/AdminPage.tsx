@@ -68,8 +68,9 @@ export function AdminPage() {
   }, []);
 
   useEffect(() => {
+    if (auth.status === "loading") return;
     void refresh();
-  }, [refresh]);
+  }, [auth.status, refresh]);
 
   useEffect(() => {
     const fromUrl = getSectionFromSearch(location.search);

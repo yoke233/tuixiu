@@ -126,10 +126,11 @@ export function useRunChangesController(props: Props) {
   }, [props.runId]);
 
   useEffect(() => {
+    if (auth.status === "loading") return;
     setSelectedPath("");
     setDiff("");
     void refresh();
-  }, [refresh]);
+  }, [auth.status, refresh]);
 
   useEffect(() => {
     const runId = props.runId;

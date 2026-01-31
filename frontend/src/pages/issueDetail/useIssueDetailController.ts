@@ -247,6 +247,7 @@ export function useIssueDetailController(opts: {
   }, [selectedRunId]);
 
   useEffect(() => {
+    if (auth.status === "loading") return;
     setTaskTemplatesLoaded(false);
     setTaskTemplatesError(null);
     listTaskTemplates()
@@ -259,7 +260,7 @@ export function useIssueDetailController(opts: {
         setTaskTemplatesError(err instanceof Error ? err.message : String(err));
         setTaskTemplatesLoaded(true);
       });
-  }, []);
+  }, [auth.status]);
 
   const refresh = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -335,13 +336,14 @@ export function useIssueDetailController(opts: {
 
   useEffect(() => {
     if (!issueId) return;
+    if (auth.status === "loading") return;
     setSelectedRunId("");
     selectedRunIdRef.current = "";
     setLiveEventIds(new Set());
     setNextAction(null);
     setNextActionError(null);
     refresh();
-  }, [issueId, refresh]);
+  }, [auth.status, issueId, refresh]);
 
   useEffect(() => {
     if (!pmOpen) return;
@@ -350,6 +352,7 @@ export function useIssueDetailController(opts: {
   }, [issueId, pmOpen, refreshNextAction]);
 
   useEffect(() => {
+    if (auth.status === "loading") return;
     listAgents()
       .then((as) => {
         setAgents(as);
@@ -360,7 +363,7 @@ export function useIssueDetailController(opts: {
         setAgentsError(err instanceof Error ? err.message : String(err));
         setAgentsLoaded(true);
       });
-  }, []);
+  }, [auth.status]);
 
   useEffect(() => {
     const projectId = issue?.projectId ?? "";

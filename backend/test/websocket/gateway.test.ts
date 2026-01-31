@@ -9,8 +9,8 @@ class FakeSocket extends EventEmitter {
   send(data: string) {
     this.sent.push(data);
   }
-  close(_code?: number, _reason?: string) {
-    this.emit("close");
+  close(code?: number, reason?: string) {
+    this.emit("close", code, reason);
   }
 }
 

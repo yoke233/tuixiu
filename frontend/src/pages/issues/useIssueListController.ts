@@ -149,8 +149,9 @@ export function useIssueListController() {
   }, []);
 
   useEffect(() => {
+    if (auth.status === "loading") return;
     void refresh();
-  }, [refresh]);
+  }, [auth.status, refresh]);
 
   const readDragPayload = useCallback((e: React.DragEvent): DragPayload | null => {
     try {

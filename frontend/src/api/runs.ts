@@ -13,12 +13,16 @@ export async function getRun(id: string): Promise<Run> {
 
 export async function listRunEvents(runId: string): Promise<Event[]> {
   const data = await apiGet<{ events: Event[] }>(`/runs/${runId}/events`);
-  return data.events;
+  return Array.isArray(data.events) ? data.events : [];
 }
 
 export async function getRunChanges(runId: string): Promise<RunChanges> {
   const data = await apiGet<RunChanges>(`/runs/${runId}/changes`);
-  return data;
+  return {
+    baseBranch: typeof (data as any)?.baseBranch === "string" ? (data as any).baseBranch : "",
+    branch: typeof (data as any)?.branch === "string" ? (data as any).branch : "",
+    files: Array.isArray((data as any)?.files) ? ((data as any).files as RunChangeFile[]) : [],
+  };
 }
 
 export async function getRunDiff(runId: string, path: string): Promise<RunDiff> {

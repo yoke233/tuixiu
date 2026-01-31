@@ -42,28 +42,89 @@ export function useWsClient(onMessage: (msg: WsMessage) => void, opts?: { token?
   const url = useMemo(() => getWsUrl(token), [token]);
   const [status, setStatus] = useState<"connecting" | "open" | "closed">("connecting");
   const socketRef = useRef<WebSocket | null>(null);
+  const onMessageRef = useRef(onMessage);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket(url);
-    socketRef.current = ws;
-    ws.onopen = () => setStatus("open");
-    ws.onclose = () => setStatus("closed");
-    ws.onmessage = (evt) => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const clearReconnectTimer = () => {
+      const id = reconnectTimerRef.current;
+      if (id == null) return;
+      reconnectTimerRef.current = null;
       try {
-        const msg = JSON.parse(String(evt.data)) as WsMessage;
-        if (msg && typeof msg === "object" && typeof msg.type === "string") {
-          onMessage(msg);
-        }
+        clearTimeout(id);
       } catch {
         // ignore
       }
     };
 
-    return () => {
-      ws.close();
-      if (socketRef.current === ws) socketRef.current = null;
+    const scheduleReconnect = () => {
+      clearReconnectTimer();
+      if (disposed) return;
+      const attempt = reconnectAttemptRef.current;
+      const baseMs = 500;
+      const maxMs = 10_000;
+      const delayMs = Math.min(maxMs, baseMs * 2 ** Math.min(5, attempt));
+      reconnectAttemptRef.current = attempt + 1;
+      reconnectTimerRef.current = setTimeout(() => {
+        if (disposed) return;
+        connect();
+      }, delayMs) as unknown as number;
     };
-  }, [onMessage, url]);
+
+    const connect = () => {
+      if (disposed) return;
+      setStatus("connecting");
+
+      const ws = new WebSocket(url);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        if (disposed) return;
+        reconnectAttemptRef.current = 0;
+        setStatus("open");
+      };
+      ws.onclose = () => {
+        if (disposed) return;
+        if (socketRef.current === ws) socketRef.current = null;
+        setStatus("closed");
+        scheduleReconnect();
+      };
+      ws.onerror = () => {
+        // onclose 会负责触发重连；这里不做额外处理，避免重复 schedule
+      };
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(String(evt.data)) as WsMessage;
+          if (msg && typeof msg === "object" && typeof msg.type === "string") {
+            onMessageRef.current(msg);
+          }
+        } catch {
+          // ignore
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      clearReconnectTimer();
+      const ws = socketRef.current;
+      socketRef.current = null;
+      try {
+        ws?.close();
+      } catch {
+        // ignore
+      }
+    };
+  }, [url]);
 
   const sendJson = useCallback((payload: unknown): boolean => {
     const ws = socketRef.current;

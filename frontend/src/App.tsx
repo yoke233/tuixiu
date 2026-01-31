@@ -15,7 +15,7 @@ function RequireAdmin(props: { children: ReactElement }) {
   const auth = useAuth();
   const location = useLocation();
 
-  if (auth.status === "loading") return <div className="detailEmpty">加载中…</div>;
+  if (auth.status === "loading" && !auth.user) return <div className="detailEmpty">加载中…</div>;
   if (!auth.user) {
     const next = encodeURIComponent(`${location.pathname}${location.search}`);
     return <Navigate to={`/login?next=${next}`} replace />;
@@ -30,7 +30,7 @@ function RequireAuth(props: { children: ReactElement }) {
   const auth = useAuth();
   const location = useLocation();
 
-  if (auth.status === "loading") return <div className="detailEmpty">加载中…</div>;
+  if (auth.status === "loading" && !auth.user) return <div className="detailEmpty">加载中…</div>;
   if (!auth.user) {
     const next = encodeURIComponent(`${location.pathname}${location.search}`);
     return <Navigate to={`/login?next=${next}`} replace />;

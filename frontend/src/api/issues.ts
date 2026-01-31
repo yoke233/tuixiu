@@ -43,7 +43,12 @@ export async function listIssues(query?: ListIssuesQuery): Promise<ListIssuesRes
 
   const qs = params.toString();
   const data = await apiGet<{ issues: Issue[]; total: number; limit: number; offset: number }>(`/issues${qs ? `?${qs}` : ""}`);
-  return data;
+  return {
+    issues: Array.isArray(data.issues) ? data.issues : [],
+    total: typeof data.total === "number" && Number.isFinite(data.total) ? data.total : 0,
+    limit: typeof data.limit === "number" && Number.isFinite(data.limit) ? data.limit : 50,
+    offset: typeof data.offset === "number" && Number.isFinite(data.offset) ? data.offset : 0,
+  };
 }
 
 export async function getIssue(id: string): Promise<Issue> {

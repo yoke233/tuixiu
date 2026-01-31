@@ -40,6 +40,8 @@ type RunTunnelState = {
   openDeferred: OpenDeferred | null;
   promptDeferredById: Map<string, PromptDeferred>;
   controlDeferredById: Map<string, ControlDeferred>;
+  instanceName: string | null;
+  keepaliveTtlSeconds: number | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -341,6 +343,8 @@ export function createAcpTunnel(deps: {
       openDeferred: null,
       promptDeferredById: new Map(),
       controlDeferredById: new Map(),
+      instanceName: null,
+      keepaliveTtlSeconds: null,
     };
   }
 
@@ -373,6 +377,8 @@ export function createAcpTunnel(deps: {
 
     const p = (async () => {
       const sandbox = await resolveSandboxOpenParams(opts.runId);
+      state.instanceName = sandbox.instanceName;
+      state.keepaliveTtlSeconds = sandbox.keepaliveTtlSeconds;
       await new Promise<void>((resolve, reject) => {
         const baseTimeoutMsRaw = Number(process.env.ACP_OPEN_TIMEOUT_MS ?? "300000");
         const baseTimeoutMs =
@@ -506,6 +512,9 @@ export function createAcpTunnel(deps: {
       prompt_id: promptId,
       cwd,
       session_id: sessionIdHint || null,
+      instance_name: state.instanceName ?? deriveSandboxInstanceName(opts.runId),
+      keepalive_ttl_seconds:
+        state.keepaliveTtlSeconds ?? DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS,
       context: typeof opts.context === "string" ? opts.context : undefined,
       prompt: opts.prompt,
       timeout_ms: timeoutMs,
@@ -563,6 +572,9 @@ export function createAcpTunnel(deps: {
       run_id: opts.runId,
       control_id: controlId,
       session_id: opts.sessionId,
+      instance_name: state.instanceName ?? deriveSandboxInstanceName(opts.runId),
+      keepalive_ttl_seconds:
+        state.keepaliveTtlSeconds ?? DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS,
     });
     await wait;
   }
@@ -594,6 +606,9 @@ export function createAcpTunnel(deps: {
       control_id: controlId,
       session_id: opts.sessionId,
       mode_id: opts.modeId,
+      instance_name: state.instanceName ?? deriveSandboxInstanceName(opts.runId),
+      keepalive_ttl_seconds:
+        state.keepaliveTtlSeconds ?? DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS,
     });
     await wait;
 
@@ -632,6 +647,9 @@ export function createAcpTunnel(deps: {
       control_id: controlId,
       session_id: opts.sessionId,
       model_id: opts.modelId,
+      instance_name: state.instanceName ?? deriveSandboxInstanceName(opts.runId),
+      keepalive_ttl_seconds:
+        state.keepaliveTtlSeconds ?? DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS,
     });
     await wait;
 

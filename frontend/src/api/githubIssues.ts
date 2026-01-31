@@ -13,7 +13,11 @@ export async function listGitHubIssues(
   const data = await apiGet<{ issues: GitHubIssue[]; page: number; limit: number }>(
     `/projects/${projectId}/github/issues${suffix}`
   );
-  return data;
+  return {
+    issues: Array.isArray(data.issues) ? data.issues : [],
+    page: typeof data.page === "number" && Number.isFinite(data.page) ? data.page : (opts?.page ?? 1),
+    limit: typeof data.limit === "number" && Number.isFinite(data.limit) ? data.limit : (opts?.limit ?? 20),
+  };
 }
 
 export async function importGitHubIssue(
@@ -23,4 +27,3 @@ export async function importGitHubIssue(
   const data = await apiPost<{ issue: Issue; imported: boolean }>(`/projects/${projectId}/github/issues/import`, input);
   return data;
 }
-
