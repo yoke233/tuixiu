@@ -5,6 +5,8 @@ register_url = "http://app:3000/api/admin/acp-proxy/register"
 bootstrap_token = ""
 
 heartbeat_seconds = 30
+# 周期性上报 sandbox inventory 的间隔（秒）；0 表示关闭周期上报（仍会在连接成功时上报一次）
+inventory_interval_seconds = 300
 mock_mode = false
 
 # 在 sandbox 内启动 ACP agent 的命令（建议镜像内预装 codex-acp，然后直接运行）

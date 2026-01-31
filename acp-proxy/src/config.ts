@@ -55,6 +55,7 @@ export type ProxyConfig = {
   bootstrap_token?: string;
   auth_token?: string;
   heartbeat_seconds: number;
+  inventory_interval_seconds: number;
   mock_mode: boolean;
   sandbox: SandboxConfig;
   agent_command: string[];
@@ -353,6 +354,12 @@ function buildSchema() {
       format: "int",
       default: 30,
       env: "ACP_PROXY_HEARTBEAT_SECONDS",
+    },
+    inventory_interval_seconds: {
+      doc: "Sandbox inventory report interval seconds (0 disables periodic reporting)",
+      format: "int",
+      default: 300,
+      env: "ACP_PROXY_INVENTORY_INTERVAL_SECONDS",
     },
     mock_mode: {
       doc: "Enable mock mode",
