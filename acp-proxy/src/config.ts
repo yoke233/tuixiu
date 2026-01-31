@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -539,6 +540,14 @@ function applyRuntimeCompat() {
   process.env.ACP_PROXY_SANDBOX_RUNTIME = compat;
 }
 
+function detectContainerRuntime(): string | null {
+  for (const candidate of ["docker", "podman", "nerdctl"]) {
+    const res = spawnSync(candidate, ["--version"], { stdio: "ignore", windowsHide: true });
+    if (res.status === 0) return candidate;
+  }
+  return null;
+}
+
 function cleanOptionalFields(cfg: ProxyConfigRaw): ProxyConfig {
   const sandbox = { ...cfg.sandbox };
   const optionalKeys: Array<keyof SandboxConfig> = [
@@ -619,12 +628,6 @@ export async function loadConfig(
   schema.validate({ allowed: "warn" });
 
   const effective = cleanOptionalFields(normalizeConfig(schema.getProperties() as ProxyConfigRaw));
-  if (effective.sandbox.provider === "container_oci" && !effective.sandbox.runtime?.trim()) {
-    throw new Error("sandbox.provider=container_oci 时必须配置 sandbox.runtime");
-  }
-  if (effective.sandbox.provider !== "host_process" && !effective.sandbox.image?.trim()) {
-    throw new Error("sandbox.provider!=host_process 时必须配置 sandbox.image");
-  }
   if (
     effective.sandbox.provider === "host_process" &&
     effective.sandbox.workspaceMode === "git_clone"
@@ -632,11 +635,33 @@ export async function loadConfig(
     throw new Error("sandbox.provider=host_process 不支持 workspaceMode=git_clone");
   }
 
+  const sandboxProvider = effective.sandbox.provider;
+  let runtime = effective.sandbox.runtime?.trim() ? effective.sandbox.runtime.trim() : "";
+  if (sandboxProvider === "container_oci" && !runtime) {
+    const detected = detectContainerRuntime();
+    if (!detected) {
+      throw new Error(
+        "sandbox.provider=container_oci 且未配置 sandbox.runtime，且未探测到 docker/podman/nerdctl；请配置 sandbox.runtime 或安装其中之一",
+      );
+    }
+    runtime = detected;
+  }
+
+  let image = effective.sandbox.image?.trim() ? effective.sandbox.image.trim() : "";
+  if (sandboxProvider !== "host_process" && !image) {
+    image = "tuixiu-codex-acp:local";
+  }
+
   const agentId = String(effective.agent.id ?? "").trim() || (await loadOrCreateAgentId());
   const agentName = effective.agent.name?.trim() ? effective.agent.name.trim() : agentId;
 
   return {
     ...effective,
+    sandbox: {
+      ...effective.sandbox,
+      ...(sandboxProvider === "container_oci" ? { runtime } : {}),
+      ...(image ? { image } : {}),
+    },
     agent: {
       ...effective.agent,
       id: agentId,
