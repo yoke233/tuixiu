@@ -16,6 +16,7 @@ function mockFetchJsonOnce(body: unknown) {
 describe("AdminPage", () => {
   beforeEach(() => {
     localStorage.removeItem("showArchivedIssues");
+    localStorage.removeItem("selectedProjectId");
     localStorage.setItem("authUser", JSON.stringify({ id: "u1", username: "admin", role: "admin" }));
     vi.stubGlobal("fetch", vi.fn());
   });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { listIssues, startIssue, updateIssue } from "../../api/issues";
@@ -7,7 +7,7 @@ import { cancelRun, completeRun } from "../../api/runs";
 import { useAuth } from "../../auth/AuthContext";
 import type { Issue, IssueStatus, Project } from "../../types";
 import { canChangeIssueStatus, canRunIssue } from "../../utils/permissions";
-import { getShowArchivedIssues } from "../../utils/settings";
+import { getLastSelectedProjectId, getShowArchivedIssues, setLastSelectedProjectId } from "../../utils/settings";
 import type { IssuesOutletContext } from "../issueDetail/types";
 
 import { hasStringLabel } from "./issueListUtils";
@@ -70,7 +70,19 @@ export function useIssueListController() {
 
   const outletContext = useMemo<IssuesOutletContext>(() => ({ onIssueUpdated }), [onIssueUpdated]);
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [selectedProjectId, setSelectedProjectIdState] = useState<string>(() =>
+    getLastSelectedProjectId(),
+  );
+  const selectedProjectIdRef = useRef(selectedProjectId);
+  useEffect(() => {
+    selectedProjectIdRef.current = selectedProjectId;
+  }, [selectedProjectId]);
+
+  const setSelectedProjectId = useCallback((next: string) => {
+    selectedProjectIdRef.current = next;
+    setSelectedProjectIdState(next);
+    setLastSelectedProjectId(next);
+  }, []);
   const [showArchivedOnBoard] = useState<boolean>(() => getShowArchivedIssues());
   const [searchText, setSearchText] = useState("");
 
@@ -140,13 +152,17 @@ export function useIssueListController() {
       const [ps, is] = await Promise.all([listProjects(), listIssues()]);
       setProjects(ps);
       setIssues(is.issues);
-      setSelectedProjectId((prev) => (prev ? prev : (ps[0]?.id ?? "")));
+      const stored = getLastSelectedProjectId();
+      const preferred = selectedProjectIdRef.current || stored;
+      const next =
+        preferred && ps.some((p) => p.id === preferred) ? preferred : (ps[0]?.id ?? "");
+      setSelectedProjectId(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setSelectedProjectId]);
 
   useEffect(() => {
     if (auth.status === "loading") return;

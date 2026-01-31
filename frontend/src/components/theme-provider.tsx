@@ -1,7 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export type Theme = "dark" | "light" | "system";
-export type Accent = "teal" | "blue" | "violet" | "rose" | "amber" | "slate";
+export type Accent =
+  | "teal"
+  | "cyan"
+  | "blue"
+  | "indigo"
+  | "violet"
+  | "fuchsia"
+  | "rose"
+  | "orange"
+  | "amber"
+  | "emerald"
+  | "slate";
 
 type ThemeProviderProps = {
   children: ReactNode;
@@ -27,10 +38,15 @@ function isTheme(value: string | null): value is Theme {
 function isAccent(value: string | null): value is Accent {
   return (
     value === "teal" ||
+    value === "cyan" ||
     value === "blue" ||
+    value === "indigo" ||
     value === "violet" ||
+    value === "fuchsia" ||
     value === "rose" ||
+    value === "orange" ||
     value === "amber" ||
+    value === "emerald" ||
     value === "slate"
   );
 }

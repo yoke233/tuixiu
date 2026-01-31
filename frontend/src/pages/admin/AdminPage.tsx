@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { approveApproval, listApprovals, rejectApproval } from "../../api/approvals";
@@ -7,6 +7,7 @@ import { listProjects } from "../../api/projects";
 import { useAuth } from "../../auth/AuthContext";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import type { Approval, Project } from "../../types";
+import { getLastSelectedProjectId, setLastSelectedProjectId } from "../../utils/settings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,7 +42,19 @@ export function AdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSectionKey>(
     () => getSectionFromSearch(location.search) ?? "issues",
   );
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [selectedProjectId, setSelectedProjectIdState] = useState<string>(() =>
+    getLastSelectedProjectId(),
+  );
+  const selectedProjectIdRef = useRef(selectedProjectId);
+  useEffect(() => {
+    selectedProjectIdRef.current = selectedProjectId;
+  }, [selectedProjectId]);
+
+  const setSelectedProjectId = useCallback((next: string) => {
+    selectedProjectIdRef.current = next;
+    setSelectedProjectIdState(next);
+    setLastSelectedProjectId(next);
+  }, []);
 
   const [acpSessionsReloadToken, setAcpSessionsReloadToken] = useState(0);
   const [acpSessionsLoading, setAcpSessionsLoading] = useState(false);
@@ -68,13 +81,17 @@ export function AdminPage() {
       ]);
       setProjects(ps);
       setApprovals(aps);
-      setSelectedProjectId((prev) => (prev ? prev : (ps[0]?.id ?? "")));
+      const stored = getLastSelectedProjectId();
+      const preferred = selectedProjectIdRef.current || stored;
+      const next =
+        preferred && ps.some((p) => p.id === preferred) ? preferred : (ps[0]?.id ?? "");
+      setSelectedProjectId(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setSelectedProjectId]);
 
   useEffect(() => {
     if (auth.status === "loading") return;
@@ -170,9 +187,10 @@ export function AdminPage() {
   const activeSectionMeta = ADMIN_SECTION_META[activeSection];
 
   const navGroups: Array<{ label: string; items: AdminSectionKey[] }> = [
-    { label: "需求", items: ["issues", "archive"] },
-    { label: "运行", items: ["acpSessions", "approvals"] },
-    { label: "配置", items: ["projects", "roles", "textTemplates", "policy", "settings"] },
+    { label: "待办", items: ["approvals", "issues"] },
+    { label: "运行", items: ["acpSessions"] },
+    { label: "配置", items: ["projects", "roles", "policy", "textTemplates", "settings"] },
+    { label: "归档", items: ["archive"] },
   ];
 
   return (

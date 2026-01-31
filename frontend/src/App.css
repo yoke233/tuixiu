@@ -4,12 +4,12 @@
   background:
     radial-gradient(
       900px circle at 12% -10%,
-      color-mix(in oklab, var(--primary), transparent 90%),
+      color-mix(in oklab, var(--primary), transparent 86%),
       transparent 55%
     ),
     radial-gradient(
       900px circle at 88% 0%,
-      color-mix(in oklab, var(--info), transparent 90%),
+      color-mix(in oklab, var(--info), transparent 86%),
       transparent 55%
     ),
     var(--bg);
@@ -494,8 +494,18 @@ a:hover {
   overflow-wrap: anywhere;
 }
 
+.form {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+}
+
+.form .label {
+  margin: 0;
+}
+
 .form h3 {
-  margin-top: 12px;
+  margin: 0;
 }
 
 .badge {
@@ -809,6 +819,10 @@ a:hover {
     gap: 8px;
   }
 
+  .issuesTopSearch {
+    width: 100%;
+  }
+
   .issuesTopActions .row {
     width: 100%;
     flex-wrap: wrap;
@@ -834,9 +848,18 @@ a:hover {
   flex-wrap: wrap;
 }
 
-.issuesTopActions input {
-  flex: 1 1 240px;
-  min-width: 180px;
+.issuesTopSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 320px;
+  min-width: 220px;
+  flex-wrap: nowrap;
+}
+
+.issuesTopSearch input {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 @media (max-width: 520px) {
@@ -845,7 +868,7 @@ a:hover {
     justify-content: flex-start;
   }
 
-  .issuesTopActions input {
+  .issuesTopSearch {
     flex-basis: 100%;
     min-width: 0;
   }

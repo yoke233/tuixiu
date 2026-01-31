@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { ThemeToggle } from "../../../components/ThemeToggle";
 import type { IssueListController } from "../useIssueListController";
@@ -21,15 +22,30 @@ export function IssuesTopBar(props: { model: IssueListController }) {
       </div>
 
       <div className="row gap issuesTopActions">
-        <label className="srOnly" htmlFor="issueSearch">
-          搜索 Issue
-        </label>
-        <Input
-          id="issueSearch"
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          placeholder="搜索 Issue…"
-        />
+        <div className="issuesTopSearch">
+          <label className="srOnly" htmlFor="issueSearch">
+            搜索 Issue
+          </label>
+          <Input
+            id="issueSearch"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="搜索 Issue…"
+            className="h-9"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => void refresh()}
+            disabled={loading}
+            aria-label={loading ? "刷新中" : "刷新"}
+            title={loading ? "刷新中…" : "刷新"}
+          >
+            <RefreshCw className={loading ? "animate-spin" : undefined} />
+          </Button>
+        </div>
         <ThemeToggle />
         {auth.user ? (
           <div className="row gap" style={{ alignItems: "baseline" }}>
@@ -81,9 +97,6 @@ export function IssuesTopBar(props: { model: IssueListController }) {
             登录
           </Button>
         )}
-        <Button type="button" variant="outline" size="sm" onClick={() => refresh()} disabled={loading}>
-          刷新
-        </Button>
       </div>
     </div>
   );

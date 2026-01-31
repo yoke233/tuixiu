@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { approveApproval, rejectApproval } from "../../api/approvals";
@@ -99,6 +99,14 @@ export function useRunChangesController(props: Props) {
     return false;
   }, [auth.user, location.pathname, location.search, navigate]);
 
+  const refreshSeqRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      refreshSeqRef.current += 1;
+    };
+  }, []);
+
   const refreshRun = useCallback(async () => {
     if (!props.runId) return;
     try {
@@ -111,17 +119,22 @@ export function useRunChangesController(props: Props) {
 
   const refresh = useCallback(async () => {
     if (!props.runId) return;
+    const seq = (refreshSeqRef.current += 1);
     setLoading(true);
     setError(null);
     try {
       const c = await getRunChanges(props.runId);
+      if (refreshSeqRef.current !== seq) return;
       setChanges(c);
       setSelectedPath((prev) => (prev ? prev : c.files[0]?.path ?? ""));
     } catch (e) {
+      if (refreshSeqRef.current !== seq) return;
       setError(e instanceof Error ? e.message : String(e));
       setChanges(null);
     } finally {
-      setLoading(false);
+      if (refreshSeqRef.current === seq) {
+        setLoading(false);
+      }
     }
   }, [props.runId]);
 
@@ -135,12 +148,25 @@ export function useRunChangesController(props: Props) {
   useEffect(() => {
     const runId = props.runId;
     if (!runId || !selectedPath) return;
+    let cancelled = false;
     setDiffLoading(true);
     setError(null);
     getRunDiff(runId, selectedPath)
-      .then((r) => setDiff(r.diff || ""))
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setDiffLoading(false));
+      .then((r) => {
+        if (cancelled) return;
+        setDiff(r.diff || "");
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setDiffLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [props.runId, selectedPath]);
 
   const createPrUrl = useMemo(() => {

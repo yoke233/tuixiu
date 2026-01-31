@@ -7,9 +7,7 @@ import { ChangesArtifactsGrid } from "./sections/ChangesArtifactsGrid";
 import { ConsoleCard } from "./sections/ConsoleCard";
 import { IssueSummaryCard } from "./sections/IssueSummaryCard";
 import { PageHeader } from "./sections/PageHeader";
-import { PmDetails } from "./sections/PmDetails";
 import { RunCard } from "./sections/RunCard";
-import { TasksDetails } from "./sections/TasksDetails";
 
 export function IssueDetailPage() {
   const params = useParams();
@@ -33,8 +31,6 @@ export function IssueDetailPage() {
         <>
           <IssueSummaryCard model={model} />
           <ConsoleCard model={model} />
-          <TasksDetails model={model} />
-          <PmDetails model={model} />
           <RunCard model={model} />
           <ChangesArtifactsGrid model={model} />
         </>
@@ -44,4 +40,3 @@ export function IssueDetailPage() {
     </div>
   );
 }
-

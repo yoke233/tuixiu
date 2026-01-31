@@ -20,7 +20,10 @@ export function IssueDetailOverlay(props: { model: IssueListController }) {
       role="dialog"
       aria-modal="true"
       aria-label="Issue 详情"
-      onClick={closeDetail}
+      onClick={(e) => {
+        if (e.target !== e.currentTarget) return;
+        closeDetail();
+      }}
     >
       <div className="issueDetailDrawer" onClick={(e) => e.stopPropagation()}>
         <Outlet context={outletContext} />

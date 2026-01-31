@@ -18,6 +18,7 @@ function mockFetchJsonOnce(body: unknown) {
 describe("IssueListPage", () => {
   beforeEach(() => {
     localStorage.removeItem("showArchivedIssues");
+    localStorage.removeItem("selectedProjectId");
     localStorage.setItem(
       "authUser",
       JSON.stringify({ id: "u1", username: "admin", role: "admin" }),

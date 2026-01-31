@@ -3,6 +3,7 @@ import { getAgentSandboxLabel } from "../utils/agentLabels";
 import { StatusBadge } from "./StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -221,65 +222,74 @@ export function IssueRunCard(props: IssueRunCardProps) {
       ) : null}
 
       {canStartNewRun ? (
-        <div className="row gap">
-          <label className="label" style={{ margin: 0, flex: "1 1 240px", minWidth: 0 }}>
-            Worktree 名称（可选）
+        <div className="mt-3 grid gap-3">
+          <div className="grid gap-2">
+            <Label>Worktree 名称（可选）</Label>
             <Input
               value={worktreeName}
               onChange={(e) => onWorktreeNameChange(e.target.value)}
               placeholder="留空则自动生成（如 gh-123-fix-login-r1）"
               disabled={refreshing}
             />
-            <div className="muted" style={{ fontSize: 12 }}>
-              将用于：分支 `run/&lt;name&gt;`，目录 `.worktrees/run-&lt;name&gt;`
+            <div className="text-xs text-muted-foreground">
+              将用于：分支 <code>run/&lt;name&gt;</code>，目录 <code>.worktrees/run-&lt;name&gt;</code>
             </div>
-          </label>
-          <label className="label" style={{ margin: 0 }}>
-            选择 Role（可选）
-            <Select
-              value={roleSelectValue}
-              onValueChange={(v) => onSelectedRoleKeyChange(v === "__project_default__" ? "" : v)}
-              disabled={(!rolesLoaded && !rolesError) || refreshing}
-            >
-              <SelectTrigger className="w-[240px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__project_default__">项目默认</SelectItem>
-                {roles.map((r) => (
-                  <SelectItem key={r.id} value={r.key}>
-                    {r.displayName} ({r.key})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-          <label className="label" style={{ margin: 0 }}>
-            选择 Agent（可选）
-            <Select
-              value={agentSelectValue}
-              onValueChange={(v) => onSelectedAgentIdChange(v === "__auto_assign__" ? "" : v)}
-              disabled={refreshing}
-            >
-              <SelectTrigger className="w-[280px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__auto_assign__">自动分配</SelectItem>
-                {agents.map((a) => {
-                  const sandbox = getAgentSandboxLabel(a);
-                  const disabled = a.status !== "online" || a.currentLoad >= a.maxConcurrentRuns;
-                  return (
-                    <SelectItem key={a.id} value={a.id} disabled={disabled}>
-                      {a.name} ({a.status} {a.currentLoad}/{a.maxConcurrentRuns}
-                      {sandbox?.label ? ` · ${sandbox.label}` : ""})
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>选择 Role（可选）</Label>
+              <Select
+                value={roleSelectValue}
+                onValueChange={(v) =>
+                  onSelectedRoleKeyChange(v === "__project_default__" ? "" : v)
+                }
+                disabled={(!rolesLoaded && !rolesError) || refreshing}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="项目默认" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__project_default__">项目默认</SelectItem>
+                  {roles.map((r) => (
+                    <SelectItem key={r.id} value={r.key}>
+                      {r.displayName} ({r.key})
                     </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </label>
-          <div className="muted">
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-muted-foreground">不选则使用 Project 默认</div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>选择 Agent（可选）</Label>
+              <Select
+                value={agentSelectValue}
+                onValueChange={(v) => onSelectedAgentIdChange(v === "__auto_assign__" ? "" : v)}
+                disabled={refreshing}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="自动分配" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__auto_assign__">自动分配</SelectItem>
+                  {agents.map((a) => {
+                    const sandbox = getAgentSandboxLabel(a);
+                    const disabled = a.status !== "online" || a.currentLoad >= a.maxConcurrentRuns;
+                    return (
+                      <SelectItem key={a.id} value={a.id} disabled={disabled}>
+                        {a.name} ({a.status} {a.currentLoad}/{a.maxConcurrentRuns}
+                        {sandbox?.label ? ` · ${sandbox.label}` : ""})
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-muted-foreground">不选则自动分配（仅 online）</div>
+            </div>
+          </div>
+
+          <div className="text-xs text-muted-foreground">
             {run ? "可启动新 Run" : "暂无 Run"}
             {selectedAgent ? (
               <span>

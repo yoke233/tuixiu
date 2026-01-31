@@ -122,6 +122,18 @@
 }
 
 /* Accent palettes (controlled by <html data-accent="...">) */
+:root[data-accent="cyan"] {
+  --primary: hsl(191 90% 44%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(191 95% 93%);
+}
+
+.dark[data-accent="cyan"] {
+  --primary: hsl(191 95% 62%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: hsl(191 95% 62% / 0.14);
+}
+
 :root[data-accent="blue"] {
   --primary: hsl(221.2 83.2% 53.3%);
   --primary-foreground: hsl(210 40% 98%);
@@ -132,6 +144,18 @@
   --primary: hsl(217.2 91.2% 59.8%);
   --primary-foreground: hsl(222.2 47.4% 11.2%);
   --accent: hsl(217.2 91.2% 59.8% / 0.14);
+}
+
+:root[data-accent="indigo"] {
+  --primary: hsl(235 84% 55%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(234 95% 93%);
+}
+
+.dark[data-accent="indigo"] {
+  --primary: hsl(234 92% 72%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: hsl(234 92% 72% / 0.14);
 }
 
 :root[data-accent="violet"] {
@@ -146,6 +170,18 @@
   --accent: hsl(263.4 70% 62% / 0.14);
 }
 
+:root[data-accent="fuchsia"] {
+  --primary: hsl(292 84% 54%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(292 95% 93%);
+}
+
+.dark[data-accent="fuchsia"] {
+  --primary: hsl(292 88% 70%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: hsl(292 88% 70% / 0.14);
+}
+
 :root[data-accent="rose"] {
   --primary: hsl(346.8 77.2% 49.8%);
   --primary-foreground: hsl(210 40% 98%);
@@ -158,6 +194,18 @@
   --accent: hsl(346.8 77.2% 58.8% / 0.14);
 }
 
+:root[data-accent="orange"] {
+  --primary: hsl(24 94% 50%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(32 100% 92%);
+}
+
+.dark[data-accent="orange"] {
+  --primary: hsl(24 95% 60%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: hsl(24 95% 60% / 0.16);
+}
+
 :root[data-accent="amber"] {
   --primary: hsl(37.7 92.1% 50.2%);
   --primary-foreground: hsl(222.2 47.4% 11.2%);
@@ -168,6 +216,18 @@
   --primary: hsl(45.4 93.4% 47.5%);
   --primary-foreground: hsl(222.2 47.4% 11.2%);
   --accent: hsl(45.4 93.4% 47.5% / 0.16);
+}
+
+:root[data-accent="emerald"] {
+  --primary: hsl(160 84% 39%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(160 84% 92%);
+}
+
+.dark[data-accent="emerald"] {
+  --primary: hsl(160 84% 54%);
+  --primary-foreground: hsl(168.5 68.4% 7.5%);
+  --accent: hsl(160 84% 54% / 0.14);
 }
 
 :root[data-accent="slate"] {
