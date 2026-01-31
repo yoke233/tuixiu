@@ -18,6 +18,7 @@ export function RolesSection(props: Props) {
   const { active, effectiveProjectId, requireAdmin, setError } = props;
 
   const roleCreateKeyRef = useRef<HTMLInputElement>(null);
+  const [roleSearch, setRoleSearch] = useState("");
   const [roleKey, setRoleKey] = useState("");
   const [roleDisplayName, setRoleDisplayName] = useState("");
   const [rolePromptTemplate, setRolePromptTemplate] = useState("");
@@ -41,6 +42,18 @@ export function RolesSection(props: Props) {
   const [roleDeletingId, setRoleDeletingId] = useState("");
 
   const editingRole = useMemo(() => roles.find((role) => role.id === roleEditingId) ?? null, [roleEditingId, roles]);
+
+  const filteredRoles = useMemo(() => {
+    const q = roleSearch.trim().toLowerCase();
+    if (!q) return roles;
+    return roles.filter((role) => {
+      const hay = [role.key, role.displayName ?? "", role.description ?? "", ...(role.envKeys ?? [])]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [roleSearch, roles]);
 
   const resetRoleEdit = useCallback(() => {
     setRoleEditingId("");
@@ -232,197 +245,217 @@ export function RolesSection(props: Props) {
     [effectiveProjectId, refreshRoles, requireAdmin, resetRoleEdit, roleEditingId, setError],
   );
 
-  return (
-    <>
-      <section className="card" hidden={!active}>
-        <h2 style={{ marginTop: 0 }}>创建 RoleTemplate</h2>
-        <form onSubmit={(e) => void onCreateRole(e)} className="form">
-          <label className="label">
-            Role Key *
-            <Input
-              ref={roleCreateKeyRef}
-              value={roleKey}
-              onChange={(e) => setRoleKey(e.target.value)}
-              placeholder="backend-dev"
-            />
-          </label>
-          <label className="label">
-            显示名称 *
-            <Input
-              value={roleDisplayName}
-              onChange={(e) => setRoleDisplayName(e.target.value)}
-              placeholder="后端开发"
-            />
-          </label>
-          <label className="label">
-            Prompt Template（可选）
-            <Textarea
-              value={rolePromptTemplate}
-              onChange={(e) => setRolePromptTemplate(e.target.value)}
-              placeholder="你是 {{role.name}}，请优先写单测。"
-            />
-          </label>
-          <label className="label">
-            initScript（bash，可选）
-            <Textarea
-              value={roleInitScript}
-              onChange={(e) => setRoleInitScript(e.target.value)}
-              placeholder={"# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init"}
-            />
-          </label>
-          <label className="label">
-            init 超时秒数（可选）
-            <Input
-              value={roleInitTimeoutSeconds}
-              onChange={(e) => setRoleInitTimeoutSeconds(e.target.value)}
-              placeholder="300"
-            />
-          </label>
-          <label className="label">
-            envText（.env，可选）
-            <Textarea
-              value={roleEnvText}
-              onChange={(e) => setRoleEnvText(e.target.value)}
-              rows={4}
-              placeholder={"FOO=bar\nexport TOKEN=xxx"}
-            />
-          </label>
-          <Button type="submit" disabled={!roleKey.trim() || !roleDisplayName.trim() || !effectiveProjectId}>
-            创建
-          </Button>
-        </form>
-        {!effectiveProjectId ? <div className="muted">请先创建 Project</div> : null}
-        <div className="muted" style={{ marginTop: 8 }}>
-          initScript 默认在 workspace 执行；建议把持久内容写到 <code>$HOME/.tuixiu/projects/&lt;projectId&gt;</code>。
-          <br />
-          envText 仅在携带 admin 凭证时返回；请避免在其中存放不必要的敏感信息。
-        </div>
-      </section>
+  const onStartCreate = useCallback(() => {
+    resetRoleEdit();
+    setRoleKey("");
+    setRoleDisplayName("");
+    setRolePromptTemplate("");
+    setRoleInitScript("");
+    setRoleInitTimeoutSeconds("300");
+    setRoleEnvText("");
+    queueMicrotask(() => roleCreateKeyRef.current?.focus());
+  }, [resetRoleEdit]);
 
-      <section className="card" hidden={!active}>
-        <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
-          <div>
-            <h2 style={{ marginTop: 0 }}>已创建角色</h2>
-            <div className="muted">维护 Prompt / initScript / 超时等配置。</div>
-          </div>
+  return (
+    <section className="card" hidden={!active}>
+      <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ marginTop: 0, marginBottom: 4 }}>角色模板</h2>
+          <div className="muted">维护 Prompt / initScript / envText / 超时等配置。</div>
+        </div>
+        <div className="row gap" style={{ flexWrap: "wrap" }}>
+          <Button type="button" variant="secondary" size="sm" onClick={onStartCreate} disabled={!effectiveProjectId || rolesLoading}>
+            新建
+          </Button>
           <Button type="button" variant="secondary" size="sm" onClick={() => void refreshRoles()} disabled={!effectiveProjectId || rolesLoading}>
             刷新
           </Button>
         </div>
+      </div>
 
-        {!effectiveProjectId ? (
-          <div className="muted">请先创建 Project</div>
-        ) : rolesLoading ? (
-          <div className="muted" style={{ marginTop: 10 }}>
-            加载中…
-          </div>
-        ) : rolesError ? (
-          <div className="muted" style={{ marginTop: 10 }} title={rolesError}>
-            角色列表加载失败：{rolesError}
-          </div>
-        ) : roles.length ? (
-          <div className="tableScroll" style={{ marginTop: 10 }}>
-            <table className="table tableWrap">
-              <thead>
-                <tr>
-                  <th>Key</th>
-                  <th>显示名称</th>
-                  <th>init 超时</th>
-                  <th>更新时间</th>
-                  <th style={{ textAlign: "right" }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roles.map((role) => {
-                  const editing = roleEditingId === role.id;
-                  const busy = roleSavingId === role.id || roleDeletingId === role.id;
-                  return (
-                    <tr key={role.id}>
-                      <td>
-                        <code title={role.key}>{role.key}</code>
-                      </td>
-                      <td>
-                        <div className="cellStack">
-                          <div>{role.displayName}</div>
-                          {role.description ? <div className="cellSub">{role.description}</div> : null}
-                          {role.envKeys?.length ? <div className="cellSub">env: {role.envKeys.join(", ")}</div> : null}
-                        </div>
-                      </td>
-                      <td>{role.initTimeoutSeconds}s</td>
-                      <td>{new Date(role.updatedAt).toLocaleString()}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <div className="row gap" style={{ justifyContent: "flex-end" }}>
-                          <Button type="button" variant="secondary" size="sm" onClick={() => copyRoleToCreate(role)} disabled={rolesLoading || busy} title="复制到上方创建表单（不填 key）">
-                            复制
-                          </Button>
-                          <Button type="button" variant="secondary" size="sm" onClick={() => (editing ? resetRoleEdit() : startRoleEdit(role))} disabled={rolesLoading || busy}>
-                            {editing ? "取消编辑" : "编辑"}
-                          </Button>
-                          <Button type="button" variant="destructive" size="sm" onClick={() => void onDeleteRole(role)} disabled={rolesLoading || roleDeletingId === role.id}>
-                            {roleDeletingId === role.id ? "删除中…" : "删除"}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="muted" style={{ marginTop: 10 }}>
-            暂无 RoleTemplate
-          </div>
-        )}
-
-        {editingRole ? (
-          <form onSubmit={(e) => void onUpdateRole(e)} className="form" style={{ marginTop: 16 }}>
-            <h3 style={{ marginTop: 0 }}>编辑角色</h3>
-            <div className="muted">
-              key: <code>{editingRole.key}</code> · id: <code>{editingRole.id}</code>
+      {!effectiveProjectId ? (
+        <div className="muted" style={{ marginTop: 10 }}>
+          请先创建/选择 Project
+        </div>
+      ) : rolesLoading ? (
+        <div className="muted" style={{ marginTop: 10 }}>
+          加载中…
+        </div>
+      ) : rolesError ? (
+        <div className="muted" style={{ marginTop: 10 }} title={rolesError}>
+          角色列表加载失败：{rolesError}
+        </div>
+      ) : (
+        <div className="adminSplit" style={{ marginTop: 12 }}>
+          <div className="rounded-lg border bg-card p-4">
+            <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 800 }}>角色列表</div>
+              <div className="muted">{filteredRoles.length ? `显示 ${filteredRoles.length} / ${roles.length}` : "—"}</div>
             </div>
-            <label className="label">
-              显示名称 *
-              <Input value={roleEditDisplayName} onChange={(e) => setRoleEditDisplayName(e.target.value)} />
+
+            <label className="label" style={{ marginTop: 10 }}>
+              搜索
+              <Input value={roleSearch} onChange={(e) => setRoleSearch(e.target.value)} placeholder="按 key / 名称 / env keys 过滤…" />
             </label>
-            <label className="label">
-              描述（可选）
-              <Input value={roleEditDescription} onChange={(e) => setRoleEditDescription(e.target.value)} />
-            </label>
-            <label className="label">
-              Prompt Template（可选）
-              <Textarea value={roleEditPromptTemplate} onChange={(e) => setRoleEditPromptTemplate(e.target.value)} />
-            </label>
-            <label className="label">
-              initScript（bash，可选）
-              <Textarea value={roleEditInitScript} onChange={(e) => setRoleEditInitScript(e.target.value)} />
-            </label>
-            <label className="label">
-              init 超时秒数（可选）
-              <Input value={roleEditInitTimeoutSeconds} onChange={(e) => setRoleEditInitTimeoutSeconds(e.target.value)} placeholder="300" />
-            </label>
-            <label className="label">
-              envText（仅 admin，可选）
-              <div className="row gap" style={{ alignItems: "center" }}>
-                <Checkbox checked={roleEditEnvTextEnabled} onCheckedChange={(v) => setRoleEditEnvTextEnabled(v === true)} />
-                <div className="muted">
-                  勾选后允许编辑并保存（留空=清空）。
-                  {editingRole.envKeys?.length ? ` 当前 keys: ${editingRole.envKeys.join(", ")}` : ""}
+
+            <div className="tableScroll" style={{ marginTop: 12, maxHeight: 520 }}>
+              {filteredRoles.length ? (
+                <ul className="list" style={{ marginTop: 0 }}>
+                  {filteredRoles.map((role) => {
+                    const selected = roleEditingId === role.id;
+                    const busy = roleSavingId === role.id || roleDeletingId === role.id;
+                    return (
+                      <li key={role.id} className={`listItem adminListItem ${selected ? "selected" : ""}`}>
+                        <button
+                          type="button"
+                          className="adminListItemButton"
+                          onClick={() => startRoleEdit(role)}
+                          disabled={busy}
+                        >
+                          <div className="row spaceBetween" style={{ gap: 10, alignItems: "center" }}>
+                            <div className="cellStack" style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 800 }}>{role.displayName ?? role.key}</div>
+                              <div className="cellSub">
+                                <code>{role.key}</code> · {role.initTimeoutSeconds}s · {new Date(role.updatedAt).toLocaleString()}
+                              </div>
+                              {role.description ? <div className="cellSub">{role.description}</div> : null}
+                              {role.envKeys?.length ? <div className="cellSub">env: {role.envKeys.join(", ")}</div> : null}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                copyRoleToCreate(role);
+                              }}
+                              disabled={busy}
+                              title="复制到新建（不填 key）"
+                            >
+                              复制
+                            </Button>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="muted">暂无 RoleTemplate</div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-card p-4">
+            {editingRole ? (
+              <form onSubmit={(e) => void onUpdateRole(e)} className="form">
+                <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+                  <div>
+                    <h3 style={{ marginTop: 0, marginBottom: 4 }}>编辑角色</h3>
+                    <div className="muted">
+                      key: <code>{editingRole.key}</code> · id: <code>{editingRole.id}</code>
+                    </div>
+                  </div>
+                  <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+                    <Button type="button" variant="secondary" size="sm" onClick={() => copyRoleToCreate(editingRole)} disabled={roleSavingId === editingRole.id || roleDeletingId === editingRole.id}>
+                      复制到新建
+                    </Button>
+                    <Button type="button" variant="destructive" size="sm" onClick={() => void onDeleteRole(editingRole)} disabled={roleSavingId === editingRole.id || roleDeletingId === editingRole.id}>
+                      {roleDeletingId === editingRole.id ? "删除中…" : "删除"}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <Textarea value={roleEditEnvText} onChange={(e) => setRoleEditEnvText(e.target.value)} rows={4} readOnly={!roleEditEnvTextEnabled} placeholder={"FOO=bar\nexport TOKEN=xxx"} />
-            </label>
-            <div className="row gap" style={{ marginTop: 10 }}>
-              <Button type="submit" disabled={roleSavingId === editingRole.id || roleDeletingId === editingRole.id}>
-                {roleSavingId === editingRole.id ? "保存中…" : "保存修改"}
-              </Button>
-              <Button type="button" variant="secondary" onClick={resetRoleEdit}>
-                取消
-              </Button>
-            </div>
-          </form>
-        ) : null}
-      </section>
-    </>
+
+                <label className="label">
+                  显示名称 *
+                  <Input value={roleEditDisplayName} onChange={(e) => setRoleEditDisplayName(e.target.value)} />
+                </label>
+                <label className="label">
+                  描述（可选）
+                  <Input value={roleEditDescription} onChange={(e) => setRoleEditDescription(e.target.value)} />
+                </label>
+                <label className="label">
+                  Prompt Template（可选）
+                  <Textarea value={roleEditPromptTemplate} onChange={(e) => setRoleEditPromptTemplate(e.target.value)} />
+                </label>
+                <label className="label">
+                  initScript（bash，可选）
+                  <Textarea value={roleEditInitScript} onChange={(e) => setRoleEditInitScript(e.target.value)} />
+                </label>
+                <label className="label">
+                  init 超时秒数（可选）
+                  <Input value={roleEditInitTimeoutSeconds} onChange={(e) => setRoleEditInitTimeoutSeconds(e.target.value)} placeholder="300" />
+                </label>
+                <label className="label">
+                  envText（仅 admin，可选）
+                  <div className="row gap" style={{ alignItems: "center" }}>
+                    <Checkbox checked={roleEditEnvTextEnabled} onCheckedChange={(v) => setRoleEditEnvTextEnabled(v === true)} />
+                    <div className="muted">
+                      勾选后允许编辑并保存（留空=清空）。
+                      {editingRole.envKeys?.length ? ` 当前 keys: ${editingRole.envKeys.join(", ")}` : ""}
+                    </div>
+                  </div>
+                  <Textarea value={roleEditEnvText} onChange={(e) => setRoleEditEnvText(e.target.value)} rows={4} readOnly={!roleEditEnvTextEnabled} placeholder={"FOO=bar\nexport TOKEN=xxx"} />
+                </label>
+
+                <div className="row gap" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                  <Button type="submit" disabled={roleSavingId === editingRole.id || roleDeletingId === editingRole.id}>
+                    {roleSavingId === editingRole.id ? "保存中…" : "保存修改"}
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={resetRoleEdit}>
+                    取消
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={(e) => void onCreateRole(e)} className="form">
+                <h3 style={{ marginTop: 0, marginBottom: 4 }}>创建 RoleTemplate</h3>
+                <div className="muted">建议先从现有角色“复制到新建”，再改 key。</div>
+
+                <label className="label">
+                  Role Key *
+                  <Input ref={roleCreateKeyRef} value={roleKey} onChange={(e) => setRoleKey(e.target.value)} placeholder="backend-dev" />
+                </label>
+                <label className="label">
+                  显示名称 *
+                  <Input value={roleDisplayName} onChange={(e) => setRoleDisplayName(e.target.value)} placeholder="后端开发" />
+                </label>
+                <label className="label">
+                  Prompt Template（可选）
+                  <Textarea value={rolePromptTemplate} onChange={(e) => setRolePromptTemplate(e.target.value)} placeholder="你是 {{role.name}}，请优先写单测。" />
+                </label>
+                <label className="label">
+                  initScript（bash，可选）
+                  <Textarea value={roleInitScript} onChange={(e) => setRoleInitScript(e.target.value)} placeholder={"# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init"} />
+                </label>
+                <label className="label">
+                  init 超时秒数（可选）
+                  <Input value={roleInitTimeoutSeconds} onChange={(e) => setRoleInitTimeoutSeconds(e.target.value)} placeholder="300" />
+                </label>
+                <label className="label">
+                  envText（.env，可选）
+                  <Textarea value={roleEnvText} onChange={(e) => setRoleEnvText(e.target.value)} rows={4} placeholder={"FOO=bar\nexport TOKEN=xxx"} />
+                </label>
+                <div className="row gap" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                  <Button type="submit" disabled={!roleKey.trim() || !roleDisplayName.trim() || !effectiveProjectId}>
+                    创建
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={onStartCreate}>
+                    清空
+                  </Button>
+                </div>
+
+                <div className="muted" style={{ marginTop: 10 }}>
+                  initScript 默认在 workspace 执行；建议把持久内容写到 <code>$HOME/.tuixiu/projects/&lt;projectId&gt;</code>。
+                  <br />
+                  envText 仅在携带 admin 凭证时返回；请避免在其中存放不必要的敏感信息。
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

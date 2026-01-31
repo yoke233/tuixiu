@@ -4,12 +4,12 @@
   background:
     radial-gradient(
       900px circle at 12% -10%,
-      color-mix(in oklab, var(--primary), transparent 92%),
+      color-mix(in oklab, var(--primary), transparent 90%),
       transparent 55%
     ),
     radial-gradient(
       900px circle at 88% 0%,
-      color-mix(in oklab, var(--info), transparent 92%),
+      color-mix(in oklab, var(--info), transparent 90%),
       transparent 55%
     ),
     var(--bg);

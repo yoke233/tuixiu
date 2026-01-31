@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { getPmPolicy, updatePmPolicy } from "../../../api/policies";
 import type { PmPolicy, Project } from "../../../types";
@@ -20,6 +20,14 @@ export function PolicySection(props: Props) {
   const [policySource, setPolicySource] = useState<"project" | "default" | "">("");
   const [policyLoading, setPolicyLoading] = useState(false);
   const [policySaving, setPolicySaving] = useState(false);
+
+  const parsedPolicy = useMemo(() => {
+    try {
+      return { ok: true as const, value: JSON.parse(policyText || "{}") as PmPolicy };
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+    }
+  }, [policyText]);
 
   useEffect(() => {
     if (!active) return;
@@ -69,13 +77,22 @@ export function PolicySection(props: Props) {
     );
   }, []);
 
+  const onFormat = useCallback(() => {
+    if (!parsedPolicy.ok) return;
+    setPolicyText(JSON.stringify(parsedPolicy.value, null, 2));
+  }, [parsedPolicy]);
+
   const onSave = useCallback(async () => {
     if (!effectiveProjectId) return;
     if (!requireAdmin()) return;
     setPolicySaving(true);
     setError(null);
     try {
-      const parsed = JSON.parse(policyText || "{}") as PmPolicy;
+      if (!parsedPolicy.ok) {
+        setError(`JSON 解析失败：${parsedPolicy.error}`);
+        return;
+      }
+      const parsed = parsedPolicy.value;
       const res = await updatePmPolicy(effectiveProjectId, parsed);
       setPolicySource("project");
       setPolicyText(JSON.stringify(res.policy, null, 2));
@@ -84,7 +101,7 @@ export function PolicySection(props: Props) {
     } finally {
       setPolicySaving(false);
     }
-  }, [effectiveProjectId, policyText, requireAdmin, setError]);
+  }, [effectiveProjectId, parsedPolicy, requireAdmin, setError]);
 
   return (
     <section className="card" style={{ marginBottom: 16 }} hidden={!active}>
@@ -114,9 +131,18 @@ export function PolicySection(props: Props) {
           </Button>
           <Button
             type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onFormat}
+            disabled={!effectiveProjectId || policyLoading || policySaving || !parsedPolicy.ok}
+          >
+            格式化
+          </Button>
+          <Button
+            type="button"
             size="sm"
             onClick={() => void onSave()}
-            disabled={!effectiveProjectId || policyLoading || policySaving}
+            disabled={!effectiveProjectId || policyLoading || policySaving || !parsedPolicy.ok}
           >
             {policySaving ? "保存中…" : "保存"}
           </Button>
@@ -128,13 +154,20 @@ export function PolicySection(props: Props) {
           加载中…
         </div>
       ) : (
-        <Textarea
-          value={policyText}
-          onChange={(e) => setPolicyText(e.target.value)}
-          rows={14}
-          className="inputMono mt-2 w-full"
-          placeholder='{"version":1,"automation":{"autoStartIssue":true,"autoReview":true,"autoCreatePr":true,"autoRequestMergeApproval":true},"approvals":{"requireForActions":["merge_pr"],"escalateOnSensitivePaths":["create_pr","publish_artifact"]},"sensitivePaths":[] }'
-        />
+        <>
+          <Textarea
+            value={policyText}
+            onChange={(e) => setPolicyText(e.target.value)}
+            rows={14}
+            className="inputMono mt-2 w-full"
+            placeholder='{"version":1,"automation":{"autoStartIssue":true,"autoReview":true,"autoCreatePr":true,"autoRequestMergeApproval":true},"approvals":{"requireForActions":["merge_pr"],"escalateOnSensitivePaths":["create_pr","publish_artifact"]},"sensitivePaths":[] }'
+          />
+          {!parsedPolicy.ok ? (
+            <div className="muted" style={{ marginTop: 8 }} role="alert">
+              JSON 解析失败：{parsedPolicy.error}
+            </div>
+          ) : null}
+        </>
       )}
 
       <details style={{ marginTop: 12 }}>
