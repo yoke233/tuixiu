@@ -27,7 +27,7 @@
   --secondary-foreground: var(--foreground);
   --muted: hsl(210 40% 96.1%);
   --muted-foreground: hsl(215.4 16.3% 46.9%);
-  --accent: hsl(173.4 70% 94%);
+  --accent: hsl(173.4 70% 92%);
   --accent-foreground: var(--foreground);
   --destructive: hsl(0 84.2% 60.2%);
   --destructive-foreground: hsl(210 40% 98%);
@@ -37,8 +37,8 @@
   --warning-foreground: hsl(222.2 47.4% 11.2%);
   --info: hsl(201.3 96.3% 32.2%);
   --info-foreground: hsl(210 40% 98%);
-  --border: hsl(222.2 47.4% 11.2% / 0.14);
-  --input: hsl(222.2 47.4% 11.2% / 0.18);
+  --border: hsl(222.2 47.4% 11.2% / 0.16);
+  --input: hsl(222.2 47.4% 11.2% / 0.2);
   --ring: var(--primary);
   --radius: 0.75rem;
   --shadow-soft: 0 12px 30px hsl(222.2 47.4% 11.2% / 0.10),
@@ -58,7 +58,7 @@
   --danger-border: hsl(0 84.2% 60.2% / 0.22);
   --pre-bg: hsl(222.2 47.4% 11.2% / 0.06);
   --console-bg: hsl(222.2 47.4% 11.2% / 0.06);
-  --console-user-bg: hsl(173.4 80.4% 36% / 0.14);
+  --console-user-bg: color-mix(in oklab, var(--primary), transparent 88%);
   --console-user-text: var(--fg);
   --console-system-bg: hsl(222.2 47.4% 11.2% / 0.04);
 
@@ -110,15 +110,76 @@
   --list-bg: var(--secondary);
   --input-bg: var(--secondary);
   --input-border: var(--input);
-  --link: hsl(199.4 95.5% 73.9%);
+  --link: var(--primary);
   --accent-text: var(--primary-foreground);
   --danger-bg: hsl(0 84.2% 60.2% / 0.16);
   --danger-border: hsl(0 84.2% 60.2% / 0.35);
   --pre-bg: hsl(0 0% 0% / 0.26);
   --console-bg: hsl(0 0% 0% / 0.36);
-  --console-user-bg: hsl(172.5 66% 50.4% / 0.14);
+  --console-user-bg: color-mix(in oklab, var(--primary), transparent 86%);
   --console-user-text: var(--fg);
   --console-system-bg: hsl(0 0% 100% / 0.08);
+}
+
+/* Accent palettes (controlled by <html data-accent="...">) */
+:root[data-accent="blue"] {
+  --primary: hsl(221.2 83.2% 53.3%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(214 95% 93%);
+}
+
+.dark[data-accent="blue"] {
+  --primary: hsl(217.2 91.2% 59.8%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: hsl(217.2 91.2% 59.8% / 0.14);
+}
+
+:root[data-accent="violet"] {
+  --primary: hsl(262.1 83.3% 57.8%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(262.1 93% 94%);
+}
+
+.dark[data-accent="violet"] {
+  --primary: hsl(263.4 70% 62%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(263.4 70% 62% / 0.14);
+}
+
+:root[data-accent="rose"] {
+  --primary: hsl(346.8 77.2% 49.8%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(346.8 90% 94%);
+}
+
+.dark[data-accent="rose"] {
+  --primary: hsl(346.8 77.2% 58.8%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(346.8 77.2% 58.8% / 0.14);
+}
+
+:root[data-accent="amber"] {
+  --primary: hsl(37.7 92.1% 50.2%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: hsl(48 96% 90%);
+}
+
+.dark[data-accent="amber"] {
+  --primary: hsl(45.4 93.4% 47.5%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: hsl(45.4 93.4% 47.5% / 0.16);
+}
+
+:root[data-accent="slate"] {
+  --primary: hsl(215.4 16.3% 46.9%);
+  --primary-foreground: hsl(210 40% 98%);
+  --accent: hsl(215 25% 92%);
+}
+
+.dark[data-accent="slate"] {
+  --primary: hsl(215 18% 72%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: hsl(215 18% 72% / 0.14);
 }
 
 /* Map CSS variables to Tailwind theme with @theme inline */

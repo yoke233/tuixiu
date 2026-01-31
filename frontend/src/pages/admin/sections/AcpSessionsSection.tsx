@@ -58,6 +58,7 @@ export function AcpSessionsSection(props: Props) {
   const [onlyStale, setOnlyStale] = useState(false);
   const [agentFilter, setAgentFilter] = useState<string>("");
   const [selectedSessionKey, setSelectedSessionKey] = useState<string>("");
+  const [view, setView] = useState<"sessions" | "proxies" | "both">("sessions");
 
   const loading = loadingAcpSessions || loadingAcpProxies;
 
@@ -335,7 +336,24 @@ export function AcpSessionsSection(props: Props) {
 
   return (
     <div hidden={!active}>
-      <section className="card" style={{ marginBottom: 16 }}>
+      <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
+        <div className="muted">常用：Sessions 管理；排障/扩容：看 Proxies 与实例。</div>
+        <label className="label" style={{ margin: 0 }}>
+          视图
+          <Select value={view} onValueChange={(v) => setView(v as any)}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="sessions">Sessions</SelectItem>
+              <SelectItem value="proxies">Proxies</SelectItem>
+              <SelectItem value="both">Both</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+      </div>
+
+      <section className="card" style={{ marginBottom: 16 }} hidden={view === "sessions"}>
         <h2 style={{ marginTop: 0 }}>ACP Proxies</h2>
         <div className="muted">
           显示当前已注册的 acp-proxy（Agent），以及各 proxy 上报的实例（sandbox inventory）。
@@ -495,7 +513,7 @@ export function AcpSessionsSection(props: Props) {
         )}
       </section>
 
-      <section className="card" style={{ marginBottom: 16 }}>
+      <section className="card" style={{ marginBottom: 16 }} hidden={view === "proxies"}>
         <h2 style={{ marginTop: 0 }}>ACP Sessions</h2>
         <div className="muted">
           列出当前项目下已建立的 ACP session（来自 Run.acpSessionId），可手动发送{" "}

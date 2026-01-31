@@ -8,6 +8,7 @@ import {
   type TextTemplateMap,
 } from "../../../api/textTemplates";
 import type { Project } from "../../../types";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,11 +49,19 @@ export function TextTemplatesSection(props: Props) {
   const [selectedKey, setSelectedKey] = useState("");
   const [platformDraft, setPlatformDraft] = useState("");
   const [overrideDraft, setOverrideDraft] = useState("");
+  const [keySearch, setKeySearch] = useState("");
+  const [newKeyDraft, setNewKeyDraft] = useState("");
 
   const allKeys = useMemo(
     () => getAllKeys(platformTemplates, effectiveProjectId ? projectOverrides : null, selectedKey.trim() ? { [selectedKey.trim()]: "" } : null),
     [effectiveProjectId, platformTemplates, projectOverrides, selectedKey],
   );
+
+  const filteredKeys = useMemo(() => {
+    const q = keySearch.trim().toLowerCase();
+    if (!q) return allKeys;
+    return allKeys.filter((k) => k.toLowerCase().includes(q));
+  }, [allKeys, keySearch]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -167,8 +176,9 @@ export function TextTemplatesSection(props: Props) {
   const platformCount = Object.keys(platformTemplates).length;
   const overrideCount = Object.keys(projectOverrides).length;
 
-  const keyExistsInPlatform = !!(selectedKey.trim() && Object.prototype.hasOwnProperty.call(platformTemplates, selectedKey.trim()));
-  const keyExistsInOverride = !!(selectedKey.trim() && Object.prototype.hasOwnProperty.call(projectOverrides, selectedKey.trim()));
+  const selectedKeyTrim = selectedKey.trim();
+  const keyExistsInPlatform = !!(selectedKeyTrim && Object.prototype.hasOwnProperty.call(platformTemplates, selectedKeyTrim));
+  const keyExistsInOverride = !!(selectedKeyTrim && Object.prototype.hasOwnProperty.call(projectOverrides, selectedKeyTrim));
 
   const busy = loading || savingPlatform || savingOverride;
 
@@ -210,107 +220,170 @@ export function TextTemplatesSection(props: Props) {
         )}
       </div>
 
-      <div className="row gap" style={{ alignItems: "flex-end", marginTop: 12 }}>
-        <label className="label" style={{ margin: 0, flex: "2 1 360px", minWidth: 260 }}>
-          模板 key
-          <Input
-            value={selectedKey}
-            onChange={(e) => setSelectedKey(e.target.value)}
-            placeholder="输入或选择 key（支持新增）"
-            list="textTemplateKeys"
-          />
-          <datalist id="textTemplateKeys">
-            {allKeys.map((key) => (
-              <option key={key} value={key} />
-            ))}
-          </datalist>
-        </label>
-
-        <div className="muted" style={{ paddingBottom: 6 }}>
-          {selectedKey.trim() ? (
-            <>
-              {keyExistsInPlatform ? "平台已存在" : "平台不存在"}
-              {effectiveProjectId ? (keyExistsInOverride ? " · 覆盖已存在" : " · 覆盖不存在") : ""}
-              {" · "}
-              生效来源：<code>{preview.source}</code>
-            </>
-          ) : (
-            "先输入一个 key"
-          )}
-        </div>
-      </div>
-
-      <div className="grid2" style={{ marginTop: 12, marginBottom: 0 }}>
-        <div>
-          <h3 style={{ marginTop: 0, marginBottom: 6 }}>平台模板</h3>
-          <div className="muted" style={{ marginBottom: 6 }}>
-            留空保存 = 删除该平台模板（key 会消失）。
+      <div className="adminSplit" style={{ marginTop: 12 }}>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="row spaceBetween" style={{ alignItems: "baseline" }}>
+            <div style={{ fontWeight: 800 }}>模板 Key</div>
+            <div className="muted">{filteredKeys.length ? `${filteredKeys.length} 个` : "—"}</div>
           </div>
-          <Textarea
-            value={platformDraft}
-            onChange={(e) => setPlatformDraft(e.target.value)}
-            rows={10}
-            className="inputMono"
-            style={{ width: "100%" }}
-            placeholder={selectedKey.trim() ? "例如：Hello, {{user.name}}!" : "请先输入 key"}
-            readOnly={!selectedKey.trim()}
-          />
+
+          <div className="row gap" style={{ alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
+            <label className="label" style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}>
+              搜索
+              <Input value={keySearch} onChange={(e) => setKeySearch(e.target.value)} placeholder="按 key 过滤…" />
+            </label>
+            <label className="label" style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}>
+              新建 key
+              <Input
+                value={newKeyDraft}
+                onChange={(e) => setNewKeyDraft(e.target.value)}
+                placeholder="例如：issue.title_prefix"
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  const next = newKeyDraft.trim();
+                  if (!next) return;
+                  setSelectedKey(next);
+                  setNewKeyDraft("");
+                }}
+              />
+            </label>
+          </div>
+
+          <div className="tableScroll" style={{ marginTop: 12, maxHeight: 520 }}>
+            {filteredKeys.length ? (
+              <ul className="list" style={{ marginTop: 0 }}>
+                {filteredKeys.map((key) => {
+                  const isSelected = selectedKeyTrim === key;
+                  const hasPlatform = Object.prototype.hasOwnProperty.call(platformTemplates, key);
+                  const hasOverride = Object.prototype.hasOwnProperty.call(projectOverrides, key);
+                  const platformValue = platformTemplates[key] ?? "";
+                  const overrideValue = projectOverrides[key] ?? "";
+                  const effectiveSource =
+                    effectiveProjectId && toPatchValue(overrideValue) ? "project" : toPatchValue(platformValue) ? "platform" : "missing";
+
+                  return (
+                    <li key={key} className={`listItem adminListItem ${isSelected ? "selected" : ""}`}>
+                      <button type="button" className="adminListItemButton" onClick={() => setSelectedKey(key)}>
+                        <div className="row spaceBetween" style={{ alignItems: "center", gap: 10 }}>
+                          <code title={key}>{key}</code>
+                          <span className="row gap" style={{ alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                            {hasOverride ? (
+                              <Badge className="bg-primary text-primary-foreground hover:bg-primary/80">覆盖</Badge>
+                            ) : null}
+                            {hasPlatform ? (
+                              <Badge variant="secondary">平台</Badge>
+                            ) : (
+                              <Badge variant="outline">new</Badge>
+                            )}
+                          </span>
+                        </div>
+                        <div className="muted" style={{ marginTop: 6 }}>
+                          生效：<code>{effectiveSource}</code>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="muted">暂无模板 key（可在上方输入 new key 创建）</div>
+            )}
+          </div>
         </div>
 
-        <div>
-          <h3 style={{ marginTop: 0, marginBottom: 6 }}>Project 覆盖</h3>
-          {effectiveProjectId ? (
-            <>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontWeight: 800 }}>编辑</div>
+              <div className="muted" style={{ marginTop: 6 }}>
+                {selectedKeyTrim ? (
+                  <>
+                    key: <code>{selectedKeyTrim}</code> · 生效来源：<code>{preview.source}</code>
+                    {" · "}
+                    {keyExistsInPlatform ? "平台已存在" : "平台不存在"}
+                    {effectiveProjectId ? (keyExistsInOverride ? " · 覆盖已存在" : " · 覆盖不存在") : ""}
+                  </>
+                ) : (
+                  "请先在左侧选择或新建一个 key"
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid2" style={{ marginTop: 12, marginBottom: 0 }}>
+            <div>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>平台模板</h3>
               <div className="muted" style={{ marginBottom: 6 }}>
-                留空保存 = 清除覆盖（回退到平台模板）。
+                留空保存 = 删除该平台模板（key 会消失）。
               </div>
               <Textarea
-                value={overrideDraft}
-                onChange={(e) => setOverrideDraft(e.target.value)}
+                value={platformDraft}
+                onChange={(e) => setPlatformDraft(e.target.value)}
                 rows={10}
                 className="inputMono"
                 style={{ width: "100%" }}
-                placeholder={selectedKey.trim() ? "不填则使用平台模板" : "请先输入 key"}
-                readOnly={!selectedKey.trim()}
+                placeholder={selectedKeyTrim ? "例如：Hello, {{user.name}}!" : "请先选择 key"}
+                readOnly={!selectedKeyTrim}
               />
-              <div className="row gap" style={{ justifyContent: "flex-end", marginTop: 8 }}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setOverrideDraft(platformDraft)}
-                  disabled={!selectedKey.trim() || busy}
-                  title="把当前平台模板内容复制到覆盖里，方便再做微调"
-                >
-                  复制平台到覆盖
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setOverrideDraft("")}
-                  disabled={!selectedKey.trim() || busy}
-                  title="清空覆盖（需要再点一次“保存覆盖”才会生效）"
-                >
-                  清空覆盖
-                </Button>
-              </div>
-            </>
-          ) : (
-            <div className="muted">请先创建/选择 Project（才能编辑覆盖）。</div>
-          )}
+            </div>
+
+            <div>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Project 覆盖</h3>
+              {effectiveProjectId ? (
+                <>
+                  <div className="muted" style={{ marginBottom: 6 }}>
+                    留空保存 = 清除覆盖（回退到平台模板）。
+                  </div>
+                  <Textarea
+                    value={overrideDraft}
+                    onChange={(e) => setOverrideDraft(e.target.value)}
+                    rows={10}
+                    className="inputMono"
+                    style={{ width: "100%" }}
+                    placeholder={selectedKeyTrim ? "不填则使用平台模板" : "请先选择 key"}
+                    readOnly={!selectedKeyTrim}
+                  />
+                  <div className="row gap" style={{ justifyContent: "flex-end", marginTop: 8, flexWrap: "wrap" }}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setOverrideDraft(platformDraft)}
+                      disabled={!selectedKeyTrim || busy}
+                      title="把当前平台模板内容复制到覆盖里，方便再做微调"
+                    >
+                      复制平台到覆盖
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setOverrideDraft("")}
+                      disabled={!selectedKeyTrim || busy}
+                      title="清空覆盖（需要再点一次“保存覆盖”才会生效）"
+                    >
+                      清空覆盖
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="muted">请先创建/选择 Project（才能编辑覆盖）。</div>
+              )}
+            </div>
+          </div>
+
+          <details style={{ marginTop: 12 }}>
+            <summary>生效预览</summary>
+            <div className="muted" style={{ marginTop: 8 }}>
+              source: <code>{preview.source}</code>
+            </div>
+            <pre className="pre" style={{ marginTop: 8 }}>
+              {preview.text ? preview.text : "（空 / missing）"}
+            </pre>
+          </details>
         </div>
       </div>
-
-      <details style={{ marginTop: 12 }}>
-        <summary>生效预览</summary>
-        <div className="muted" style={{ marginTop: 8 }}>
-          source: <code>{preview.source}</code>
-        </div>
-        <pre className="pre" style={{ marginTop: 8 }}>
-          {preview.text ? preview.text : "（空 / missing）"}
-        </pre>
-      </details>
 
       <div className="muted" style={{ marginTop: 10 }}>
         后端接口：<code>GET/PATCH /api/text-templates</code>、<code>GET/PATCH /api/projects/:projectId/text-templates</code>。
