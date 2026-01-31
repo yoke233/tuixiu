@@ -10,6 +10,7 @@ import { pickArg } from "./utils/args.js";
 import { isRecord } from "./utils/validate.js";
 import { RunManager } from "./runs/runManager.js";
 import { closeAgent, sendSandboxInstanceStatus, sendUpdate } from "./runs/runRuntime.js";
+import { createPlatform } from "./platform/createPlatform.js";
 import { createProxySandbox } from "./sandbox/createProxySandbox.js";
 import { OrchestratorClient } from "./orchestrator/orchestratorClient.js";
 import { handleAcpClose } from "./handlers/handleAcpClose.js";
@@ -112,6 +113,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     cfg: runtimeCfg,
     sandbox,
     runs,
+    platform: createPlatform(runtimeCfg),
     send: client.send.bind(client),
     log,
   };

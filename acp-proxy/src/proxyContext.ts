@@ -1,5 +1,6 @@
 import type { LoadedProxyConfig } from "./config.js";
 
+import type { RunPlatform } from "./platform/types.js";
 import type { RunManager } from "./runs/runManager.js";
 import type { ProxySandbox } from "./sandbox/ProxySandbox.js";
 
@@ -9,6 +10,7 @@ export type SendFn = (payload: unknown) => void;
 export type ProxyContext = {
   cfg: LoadedProxyConfig;
   sandbox: ProxySandbox;
+  platform: RunPlatform;
   runs: RunManager;
   send: SendFn;
   log: Logger;

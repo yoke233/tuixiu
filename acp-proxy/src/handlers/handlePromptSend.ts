@@ -11,7 +11,6 @@ import {
   startAgent,
   withAuthRetry,
 } from "../runs/runRuntime.js";
-import { mapCwdForHostProcess } from "../runs/hostCwd.js";
 import { defaultCwdForRun } from "../runs/workspacePath.js";
 
 export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<void> {
@@ -52,10 +51,10 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
     const defaultCwd = defaultCwdForRun({ workspaceMode, runId });
     const cwd =
       typeof msg?.cwd === "string" && msg.cwd.trim() ? msg.cwd.trim() : defaultCwd;
-    const cwdForAgent =
-      ctx.sandbox.provider === "host_process"
-        ? mapCwdForHostProcess(cwd, run.hostWorkspacePath ?? "")
-        : cwd;
+    const cwdForAgent = ctx.platform.resolveCwdForAgent({
+      cwd,
+      runHostWorkspacePath: run.hostWorkspacePath ?? null,
+    });
     const sessionId =
       typeof msg?.session_id === "string" && msg.session_id.trim() ? msg.session_id.trim() : null;
     const context = typeof msg?.context === "string" ? msg.context : undefined;

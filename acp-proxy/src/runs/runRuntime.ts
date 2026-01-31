@@ -18,7 +18,6 @@ import { isRecord, validateInstanceName, validateRunId } from "../utils/validate
 import { AgentBridge } from "../acp/agentBridge.js";
 
 import type { RunRuntime } from "./runTypes.js";
-import { mapCwdForHostProcess } from "./hostCwd.js";
 import { defaultCwdForRun } from "./workspacePath.js";
 
 const execFileAsync = promisify(execFile);
@@ -804,10 +803,10 @@ export async function ensureSessionForPrompt(
   const initResult = await ensureInitialized(ctx, run);
   const promptCapabilities = getPromptCapabilities(initResult);
 
-  const cwd =
-    ctx.sandbox.provider === "host_process"
-      ? mapCwdForHostProcess(opts.cwd, run.hostWorkspacePath ?? "")
-      : opts.cwd;
+  const cwd = ctx.platform.resolveCwdForAgent({
+    cwd: opts.cwd,
+    runHostWorkspacePath: run.hostWorkspacePath ?? null,
+  });
 
   const sessionId = typeof opts.sessionId === "string" ? opts.sessionId.trim() : "";
   let prompt = opts.prompt;

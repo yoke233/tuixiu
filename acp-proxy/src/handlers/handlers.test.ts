@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { ProcessHandle } from "../sandbox/types.js";
 import { RunManager } from "../runs/runManager.js";
 import type { ProxySandbox } from "../sandbox/ProxySandbox.js";
+import { createPlatform } from "../platform/createPlatform.js";
 
 import { handleAcpOpen } from "./handleAcpOpen.js";
 import { handlePromptSend } from "./handlePromptSend.js";
@@ -113,9 +114,11 @@ describe("proxy/handlers", () => {
       openAgent: async () => ({ handle: h.handle, created: true, initPending: false }),
     };
 
+    const cfg = baseConfig();
     const ctx = {
-      cfg: baseConfig(),
+      cfg,
       sandbox,
+      platform: createPlatform(cfg),
       runs: new RunManager(),
       send: (payload: unknown) => messages.push(payload),
       log: () => {},
@@ -166,9 +169,11 @@ describe("proxy/handlers", () => {
       openAgent: async () => ({ handle: h.handle, created: true, initPending: false }),
     };
 
+    const cfg = baseConfig();
     const ctx = {
-      cfg: baseConfig(),
+      cfg,
       sandbox,
+      platform: createPlatform(cfg),
       runs: new RunManager(),
       send: (payload: unknown) => messages.push(payload),
       log: () => {},
@@ -290,9 +295,11 @@ describe("proxy/handlers", () => {
       openAgent: async () => ({ handle: h.handle, created: true, initPending: false }),
     };
 
+    const cfg = { ...baseConfig(), sandbox: { ...baseConfig().sandbox, workspaceMode: "git_clone" } };
     const ctx = {
-      cfg: { ...baseConfig(), sandbox: { ...baseConfig().sandbox, workspaceMode: "git_clone" } },
+      cfg,
       sandbox,
+      platform: createPlatform(cfg),
       runs: new RunManager(),
       send: (payload: unknown) => messages.push(payload),
       log: () => {},
