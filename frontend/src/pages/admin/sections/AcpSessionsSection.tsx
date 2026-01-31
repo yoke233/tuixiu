@@ -9,7 +9,12 @@ import {
   startAcpSession,
 } from "../../../api/acpSessions";
 import { listAgents } from "../../../api/agents";
-import { reportSandboxInventory, listSandboxes } from "../../../api/sandboxes";
+import {
+  pruneSandboxOrphans,
+  removeSandboxWorkspace,
+  reportSandboxInventory,
+  listSandboxes,
+} from "../../../api/sandboxes";
 import { StatusBadge } from "../../../components/StatusBadge";
 import type { AcpSessionSummary, Agent, SandboxSummary } from "../../../types";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +39,8 @@ type Props = {
   onLoadingChange?: (loading: boolean) => void;
 };
 
+type SandboxInventoryFilter = "all" | "orphan" | "missing" | "deleted";
+
 export function AcpSessionsSection(props: Props) {
   const { active, effectiveProjectId, reloadToken, requireAdmin, setError, onLoadingChange } =
     props;
@@ -46,6 +53,9 @@ export function AcpSessionsSection(props: Props) {
   const [sandboxesTotal, setSandboxesTotal] = useState(0);
   const [loadingAcpProxies, setLoadingAcpProxies] = useState(false);
   const [reportingInventoryProxyId, setReportingInventoryProxyId] = useState<string>("");
+  const [pruningOrphansProxyId, setPruningOrphansProxyId] = useState<string>("");
+  const [removingWorkspaceProxyId, setRemovingWorkspaceProxyId] = useState<string>("");
+  const [sandboxInventoryFilter, setSandboxInventoryFilter] = useState<SandboxInventoryFilter>("all");
   const [cancelingAcpSessionKey, setCancelingAcpSessionKey] = useState<string>("");
   const [forceClosingAcpSessionKey, setForceClosingAcpSessionKey] = useState<string>("");
   const [settingModeKey, setSettingModeKey] = useState<string>("");
@@ -238,6 +248,51 @@ export function AcpSessionsSection(props: Props) {
     [refreshAcpProxies, requireAdmin, setError],
   );
 
+  const onPruneOrphans = useCallback(
+    async (proxyId: string) => {
+      setError(null);
+      if (!requireAdmin()) return;
+      setPruningOrphansProxyId(proxyId);
+      try {
+        const res = await pruneSandboxOrphans(proxyId);
+        window.alert(`已下发 prune_orphans（requestId=${res.requestId}），请稍后刷新查看 inventory 更新。`);
+        setTimeout(() => void refreshAcpProxies(), 800);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setPruningOrphansProxyId("");
+      }
+    },
+    [refreshAcpProxies, requireAdmin, setError],
+  );
+
+  const onRemoveWorkspace = useCallback(
+    async (opts: { proxyId: string; defaultRunId: string }) => {
+      setError(null);
+      if (!requireAdmin()) return;
+
+      const runId = window.prompt("请输入要删除 workspace 的 runId（UUID）", opts.defaultRunId)?.trim() ?? "";
+      if (!runId) return;
+
+      if (!window.confirm(`确认删除该 Run 的 workspace？\n\nrunId: ${runId}\n\n注意：该操作不可恢复。`))
+        return;
+
+      setRemovingWorkspaceProxyId(opts.proxyId);
+      try {
+        const res = await removeSandboxWorkspace(runId);
+        window.alert(
+          `已下发 remove_workspace（requestId=${res.requestId}），请稍后刷新查看 inventory 更新。`,
+        );
+        setTimeout(() => void refreshAcpProxies(), 800);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setRemovingWorkspaceProxyId("");
+      }
+    },
+    [refreshAcpProxies, requireAdmin, setError],
+  );
+
   const onCancelAcpSession = useCallback(
     async (runId: string, sessionId: string) => {
       setError(null);
@@ -360,6 +415,20 @@ export function AcpSessionsSection(props: Props) {
               ).length;
               const deadCount = instances.length - aliveCount;
               const reporting = reportingInventoryProxyId === proxyId;
+              const pruning = pruningOrphansProxyId === proxyId;
+              const removingWorkspace = removingWorkspaceProxyId === proxyId;
+
+              const isDeleted = (s: SandboxSummary) => (s.sandboxLastError ?? "") === "deleted";
+              const isOrphan = (s: SandboxSummary) => s.runId === null;
+              const isMissing = (s: SandboxSummary) => s.sandboxStatus === "missing" && !isDeleted(s);
+
+              const visibleInstances = instances.filter((s) => {
+                if (sandboxInventoryFilter === "all") return true;
+                if (sandboxInventoryFilter === "orphan") return isOrphan(s);
+                if (sandboxInventoryFilter === "missing") return isMissing(s);
+                if (sandboxInventoryFilter === "deleted") return isDeleted(s);
+                return true;
+              });
 
               return (
                 <details key={proxyId} style={{ marginTop: 10 }} open={proxies.length === 1}>
@@ -393,6 +462,29 @@ export function AcpSessionsSection(props: Props) {
                       >
                         {reporting ? "请求中…" : "请求 inventory"}
                       </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void onPruneOrphans(proxyId)}
+                        disabled={pruning}
+                      >
+                        {pruning ? "Pruning…" : "Prune Orphans"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() =>
+                          void onRemoveWorkspace({
+                            proxyId,
+                            defaultRunId: visibleInstances.find((s) => s.runId)?.runId ?? "",
+                          })
+                        }
+                        disabled={removingWorkspace}
+                      >
+                        {removingWorkspace ? "Removing…" : "Remove Workspace"}
+                      </Button>
                       <span className="muted">
                         下发 report_inventory 后，实例列表会异步更新（可点右上角刷新）。
                       </span>
@@ -400,6 +492,30 @@ export function AcpSessionsSection(props: Props) {
 
                     {instances.length ? (
                       <div className="tableScroll">
+                        <div
+                          className="row gap"
+                          style={{ alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}
+                        >
+                          <span className="muted">实例筛选</span>
+                          <Select
+                            value={sandboxInventoryFilter}
+                            onValueChange={(v) => setSandboxInventoryFilter(v as SandboxInventoryFilter)}
+                          >
+                            <SelectTrigger className="w-[200px]">
+                              <SelectValue placeholder="选择筛选" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">全部</SelectItem>
+                              <SelectItem value="orphan">Orphan（无 run）</SelectItem>
+                              <SelectItem value="missing">Missing</SelectItem>
+                              <SelectItem value="deleted">Deleted</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <span className="muted">
+                            显示 {visibleInstances.length}/{instances.length}
+                          </span>
+                        </div>
+
                         <table className="table tableWrap">
                           <thead>
                             <tr>
@@ -415,7 +531,7 @@ export function AcpSessionsSection(props: Props) {
                             </tr>
                           </thead>
                           <tbody>
-                            {instances.map((s) => (
+                            {visibleInstances.map((s) => (
                               <tr key={`${s.proxyId}:${s.instanceName}`}>
                                 <td>
                                   <code title={s.instanceName}>{s.instanceName}</code>

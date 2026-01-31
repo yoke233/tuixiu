@@ -24,3 +24,17 @@ export async function reportSandboxInventory(proxyId: string): Promise<{ ok: tru
   });
   return data;
 }
+
+export async function pruneSandboxOrphans(proxyId: string): Promise<{ ok: true; requestId: string }> {
+  return apiPost<{ ok: true; requestId: string }>(`/admin/sandboxes/control`, {
+    action: "prune_orphans",
+    proxyId,
+  });
+}
+
+export async function removeSandboxWorkspace(runId: string): Promise<{ ok: true; requestId: string }> {
+  return apiPost<{ ok: true; requestId: string }>(`/admin/sandboxes/control`, {
+    action: "remove_workspace",
+    runId,
+  });
+}
