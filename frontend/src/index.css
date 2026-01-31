@@ -1,83 +1,177 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+  Tailwind v4 + shadcn/ui Dark Mode Pattern
+  Based on: https://ui.shadcn.com/docs/tailwind-v4
+
+  Key Pattern:
+  1. Define CSS variables at root level (NOT in @layer base)
+  2. Use .dark for dark mode overrides (NOT in @theme)
+  3. Use @theme inline to map variables to Tailwind utilities
+  4. All color values must use hsl() wrapper
+*/
+
+/* Light mode colors - Define at root level */
 :root {
+  /* shadcn/ui tokens */
+  --background: hsl(210 40% 98%);
+  --foreground: hsl(222.2 47.4% 11.2%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222.2 47.4% 11.2%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222.2 47.4% 11.2%);
+  --primary: hsl(173.4 80.4% 40%);
+  --primary-foreground: hsl(178.6 84.3% 10%);
+  --secondary: hsl(222.2 47.4% 11.2% / 0.03);
+  --secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --muted: hsl(222.2 47.4% 11.2% / 0.03);
+  --muted-foreground: hsl(222.2 47.4% 11.2% / 0.64);
+  --accent: hsl(173.4 80.4% 40%);
+  --accent-foreground: hsl(178.6 84.3% 10%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --success: hsl(142.1 70.6% 45.3%);
+  --success-foreground: hsl(210 40% 98%);
+  --warning: hsl(37.7 92.1% 50.2%);
+  --warning-foreground: hsl(222.2 47.4% 11.2%);
+  --info: hsl(201.3 96.3% 32.2%);
+  --info-foreground: hsl(210 40% 98%);
+  --border: hsl(222.2 47.4% 11.2% / 0.12);
+  --input: hsl(222.2 47.4% 11.2% / 0.14);
+  --ring: hsl(173.4 80.4% 40%);
+  --radius: 0.75rem;
+
+  /* Legacy app tokens (keep existing CSS working) */
+  --bg: var(--background);
+  --fg: var(--foreground);
+  --card-bg: var(--card);
+  --card-border: var(--border);
+  --list-bg: hsl(222.2 47.4% 11.2% / 0.03);
+  --input-bg: hsl(222.2 47.4% 11.2% / 0.03);
+  --input-border: var(--input);
+  --link: hsl(201.3 96.3% 32.2%);
+  --accent-text: var(--primary-foreground);
+  --danger-bg: hsl(0 84.2% 60.2% / 0.12);
+  --danger-border: hsl(0 84.2% 60.2% / 0.22);
+  --pre-bg: hsl(222.2 47.4% 11.2% / 0.05);
+  --console-bg: hsl(222.2 47.4% 11.2% / 0.05);
+  --console-user-bg: hsl(173.4 80.4% 40% / 0.18);
+  --console-user-text: var(--fg);
+  --console-system-bg: hsl(222.2 47.4% 11.2% / 0.03);
+
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  --bg: #0b1220;
-  --fg: #e6edf7;
-  --muted: rgba(230, 237, 247, 0.72);
-
-  --card-bg: rgba(255, 255, 255, 0.06);
-  --card-border: rgba(255, 255, 255, 0.12);
-  --list-bg: rgba(255, 255, 255, 0.04);
-
-  --input-bg: rgba(255, 255, 255, 0.06);
-  --input-border: rgba(255, 255, 255, 0.14);
-
-  --link: #7dd3fc;
-  --accent: #2dd4bf;
-  --accent-text: #06201b;
-
-  --danger-bg: rgba(239, 68, 68, 0.16);
-  --danger-border: rgba(239, 68, 68, 0.35);
-
-  --pre-bg: rgba(0, 0, 0, 0.25);
-  --console-bg: rgba(0, 0, 0, 0.32);
-  --console-user-bg: rgba(45, 212, 191, 0.14);
-  --console-user-text: var(--fg);
-  --console-system-bg: rgba(255, 255, 255, 0.06);
-
-  color: var(--fg);
-  background-color: var(--bg);
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-:root[data-theme="light"] {
-  --bg: #f8fafc;
-  --fg: #0f172a;
-  --muted: rgba(15, 23, 42, 0.64);
+/* Dark mode colors - Plain CSS overrides (NOT in @theme) */
+.dark {
+  /* shadcn/ui tokens */
+  --background: hsl(220 48.8% 8.4%);
+  --foreground: hsl(215.3 51.5% 93.5%);
+  --card: hsl(0 0% 100% / 0.06);
+  --card-foreground: hsl(215.3 51.5% 93.5%);
+  --popover: hsl(0 0% 100% / 0.08);
+  --popover-foreground: hsl(215.3 51.5% 93.5%);
+  --primary: hsl(172.5 66% 50.4%);
+  --primary-foreground: hsl(168.5 68.4% 7.5%);
+  --secondary: hsl(0 0% 100% / 0.06);
+  --secondary-foreground: hsl(215.3 51.5% 93.5%);
+  --muted: hsl(0 0% 100% / 0.04);
+  --muted-foreground: hsl(215.3 51.5% 93.5% / 0.72);
+  --accent: hsl(172.5 66% 50.4%);
+  --accent-foreground: hsl(168.5 68.4% 7.5%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(215.3 51.5% 93.5%);
+  --success: hsl(142.1 70.6% 45.3%);
+  --success-foreground: hsl(168.5 68.4% 7.5%);
+  --warning: hsl(37.7 92.1% 50.2%);
+  --warning-foreground: hsl(168.5 68.4% 7.5%);
+  --info: hsl(199.4 95.5% 73.9%);
+  --info-foreground: hsl(168.5 68.4% 7.5%);
+  --border: hsl(0 0% 100% / 0.12);
+  --input: hsl(0 0% 100% / 0.14);
+  --ring: hsl(172.5 66% 50.4%);
 
-  --card-bg: #ffffff;
-  --card-border: rgba(15, 23, 42, 0.12);
-  --list-bg: rgba(15, 23, 42, 0.03);
-
-  --input-bg: rgba(15, 23, 42, 0.03);
-  --input-border: rgba(15, 23, 42, 0.14);
-
-  --link: #0369a1;
-  --accent: #14b8a6;
-  --accent-text: #042f2e;
-
-  --danger-bg: rgba(239, 68, 68, 0.12);
-  --danger-border: rgba(239, 68, 68, 0.22);
-
-  --pre-bg: rgba(15, 23, 42, 0.05);
-  --console-bg: rgba(15, 23, 42, 0.05);
-  --console-user-bg: rgba(20, 184, 166, 0.18);
+  /* Legacy app tokens */
+  --bg: var(--background);
+  --fg: var(--foreground);
+  --card-bg: var(--card);
+  --card-border: var(--border);
+  --list-bg: hsl(0 0% 100% / 0.04);
+  --input-bg: hsl(0 0% 100% / 0.06);
+  --input-border: var(--input);
+  --link: hsl(199.4 95.5% 73.9%);
+  --accent-text: var(--primary-foreground);
+  --danger-bg: hsl(0 84.2% 60.2% / 0.16);
+  --danger-border: hsl(0 84.2% 60.2% / 0.35);
+  --pre-bg: hsl(0 0% 0% / 0.25);
+  --console-bg: hsl(0 0% 0% / 0.32);
+  --console-user-bg: hsl(172.5 66% 50.4% / 0.14);
   --console-user-text: var(--fg);
-  --console-system-bg: rgba(15, 23, 42, 0.03);
+  --console-system-bg: hsl(0 0% 100% / 0.06);
 }
 
-* {
-  box-sizing: border-box;
+/* Map CSS variables to Tailwind theme with @theme inline */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Border radius tokens */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
 }
 
-html {
-  text-size-adjust: 100%;
-  -webkit-text-size-adjust: 100%;
-  scrollbar-gutter: stable;
-}
+/* Base styles in @layer base */
+@layer base {
+  * {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  background: var(--bg);
-  color: var(--fg);
-  padding-bottom: env(safe-area-inset-bottom);
-  -webkit-tap-highlight-color: transparent;
+  html {
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom);
+    -webkit-tap-highlight-color: transparent;
+
+    background-color: var(--background);
+    color: var(--foreground);
+  }
 }

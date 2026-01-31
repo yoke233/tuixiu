@@ -237,7 +237,7 @@
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 
@@ -277,7 +277,7 @@
 
 .kvTable dt {
   margin: 0;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 12px;
   font-weight: 700;
 }
@@ -452,7 +452,7 @@ a:hover {
 }
 
 .cellSub {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 12px;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -548,7 +548,7 @@ a:hover {
 }
 
 .consoleTrimText {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
@@ -561,7 +561,7 @@ a:hover {
 }
 
 .consoleItem.system {
-  color: var(--muted);
+  color: var(--muted-foreground);
   background: var(--console-system-bg);
 }
 
@@ -580,7 +580,7 @@ a:hover {
 }
 
 .consoleInitMessage {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .consoleInput {
@@ -634,7 +634,7 @@ a:hover {
 }
 
 .commandMenuHint {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
@@ -669,7 +669,7 @@ a:hover {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .consoleSendStatus.ok {
@@ -677,7 +677,7 @@ a:hover {
 }
 
 .consoleSendStatus.pending {
-  color: color-mix(in oklab, var(--accent), var(--muted) 50%);
+  color: color-mix(in oklab, var(--accent), var(--muted-foreground) 50%);
 }
 
 .consoleSendStatus.error {
@@ -710,7 +710,7 @@ a:hover {
   display: grid;
   place-items: center;
   padding: 24px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .issuesShell {
@@ -1209,7 +1209,7 @@ a:hover {
   cursor: pointer;
   user-select: none;
   padding: 10px 0 0;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .kanban {
@@ -1575,7 +1575,7 @@ a:hover {
 .detailsSummary {
   cursor: pointer;
   user-select: none;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-weight: 700;
   list-style: none;
   overflow-wrap: anywhere;
