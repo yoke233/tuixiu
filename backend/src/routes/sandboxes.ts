@@ -101,6 +101,12 @@ export function makeSandboxRoutes(deps: {
         return { success: false, error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" } };
       }
 
+      const requestId =
+        body.action === "prune_orphans" || body.action === "remove_workspace" || body.action === "gc"
+          ? uuidv7()
+          : null;
+      const okResponse = requestId ? { ok: true, requestId } : { ok: true };
+
       if (body.action === "report_inventory") {
         if (!body.proxyId) {
           return {
@@ -122,7 +128,7 @@ export function makeSandboxRoutes(deps: {
             run_id: item.runId ?? null,
           })),
         } as any);
-        return { success: true, data: { ok: true } };
+        return { success: true, data: okResponse };
       }
 
       if (body.action === "prune_orphans") {
@@ -141,12 +147,13 @@ export function makeSandboxRoutes(deps: {
         await deps.sendToAgent(body.proxyId, {
           type: "sandbox_control",
           action: "prune_orphans",
+          request_id: requestId,
           expected_instances: (expected as any[]).map((item) => ({
             instance_name: item.instanceName,
             run_id: item.runId ?? null,
           })),
         } as any);
-        return { success: true, data: { ok: true } };
+        return { success: true, data: okResponse };
       }
 
       if (body.action === "gc") {
@@ -165,14 +172,14 @@ export function makeSandboxRoutes(deps: {
         await deps.sendToAgent(body.proxyId, {
           type: "sandbox_control",
           action: "gc",
-          request_id: uuidv7(),
+          request_id: requestId,
           expected_instances: (expected as any[]).map((item) => ({
             instance_name: item.instanceName,
             run_id: item.runId ?? null,
           })),
           dry_run: true,
         } as any);
-        return { success: true, data: { ok: true } };
+        return { success: true, data: okResponse };
       }
 
       if (body.action === "remove_image") {
@@ -194,7 +201,7 @@ export function makeSandboxRoutes(deps: {
           action: "remove_image",
           image,
         } as any);
-        return { success: true, data: { ok: true } };
+        return { success: true, data: okResponse };
       }
 
       if (body.runId) {
@@ -227,6 +234,7 @@ export function makeSandboxRoutes(deps: {
           run_id: (run as any).id,
           instance_name: instanceName,
           action: body.action,
+          ...(requestId ? { request_id: requestId } : {}),
         } as any);
 
         await deps.prisma.event
@@ -241,7 +249,7 @@ export function makeSandboxRoutes(deps: {
           } as any)
           .catch(() => {});
 
-        return { success: true, data: { ok: true } };
+        return { success: true, data: okResponse };
       }
 
       const requestedInstanceName = body.instanceName?.trim() ?? "";
@@ -279,6 +287,7 @@ export function makeSandboxRoutes(deps: {
           ...(item.runId ? { run_id: item.runId } : {}),
           instance_name: requestedInstanceName,
           action: body.action,
+          ...(requestId ? { request_id: requestId } : {}),
         } as any);
 
         if (item.runId) {
@@ -299,7 +308,7 @@ export function makeSandboxRoutes(deps: {
             .catch(() => {});
         }
 
-        return { success: true, data: { ok: true } };
+        return { success: true, data: okResponse };
       }
 
       const resolved = await deps.prisma.sandboxInstance.findMany({
@@ -330,6 +339,7 @@ export function makeSandboxRoutes(deps: {
         ...(item.runId ? { run_id: item.runId } : {}),
         instance_name: requestedInstanceName,
         action: body.action,
+        ...(requestId ? { request_id: requestId } : {}),
       } as any);
 
       if (item.runId) {
@@ -350,7 +360,7 @@ export function makeSandboxRoutes(deps: {
           .catch(() => {});
       }
 
-      return { success: true, data: { ok: true } };
+      return { success: true, data: okResponse };
     });
   };
 }

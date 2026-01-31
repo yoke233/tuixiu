@@ -188,7 +188,7 @@ describe("Sandboxes admin routes", () => {
     await server.close();
   });
 
-  it("POST /api/admin/sandboxes/control supports prune_orphans by proxyId", async () => {
+  it("POST /api/admin/sandboxes/control supports prune_orphans by proxyId and returns requestId", async () => {
     const server = createHttpServer();
 
     const prisma = {
@@ -214,12 +214,15 @@ describe("Sandboxes admin routes", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ success: true, data: { ok: true } });
+    const body = res.json();
+    expect(body).toEqual({ success: true, data: { ok: true, requestId: expect.any(String) } });
+    const requestId = body.data.requestId;
     expect(sendToAgent).toHaveBeenCalledWith(
       "proxy-1",
       expect.objectContaining({
         type: "sandbox_control",
         action: "prune_orphans",
+        request_id: requestId,
         expected_instances: [
           { instance_name: "tuixiu-run-r1", run_id: "r1" },
           { instance_name: "tuixiu-run-r2", run_id: null },
@@ -230,7 +233,7 @@ describe("Sandboxes admin routes", () => {
     await server.close();
   });
 
-  it("POST /api/admin/sandboxes/control supports action=gc by proxyId", async () => {
+  it("POST /api/admin/sandboxes/control supports action=gc by proxyId and returns requestId", async () => {
     const server = createHttpServer();
 
     const prisma = {
@@ -256,13 +259,15 @@ describe("Sandboxes admin routes", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ success: true, data: { ok: true } });
+    const body = res.json();
+    expect(body).toEqual({ success: true, data: { ok: true, requestId: expect.any(String) } });
+    const requestId = body.data.requestId;
     expect(sendToAgent).toHaveBeenCalledWith(
       "proxy-1",
       expect.objectContaining({
         type: "sandbox_control",
         action: "gc",
-        request_id: expect.any(String),
+        request_id: requestId,
         expected_instances: [
           { instance_name: "tuixiu-run-r1", run_id: "r1" },
           { instance_name: "tuixiu-run-r2", run_id: null },
@@ -274,7 +279,7 @@ describe("Sandboxes admin routes", () => {
     await server.close();
   });
 
-  it("POST /api/admin/sandboxes/control supports remove_workspace by runId", async () => {
+  it("POST /api/admin/sandboxes/control supports remove_workspace by runId and returns requestId", async () => {
     const server = createHttpServer();
 
     const prisma = {
@@ -302,7 +307,9 @@ describe("Sandboxes admin routes", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ success: true, data: { ok: true } });
+    const body = res.json();
+    expect(body).toEqual({ success: true, data: { ok: true, requestId: expect.any(String) } });
+    const requestId = body.data.requestId;
     expect(sendToAgent).toHaveBeenCalledWith(
       "proxy-1",
       expect.objectContaining({
@@ -310,6 +317,7 @@ describe("Sandboxes admin routes", () => {
         run_id: "r1",
         instance_name: "tuixiu-run-r1",
         action: "remove_workspace",
+        request_id: requestId,
       }),
     );
 
