@@ -1,6 +1,15 @@
 import type { Agent, RoleTemplate, Run } from "../types";
 import { getAgentSandboxLabel } from "../utils/agentLabels";
 import { StatusBadge } from "./StatusBadge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type SandboxLabel = { label: string; details?: string } | null;
 
@@ -86,40 +95,48 @@ export function IssueRunCard(props: IssueRunCardProps) {
   const runStatus = run?.status ?? null;
   const canOperateRunningRun = runStatus === "pending" || runStatus === "running" || runStatus === "waiting_ci";
   const canStartNewRun = !run || runStatus === "completed" || runStatus === "failed" || runStatus === "cancelled";
+  const roleSelectValue = selectedRoleKey ? selectedRoleKey : "__project_default__";
+  const agentSelectValue = selectedAgentId ? selectedAgentId : "__auto_assign__";
 
   return (
     <section className="card">
       <div className="row spaceBetween">
         <h2>Run</h2>
         <div className="row gap">
-          <button onClick={onRefresh} disabled={refreshing}>
+          <Button type="button" size="sm" variant="secondary" onClick={onRefresh} disabled={refreshing}>
             {refreshing ? "刷新中…" : "刷新"}
-          </button>
+          </Button>
 
           {canStartNewRun ? (
-            <button
+            <Button
+              type="button"
               onClick={onStartRun}
               disabled={!canStartRun || refreshing}
               title={!canStartRun ? "当前账号无权限启动 Run，或当前无可用 Agent" : ""}
             >
               {run ? "启动新 Run" : "启动 Run"}
-            </button>
+            </Button>
           ) : canOperateRunningRun ? (
             <>
-              <button
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
                 onClick={onCancelRun}
                 disabled={!currentRunId || !canManageRun || cancellingRun || completingRun}
                 title={!canManageRun ? "当前账号无权限操作 Run" : ""}
               >
                 {cancellingRun ? "取消中…" : "取消 Run"}
-              </button>
-              <button
+              </Button>
+              <Button
+                type="button"
+                size="sm"
                 onClick={onCompleteRun}
                 disabled={!currentRunId || !canManageRun || cancellingRun || completingRun}
                 title={!canManageRun ? "当前账号无权限操作 Run" : ""}
               >
                 {completingRun ? "完成中…" : "完成 Run"}
-              </button>
+              </Button>
             </>
           ) : null}
         </div>
@@ -207,7 +224,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
         <div className="row gap">
           <label className="label" style={{ margin: 0, flex: "1 1 240px", minWidth: 0 }}>
             Worktree 名称（可选）
-            <input
+            <Input
               value={worktreeName}
               onChange={(e) => onWorktreeNameChange(e.target.value)}
               placeholder="留空则自动生成（如 gh-123-fix-login-r1）"
@@ -219,34 +236,48 @@ export function IssueRunCard(props: IssueRunCardProps) {
           </label>
           <label className="label" style={{ margin: 0 }}>
             选择 Role（可选）
-            <select
-              value={selectedRoleKey}
-              onChange={(e) => onSelectedRoleKeyChange(e.target.value)}
+            <Select
+              value={roleSelectValue}
+              onValueChange={(v) => onSelectedRoleKeyChange(v === "__project_default__" ? "" : v)}
               disabled={(!rolesLoaded && !rolesError) || refreshing}
             >
-              <option value="">项目默认</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.key}>
-                  {r.displayName} ({r.key})
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="w-[240px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__project_default__">项目默认</SelectItem>
+                {roles.map((r) => (
+                  <SelectItem key={r.id} value={r.key}>
+                    {r.displayName} ({r.key})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label className="label" style={{ margin: 0 }}>
             选择 Agent（可选）
-            <select value={selectedAgentId} onChange={(e) => onSelectedAgentIdChange(e.target.value)} disabled={refreshing}>
-              <option value="">自动分配</option>
-              {agents.map((a) => {
-                const sandbox = getAgentSandboxLabel(a);
-                const disabled = a.status !== "online" || a.currentLoad >= a.maxConcurrentRuns;
-                return (
-                  <option key={a.id} value={a.id} disabled={disabled}>
-                    {a.name} ({a.status} {a.currentLoad}/{a.maxConcurrentRuns}
-                    {sandbox?.label ? ` · ${sandbox.label}` : ""})
-                  </option>
-                );
-              })}
-            </select>
+            <Select
+              value={agentSelectValue}
+              onValueChange={(v) => onSelectedAgentIdChange(v === "__auto_assign__" ? "" : v)}
+              disabled={refreshing}
+            >
+              <SelectTrigger className="w-[280px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__auto_assign__">自动分配</SelectItem>
+                {agents.map((a) => {
+                  const sandbox = getAgentSandboxLabel(a);
+                  const disabled = a.status !== "online" || a.currentLoad >= a.maxConcurrentRuns;
+                  return (
+                    <SelectItem key={a.id} value={a.id} disabled={disabled}>
+                      {a.name} ({a.status} {a.currentLoad}/{a.maxConcurrentRuns}
+                      {sandbox?.label ? ` · ${sandbox.label}` : ""})
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </label>
           <div className="muted">
             {run ? "可启动新 Run" : "暂无 Run"}

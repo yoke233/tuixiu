@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getPmPolicy, updatePmPolicy } from "../../../api/policies";
 import type { PmPolicy, Project } from "../../../types";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   active: boolean;
@@ -101,17 +103,23 @@ export function PolicySection(props: Props) {
           </div>
         </div>
         <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button
+          <Button
             type="button"
-            className="buttonSecondary"
+            variant="secondary"
+            size="sm"
             onClick={onLoadDefault}
             disabled={!effectiveProjectId || policyLoading || policySaving}
           >
             载入默认
-          </button>
-          <button type="button" onClick={() => void onSave()} disabled={!effectiveProjectId || policyLoading || policySaving}>
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void onSave()}
+            disabled={!effectiveProjectId || policyLoading || policySaving}
+          >
             {policySaving ? "保存中…" : "保存"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -120,12 +128,11 @@ export function PolicySection(props: Props) {
           加载中…
         </div>
       ) : (
-        <textarea
+        <Textarea
           value={policyText}
           onChange={(e) => setPolicyText(e.target.value)}
           rows={14}
-          className="inputMono"
-          style={{ width: "100%", marginTop: 10 }}
+          className="inputMono mt-2 w-full"
           placeholder='{"version":1,"automation":{"autoStartIssue":true,"autoReview":true,"autoCreatePr":true,"autoRequestMergeApproval":true},"approvals":{"requireForActions":["merge_pr"],"escalateOnSensitivePaths":["create_pr","publish_artifact"]},"sensitivePaths":[] }'
         />
       )}

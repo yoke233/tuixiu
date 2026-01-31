@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { publishArtifact } from "../api/artifacts";
 import { useAuth } from "../auth/AuthContext";
 import type { Artifact } from "../types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function ArtifactList(props: { artifacts: Artifact[] }) {
   if (!props.artifacts.length) return <div className="muted">暂无产物</div>;
@@ -54,16 +56,16 @@ function ArtifactListBody(props: { artifacts: Artifact[] }) {
               <div className="row gap" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
                 <label className="label" style={{ margin: 0, minWidth: 320 }}>
                   发布路径（可选）
-                  <input
+                  <Input
                     value={paths[a.id] ?? ""}
                     onChange={(e) => setPaths((prev) => ({ ...prev, [a.id]: e.target.value }))}
                     placeholder="留空则使用默认 docs/tuixiu/..."
                     disabled={publishingId === a.id}
                   />
                 </label>
-                <button type="button" onClick={() => void onPublish(a.id)} disabled={publishingId === a.id}>
+                <Button type="button" size="sm" onClick={() => void onPublish(a.id)} disabled={publishingId === a.id}>
                   {publishingId === a.id ? "发布中…" : "发布到分支"}
-                </button>
+                </Button>
               </div>
               {publishError[a.id] ? (
                 <div className="muted" style={{ marginTop: 6 }}>

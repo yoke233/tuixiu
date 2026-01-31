@@ -3,6 +3,18 @@ import { Fragment } from "react";
 import { StatusBadge } from "../../../components/StatusBadge";
 import type { TaskTrack } from "../../../types";
 import type { IssueDetailController } from "../useIssueDetailController";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 export function TasksDetails(props: { model: IssueDetailController }) {
   const {
@@ -37,6 +49,7 @@ export function TasksDetails(props: { model: IssueDetailController }) {
     templatesByKey,
     visibleTaskTemplatesByTrack,
   } = props.model;
+  const trackSelectValue = selectedTaskTrack ? selectedTaskTrack : "__auto__";
 
   return (
     <details className="card">
@@ -54,69 +67,81 @@ export function TasksDetails(props: { model: IssueDetailController }) {
         <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
           {canCreateAnotherTask ? (
             <>
-              <select
-                aria-label="选择任务模板"
-                value={selectedTemplateKey}
-                onChange={(e) => setSelectedTemplateKey(e.target.value)}
+              <Select
+                value={selectedTemplateKey ? selectedTemplateKey : undefined}
+                onValueChange={setSelectedTemplateKey}
                 disabled={!taskTemplatesLoaded && !taskTemplatesError}
               >
-                <option value="">选择模板…</option>
-                {visibleTaskTemplatesByTrack.quick.length ? (
-                  <optgroup label="Track：quick">
-                    {visibleTaskTemplatesByTrack.quick.map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.displayName}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-                {visibleTaskTemplatesByTrack.planning.length ? (
-                  <optgroup label="Track：planning">
-                    {visibleTaskTemplatesByTrack.planning.map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.displayName}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-                {visibleTaskTemplatesByTrack.enterprise.length ? (
-                  <optgroup label="Track：enterprise">
-                    {visibleTaskTemplatesByTrack.enterprise.map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.displayName}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-                {visibleTaskTemplatesByTrack.other.length ? (
-                  <optgroup label="其他">
-                    {visibleTaskTemplatesByTrack.other.map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.displayName}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-              </select>
-              <select
-                aria-label="选择 Track"
-                value={selectedTaskTrack}
-                onChange={(e) => setSelectedTaskTrack(e.target.value as TaskTrack | "")}
+                <SelectTrigger aria-label="选择任务模板" className="w-[280px]">
+                  <SelectValue placeholder="选择模板…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {visibleTaskTemplatesByTrack.quick.length ? (
+                    <SelectGroup>
+                      <SelectLabel>Track：quick</SelectLabel>
+                      {visibleTaskTemplatesByTrack.quick.map((t) => (
+                        <SelectItem key={t.key} value={t.key}>
+                          {t.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ) : null}
+                  {visibleTaskTemplatesByTrack.planning.length ? (
+                    <SelectGroup>
+                      <SelectLabel>Track：planning</SelectLabel>
+                      {visibleTaskTemplatesByTrack.planning.map((t) => (
+                        <SelectItem key={t.key} value={t.key}>
+                          {t.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ) : null}
+                  {visibleTaskTemplatesByTrack.enterprise.length ? (
+                    <SelectGroup>
+                      <SelectLabel>Track：enterprise</SelectLabel>
+                      {visibleTaskTemplatesByTrack.enterprise.map((t) => (
+                        <SelectItem key={t.key} value={t.key}>
+                          {t.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ) : null}
+                  {visibleTaskTemplatesByTrack.other.length ? (
+                    <SelectGroup>
+                      <SelectLabel>其他</SelectLabel>
+                      {visibleTaskTemplatesByTrack.other.map((t) => (
+                        <SelectItem key={t.key} value={t.key}>
+                          {t.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ) : null}
+                </SelectContent>
+              </Select>
+              <Select
+                value={trackSelectValue}
+                onValueChange={(v) => setSelectedTaskTrack(v === "__auto__" ? "" : (v as TaskTrack))}
                 disabled={creatingTask}
               >
-                <option value="">Track：自动</option>
-                <option value="quick">Track：quick</option>
-                <option value="planning">Track：planning</option>
-                <option value="enterprise">Track：enterprise</option>
-              </select>
-              <button
+                <SelectTrigger aria-label="选择 Track" className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__auto__">Track：自动</SelectItem>
+                  <SelectItem value="quick">Track：quick</SelectItem>
+                  <SelectItem value="planning">Track：planning</SelectItem>
+                  <SelectItem value="enterprise">Track：enterprise</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
                 type="button"
                 onClick={onCreateTask}
                 disabled={creatingTask || !selectedTemplateKey || !allowTaskOps}
                 title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
+                size="sm"
               >
                 {creatingTask ? "创建中…" : "创建任务"}
-              </button>
+              </Button>
             </>
           ) : (
             <span className="muted">
@@ -127,9 +152,9 @@ export function TasksDetails(props: { model: IssueDetailController }) {
                   : "已有进行中的 Task：请在下方继续执行/回滚重跑"}
             </span>
           )}
-          <button type="button" className="buttonSecondary" onClick={() => refresh()} disabled={refreshing}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => refresh()} disabled={refreshing}>
             同步
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -230,34 +255,37 @@ export function TasksDetails(props: { model: IssueDetailController }) {
                               <td>
                                 <div className="row gap" style={{ flexWrap: "wrap" }}>
                                   {latest?.id ? (
-                                    <button
+                                    <Button
                                       type="button"
-                                      className="buttonSecondary"
+                                      variant="secondary"
+                                      size="sm"
                                       onClick={() => void onSelectRun(latest.id)}
                                       disabled={viewing}
                                     >
                                       {viewing ? "查看中" : "查看"}
-                                    </button>
+                                    </Button>
                                   ) : null}
 
-                                  <button
+                                  <Button
                                     type="button"
+                                    size="sm"
                                     onClick={() => void onStartStep(s)}
                                     disabled={!allowTaskOps || s.status !== "ready" || startingStepId === s.id}
                                     title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
                                   >
                                     {startingStepId === s.id ? "启动中…" : "启动"}
-                                  </button>
+                                  </Button>
 
-                                  <button
+                                  <Button
                                     type="button"
-                                    className="buttonSecondary"
+                                    variant="secondary"
+                                    size="sm"
                                     onClick={() => void onRollback(t, s)}
                                     disabled={!allowTaskOps || rollingBackStepId === s.id}
                                     title={!allowTaskOps ? "需要开发或管理员权限" : undefined}
                                   >
                                     {rollingBackStepId === s.id ? "回滚中…" : "回滚到此步"}
-                                  </button>
+                                  </Button>
                                 </div>
                               </td>
                             </tr>
@@ -279,7 +307,7 @@ export function TasksDetails(props: { model: IssueDetailController }) {
                                         </label>
                                         <label className="label" style={{ margin: 0, flex: "1 1 320px", minWidth: 0 }}>
                                           merge message（可选）
-                                          <input
+                                          <Input
                                             value={form?.mergeCommitMessage ?? ""}
                                             onChange={(e) =>
                                               patchHumanForm(latest.id, { mergeCommitMessage: e.target.value })
@@ -288,47 +316,54 @@ export function TasksDetails(props: { model: IssueDetailController }) {
                                             placeholder="留空使用默认"
                                           />
                                         </label>
-                                        <button
+                                        <Button
                                           type="button"
+                                          size="sm"
                                           onClick={() => void onSubmitHuman(s, latest.id)}
                                           disabled={!canSubmit || submittingRunId === latest.id}
                                         >
                                           {submittingRunId === latest.id ? "合并中…" : "合并"}
-                                        </button>
+                                        </Button>
                                       </>
                                     ) : (
                                       <>
                                         <label className="label" style={{ margin: 0 }}>
                                           verdict
-                                          <select
+                                          <Select
                                             value={form?.verdict ?? "approve"}
-                                            onChange={(e) =>
+                                            onValueChange={(v) =>
                                               patchHumanForm(latest.id, {
-                                                verdict: e.target.value as "approve" | "changes_requested",
+                                                verdict: v as "approve" | "changes_requested",
                                               })
                                             }
                                             disabled={submittingRunId === latest.id}
                                           >
-                                            <option value="approve">approve</option>
-                                            <option value="changes_requested">changes_requested</option>
-                                          </select>
+                                            <SelectTrigger className="w-[220px]">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="approve">approve</SelectItem>
+                                              <SelectItem value="changes_requested">changes_requested</SelectItem>
+                                            </SelectContent>
+                                          </Select>
                                         </label>
                                         <label className="label" style={{ margin: 0, flex: "1 1 360px", minWidth: 0 }}>
                                           comment（Markdown，可选）
-                                          <textarea
+                                          <Textarea
                                             value={form?.comment ?? ""}
                                             onChange={(e) => patchHumanForm(latest.id, { comment: e.target.value })}
                                             disabled={submittingRunId === latest.id}
                                             placeholder="写评审意见/修改建议…"
                                           />
                                         </label>
-                                        <button
+                                        <Button
                                           type="button"
+                                          size="sm"
                                           onClick={() => void onSubmitHuman(s, latest.id)}
                                           disabled={!canSubmit || submittingRunId === latest.id}
                                         >
                                           {submittingRunId === latest.id ? "提交中…" : "提交"}
-                                        </button>
+                                        </Button>
                                       </>
                                     )}
                                     {!canSubmit ? <span className="muted">当前账号无权限提交该步骤</span> : null}
@@ -354,4 +389,3 @@ export function TasksDetails(props: { model: IssueDetailController }) {
     </details>
   );
 }
-

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import type { Approval } from "../../../types";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   active: boolean;
@@ -29,13 +30,21 @@ export function ApprovalsSection(props: Props) {
                   </span>
                 </div>
                 <div className="row gap">
-                  <Link to={a.issueId ? `/issues/${a.issueId}` : "/issues"}>打开</Link>
-                  <button onClick={() => void onApprove(a.id)} disabled={loading || busyId === a.id}>
+                  <Button variant="link" size="sm" asChild>
+                    <Link to={a.issueId ? `/issues/${a.issueId}` : "/issues"}>打开</Link>
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => void onApprove(a.id)} disabled={loading || busyId === a.id}>
                     批准
-                  </button>
-                  <button onClick={() => void onReject(a.id)} disabled={loading || busyId === a.id}>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => void onReject(a.id)}
+                    disabled={loading || busyId === a.id}
+                  >
                     拒绝
-                  </button>
+                  </Button>
                 </div>
               </div>
               <div className="muted" style={{ marginTop: 6 }}>
@@ -52,4 +61,3 @@ export function ApprovalsSection(props: Props) {
     </section>
   );
 }
-

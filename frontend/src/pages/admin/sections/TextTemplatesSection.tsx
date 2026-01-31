@@ -8,6 +8,9 @@ import {
   type TextTemplateMap,
 } from "../../../api/textTemplates";
 import type { Project } from "../../../types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 function getAllKeys(...maps: Array<TextTemplateMap | null | undefined>): string[] {
   const set = new Set<string>();
@@ -180,19 +183,20 @@ export function TextTemplatesSection(props: Props) {
           </div>
         </div>
         <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button type="button" className="buttonSecondary" onClick={() => void refresh()} disabled={busy}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void refresh()} disabled={busy}>
             刷新
-          </button>
-          <button type="button" onClick={() => void onSavePlatform()} disabled={!selectedKey.trim() || busy}>
+          </Button>
+          <Button type="button" size="sm" onClick={() => void onSavePlatform()} disabled={!selectedKey.trim() || busy}>
             {savingPlatform ? "保存中…" : "保存平台"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             onClick={() => void onSaveOverride()}
             disabled={!selectedKey.trim() || !effectiveProjectId || busy}
           >
             {savingOverride ? "保存中…" : "保存覆盖"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -209,7 +213,7 @@ export function TextTemplatesSection(props: Props) {
       <div className="row gap" style={{ alignItems: "flex-end", marginTop: 12 }}>
         <label className="label" style={{ margin: 0, flex: "2 1 360px", minWidth: 260 }}>
           模板 key
-          <input
+          <Input
             value={selectedKey}
             onChange={(e) => setSelectedKey(e.target.value)}
             placeholder="输入或选择 key（支持新增）"
@@ -242,7 +246,7 @@ export function TextTemplatesSection(props: Props) {
           <div className="muted" style={{ marginBottom: 6 }}>
             留空保存 = 删除该平台模板（key 会消失）。
           </div>
-          <textarea
+          <Textarea
             value={platformDraft}
             onChange={(e) => setPlatformDraft(e.target.value)}
             rows={10}
@@ -260,7 +264,7 @@ export function TextTemplatesSection(props: Props) {
               <div className="muted" style={{ marginBottom: 6 }}>
                 留空保存 = 清除覆盖（回退到平台模板）。
               </div>
-              <textarea
+              <Textarea
                 value={overrideDraft}
                 onChange={(e) => setOverrideDraft(e.target.value)}
                 rows={10}
@@ -270,24 +274,26 @@ export function TextTemplatesSection(props: Props) {
                 readOnly={!selectedKey.trim()}
               />
               <div className="row gap" style={{ justifyContent: "flex-end", marginTop: 8 }}>
-                <button
+                <Button
                   type="button"
-                  className="buttonSecondary"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setOverrideDraft(platformDraft)}
                   disabled={!selectedKey.trim() || busy}
                   title="把当前平台模板内容复制到覆盖里，方便再做微调"
                 >
                   复制平台到覆盖
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="buttonSecondary"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setOverrideDraft("")}
                   disabled={!selectedKey.trim() || busy}
                   title="清空覆盖（需要再点一次“保存覆盖”才会生效）"
                 >
                   清空覆盖
-                </button>
+                </Button>
               </div>
             </>
           ) : (
@@ -312,4 +318,3 @@ export function TextTemplatesSection(props: Props) {
     </section>
   );
 }
-

@@ -1,4 +1,11 @@
 import type { IssueListController } from "../useIssueListController";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function BoardHeader(props: { model: IssueListController }) {
   const {
@@ -16,17 +23,18 @@ export function BoardHeader(props: { model: IssueListController }) {
         <div className="row gap">
           <h2>看板</h2>
           {projects.length ? (
-            <select
-              aria-label="选择 Project"
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+              <SelectTrigger aria-label="选择 Project" className="w-[240px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : null}
         </div>
         <div className="muted">
@@ -36,4 +44,3 @@ export function BoardHeader(props: { model: IssueListController }) {
     </section>
   );
 }
-

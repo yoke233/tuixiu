@@ -4,6 +4,15 @@ import { Link } from "react-router-dom";
 import { listIssues, updateIssue } from "../../../api/issues";
 import { StatusBadge } from "../../../components/StatusBadge";
 import type { Issue, IssueStatus } from "../../../types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ARCHIVE_STATUSES: IssueStatus[] = ["done", "failed", "cancelled"];
 type ArchiveStatusFilter = "all" | "done" | "failed" | "cancelled";
@@ -103,14 +112,15 @@ export function ArchiveSection(props: Props) {
           <h2 style={{ marginTop: 0 }}>Issue 归档</h2>
           <div className="muted">已完成/失败/取消的 Issue（支持筛选与分页）</div>
         </div>
-        <button
+        <Button
           type="button"
-          className="buttonSecondary"
+          variant="secondary"
+          size="sm"
           onClick={() => setArchiveReloadToken((v) => v + 1)}
           disabled={!effectiveProjectId || archiveLoading}
         >
           刷新
-        </button>
+        </Button>
       </div>
 
       {!effectiveProjectId ? (
@@ -120,7 +130,7 @@ export function ArchiveSection(props: Props) {
           <div className="row gap" style={{ alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
             <label className="label" style={{ margin: 0, flex: "1 1 260px", minWidth: 220 }}>
               关键词
-              <input
+              <Input
                 value={archiveQueryDraft}
                 onChange={(e) => setArchiveQueryDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -135,52 +145,67 @@ export function ArchiveSection(props: Props) {
 
             <label className="label" style={{ margin: 0 }}>
               状态
-              <select
+              <Select
                 value={archiveStatus}
-                onChange={(e) => {
+                onValueChange={(v) => {
                   setArchiveOffset(0);
-                  setArchiveStatus(e.target.value as ArchiveStatusFilter);
+                  setArchiveStatus(v as ArchiveStatusFilter);
                 }}
               >
-                <option value="all">全部（done/failed/cancelled）</option>
-                <option value="done">done</option>
-                <option value="failed">failed</option>
-                <option value="cancelled">cancelled</option>
-              </select>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部（done/failed/cancelled）</SelectItem>
+                  <SelectItem value="done">done</SelectItem>
+                  <SelectItem value="failed">failed</SelectItem>
+                  <SelectItem value="cancelled">cancelled</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
 
             <label className="label" style={{ margin: 0 }}>
               归档
-              <select
+              <Select
                 value={archiveArchived}
-                onChange={(e) => {
+                onValueChange={(v) => {
                   setArchiveOffset(0);
-                  setArchiveArchived(e.target.value as ArchiveArchivedFilter);
+                  setArchiveArchived(v as ArchiveArchivedFilter);
                 }}
               >
-                <option value="all">全部</option>
-                <option value="unarchived">未归档</option>
-                <option value="archived">已归档</option>
-              </select>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部</SelectItem>
+                  <SelectItem value="unarchived">未归档</SelectItem>
+                  <SelectItem value="archived">已归档</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
 
             <label className="label" style={{ margin: 0 }}>
               每页
-              <select
+              <Select
                 value={String(archiveLimit)}
-                onChange={(e) => {
+                onValueChange={(v) => {
                   setArchiveOffset(0);
-                  setArchiveLimit(Number(e.target.value) || 20);
+                  setArchiveLimit(Number(v) || 20);
                 }}
               >
-                <option value="20">20</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
+                <SelectTrigger className="w-[110px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
 
             <div className="row gap">
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   setArchiveOffset(0);
@@ -189,10 +214,10 @@ export function ArchiveSection(props: Props) {
                 disabled={archiveLoading}
               >
                 筛选
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="buttonSecondary"
+                variant="secondary"
                 onClick={() => {
                   setArchiveOffset(0);
                   setArchiveLimit(20);
@@ -204,7 +229,7 @@ export function ArchiveSection(props: Props) {
                 disabled={archiveLoading}
               >
                 重置
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -217,25 +242,27 @@ export function ArchiveSection(props: Props) {
           <div className="row spaceBetween" style={{ marginTop: 10 }}>
             <div className="muted">{archiveLoading ? "加载中…" : `共 ${archiveTotal} 条`}</div>
             <div className="row gap">
-              <button
+              <Button
                 type="button"
-                className="buttonSecondary"
+                variant="secondary"
+                size="sm"
                 onClick={() => setArchiveOffset((v) => Math.max(0, v - archiveLimit))}
                 disabled={archiveLoading || archiveOffset === 0}
               >
                 上一页
-              </button>
+              </Button>
               <span className="muted">
                 {archiveTotal ? `第 ${Math.floor(archiveOffset / archiveLimit) + 1} / ${Math.max(1, Math.ceil(archiveTotal / archiveLimit))} 页` : "—"}
               </span>
-              <button
+              <Button
                 type="button"
-                className="buttonSecondary"
+                variant="secondary"
+                size="sm"
                 onClick={() => setArchiveOffset((v) => v + archiveLimit)}
                 disabled={archiveLoading || archiveOffset + archiveLimit >= archiveTotal}
               >
                 下一页
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -312,14 +339,15 @@ export function ArchiveSection(props: Props) {
                           </div>
                         </td>
                         <td style={{ textAlign: "right" }}>
-                          <button
+                          <Button
                             type="button"
-                            className="buttonSecondary"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => void onToggleArchived(i)}
                             disabled={archiveBusyId === i.id || archiveLoading}
                           >
                             {i.archivedAt ? "取消归档" : "归档"}
-                          </button>
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -337,4 +365,3 @@ export function ArchiveSection(props: Props) {
     </section>
   );
 }
-

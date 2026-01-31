@@ -4,6 +4,16 @@ import { createProject, updateProject } from "../../../api/projects";
 import { useAuth } from "../../../auth/AuthContext";
 import type { Project } from "../../../types";
 import type { WorkspaceNoticeMode } from "../adminUtils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   active: boolean;
@@ -239,20 +249,25 @@ export function ProjectsSection(props: Props) {
               <div className="form" style={{ marginTop: 10 }}>
                 <label className="label">
                   模式
-                  <select
+                  <Select
                     value={agentWorkspaceNoticeMode}
                     disabled={savingAgentWorkspaceNotice || !auth.hasRole(["admin"])}
-                    onChange={(e) => setAgentWorkspaceNoticeMode(e.target.value as WorkspaceNoticeMode)}
+                    onValueChange={(v) => setAgentWorkspaceNoticeMode(v as WorkspaceNoticeMode)}
                   >
-                    <option value="default">使用平台默认</option>
-                    <option value="hidden">隐藏提示</option>
-                    <option value="custom">自定义</option>
-                  </select>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">使用平台默认</SelectItem>
+                      <SelectItem value="hidden">隐藏提示</SelectItem>
+                      <SelectItem value="custom">自定义</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </label>
                 {agentWorkspaceNoticeMode === "custom" ? (
                   <label className="label">
                     模板
-                    <textarea
+                    <Textarea
                       value={agentWorkspaceNoticeTemplate}
                       disabled={savingAgentWorkspaceNotice || !auth.hasRole(["admin"])}
                       onChange={(e) => setAgentWorkspaceNoticeTemplate(e.target.value)}
@@ -261,9 +276,9 @@ export function ProjectsSection(props: Props) {
                     />
                   </label>
                 ) : null}
-                <button type="button" onClick={() => void onSaveAgentWorkspaceNotice()} disabled={savingAgentWorkspaceNotice || !auth.hasRole(["admin"])}>
+                <Button type="button" size="sm" onClick={() => void onSaveAgentWorkspaceNotice()} disabled={savingAgentWorkspaceNotice || !auth.hasRole(["admin"])}>
                   {savingAgentWorkspaceNotice ? "保存中…" : "保存"}
-                </button>
+                </Button>
               </div>
             </details>
           </>
@@ -279,30 +294,40 @@ export function ProjectsSection(props: Props) {
         <form onSubmit={(e) => void onCreateProject(e)} className="form">
           <label className="label">
             名称
-            <input value={projectName} onChange={(e) => setProjectName(e.target.value)} />
+            <Input value={projectName} onChange={(e) => setProjectName(e.target.value)} />
           </label>
           <label className="label">
             Repo URL
-            <input value={projectRepoUrl} onChange={(e) => setProjectRepoUrl(e.target.value)} />
+            <Input value={projectRepoUrl} onChange={(e) => setProjectRepoUrl(e.target.value)} />
           </label>
           <label className="label">
             SCM
-            <select value={projectScmType} onChange={(e) => setProjectScmType(e.target.value)}>
-              <option value="gitlab">gitlab</option>
-              <option value="github">github</option>
-              <option value="gitee">gitee</option>
-            </select>
+            <Select value={projectScmType} onValueChange={setProjectScmType}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="gitlab">gitlab</SelectItem>
+                <SelectItem value="github">github</SelectItem>
+                <SelectItem value="gitee">gitee</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <label className="label">
             默认分支
-            <input value={projectDefaultBranch} onChange={(e) => setProjectDefaultBranch(e.target.value)} />
+            <Input value={projectDefaultBranch} onChange={(e) => setProjectDefaultBranch(e.target.value)} />
           </label>
           <label className="label">
             Git 认证
-            <select value={projectGitAuthMode} onChange={(e) => setProjectGitAuthMode(e.target.value as "https_pat" | "ssh")}>
-              <option value="https_pat">https_pat（token）</option>
-              <option value="ssh">ssh</option>
-            </select>
+            <Select value={projectGitAuthMode} onValueChange={(v) => setProjectGitAuthMode(v as any)}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="https_pat">https_pat（token）</SelectItem>
+                <SelectItem value="ssh">ssh</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <details>
             <summary>Agent 工作区提示（可选）</summary>
@@ -313,16 +338,24 @@ export function ProjectsSection(props: Props) {
             </div>
             <label className="label">
               模式
-              <select value={projectAgentWorkspaceNoticeMode} onChange={(e) => setProjectAgentWorkspaceNoticeMode(e.target.value as WorkspaceNoticeMode)}>
-                <option value="default">使用平台默认</option>
-                <option value="hidden">隐藏提示</option>
-                <option value="custom">自定义</option>
-              </select>
+              <Select
+                value={projectAgentWorkspaceNoticeMode}
+                onValueChange={(v) => setProjectAgentWorkspaceNoticeMode(v as WorkspaceNoticeMode)}
+              >
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">使用平台默认</SelectItem>
+                  <SelectItem value="hidden">隐藏提示</SelectItem>
+                  <SelectItem value="custom">自定义</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
             {projectAgentWorkspaceNoticeMode === "custom" ? (
               <label className="label">
                 模板
-                <textarea
+                <Textarea
                   value={projectAgentWorkspaceNoticeTemplate}
                   onChange={(e) => setProjectAgentWorkspaceNoticeTemplate(e.target.value)}
                   rows={4}
@@ -337,15 +370,15 @@ export function ProjectsSection(props: Props) {
               <summary>GitLab 配置（可选）</summary>
               <label className="label">
                 GitLab Project ID
-                <input value={projectGitlabProjectId} onChange={(e) => setProjectGitlabProjectId(e.target.value)} placeholder="12345" />
+                <Input value={projectGitlabProjectId} onChange={(e) => setProjectGitlabProjectId(e.target.value)} placeholder="12345" />
               </label>
               <label className="label">
                 GitLab Access Token
-                <input type="password" value={projectGitlabAccessToken} onChange={(e) => setProjectGitlabAccessToken(e.target.value)} placeholder="glpat-..." />
+                <Input type="password" value={projectGitlabAccessToken} onChange={(e) => setProjectGitlabAccessToken(e.target.value)} placeholder="glpat-..." />
               </label>
               <label className="label">
                 GitLab Webhook Secret（可选）
-                <input type="password" value={projectGitlabWebhookSecret} onChange={(e) => setProjectGitlabWebhookSecret(e.target.value)} />
+                <Input type="password" value={projectGitlabWebhookSecret} onChange={(e) => setProjectGitlabWebhookSecret(e.target.value)} />
               </label>
             </details>
           ) : projectScmType === "github" ? (
@@ -353,7 +386,7 @@ export function ProjectsSection(props: Props) {
               <summary>GitHub 配置（可选）</summary>
               <label className="label">
                 GitHub Access Token
-                <input type="password" value={projectGithubAccessToken} onChange={(e) => setProjectGithubAccessToken(e.target.value)} placeholder="ghp_... / github_pat_..." />
+                <Input type="password" value={projectGithubAccessToken} onChange={(e) => setProjectGithubAccessToken(e.target.value)} placeholder="ghp_... / github_pat_..." />
               </label>
               <label className="label">
                 启用 GitHub 轮询监听（每分钟导入 Issues/PR）
@@ -362,9 +395,9 @@ export function ProjectsSection(props: Props) {
             </details>
           ) : null}
 
-          <button type="submit" disabled={!projectName.trim() || !projectRepoUrl.trim()}>
+          <Button type="submit" disabled={!projectName.trim() || !projectRepoUrl.trim()}>
             创建
-          </button>
+          </Button>
         </form>
       </section>
     </>

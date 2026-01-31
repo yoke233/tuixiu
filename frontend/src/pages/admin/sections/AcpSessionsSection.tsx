@@ -12,6 +12,17 @@ import { listAgents } from "../../../api/agents";
 import { reportSandboxInventory, listSandboxes } from "../../../api/sandboxes";
 import { StatusBadge } from "../../../components/StatusBadge";
 import type { AcpSessionSummary, Agent, SandboxSummary } from "../../../types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   active: boolean;
@@ -372,14 +383,15 @@ export function AcpSessionsSection(props: Props) {
                       className="row gap"
                       style={{ alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}
                     >
-                      <button
+                      <Button
                         type="button"
-                        className="buttonSecondary"
+                        variant="secondary"
+                        size="sm"
                         onClick={() => void onReportInventory(proxyId)}
                         disabled={reporting}
                       >
                         {reporting ? "请求中…" : "请求 inventory"}
-                      </button>
+                      </Button>
                       <span className="muted">
                         下发 report_inventory 后，实例列表会异步更新（可点右上角刷新）。
                       </span>
@@ -447,9 +459,9 @@ export function AcpSessionsSection(props: Props) {
                                 </td>
                                 <td>
                                   {s.runId ? (
-                                    <Link className="buttonSecondary" to={`/sessions/${s.runId}`}>
-                                      打开
-                                    </Link>
+                                    <Button variant="secondary" size="sm" asChild>
+                                      <Link to={`/sessions/${s.runId}`}>打开</Link>
+                                    </Button>
                                   ) : (
                                     <span className="muted">-</span>
                                   )}
@@ -499,20 +511,20 @@ export function AcpSessionsSection(props: Props) {
           >
             <label className="label" style={{ margin: 0, flex: "2 1 320px", minWidth: 240 }}>
               目标（可选）
-              <textarea
+              <Textarea
                 value={acpSessionGoal}
                 onChange={(e) => setAcpSessionGoal(e.target.value)}
                 rows={3}
                 placeholder="例如：修复登录；实现导入；排查构建失败…"
               />
             </label>
-            <button
+            <Button
               type="button"
               onClick={onStartAcpSession}
               disabled={!effectiveProjectId || startingAcpSession}
             >
               {startingAcpSession ? "启动中…" : "启动 Session"}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -526,7 +538,7 @@ export function AcpSessionsSection(props: Props) {
               <div className="row gap" style={{ alignItems: "flex-end" }}>
                 <label className="label" style={{ margin: 0 }}>
                   搜索
-                  <input
+                  <Input
                     value={sessionQuery}
                     onChange={(e) => setSessionQuery(e.target.value)}
                     placeholder="sessionId / runId / issue / agent…"
@@ -534,27 +546,40 @@ export function AcpSessionsSection(props: Props) {
                 </label>
                 <label className="label" style={{ margin: 0 }}>
                   视图
-                  <select
+                  <Select
                     value={sessionActivityFilter}
-                    onChange={(e) => setSessionActivityFilter(e.target.value as any)}
+                    onValueChange={(v) => setSessionActivityFilter(v as any)}
                   >
-                    <option value="running">运行中（idle/busy/loading）</option>
-                    <option value="problem">问题（unknown/cancel_requested/stale）</option>
-                    <option value="unknown">仅 unknown</option>
-                    <option value="closed">仅 closed</option>
-                    <option value="all">全部</option>
-                  </select>
+                    <SelectTrigger className="w-[260px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="running">运行中（idle/busy/loading）</SelectItem>
+                      <SelectItem value="problem">问题（unknown/cancel_requested/stale）</SelectItem>
+                      <SelectItem value="unknown">仅 unknown</SelectItem>
+                      <SelectItem value="closed">仅 closed</SelectItem>
+                      <SelectItem value="all">全部</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </label>
                 <label className="label" style={{ margin: 0 }}>
                   Agent
-                  <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
-                    <option value="">全部</option>
-                    {agentOptions.map((a) => (
-                      <option key={a.proxyId} value={a.proxyId}>
-                        {a.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={agentFilter ? agentFilter : "__all__"}
+                    onValueChange={(v) => setAgentFilter(v === "__all__" ? "" : v)}
+                  >
+                    <SelectTrigger className="w-[260px]">
+                      <SelectValue placeholder="全部" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">全部</SelectItem>
+                      {agentOptions.map((a) => (
+                        <SelectItem key={a.proxyId} value={a.proxyId}>
+                          {a.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
                 <label className="label" style={{ margin: 0 }}>
                   <span className="row gap" style={{ alignItems: "center" }}>
@@ -570,9 +595,9 @@ export function AcpSessionsSection(props: Props) {
 
               <div className="row gap" style={{ alignItems: "center" }}>
                 <span className="muted">显示 {filteredAcpSessions.length} / {acpSessions.length}</span>
-                <button type="button" className="buttonSecondary" onClick={() => void refreshAcpSessions()}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => void refreshAcpSessions()}>
                   刷新 Sessions
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -598,7 +623,11 @@ export function AcpSessionsSection(props: Props) {
                             <span className="row gap" style={{ alignItems: "center", minWidth: 0 }}>
                               <code title={s.sessionId}>{s.sessionId.slice(0, 8)}…</code>
                               <StatusBadge status={activity} />
-                              {isStale ? <span className="badge orange">stale</span> : null}
+                              {isStale ? (
+                                <Badge className="bg-warning text-warning-foreground hover:bg-warning/80">
+                                  stale
+                                </Badge>
+                              ) : null}
                               <StatusBadge status={s.runStatus} />
                             </span>
                             {s.agent ? (
@@ -641,7 +670,11 @@ export function AcpSessionsSection(props: Props) {
                             <div className="row gap" style={{ alignItems: "center" }}>
                               <h3 style={{ margin: 0 }}>Session</h3>
                               <StatusBadge status={activity} />
-                              {isStale ? <span className="badge orange">stale</span> : null}
+                              {isStale ? (
+                                <Badge className="bg-warning text-warning-foreground hover:bg-warning/80">
+                                  stale
+                                </Badge>
+                              ) : null}
                               <StatusBadge status={s.runStatus} />
                             </div>
                             <div className="muted" style={{ marginTop: 6 }}>
@@ -649,12 +682,12 @@ export function AcpSessionsSection(props: Props) {
                             </div>
                           </div>
                           <div className="row gap" style={{ alignItems: "center", justifyContent: "flex-end" }}>
-                            <Link className="buttonSecondary" to={`/sessions/${s.runId}`}>
-                              打开控制台
-                            </Link>
-                            <Link className="buttonSecondary" to={`/issues/${s.issueId}`}>
-                              打开 Issue
-                            </Link>
+                            <Button variant="secondary" size="sm" asChild>
+                              <Link to={`/sessions/${s.runId}`}>打开控制台</Link>
+                            </Button>
+                            <Button variant="secondary" size="sm" asChild>
+                              <Link to={`/issues/${s.issueId}`}>打开 Issue</Link>
+                            </Button>
                           </div>
                         </div>
 
@@ -708,9 +741,10 @@ export function AcpSessionsSection(props: Props) {
                         </div>
 
                         <div className="row gap" style={{ justifyContent: "flex-end", marginTop: 12 }}>
-                          <button
+                          <Button
                             type="button"
-                            className="buttonSecondary"
+                            variant="secondary"
+                            size="sm"
                             onClick={() =>
                               void onSetAcpSessionMode(
                                 s.runId,
@@ -722,25 +756,27 @@ export function AcpSessionsSection(props: Props) {
                             title={!s.agent ? "该 Run 未绑定 Agent（无法下发 session/set_mode）" : ""}
                           >
                             {settingModeKey === key ? "设置中…" : "设置 mode"}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            className="buttonSecondary"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => void onCancelAcpSession(s.runId, s.sessionId)}
                             disabled={busy || !s.agent}
                             title={!s.agent ? "该 Run 未绑定 Agent（无法下发 session/cancel）" : ""}
                           >
                             {cancelingAcpSessionKey === key ? "关闭中…" : "关闭"}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            className="buttonSecondary buttonDanger"
+                            variant="destructive"
+                            size="sm"
                             onClick={() => void onForceCloseAcpSession(s.runId, s.sessionId)}
                             disabled={busy}
                             title="强制清除 Run.acpSessionId（用于清理遗留/无法下发的会话）"
                           >
                             {forceClosingAcpSessionKey === key ? "移除中…" : "强制移除"}
-                          </button>
+                          </Button>
                         </div>
 
                         <details style={{ marginTop: 12 }}>

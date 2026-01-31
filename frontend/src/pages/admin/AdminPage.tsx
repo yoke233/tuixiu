@@ -9,6 +9,13 @@ import { ThemeToggle } from "../../components/ThemeToggle";
 import type { Approval, Project } from "../../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { ADMIN_SECTION_META, getSectionFromSearch, type AdminSectionKey } from "./adminSections";
 import { AcpSessionsSection } from "./sections/AcpSessionsSection";
@@ -166,17 +173,18 @@ export function AdminPage() {
           {loading ? (
             <div className="muted">加载中…</div>
           ) : projects.length ? (
-            <select
-              aria-label="选择 Project"
-              value={effectiveProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <Select value={effectiveProjectId} onValueChange={setSelectedProjectId}>
+              <SelectTrigger aria-label="选择 Project" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <div className="muted">暂无 Project，请先创建</div>
           )}

@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createRole, deleteRole, listRoles, updateRole } from "../../../api/roles";
 import type { RoleTemplate } from "../../../types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   active: boolean;
@@ -235,31 +238,57 @@ export function RolesSection(props: Props) {
         <form onSubmit={(e) => void onCreateRole(e)} className="form">
           <label className="label">
             Role Key *
-            <input ref={roleCreateKeyRef} value={roleKey} onChange={(e) => setRoleKey(e.target.value)} placeholder="backend-dev" />
+            <Input
+              ref={roleCreateKeyRef}
+              value={roleKey}
+              onChange={(e) => setRoleKey(e.target.value)}
+              placeholder="backend-dev"
+            />
           </label>
           <label className="label">
             显示名称 *
-            <input value={roleDisplayName} onChange={(e) => setRoleDisplayName(e.target.value)} placeholder="后端开发" />
+            <Input
+              value={roleDisplayName}
+              onChange={(e) => setRoleDisplayName(e.target.value)}
+              placeholder="后端开发"
+            />
           </label>
           <label className="label">
             Prompt Template（可选）
-            <textarea value={rolePromptTemplate} onChange={(e) => setRolePromptTemplate(e.target.value)} placeholder="你是 {{role.name}}，请优先写单测。" />
+            <Textarea
+              value={rolePromptTemplate}
+              onChange={(e) => setRolePromptTemplate(e.target.value)}
+              placeholder="你是 {{role.name}}，请优先写单测。"
+            />
           </label>
           <label className="label">
             initScript（bash，可选）
-            <textarea value={roleInitScript} onChange={(e) => setRoleInitScript(e.target.value)} placeholder={"# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init"} />
+            <Textarea
+              value={roleInitScript}
+              onChange={(e) => setRoleInitScript(e.target.value)}
+              placeholder={"# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init"}
+            />
           </label>
           <label className="label">
             init 超时秒数（可选）
-            <input value={roleInitTimeoutSeconds} onChange={(e) => setRoleInitTimeoutSeconds(e.target.value)} placeholder="300" />
+            <Input
+              value={roleInitTimeoutSeconds}
+              onChange={(e) => setRoleInitTimeoutSeconds(e.target.value)}
+              placeholder="300"
+            />
           </label>
           <label className="label">
             envText（.env，可选）
-            <textarea value={roleEnvText} onChange={(e) => setRoleEnvText(e.target.value)} rows={4} placeholder={"FOO=bar\nexport TOKEN=xxx"} />
+            <Textarea
+              value={roleEnvText}
+              onChange={(e) => setRoleEnvText(e.target.value)}
+              rows={4}
+              placeholder={"FOO=bar\nexport TOKEN=xxx"}
+            />
           </label>
-          <button type="submit" disabled={!roleKey.trim() || !roleDisplayName.trim() || !effectiveProjectId}>
+          <Button type="submit" disabled={!roleKey.trim() || !roleDisplayName.trim() || !effectiveProjectId}>
             创建
-          </button>
+          </Button>
         </form>
         {!effectiveProjectId ? <div className="muted">请先创建 Project</div> : null}
         <div className="muted" style={{ marginTop: 8 }}>
@@ -275,9 +304,9 @@ export function RolesSection(props: Props) {
             <h2 style={{ marginTop: 0 }}>已创建角色</h2>
             <div className="muted">维护 Prompt / initScript / 超时等配置。</div>
           </div>
-          <button type="button" className="buttonSecondary" onClick={() => void refreshRoles()} disabled={!effectiveProjectId || rolesLoading}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void refreshRoles()} disabled={!effectiveProjectId || rolesLoading}>
             刷新
-          </button>
+          </Button>
         </div>
 
         {!effectiveProjectId ? (
@@ -322,15 +351,15 @@ export function RolesSection(props: Props) {
                       <td>{new Date(role.updatedAt).toLocaleString()}</td>
                       <td style={{ textAlign: "right" }}>
                         <div className="row gap" style={{ justifyContent: "flex-end" }}>
-                          <button type="button" className="buttonSecondary" onClick={() => copyRoleToCreate(role)} disabled={rolesLoading || busy} title="复制到上方创建表单（不填 key）">
+                          <Button type="button" variant="secondary" size="sm" onClick={() => copyRoleToCreate(role)} disabled={rolesLoading || busy} title="复制到上方创建表单（不填 key）">
                             复制
-                          </button>
-                          <button type="button" className="buttonSecondary" onClick={() => (editing ? resetRoleEdit() : startRoleEdit(role))} disabled={rolesLoading || busy}>
+                          </Button>
+                          <Button type="button" variant="secondary" size="sm" onClick={() => (editing ? resetRoleEdit() : startRoleEdit(role))} disabled={rolesLoading || busy}>
                             {editing ? "取消编辑" : "编辑"}
-                          </button>
-                          <button type="button" className="buttonSecondary" onClick={() => void onDeleteRole(role)} disabled={rolesLoading || roleDeletingId === role.id}>
+                          </Button>
+                          <Button type="button" variant="destructive" size="sm" onClick={() => void onDeleteRole(role)} disabled={rolesLoading || roleDeletingId === role.id}>
                             {roleDeletingId === role.id ? "删除中…" : "删除"}
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -353,23 +382,23 @@ export function RolesSection(props: Props) {
             </div>
             <label className="label">
               显示名称 *
-              <input value={roleEditDisplayName} onChange={(e) => setRoleEditDisplayName(e.target.value)} />
+              <Input value={roleEditDisplayName} onChange={(e) => setRoleEditDisplayName(e.target.value)} />
             </label>
             <label className="label">
               描述（可选）
-              <input value={roleEditDescription} onChange={(e) => setRoleEditDescription(e.target.value)} />
+              <Input value={roleEditDescription} onChange={(e) => setRoleEditDescription(e.target.value)} />
             </label>
             <label className="label">
               Prompt Template（可选）
-              <textarea value={roleEditPromptTemplate} onChange={(e) => setRoleEditPromptTemplate(e.target.value)} />
+              <Textarea value={roleEditPromptTemplate} onChange={(e) => setRoleEditPromptTemplate(e.target.value)} />
             </label>
             <label className="label">
               initScript（bash，可选）
-              <textarea value={roleEditInitScript} onChange={(e) => setRoleEditInitScript(e.target.value)} />
+              <Textarea value={roleEditInitScript} onChange={(e) => setRoleEditInitScript(e.target.value)} />
             </label>
             <label className="label">
               init 超时秒数（可选）
-              <input value={roleEditInitTimeoutSeconds} onChange={(e) => setRoleEditInitTimeoutSeconds(e.target.value)} placeholder="300" />
+              <Input value={roleEditInitTimeoutSeconds} onChange={(e) => setRoleEditInitTimeoutSeconds(e.target.value)} placeholder="300" />
             </label>
             <label className="label">
               envText（仅 admin，可选）
@@ -380,15 +409,15 @@ export function RolesSection(props: Props) {
                   {editingRole.envKeys?.length ? ` 当前 keys: ${editingRole.envKeys.join(", ")}` : ""}
                 </div>
               </div>
-              <textarea value={roleEditEnvText} onChange={(e) => setRoleEditEnvText(e.target.value)} rows={4} readOnly={!roleEditEnvTextEnabled} placeholder={"FOO=bar\nexport TOKEN=xxx"} />
+              <Textarea value={roleEditEnvText} onChange={(e) => setRoleEditEnvText(e.target.value)} rows={4} readOnly={!roleEditEnvTextEnabled} placeholder={"FOO=bar\nexport TOKEN=xxx"} />
             </label>
             <div className="row gap" style={{ marginTop: 10 }}>
-              <button type="submit" disabled={roleSavingId === editingRole.id || roleDeletingId === editingRole.id}>
+              <Button type="submit" disabled={roleSavingId === editingRole.id || roleDeletingId === editingRole.id}>
                 {roleSavingId === editingRole.id ? "保存中…" : "保存修改"}
-              </button>
-              <button type="button" className="buttonSecondary" onClick={resetRoleEdit}>
+              </Button>
+              <Button type="button" variant="secondary" onClick={resetRoleEdit}>
                 取消
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}
@@ -396,4 +425,3 @@ export function RolesSection(props: Props) {
     </>
   );
 }
-

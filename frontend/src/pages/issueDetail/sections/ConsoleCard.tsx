@@ -5,6 +5,8 @@ import { RunConsole } from "../../../components/RunConsole";
 import { apiUrl } from "../../../api/client";
 import { findLatestSandboxInstanceStatus } from "../../../utils/sandboxStatus";
 import type { IssueDetailController } from "../useIssueDetailController";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function ConsoleCard(props: { model: IssueDetailController }) {
   const {
@@ -67,12 +69,15 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
         <h2 style={{ margin: 0 }}>Console</h2>
         <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
           {currentRunId ? (
-            <Link className="buttonSecondary" to={`/sessions/${currentRunId}`}>
-              全屏控制台
-            </Link>
+            <Button variant="secondary" size="sm" asChild>
+              <Link to={`/sessions/${currentRunId}`}>全屏控制台</Link>
+            </Button>
           ) : null}
           {run?.executorType === "agent" && run?.status === "running" ? (
-            <button
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={onPauseRun}
               disabled={
                 !allowPause ||
@@ -90,7 +95,7 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
               }
             >
               {pausing ? "暂停中…" : "暂停 Agent"}
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -121,21 +126,21 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
                   border: "1px solid rgba(255,255,255,0.12)",
                 }}
               />
-              <button
+              <Button
                 type="button"
                 onClick={() => removePendingImage(img.id)}
-                className="buttonSecondary"
+                variant="secondary"
+                size="icon"
+                className="h-6 w-6 rounded-full p-0"
                 style={{
                   position: "absolute",
                   top: -8,
                   right: -8,
-                  padding: "2px 6px",
-                  borderRadius: 999,
                 }}
                 aria-label="移除图片"
               >
                 ×
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -158,7 +163,7 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
           if (e.dataTransfer.files?.length) void onDropFiles(e.dataTransfer.files);
         }}
       >
-        <input
+        <Input
           aria-label="对话输入"
           value={chatText}
           onChange={(e) => setChatText(e.target.value)}
@@ -182,8 +187,9 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
             (currentAgent ? !agentOnline : false)
           }
         />
-        <button
+        <Button
           type="submit"
+          size="sm"
           disabled={
             !auth.user ||
             !allowRunActions ||
@@ -196,7 +202,7 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
           }
         >
           发送
-        </button>
+        </Button>
       </form>
       {sandboxHint ? (
         <div className={`consoleSendStatus ${sandboxHint.tone}`} title={sandboxTitle}>

@@ -7,6 +7,7 @@ import type {
   StepStatus,
   TaskStatus,
 } from "../types";
+import { Badge } from "@/components/ui/badge";
 
 type Status =
   | IssueStatus
@@ -17,35 +18,57 @@ type Status =
   | AcpSessionActivity
   | SandboxStatus;
 
-const COLORS: Record<string, string> = {
-  pending: "badge gray",
-  ready: "badge blue",
-  running: "badge blue",
-  creating: "badge purple",
-  stopped: "badge gray",
-  missing: "badge orange",
-  error: "badge red",
-  waiting_human: "badge purple",
-  blocked: "badge orange",
-  reviewing: "badge purple",
-  done: "badge green",
-  completed: "badge green",
-  waiting_ci: "badge orange",
-  failed: "badge red",
-  cancelled: "badge gray",
-  online: "badge green",
-  offline: "badge gray",
-  degraded: "badge orange",
-  suspended: "badge red",
-  unknown: "badge gray",
-  idle: "badge gray",
-  busy: "badge blue",
-  loading: "badge purple",
-  cancel_requested: "badge orange",
-  closed: "badge gray",
+type Tone = "neutral" | "info" | "success" | "warning" | "danger";
+
+const TONES: Record<string, Tone> = {
+  pending: "neutral",
+  ready: "info",
+  running: "info",
+  creating: "info",
+  stopped: "neutral",
+  missing: "warning",
+  error: "danger",
+  waiting_human: "info",
+  blocked: "warning",
+  reviewing: "info",
+  done: "success",
+  completed: "success",
+  waiting_ci: "warning",
+  failed: "danger",
+  cancelled: "neutral",
+  online: "success",
+  offline: "neutral",
+  degraded: "warning",
+  suspended: "danger",
+  unknown: "neutral",
+  idle: "neutral",
+  busy: "info",
+  loading: "info",
+  cancel_requested: "warning",
+  closed: "neutral",
 };
 
 export function StatusBadge(props: { status: Status }) {
-  const cls = COLORS[props.status] ?? "badge gray";
-  return <span className={cls}>{props.status}</span>;
+  const tone = TONES[props.status] ?? "neutral";
+  if (tone === "success") {
+    return (
+      <Badge className="bg-success text-success-foreground hover:bg-success/80">
+        {props.status}
+      </Badge>
+    );
+  }
+  if (tone === "warning") {
+    return (
+      <Badge className="bg-warning text-warning-foreground hover:bg-warning/80">
+        {props.status}
+      </Badge>
+    );
+  }
+  if (tone === "danger") {
+    return <Badge variant="destructive">{props.status}</Badge>;
+  }
+  if (tone === "info") {
+    return <Badge className="bg-info text-info-foreground hover:bg-info/80">{props.status}</Badge>;
+  }
+  return <Badge variant="secondary">{props.status}</Badge>;
 }

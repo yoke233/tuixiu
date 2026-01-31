@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 
 import type { PmRisk } from "../../../types";
 import type { IssueDetailController } from "../useIssueDetailController";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export function PmDetails(props: { model: IssueDetailController }) {
   const {
@@ -31,7 +33,12 @@ export function PmDetails(props: { model: IssueDetailController }) {
 
   function renderPmRisk(risk: PmRisk) {
     const { color, label } = getPmRiskBadge(risk);
-    return <span className={`badge ${color}`}>{label}</span>;
+    if (color === "green")
+      return <Badge className="bg-success text-success-foreground hover:bg-success/80">{label}</Badge>;
+    if (color === "orange")
+      return <Badge className="bg-warning text-warning-foreground hover:bg-warning/80">{label}</Badge>;
+    if (color === "red") return <Badge variant="destructive">{label}</Badge>;
+    return <Badge variant="secondary">{label}</Badge>;
   }
 
   return (
@@ -54,22 +61,24 @@ export function PmDetails(props: { model: IssueDetailController }) {
           <div className="muted">分析/推荐（可分配并启动）</div>
         </div>
         <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button
+          <Button
             type="button"
+            size="sm"
             onClick={onPmAnalyze}
             disabled={pmLoading || !issueId || !allowPmTools}
             title={!allowPmTools ? "需要 PM 或管理员权限" : undefined}
           >
             {pmLoading ? "分析中…" : "分析"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             onClick={onPmDispatch}
             disabled={!allowPmTools || !canPmDispatch || pmDispatching}
             title={!allowPmTools ? "需要 PM 或管理员权限" : undefined}
           >
             {pmDispatching ? "启动中…" : "PM 分配并启动"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -86,14 +95,15 @@ export function PmDetails(props: { model: IssueDetailController }) {
             {nextAction?.source ? `来源：${nextAction.source}` : "（打开后自动加载，可手动刷新）"}
           </div>
         </div>
-        <button
+        <Button
           type="button"
-          className="buttonSecondary"
+          variant="secondary"
+          size="sm"
           onClick={() => void refreshNextAction()}
           disabled={!issueId || nextActionLoading}
         >
           {nextActionLoading ? "刷新中…" : "刷新建议"}
-        </button>
+        </Button>
       </div>
 
       {nextActionError ? (
@@ -108,9 +118,9 @@ export function PmDetails(props: { model: IssueDetailController }) {
           {nextAction.approval ? (
             <div className="muted" style={{ marginTop: 6 }}>
               待审批：<code>{nextAction.approval.action}</code> · <code>{nextAction.approval.id}</code>{" "}
-              <Link to="/admin" style={{ marginLeft: 6 }}>
-                前往审批队列
-              </Link>
+              <Button variant="link" size="sm" className="h-auto px-0" asChild>
+                <Link to="/admin">前往审批队列</Link>
+              </Button>
             </div>
           ) : null}
           {nextAction.step ? (
@@ -189,9 +199,9 @@ export function PmDetails(props: { model: IssueDetailController }) {
 
           {!currentRunId && (effectivePmAnalysis.recommendedRoleKey || effectivePmAnalysis.recommendedAgentId) ? (
             <div className="row gap" style={{ marginTop: 10 }}>
-              <button type="button" onClick={onPmApplyRecommendation} disabled={!allowPmTools || pmLoading || pmDispatching}>
+              <Button type="button" size="sm" onClick={onPmApplyRecommendation} disabled={!allowPmTools || pmLoading || pmDispatching}>
                 应用推荐到下方手动选择
-              </button>
+              </Button>
               {pmFromArtifact?.createdAt ? (
                 <span className="muted">最近一次分析：{new Date(pmFromArtifact.createdAt).toLocaleString()}</span>
               ) : null}
@@ -211,4 +221,3 @@ export function PmDetails(props: { model: IssueDetailController }) {
     </details>
   );
 }
-

@@ -5,6 +5,9 @@ import { importGitHubIssue } from "../../../api/githubIssues";
 import { createIssue } from "../../../api/issues";
 import type { Project } from "../../../types";
 import { splitLines } from "../adminUtils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   active: boolean;
@@ -102,15 +105,15 @@ export function IssuesSection(props: Props) {
           <form onSubmit={(e) => void onImportGithubIssue(e)} className="form">
             <label className="label">
               Issue Number 或 URL
-              <input
+              <Input
                 value={githubImport}
                 onChange={(e) => setGithubImport(e.target.value)}
                 placeholder="123 或 https://github.com/o/r/issues/123"
               />
             </label>
-            <button type="submit" disabled={!githubImport.trim() || importingGithub || !effectiveProjectId}>
+            <Button type="submit" disabled={!githubImport.trim() || importingGithub || !effectiveProjectId}>
               {importingGithub ? "导入中…" : "导入"}
-            </button>
+            </Button>
           </form>
         ) : (
           <div className="muted">当前 Project 不是 GitHub SCM</div>
@@ -122,23 +125,22 @@ export function IssuesSection(props: Props) {
         <form onSubmit={(e) => void onCreateIssue(e)} className="form">
           <label className="label">
             标题 *
-            <input aria-label="Issue 标题" value={issueTitle} onChange={(e) => setIssueTitle(e.target.value)} />
+            <Input aria-label="Issue 标题" value={issueTitle} onChange={(e) => setIssueTitle(e.target.value)} />
           </label>
           <label className="label">
             描述
-            <textarea value={issueDescription} onChange={(e) => setIssueDescription(e.target.value)} />
+            <Textarea value={issueDescription} onChange={(e) => setIssueDescription(e.target.value)} />
           </label>
           <label className="label">
             验收标准（每行一条）
-            <textarea value={issueCriteria} onChange={(e) => setIssueCriteria(e.target.value)} />
+            <Textarea value={issueCriteria} onChange={(e) => setIssueCriteria(e.target.value)} />
           </label>
-          <button type="submit" disabled={!effectiveProjectId}>
+          <Button type="submit" disabled={!effectiveProjectId}>
             提交
-          </button>
+          </Button>
         </form>
         {!effectiveProjectId ? <div className="muted">请先创建 Project</div> : null}
       </section>
     </>
   );
 }
-
