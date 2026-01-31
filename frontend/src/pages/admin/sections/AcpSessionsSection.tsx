@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { cancelAcpSession, listAcpSessions, setAcpSessionMode, startAcpSession } from "../../../api/acpSessions";
+import {
+  cancelAcpSession,
+  forceCloseAcpSession,
+  listAcpSessions,
+  setAcpSessionMode,
+  startAcpSession,
+} from "../../../api/acpSessions";
 import { listAgents } from "../../../api/agents";
 import { reportSandboxInventory, listSandboxes } from "../../../api/sandboxes";
 import { StatusBadge } from "../../../components/StatusBadge";
@@ -29,9 +35,17 @@ export function AcpSessionsSection(props: Props) {
   const [loadingAcpProxies, setLoadingAcpProxies] = useState(false);
   const [reportingInventoryProxyId, setReportingInventoryProxyId] = useState<string>("");
   const [cancelingAcpSessionKey, setCancelingAcpSessionKey] = useState<string>("");
+  const [forceClosingAcpSessionKey, setForceClosingAcpSessionKey] = useState<string>("");
   const [settingModeKey, setSettingModeKey] = useState<string>("");
   const [startingAcpSession, setStartingAcpSession] = useState(false);
   const [acpSessionGoal, setAcpSessionGoal] = useState("");
+  const [sessionQuery, setSessionQuery] = useState("");
+  const [sessionActivityFilter, setSessionActivityFilter] = useState<
+    "all" | "running" | "problem" | "closed" | "unknown"
+  >("running");
+  const [onlyStale, setOnlyStale] = useState(false);
+  const [agentFilter, setAgentFilter] = useState<string>("");
+  const [selectedSessionKey, setSelectedSessionKey] = useState<string>("");
 
   const loading = loadingAcpSessions || loadingAcpProxies;
 
@@ -110,6 +124,80 @@ export function AcpSessionsSection(props: Props) {
     }
   }, [effectiveProjectId, setError]);
 
+  const agentOptions = useMemo(() => {
+    const byKey = new Map<string, { proxyId: string; label: string }>();
+    for (const s of acpSessions) {
+      if (!s.agent) continue;
+      const proxyId = s.agent.proxyId;
+      const label = `${s.agent.name} (${s.agent.status})`;
+      byKey.set(proxyId, { proxyId, label });
+    }
+    return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [acpSessions]);
+
+  const filteredAcpSessions = useMemo(() => {
+    const q = sessionQuery.trim().toLowerCase();
+
+    const isStaleSession = (s: AcpSessionSummary) => {
+      const updatedAt = s.sessionState?.updatedAt ?? null;
+      if (!updatedAt) return true;
+      const ageMs = Date.now() - new Date(updatedAt).getTime();
+      return ageMs > 90_000;
+    };
+
+    const matchesActivity = (s: AcpSessionSummary) => {
+      const activity = s.sessionState?.activity ?? "unknown";
+      if (sessionActivityFilter === "all") return true;
+      if (sessionActivityFilter === "running") return activity === "busy" || activity === "loading" || activity === "idle";
+      if (sessionActivityFilter === "problem")
+        return activity === "unknown" || activity === "cancel_requested" || isStaleSession(s);
+      if (sessionActivityFilter === "closed") return activity === "closed";
+      if (sessionActivityFilter === "unknown") return activity === "unknown";
+      return true;
+    };
+
+    const matchesQuery = (s: AcpSessionSummary) => {
+      if (!q) return true;
+      const hay = [
+        s.sessionId,
+        s.runId,
+        s.issueId,
+        s.issueTitle,
+        s.agent?.name ?? "",
+        s.agent?.proxyId ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    };
+
+    return acpSessions.filter((s) => {
+      if (onlyStale && !isStaleSession(s)) return false;
+      if (agentFilter && (s.agent?.proxyId ?? "") !== agentFilter) return false;
+      if (!matchesActivity(s)) return false;
+      if (!matchesQuery(s)) return false;
+      return true;
+    });
+  }, [acpSessions, agentFilter, onlyStale, sessionActivityFilter, sessionQuery]);
+
+  const selectedSession = useMemo(() => {
+    if (!selectedSessionKey) return null;
+    return filteredAcpSessions.find((s) => `${s.runId}:${s.sessionId}` === selectedSessionKey) ?? null;
+  }, [filteredAcpSessions, selectedSessionKey]);
+
+  useEffect(() => {
+    if (!filteredAcpSessions.length) {
+      setSelectedSessionKey("");
+      return;
+    }
+    if (selectedSessionKey && filteredAcpSessions.some((s) => `${s.runId}:${s.sessionId}` === selectedSessionKey)) {
+      return;
+    }
+    const first = filteredAcpSessions[0];
+    setSelectedSessionKey(first ? `${first.runId}:${first.sessionId}` : "");
+  }, [filteredAcpSessions, selectedSessionKey]);
+
   useEffect(() => {
     if (!active) return;
     if (!requireAdmin()) return;
@@ -154,6 +242,32 @@ export function AcpSessionsSection(props: Props) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setCancelingAcpSessionKey("");
+      }
+    },
+    [refreshAcpSessions, requireAdmin, setError],
+  );
+
+  const onForceCloseAcpSession = useCallback(
+    async (runId: string, sessionId: string) => {
+      setError(null);
+      if (!requireAdmin()) return;
+      if (
+        !window.confirm(
+          `确认强制关闭并从列表移除 ACP session？\n\nrunId: ${runId}\nsessionId: ${sessionId}\n\n说明：将清除 Run.acpSessionId（仅影响“会话管理”，不会删除 Run 记录）。`,
+        )
+      ) {
+        return;
+      }
+
+      const key = `${runId}:${sessionId}`;
+      setForceClosingAcpSessionKey(key);
+      try {
+        await forceCloseAcpSession(runId, sessionId);
+        await refreshAcpSessions();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setForceClosingAcpSessionKey("");
       }
     },
     [refreshAcpSessions, requireAdmin, setError],
@@ -407,132 +521,242 @@ export function AcpSessionsSection(props: Props) {
             加载中…
           </div>
         ) : acpSessions.length ? (
-          <div className="tableScroll">
-            <table className="table tableWrap">
-              <thead>
-                <tr>
-                  <th>sessionId</th>
-                  <th>Agent</th>
-                  <th>Session 状态</th>
-                  <th>Run 状态</th>
-                  <th>Issue</th>
-                  <th>Run</th>
-                  <th>Console</th>
-                  <th>开始时间</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {acpSessions.map((s) => {
-                  const key = `${s.runId}:${s.sessionId}`;
-                  const busy = cancelingAcpSessionKey === key || settingModeKey === key;
-                  return (
-                    <tr key={key}>
-                      <td>
-                        <code title={s.sessionId}>{s.sessionId}</code>
-                      </td>
-                      <td>
-                        {s.agent ? (
-                          <span className="row gap" style={{ alignItems: "center" }}>
-                            <span title={s.agent.proxyId}>{s.agent.name}</span>
-                            <StatusBadge status={s.agent.status} />
-                          </span>
-                        ) : (
-                          <span className="muted">未绑定</span>
-                        )}
-                      </td>
-                      <td>
-                        {s.sessionState ? (
-                          <div>
-                            <span className="row gap" style={{ alignItems: "center" }}>
-                              <StatusBadge status={s.sessionState.activity} />
-                              {s.sessionState.inFlight ? (
-                                <span className="muted">inFlight={s.sessionState.inFlight}</span>
-                              ) : null}
+          <div style={{ marginTop: 12 }}>
+            <div className="row gap" style={{ alignItems: "flex-end", justifyContent: "space-between" }}>
+              <div className="row gap" style={{ alignItems: "flex-end" }}>
+                <label className="label" style={{ margin: 0 }}>
+                  搜索
+                  <input
+                    value={sessionQuery}
+                    onChange={(e) => setSessionQuery(e.target.value)}
+                    placeholder="sessionId / runId / issue / agent…"
+                  />
+                </label>
+                <label className="label" style={{ margin: 0 }}>
+                  视图
+                  <select
+                    value={sessionActivityFilter}
+                    onChange={(e) => setSessionActivityFilter(e.target.value as any)}
+                  >
+                    <option value="running">运行中（idle/busy/loading）</option>
+                    <option value="problem">问题（unknown/cancel_requested/stale）</option>
+                    <option value="unknown">仅 unknown</option>
+                    <option value="closed">仅 closed</option>
+                    <option value="all">全部</option>
+                  </select>
+                </label>
+                <label className="label" style={{ margin: 0 }}>
+                  Agent
+                  <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
+                    <option value="">全部</option>
+                    {agentOptions.map((a) => (
+                      <option key={a.proxyId} value={a.proxyId}>
+                        {a.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label" style={{ margin: 0 }}>
+                  <span className="row gap" style={{ alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={onlyStale}
+                      onChange={(e) => setOnlyStale(e.target.checked)}
+                    />
+                    仅 stale（{" > "}90s 未更新）
+                  </span>
+                </label>
+              </div>
+
+              <div className="row gap" style={{ alignItems: "center" }}>
+                <span className="muted">显示 {filteredAcpSessions.length} / {acpSessions.length}</span>
+                <button type="button" className="buttonSecondary" onClick={() => void refreshAcpSessions()}>
+                  刷新 Sessions
+                </button>
+              </div>
+            </div>
+
+            <div className="adminSplit" style={{ marginTop: 12 }}>
+              <div className="adminSplitList">
+                <ul className="list" style={{ marginTop: 0 }}>
+                  {filteredAcpSessions.map((s) => {
+                    const key = `${s.runId}:${s.sessionId}`;
+                    const activity = s.sessionState?.activity ?? "unknown";
+                    const updatedAt = s.sessionState?.updatedAt ?? null;
+                    const ageMs = updatedAt ? Date.now() - new Date(updatedAt).getTime() : null;
+                    const isStale = typeof ageMs === "number" ? ageMs > 90_000 : true;
+
+                    const selected = selectedSessionKey === key;
+                    return (
+                      <li key={key} className={`adminListItem ${selected ? "selected" : ""}`}>
+                        <button
+                          type="button"
+                          className="adminListItemButton"
+                          onClick={() => setSelectedSessionKey(key)}
+                        >
+                          <div className="row gap" style={{ alignItems: "center", justifyContent: "space-between" }}>
+                            <span className="row gap" style={{ alignItems: "center", minWidth: 0 }}>
+                              <code title={s.sessionId}>{s.sessionId.slice(0, 8)}…</code>
+                              <StatusBadge status={activity} />
+                              {isStale ? <span className="badge orange">stale</span> : null}
+                              <StatusBadge status={s.runStatus} />
                             </span>
-                            <div className="muted" style={{ marginTop: 4 }}>
-                              {s.sessionState.currentModeId ? (
-                                <>
-                                  mode: <code>{s.sessionState.currentModeId}</code>
-                                </>
-                              ) : (
-                                "mode: -"
-                              )}
-                              {s.sessionState.currentModelId ? (
-                                <>
-                                  {" "}
-                                  · model: <code>{s.sessionState.currentModelId}</code>
-                                </>
-                              ) : (
-                                " · model: -"
-                              )}
-                              {s.sessionState.lastStopReason
-                                ? ` · stop: ${s.sessionState.lastStopReason}`
-                                : ""}
-                              {s.sessionState.note ? ` · note: ${s.sessionState.note}` : ""}
-                              {s.sessionState.updatedAt
-                                ? ` · ${new Date(s.sessionState.updatedAt).toLocaleString()}`
-                                : ""}
+                            {s.agent ? (
+                              <span className="muted" title={s.agent.proxyId}>
+                                {s.agent.name}
+                              </span>
+                            ) : (
+                              <span className="muted">未绑定</span>
+                            )}
+                          </div>
+                          <div className="cellSub" style={{ marginTop: 6 }}>
+                            {s.issueTitle ? s.issueTitle : s.issueId}
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+
+              <div className="adminSplitDetail">
+                {selectedSession ? (
+                  (() => {
+                    const s = selectedSession;
+                    const key = `${s.runId}:${s.sessionId}`;
+                    const busy =
+                      cancelingAcpSessionKey === key ||
+                      forceClosingAcpSessionKey === key ||
+                      settingModeKey === key;
+
+                    const activity = s.sessionState?.activity ?? "unknown";
+                    const updatedAt = s.sessionState?.updatedAt ?? null;
+                    const ageMs = updatedAt ? Date.now() - new Date(updatedAt).getTime() : null;
+                    const isStale = typeof ageMs === "number" ? ageMs > 90_000 : true;
+
+                    return (
+                      <div className="card" style={{ marginTop: 0 }}>
+                        <div className="row spaceBetween" style={{ alignItems: "flex-start" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="row gap" style={{ alignItems: "center" }}>
+                              <h3 style={{ margin: 0 }}>Session</h3>
+                              <StatusBadge status={activity} />
+                              {isStale ? <span className="badge orange">stale</span> : null}
+                              <StatusBadge status={s.runStatus} />
+                            </div>
+                            <div className="muted" style={{ marginTop: 6 }}>
+                              {s.issueTitle ? s.issueTitle : s.issueId}
                             </div>
                           </div>
-                        ) : (
-                          <span className="muted">-</span>
-                        )}
-                      </td>
-                      <td>
-                        <StatusBadge status={s.runStatus} />
-                      </td>
-                      <td>
-                        <div className="cellStack">
-                          <Link to={`/issues/${s.issueId}`}>{s.issueTitle || s.issueId}</Link>
-                          {s.issueTitle ? (
-                            <div className="cellSub">
-                              <code title={s.issueId}>{s.issueId}</code>
-                            </div>
-                          ) : null}
+                          <div className="row gap" style={{ alignItems: "center", justifyContent: "flex-end" }}>
+                            <Link className="buttonSecondary" to={`/sessions/${s.runId}`}>
+                              打开控制台
+                            </Link>
+                            <Link className="buttonSecondary" to={`/issues/${s.issueId}`}>
+                              打开 Issue
+                            </Link>
+                          </div>
                         </div>
-                      </td>
-                      <td>
-                        <code title={s.runId}>{s.runId.slice(0, 8)}…</code>
-                      </td>
-                      <td>
-                        <Link className="buttonSecondary" to={`/sessions/${s.runId}`}>
-                          打开
-                        </Link>
-                      </td>
-                      <td className="muted">{new Date(s.startedAt).toLocaleString()}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <button
-                          type="button"
-                          className="buttonSecondary"
-                          onClick={() =>
-                            void onSetAcpSessionMode(
-                              s.runId,
-                              s.sessionId,
-                              s.sessionState?.currentModeId ?? null,
-                            )
-                          }
-                          disabled={busy || !s.agent}
-                          title={!s.agent ? "该 Run 未绑定 Agent（无法下发 session/set_mode）" : ""}
-                        >
-                          {settingModeKey === key ? "设置中…" : "设置 mode"}
-                        </button>
-                        <button
-                          type="button"
-                          className="buttonSecondary"
-                          onClick={() => void onCancelAcpSession(s.runId, s.sessionId)}
-                          disabled={busy || !s.agent}
-                          title={!s.agent ? "该 Run 未绑定 Agent（无法下发 session/cancel）" : ""}
-                          style={{ marginLeft: 8 }}
-                        >
-                          {cancelingAcpSessionKey === key ? "关闭中…" : "关闭"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+
+                        <div className="kvTable" style={{ marginTop: 12 }}>
+                          <dt>sessionId</dt>
+                          <dd>
+                            <code title={s.sessionId}>{s.sessionId}</code>
+                          </dd>
+
+                          <dt>runId</dt>
+                          <dd>
+                            <code title={s.runId}>{s.runId}</code>
+                          </dd>
+
+                          <dt>agent</dt>
+                          <dd>
+                            {s.agent ? (
+                              <span className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                                <span title={s.agent.proxyId}>{s.agent.name}</span>
+                                <StatusBadge status={s.agent.status} />
+                                <code title={s.agent.proxyId}>{s.agent.proxyId}</code>
+                              </span>
+                            ) : (
+                              <span className="muted">未绑定</span>
+                            )}
+                          </dd>
+
+                          <dt>mode/model</dt>
+                          <dd>
+                            <span className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                              {s.sessionState?.currentModeId ? <code>{s.sessionState.currentModeId}</code> : <span className="muted">mode: -</span>}
+                              {s.sessionState?.currentModelId ? <code>{s.sessionState.currentModelId}</code> : <span className="muted">model: -</span>}
+                              {s.sessionState?.inFlight ? <span className="muted">inFlight={s.sessionState.inFlight}</span> : null}
+                            </span>
+                          </dd>
+
+                          <dt>updated</dt>
+                          <dd className="muted">
+                            {updatedAt ? new Date(updatedAt).toLocaleString() : "-"}
+                            {typeof ageMs === "number" ? ` · ${Math.round(ageMs / 1000)}s ago` : ""}
+                          </dd>
+
+                          <dt>run time</dt>
+                          <dd className="muted">
+                            {new Date(s.startedAt).toLocaleString()}
+                            {s.completedAt ? ` · completed: ${new Date(s.completedAt).toLocaleString()}` : ""}
+                          </dd>
+
+                          <dt>note</dt>
+                          <dd className="muted">{s.sessionState?.note ? s.sessionState.note : "-"}</dd>
+                        </div>
+
+                        <div className="row gap" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+                          <button
+                            type="button"
+                            className="buttonSecondary"
+                            onClick={() =>
+                              void onSetAcpSessionMode(
+                                s.runId,
+                                s.sessionId,
+                                s.sessionState?.currentModeId ?? null,
+                              )
+                            }
+                            disabled={busy || !s.agent}
+                            title={!s.agent ? "该 Run 未绑定 Agent（无法下发 session/set_mode）" : ""}
+                          >
+                            {settingModeKey === key ? "设置中…" : "设置 mode"}
+                          </button>
+                          <button
+                            type="button"
+                            className="buttonSecondary"
+                            onClick={() => void onCancelAcpSession(s.runId, s.sessionId)}
+                            disabled={busy || !s.agent}
+                            title={!s.agent ? "该 Run 未绑定 Agent（无法下发 session/cancel）" : ""}
+                          >
+                            {cancelingAcpSessionKey === key ? "关闭中…" : "关闭"}
+                          </button>
+                          <button
+                            type="button"
+                            className="buttonSecondary buttonDanger"
+                            onClick={() => void onForceCloseAcpSession(s.runId, s.sessionId)}
+                            disabled={busy}
+                            title="强制清除 Run.acpSessionId（用于清理遗留/无法下发的会话）"
+                          >
+                            {forceClosingAcpSessionKey === key ? "移除中…" : "强制移除"}
+                          </button>
+                        </div>
+
+                        <details style={{ marginTop: 12 }}>
+                          <summary className="muted" style={{ cursor: "pointer" }}>
+                            原始 sessionState
+                          </summary>
+                          <pre className="pre">{JSON.stringify(s.sessionState, null, 2)}</pre>
+                        </details>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="muted">请选择左侧一个 session 查看详情</div>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="muted" style={{ marginTop: 12 }}>

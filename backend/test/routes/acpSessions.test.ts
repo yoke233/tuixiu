@@ -195,8 +195,11 @@ describe("ACP session admin routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: runId,
           workspacePath: "C:/repo/.worktrees/run-1",
+          acpSessionId: "s1",
+          metadata: null,
           agent: { proxyId: "proxy-1" },
         }),
+        update: vi.fn().mockResolvedValue({ id: runId }),
       },
     } as any;
     const sendToAgent = vi.fn().mockResolvedValue(undefined);
@@ -220,9 +223,59 @@ describe("ACP session admin routes", () => {
     expect(acp.cancelSession).toHaveBeenCalledWith({
       proxyId: "proxy-1",
       runId,
-      cwd: "/workspace",
+      cwd: "C:/repo/.worktrees/run-1",
       sessionId: "s1",
     });
+    expect(prisma.run.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: runId },
+        data: expect.objectContaining({
+          metadata: expect.any(Object),
+        }),
+      }),
+    );
+
+    await server.close();
+  });
+
+  it("POST /api/admin/acp-sessions/force-close clears run.acpSessionId", async () => {
+    const server = createHttpServer();
+    const runId = "00000000-0000-0000-0000-000000000013";
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: runId,
+          acpSessionId: "s1",
+          metadata: null,
+          agent: { proxyId: "proxy-1" },
+          workspacePath: "C:/repo/.worktrees/run-1",
+        }),
+        update: vi.fn().mockResolvedValue({ id: runId }),
+      },
+    } as any;
+    const auth = {
+      requireRoles: vi.fn().mockReturnValue(async () => {}),
+    } as any;
+
+    await server.register(makeAcpSessionRoutes({ prisma, auth }), { prefix: "/api/admin" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/admin/acp-sessions/force-close",
+      payload: { runId, sessionId: "s1" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { ok: true } });
+    expect(prisma.run.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: runId },
+        data: expect.objectContaining({
+          acpSessionId: null,
+          metadata: expect.any(Object),
+        }),
+      }),
+    );
 
     await server.close();
   });

@@ -16,6 +16,11 @@ export async function cancelAcpSession(runId: string, sessionId: string): Promis
   return data;
 }
 
+export async function forceCloseAcpSession(runId: string, sessionId: string): Promise<{ ok: true }> {
+  const data = await apiPost<{ ok: true }>(`/admin/acp-sessions/force-close`, { runId, sessionId });
+  return data;
+}
+
 export async function startAcpSession(input: {
   projectId: string;
   goal?: string;

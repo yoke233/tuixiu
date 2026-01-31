@@ -113,6 +113,56 @@
   --container-max-width: none;
 }
 
+.adminSplit {
+  display: grid;
+  grid-template-columns: minmax(320px, 440px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.adminSplitList {
+  min-width: 0;
+}
+
+.adminSplitDetail {
+  min-width: 0;
+}
+
+.adminListItem {
+  padding: 0;
+  background: transparent;
+}
+
+.adminListItem.selected {
+  border-color: color-mix(in oklab, var(--accent), var(--card-border) 30%);
+  background: color-mix(in oklab, var(--accent), transparent 94%);
+}
+
+.adminListItemButton {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.adminListItemButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.buttonDanger {
+  border-color: color-mix(in oklab, var(--danger-border), var(--card-border) 45%);
+  background: color-mix(in oklab, var(--danger-bg), transparent 55%);
+  color: color-mix(in oklab, var(--fg), black 10%);
+}
+
+.buttonDanger:hover {
+  background: color-mix(in oklab, var(--danger-bg), transparent 35%);
+}
+
 @media (max-width: 920px) {
   .adminShell {
     grid-template-columns: 1fr;
@@ -128,6 +178,10 @@
 
   .adminNav {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  .adminSplit {
+    grid-template-columns: 1fr;
   }
 }
 

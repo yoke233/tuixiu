@@ -246,6 +246,8 @@ export function useIssueDetailController(opts: {
     selectedRunIdRef.current = selectedRunId;
   }, [selectedRunId]);
 
+  const lastEventsSnapshotRunIdRef = useRef<string>("");
+
   useEffect(() => {
     if (auth.status === "loading") return;
     setTaskTemplatesLoaded(false);
@@ -274,7 +276,7 @@ export function useIssueDetailController(opts: {
       setTasksLoaded(false);
       setTasksError(null);
       try {
-        const shouldLoadEvents = wsStatusRef.current !== "open";
+        const wsOpen = wsStatusRef.current === "open";
         const i = await getIssue(issueId);
         setIssue(i);
         outlet?.onIssueUpdated?.(i);
@@ -298,9 +300,11 @@ export function useIssueDetailController(opts: {
             const r = await getRun(desiredRunId);
             setRun(r);
             setSelectedRunId(desiredRunId);
+            const shouldLoadEvents = !wsOpen || lastEventsSnapshotRunIdRef.current !== desiredRunId;
             if (shouldLoadEvents) {
               const es = await listRunEvents(desiredRunId);
               setEvents((prev) => mergeEventsById(prev, [...es].reverse(), 600));
+              lastEventsSnapshotRunIdRef.current = desiredRunId;
             }
           } catch (e) {
             const latest = i.runs?.[0]?.id || "";
@@ -309,9 +313,11 @@ export function useIssueDetailController(opts: {
               const r = await getRun(latest);
               setRun(r);
               setSelectedRunId(latest);
+              const shouldLoadEvents = !wsOpen || lastEventsSnapshotRunIdRef.current !== latest;
               if (shouldLoadEvents) {
                 const es = await listRunEvents(latest);
                 setEvents((prev) => mergeEventsById(prev, [...es].reverse(), 600));
+                lastEventsSnapshotRunIdRef.current = latest;
               }
             } else {
               throw e;
@@ -321,6 +327,7 @@ export function useIssueDetailController(opts: {
           setRun(null);
           setSelectedRunId("");
           setEvents([]);
+          lastEventsSnapshotRunIdRef.current = "";
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -339,6 +346,7 @@ export function useIssueDetailController(opts: {
     if (auth.status === "loading") return;
     setSelectedRunId("");
     selectedRunIdRef.current = "";
+    lastEventsSnapshotRunIdRef.current = "";
     setLiveEventIds(new Set());
     setNextAction(null);
     setNextActionError(null);
@@ -416,8 +424,9 @@ export function useIssueDetailController(opts: {
         return;
       }
 
-      if (!currentRunId) return;
-      if (msg.run_id !== currentRunId) return;
+      const activeRunId = selectedRunIdRef.current || currentRunId;
+      if (!activeRunId) return;
+      if (msg.run_id !== activeRunId) return;
       if (msg.type === "event_added" && msg.event) {
         setEvents((prev) => {
           if (prev.some((e) => e.id === msg.event!.id)) return prev;

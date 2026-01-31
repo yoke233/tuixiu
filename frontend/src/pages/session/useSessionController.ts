@@ -62,6 +62,7 @@ export function useSessionController() {
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<number | null>(null);
   const wsStatusRef = useRef<"connecting" | "open" | "closed">("connecting");
+  const lastEventsSnapshotRunIdRef = useRef<string>("");
   const [chatText, setChatText] = useState("");
   const [pendingImages, setPendingImages] = useState<
     Array<{ id: string; uri: string; mimeType: string; name?: string; size: number }>
@@ -162,9 +163,11 @@ export function useSessionController() {
         setRun(r);
 
         const issPromise = getIssue(r.issueId);
-        if (wsStatusRef.current !== "open") {
+        const wsOpen = wsStatusRef.current === "open";
+        if (!wsOpen || lastEventsSnapshotRunIdRef.current !== runId) {
           const es = await listRunEvents(runId);
           setEvents((prev) => mergeEventsById(prev, [...es].reverse(), 800));
+          lastEventsSnapshotRunIdRef.current = runId;
         }
         const iss = await issPromise;
         setIssue(iss);
@@ -189,6 +192,7 @@ export function useSessionController() {
     setEvents([]);
     setLiveEventIds(new Set());
     setResolvedPermissionIds(new Set());
+    lastEventsSnapshotRunIdRef.current = "";
   }, [runId]);
 
   const onWs = useCallback(

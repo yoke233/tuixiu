@@ -13,6 +13,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function upsertAcpSessionStateInRunMetadata(opts: {
+  runMetadata: unknown;
+  sessionId: string;
+  patch: Partial<{
+    activity: string;
+    inFlight: number;
+    updatedAt: string;
+    currentModeId: string | null;
+    currentModelId: string | null;
+    lastStopReason: string | null;
+    note: string | null;
+  }>;
+}): unknown {
+  const now = new Date().toISOString();
+  const root = isRecord(opts.runMetadata) ? { ...(opts.runMetadata as any) } : {};
+  const existing =
+    isRecord((root as any).acpSessionState) &&
+    typeof (root as any).acpSessionState.sessionId === "string" &&
+    (root as any).acpSessionState.sessionId === opts.sessionId
+      ? ((root as any).acpSessionState as any)
+      : null;
+
+  (root as any).acpSessionState = {
+    sessionId: opts.sessionId,
+    activity: existing?.activity ?? "unknown",
+    inFlight: typeof existing?.inFlight === "number" ? existing.inFlight : 0,
+    updatedAt: typeof existing?.updatedAt === "string" ? existing.updatedAt : now,
+    currentModeId: typeof existing?.currentModeId === "string" ? existing.currentModeId : null,
+    currentModelId: typeof existing?.currentModelId === "string" ? existing.currentModelId : null,
+    lastStopReason: typeof existing?.lastStopReason === "string" ? existing.lastStopReason : null,
+    note: typeof existing?.note === "string" ? existing.note : null,
+    ...opts.patch,
+  };
+
+  return root;
+}
+
 export function makeAcpSessionRoutes(deps: {
   prisma: PrismaDeps;
   sendToAgent?: SendToAgent;
@@ -224,7 +261,29 @@ export function makeAcpSessionRoutes(deps: {
         }
 
         try {
-          await deps.acp.cancelSession({ proxyId: (run as any).agent.proxyId, runId, cwd: "/workspace", sessionId });
+          const cwd = typeof (run as any).workspacePath === "string" && (run as any).workspacePath.trim()
+            ? String((run as any).workspacePath)
+            : "/workspace";
+
+          await deps.acp.cancelSession({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId });
+
+          await deps.prisma.run
+            .update({
+              where: { id: runId },
+              data: {
+                metadata: upsertAcpSessionStateInRunMetadata({
+                  runMetadata: (run as any).metadata,
+                  sessionId,
+                  patch: {
+                    activity: "cancel_requested",
+                    inFlight: 0,
+                    updatedAt: new Date().toISOString(),
+                    note: "cancel_requested_by_admin",
+                  },
+                }) as any,
+              } as any,
+            })
+            .catch(() => {});
         } catch (error) {
           return {
             success: false,
@@ -235,6 +294,73 @@ export function makeAcpSessionRoutes(deps: {
             },
           };
         }
+
+        return { success: true, data: { ok: true } };
+      },
+    );
+
+    server.post(
+      "/acp-sessions/force-close",
+      { preHandler: requireAdmin },
+      async (request) => {
+        const bodySchema = z.object({
+          runId: z.string().uuid(),
+          sessionId: z.string().min(1).max(200),
+        });
+        const { runId, sessionId } = bodySchema.parse(request.body ?? {});
+
+        const run = await deps.prisma.run.findUnique({
+          where: { id: runId },
+          include: { agent: true } as any,
+        } as any);
+        if (!run) {
+          return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+        }
+        if (typeof (run as any).acpSessionId === "string" && (run as any).acpSessionId !== sessionId) {
+          return {
+            success: false,
+            error: {
+              code: "BAD_REQUEST",
+              message: "sessionId 不匹配当前 Run.acpSessionId（可能已经变更）",
+              details: `run.acpSessionId=${String((run as any).acpSessionId)}`,
+            },
+          };
+        }
+
+        // best-effort cancel（可用则尝试；不可用也允许强制清理 DB）
+        try {
+          if (deps.acp && (run as any).agent) {
+            const cwd =
+              typeof (run as any).workspacePath === "string" && (run as any).workspacePath.trim()
+                ? String((run as any).workspacePath)
+                : "/workspace";
+            await deps.acp.cancelSession({
+              proxyId: (run as any).agent.proxyId,
+              runId,
+              cwd,
+              sessionId,
+            });
+          }
+        } catch {
+          // ignore
+        }
+
+        await deps.prisma.run.update({
+          where: { id: runId },
+          data: {
+            acpSessionId: null,
+            metadata: upsertAcpSessionStateInRunMetadata({
+              runMetadata: (run as any).metadata,
+              sessionId,
+              patch: {
+                activity: "closed",
+                inFlight: 0,
+                updatedAt: new Date().toISOString(),
+                note: "force_closed_by_admin",
+              },
+            }) as any,
+          } as any,
+        } as any);
 
         return { success: true, data: { ok: true } };
       },

@@ -356,6 +356,124 @@ describe("IssueDetailPage", () => {
     expect(screen.queryByText(/当前没有可用的在线 Agent/)).not.toBeInTheDocument();
   });
 
+  it("loads new run events without page refresh (even when WS is open)", async () => {
+    // task templates
+    mockFetchJsonOnce({ success: true, data: { templates: [] } });
+
+    // issue detail (no run yet)
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issue: {
+          id: "i1",
+          projectId: "p1",
+          title: "Start run live",
+          status: "pending",
+          createdAt: "2026-01-25T00:00:00.000Z",
+          runs: [],
+        },
+      },
+    });
+
+    // agents list (one online agent so canStartRun=true)
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        agents: [{ id: "a1", name: "agent-1", status: "online", currentLoad: 0, maxConcurrentRuns: 1 }],
+      },
+    });
+
+    // tasks list
+    mockFetchJsonOnce({ success: true, data: { tasks: [] } });
+
+    // roles
+    mockFetchJsonOnce({ success: true, data: { roles: [] } });
+
+    render(
+      <AuthProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={["/issues/i1"]}>
+            <Routes>
+              <Route path="/issues/:id" element={<IssueDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </AuthProvider>,
+    );
+
+    expect(await screen.findByText("Start run live")).toBeInTheDocument();
+
+    // start run (POST)
+    mockFetchJsonOnce({
+      success: true,
+      data: { run: { id: "r2", issueId: "i1", status: "running", startedAt: "2026-01-25T00:00:01.000Z" } },
+    });
+
+    // refresh after start: issue detail includes new run
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        issue: {
+          id: "i1",
+          projectId: "p1",
+          title: "Start run live",
+          status: "running",
+          createdAt: "2026-01-25T00:00:00.000Z",
+          runs: [
+            {
+              id: "r2",
+              issueId: "i1",
+              agentId: "a1",
+              executorType: "agent",
+              status: "running",
+              startedAt: "2026-01-25T00:00:01.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    // tasks list after start
+    mockFetchJsonOnce({ success: true, data: { tasks: [] } });
+
+    // run
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        run: {
+          id: "r2",
+          issueId: "i1",
+          agentId: "a1",
+          executorType: "agent",
+          status: "running",
+          startedAt: "2026-01-25T00:00:01.000Z",
+          artifacts: [],
+        },
+      },
+    });
+
+    // events for new run（WS 已连接时也应被 refresh 拉取一次，避免 run 切换瞬间丢消息导致必须手动刷新页面）
+    mockFetchJsonOnce({
+      success: true,
+      data: {
+        events: [
+          {
+            id: "e-new-1",
+            runId: "r2",
+            source: "acp",
+            type: "acp.update.received",
+            payload: { type: "text", text: "new-run-live" },
+            timestamp: "2026-01-25T00:00:01.100Z",
+          },
+        ],
+      },
+    });
+
+    await screen.findByRole("button", { name: "启动 Run" }).then((btn) => btn.click());
+
+    await waitFor(() => expect(screen.getByText("new-run-live")).toBeInTheDocument());
+  });
+
   it("pauses agent via /api/runs/:id/pause when run is running", async () => {
     // task templates
     mockFetchJsonOnce({ success: true, data: { templates: [] } });
