@@ -7,6 +7,8 @@ import { listProjects } from "../../api/projects";
 import { useAuth } from "../../auth/AuthContext";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import type { Approval, Project } from "../../types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 import { ADMIN_SECTION_META, getSectionFromSearch, type AdminSectionKey } from "./adminSections";
 import { AcpSessionsSection } from "./sections/AcpSessionsSection";
@@ -210,7 +212,11 @@ export function AdminPage() {
             onClick={() => setActiveSectionWithUrl("approvals")}
           >
             <span>审批队列</span>
-            {approvals.length ? <span className="badge orange">{approvals.length}</span> : null}
+            {approvals.length ? (
+              <Badge className="bg-warning text-warning-foreground hover:bg-warning/80">
+                {approvals.length}
+              </Badge>
+            ) : null}
           </button>
           <button
             type="button"
@@ -272,16 +278,19 @@ export function AdminPage() {
               <div className="muted">{activeSectionMeta.desc}</div>
             </div>
             <div className="row gap">
-              <Link to="/issues">← 返回看板</Link>
+              <Button variant="link" size="sm" asChild>
+                <Link to="/issues">← 返回看板</Link>
+              </Button>
               <ThemeToggle />
               {auth.user ? (
                 <span className="muted" title={auth.user.id}>
                   {auth.user.username} ({auth.user.role})
                 </span>
               ) : (
-                <button
+                <Button
                   type="button"
-                  className="buttonSecondary"
+                  variant="secondary"
+                  size="sm"
                   onClick={() =>
                     navigate(
                       `/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`,
@@ -289,14 +298,17 @@ export function AdminPage() {
                   }
                 >
                   登录
-                </button>
+                </Button>
               )}
               {auth.user ? (
-                <button type="button" className="buttonSecondary" onClick={() => auth.logout()}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => auth.logout()}>
                   退出
-                </button>
+                </Button>
               ) : null}
-              <button
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={onRefreshClick}
                 disabled={
                   activeSection === "acpSessions"
@@ -307,7 +319,7 @@ export function AdminPage() {
                 }
               >
                 刷新
-              </button>
+              </Button>
             </div>
           </div>
 

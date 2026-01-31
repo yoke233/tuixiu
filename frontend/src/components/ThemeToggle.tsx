@@ -1,4 +1,5 @@
 import { useTheme } from "../theme";
+import { Button } from "@/components/ui/button";
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -10,13 +11,14 @@ export function ThemeToggle() {
       : theme;
   const nextTheme = resolvedTheme === "dark" ? "light" : "dark";
   return (
-    <button
+    <Button
       type="button"
-      className="buttonSecondary"
+      variant="outline"
+      size="sm"
       onClick={() => setTheme(nextTheme)}
       aria-label="切换主题"
     >
       {resolvedTheme === "dark" ? "浅色" : "深色"}
-    </button>
+    </Button>
   );
 }

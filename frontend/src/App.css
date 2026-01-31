@@ -313,9 +313,9 @@
   font-size: 14px;
 }
 
-input,
-textarea,
-select {
+input:not([data-ui]),
+textarea:not([data-ui]),
+select:not([data-ui]) {
   background: var(--input-bg);
   border: 1px solid var(--input-border);
   color: inherit;
@@ -332,9 +332,9 @@ select {
 }
 
 @media (max-width: 640px) {
-  input,
-  textarea,
-  select {
+  input:not([data-ui]),
+  textarea:not([data-ui]),
+  select:not([data-ui]) {
     font-size: 16px;
   }
 }
@@ -346,12 +346,12 @@ input[type="checkbox"] {
   border-radius: 4px;
 }
 
-textarea {
+textarea:not([data-ui]) {
   min-height: 90px;
   resize: vertical;
 }
 
-button {
+button:not([class]) {
   background: var(--accent);
   color: var(--accent-text);
   border: 0;
@@ -779,7 +779,6 @@ a:hover {
     gap: 8px;
   }
 
-  .issuesTopActions button,
   .issuesTopActions .buttonSecondary {
     padding: 8px 10px;
     font-size: 13px;

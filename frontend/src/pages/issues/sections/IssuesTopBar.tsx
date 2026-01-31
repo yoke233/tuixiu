@@ -2,6 +2,8 @@ import { useMemo } from "react";
 
 import { ThemeToggle } from "../../../components/ThemeToggle";
 import type { IssueListController } from "../useIssueListController";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function IssuesTopBar(props: { model: IssueListController }) {
   const { auth, loading, location, navigate, refresh, searchText, setSearchText } = props.model;
@@ -22,7 +24,7 @@ export function IssuesTopBar(props: { model: IssueListController }) {
         <label className="srOnly" htmlFor="issueSearch">
           搜索 Issue
         </label>
-        <input
+        <Input
           id="issueSearch"
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
@@ -36,48 +38,52 @@ export function IssuesTopBar(props: { model: IssueListController }) {
             </span>
             {auth.hasRole(["admin"]) ? (
               <>
-                <button
+                <Button
                   type="button"
-                  className="buttonSecondary"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => navigate("/admin?section=issues#issue-create")}
                 >
                   新建 Issue
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="buttonSecondary"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => navigate("/admin?section=issues#issue-github-import")}
                 >
                   GitHub 导入
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="buttonSecondary"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => navigate("/admin?section=acpSessions")}
                 >
                   ACP Proxies
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="buttonSecondary"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => navigate("/admin")}
                 >
                   管理
-                </button>
+                </Button>
               </>
             ) : null}
-            <button type="button" className="buttonSecondary" onClick={() => auth.logout()}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => auth.logout()}>
               退出
-            </button>
+            </Button>
           </div>
         ) : (
-          <button type="button" className="buttonSecondary" onClick={() => navigate(loginNext)}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => navigate(loginNext)}>
             登录
-          </button>
+          </Button>
         )}
-        <button onClick={() => refresh()} disabled={loading}>
+        <Button type="button" variant="outline" size="sm" onClick={() => refresh()} disabled={loading}>
           刷新
-        </button>
+        </Button>
       </div>
     </div>
   );
