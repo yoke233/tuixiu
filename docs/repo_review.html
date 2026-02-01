@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>仓库深度走读报告（tuixiu）</title>
+  <style>
+    :root {
+      --bg: #0b0c0f;
+      --panel: #11131a;
+      --text: #e7e8ee;
+      --muted: #a8adbd;
+      --link: #89b4ff;
+      --border: rgba(255,255,255,0.12);
+      --codebg: #0a0b10;
+      --code: #e7e8ee;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 800px at 20% -10%, rgba(137,180,255,0.16), transparent 60%),
+                  radial-gradient(900px 600px at 90% 10%, rgba(255,140,140,0.12), transparent 55%),
+                  var(--bg);
+      color: var(--text);
+      font: 14px/1.65 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap { max-width: 980px; margin: 0 auto; padding: 28px 18px 64px; }
+    header {
+      padding: 18px 18px;
+      background: linear-gradient(180deg, rgba(17,19,26,0.92), rgba(17,19,26,0.75));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      backdrop-filter: blur(10px);
+    }
+    header h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: 0.2px; }
+    header .meta { color: var(--muted); font-size: 12px; }
+
+    main {
+      margin-top: 16px;
+      padding: 18px 18px;
+      background: rgba(17,19,26,0.70);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    h1, h2, h3, h4, h5, h6 { scroll-margin-top: 20px; }
+    h2 { margin-top: 26px; border-top: 1px solid var(--border); padding-top: 18px; }
+    h3 { margin-top: 18px; }
+
+    p { margin: 10px 0; }
+    ul { margin: 10px 0 10px 22px; padding: 0; }
+    li { margin: 6px 0; }
+    code {
+      font-family: var(--mono);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+
+    pre.codeblock {
+      margin: 12px 0;
+      background: var(--codebg);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      padding: 12px 12px;
+      overflow: auto;
+    }
+    pre.codeblock code {
+      display: block;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: var(--code);
+      font-family: var(--mono);
+      font-size: 13px;
+      white-space: pre;
+    }
+    pre.codeblock.mermaid {
+      border-left: 4px solid rgba(137,180,255,0.45);
+    }
+
+    nav.toc {
+      margin: 16px 0 18px;
+      padding: 14px 14px;
+      background: rgba(0,0,0,0.18);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+    }
+    .tocTitle { font-weight: 650; margin-bottom: 8px; }
+    nav.toc ul { margin: 0; list-style: none; }
+    nav.toc li { margin: 6px 0; }
+
+    @media (max-width: 560px) {
+      .wrap { padding: 18px 12px 48px; }
+      header, main { padding: 14px 12px; }
+    }
+    </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>仓库深度走读报告（tuixiu）</h1>
+      <div class="meta">Generated: 2026-02-01 05:02:29 UTC · Standalone HTML (offline)</div>
+    </header>
+    <main>
+      <nav class="toc">
+<div class="tocTitle">目录</div>
+<ul>
+<li style="margin-left:0px"><a href="#h-1">仓库深度走读报告（tuixiu）</a></li>
+<li style="margin-left:12px"><a href="#h-2">01. 项目概览</a></li>
+<li style="margin-left:24px"><a href="#h-3">1.1 仓库定位（What is this）</a></li>
+<li style="margin-left:24px"><a href="#h-4">1.2 目录与职责边界（Top-level map）</a></li>
+<li style="margin-left:24px"><a href="#h-5">1.3 快速指标（Quick stats）</a></li>
+<li style="margin-left:12px"><a href="#h-6">02. 架构地图（分层 + 核心对象 + 数据流）</a></li>
+<li style="margin-left:24px"><a href="#h-7">2.1 分层与边界（证据）</a></li>
+<li style="margin-left:24px"><a href="#h-8">2.2 核心数据模型（Prisma）</a></li>
+<li style="margin-left:24px"><a href="#h-9">2.3 模块依赖图（Mermaid）</a></li>
+<li style="margin-left:12px"><a href="#h-10">03. 入口与执行流程（Entrypoint → Critical Path）</a></li>
+<li style="margin-left:24px"><a href="#h-11">3.1 入口点清单（Entrypoints）</a></li>
+<li style="margin-left:24px"><a href="#h-12">3.2 关键链路 A：启动 Run（POST /api/issues/:id/start）</a></li>
+<li style="margin-left:24px"><a href="#h-13">3.3 关键链路 B：继续对话（Run.prompt）</a></li>
+<li style="margin-left:24px"><a href="#h-14">3.4 关键链路 C：创建 PR / 合并 PR（受控动作 + 审批）</a></li>
+<li style="margin-left:24px"><a href="#h-15">3.5 时序图（Mermaid：启动 Run）</a></li>
+<li style="margin-left:12px"><a href="#h-16">04. 核心模块深挖（High-Leverage Subsystems）</a></li>
+<li style="margin-left:24px"><a href="#h-17">4.1 Backend 组装点（<code>backend/src/index.ts</code>）</a></li>
+<li style="margin-left:24px"><a href="#h-18">4.2 Run 启动与初始化（<code>backend/src/modules/runs/startIssueRun.ts</code>）</a></li>
+<li style="margin-left:24px"><a href="#h-19">4.3 ACP 隧道与事件持久化（<code>backend/src/modules/acp/acpTunnel.ts</code>）</a></li>
+<li style="margin-left:24px"><a href="#h-20">4.4 WS 网关（<code>backend/src/websocket/gateway.ts</code>）</a></li>
+<li style="margin-left:24px"><a href="#h-21">4.5 Proxy：WS ↔ ACP 桥接与 sandbox 抽象（<code>acp-proxy/</code>）</a></li>
+<li style="margin-left:24px"><a href="#h-22">4.6 Frontend：RunConsole 与交互面（<code>frontend/</code>）</a></li>
+<li style="margin-left:12px"><a href="#h-23">05. 上手实操（本地跑起来）</a></li>
+<li style="margin-left:12px"><a href="#h-24">06. 二次开发指南（可操作清单）</a></li>
+<li style="margin-left:24px"><a href="#h-25">6.1 新增一种“执行器”（ExecutorType）</a></li>
+<li style="margin-left:24px"><a href="#h-26">6.2 新增一种受控动作（ApprovalAction）</a></li>
+<li style="margin-left:24px"><a href="#h-27">6.3 新增/替换 SCM provider</a></li>
+<li style="margin-left:24px"><a href="#h-28">6.4 新增 runtime skills</a></li>
+<li style="margin-left:12px"><a href="#h-29">07. 仓库文档总结（Docs for Dev/Agent）</a></li>
+<li style="margin-left:12px"><a href="#h-30">08. 评分（100 分制，多维度，证据驱动）</a></li>
+<li style="margin-left:12px"><a href="#h-31">09. 附录：关键文件/符号速查</a></li>
+</ul></nav>
+      <h1 id="h-1">仓库深度走读报告（tuixiu）</h1>
+<p>生成时间：2026-02-01 走读基线：<code>main</code> 分支，commit <code>a5342c86983bc4fe406071968f12405f3573214e</code>（当前工作区为 dirty：存在本地未提交修改/删除，见 <code>git status</code>）</p>
+<p>本报告目标读者：后端/前端/平台工程（能上手跑起来、能沿关键链路定位、能安全二开）。</p>
+<p>---</p>
+<h2 id="h-2">01. 项目概览</h2>
+<h3 id="h-3">1.1 仓库定位（What is this）</h3>
+<p>TuiXiu（ACP 协作台）是一个把 GitHub/GitLab/Codeup 的 Issue “交给 ACP 兼容 Coding Agent 执行”的协作系统：后端做编排与数据落库，<code>acp-proxy</code> 负责 WS ↔ ACP 桥接并在沙箱中启动 agent，前端实时展示事件流与产物并驱动 PR/审批闭环。（见 <code>README.md</code>、<code>docs/01_architecture/system-architecture.md</code>）</p>
+<h3 id="h-4">1.2 目录与职责边界（Top-level map）</h3>
+<ul>
+<li><code>backend/</code>：Fastify Orchestrator（REST + WebSocket Gateway）+ Prisma(Postgres)；入口 <code>backend/src/index.ts</code></li>
+<li><code>acp-proxy/</code>：WS ↔ ACP 桥接 + sandbox/agent launcher；入口 <code>acp-proxy/src/index.ts</code> → <code>acp-proxy/src/runProxyCli.ts:37</code></li>
+<li><code>frontend/</code>：Vite + React UI；入口 <code>frontend/src/main.tsx</code>、路由 <code>frontend/src/App.tsx</code></li>
+<li><code>docs/</code>：权威架构/模块/指南/Runbook（带 front matter）；入口 <code>docs/README.md</code></li>
+<li><code>scripts/</code>：当前仅见 <code>scripts/docs_lint.py</code>（无 md→html 渲染脚本）</li>
+<li><code>.worktrees/</code>：运行时生成 worktrees（文档明确“不要手改/不要提交”）</li>
+</ul>
+<h3 id="h-5">1.3 快速指标（Quick stats）</h3>
+<ul>
+<li>工作区是 <code>pnpm</code> workspace：根 <code>package.json</code> + <code>pnpm-workspace.yaml</code>（backend/frontend/acp-proxy 三包）</li>
+<li>语言/文件：<code>.ts</code>≈318、<code>.tsx</code>≈66、<code>.md</code>≈129（统计来自 <code>rg --files</code>）</li>
+<li>核心依赖：</li>
+<li>backend：Fastify 5、Prisma、Zod、<code>@agentclientprotocol/sdk</code></li>
+<li>acp-proxy：<code>ws</code>、<code>convict</code>、BoxLite、<code>@agentclientprotocol/sdk</code></li>
+<li>frontend：React 19、React Router 7、Tailwind v4、Vitest</li>
+</ul>
+<p>---</p>
+<h2 id="h-6">02. 架构地图（分层 + 核心对象 + 数据流）</h2>
+<h3 id="h-7">2.1 分层与边界（证据）</h3>
+<p>系统分三层（与仓库结构一致）：</p>
+<p>1) UI：<code>frontend/</code>（HTTP 调 REST + WS 订阅事件流） 2) Orchestrator：<code>backend/</code>（API + WS 网关 + DB + Git/PR 编排） 3) 执行层：<code>acp-proxy/</code>（连接 orchestrator 的 <code>/ws/agent</code>，启动 sandbox/agent，并把 ACP 事件回传）</p>
+<p>对应说明见：<code>docs/01_architecture/system-architecture.md</code>。</p>
+<h3 id="h-8">2.2 核心数据模型（Prisma）</h3>
+<p>以 <code>backend/prisma/schema.prisma</code> 为准（节选要点）：</p>
+<ul>
+<li><code>Project</code>：repoUrl、scmType、token、workspaceMode/Policy、executionProfile、runtime skills 开关等</li>
+<li><code>Issue</code>：需求池实体（默认 <code>pending</code>，通过 <code>/api/issues/:id/start</code> 进入 <code>running</code>）</li>
+<li><code>Agent</code>：由 proxy 注册/心跳维持在线；核心字段 <code>proxyId/status/currentLoad/maxConcurrentRuns</code></li>
+<li><code>Run</code>：一次执行；持久化 <code>acpSessionId/workspacePath/branchName/sandboxInstanceName/sandboxStatus</code>、以及 PR 状态（<code>scmPr*</code>）</li>
+<li><code>Event</code>：事件流（source: <code>acp|gitlab|system|user</code>）</li>
+<li><code>Artifact</code>：产物（branch/pr/report/ci_result…）</li>
+<li><code>Approval</code>：高危动作（create_pr/merge_pr/publish_artifact）的审批队列</li>
+<li><code>Task/Step</code>：更高层的工作流抽象（支持 auto-advance 与多 executor）</li>
+</ul>
+<p>关键模型位置（便于速查）：</p>
+<ul>
+<li><code>Run</code>：<code>backend/prisma/schema.prisma</code>（包含 sandbox 与 SCM 状态字段）</li>
+<li><code>Event/Artifact/Approval</code>：<code>backend/prisma/schema.prisma</code>（约在 model Event/Artifact/Approval 段）</li>
+</ul>
+<h3 id="h-9">2.3 模块依赖图（Mermaid）</h3>
+<pre class="codeblock mermaid"><code class="language-mermaid">graph TD
+  U[Browser/User] --&gt;|HTTP /api/*| FE[frontend (Vite+React)]
+  U --&gt;|WS /ws/client| BE_WS_CLIENT[backend WS /ws/client]
+
+  FE --&gt;|HTTP /api/*| BE_HTTP[backend (Fastify REST)]
+  FE --&gt;|WS subscribe event_added| BE_WS_CLIENT
+
+  BE_HTTP --&gt; DB[(PostgreSQL via Prisma)]
+  BE_WS_CLIENT --&gt; DB
+
+  subgraph Backend Core
+    BE_INDEX[backend/src/index.ts]
+    WS_GATEWAY[backend/src/websocket/gateway.ts]
+    ACP_TUNNEL[backend/src/modules/acp/acpTunnel.ts]
+    RUN_START[backend/src/modules/runs/startIssueRun.ts]
+    SCM[backend/src/modules/scm/*]
+    APPROVALS[backend/src/modules/approvals/*]
+    WORKFLOW[backend/src/modules/workflow/*]
+  end
+
+  BE_INDEX --&gt; WS_GATEWAY
+  BE_INDEX --&gt; ACP_TUNNEL
+  BE_INDEX --&gt; RUN_START
+  BE_INDEX --&gt; SCM
+  BE_INDEX --&gt; APPROVALS
+  BE_INDEX --&gt; WORKFLOW
+
+  WS_GATEWAY --&gt;|WS /ws/agent| PROXY[acp-proxy]
+  ACP_TUNNEL --&gt;|sendToAgent(acp_open/prompt_send)| WS_GATEWAY
+
+  PROXY --&gt;|stdio/NDJSON (ACP)| AGENT[ACP Agent]
+  PROXY --&gt;|sandbox provider| SANDBOX[(container_oci/boxlite_oci/host_process)]
+  SANDBOX --&gt; AGENT
+</code></pre>
+<p>---</p>
+<h2 id="h-10">03. 入口与执行流程（Entrypoint → Critical Path）</h2>
+<p>本仓库“最关键链路”可以用一个锚点描述：<strong>从 UI 启动 Run，到 agent 在 sandbox 内开始工作并把流式输出写入 Event，再到创建 PR/进入审批</strong>。</p>
+<h3 id="h-11">3.1 入口点清单（Entrypoints）</h3>
+<ul>
+<li>Backend：<code>backend/src/index.ts</code>（Fastify 启动与路由注册，<code>await server.listen(...)</code> 在 <code>backend/src/index.ts:416</code>）</li>
+<li>Proxy：<code>acp-proxy/src/index.ts</code> → <code>acp-proxy/src/runProxyCli.ts:37</code></li>
+<li>Frontend：<code>frontend/src/main.tsx</code> + 路由 <code>frontend/src/App.tsx</code></li>
+</ul>
+<h3 id="h-12">3.2 关键链路 A：启动 Run（POST /api/issues/:id/start）</h3>
+<p>关键步骤（按调用链排列，带定位点）：</p>
+<p>1) UI 发起启动 Run</p>
+<ul>
+<li>入口页：<code>frontend/src/pages/issueDetail/IssueDetailPage.tsx</code></li>
+<li>操作区：<code>frontend/src/pages/issueDetail/sections/ConsoleCard.tsx</code>（“请先启动 Run”提示、全屏控制台跳转等）</li>
+</ul>
+<p>2) Backend 接口：<code>POST /api/issues/:id/start</code></p>
+<ul>
+<li>路由：<code>backend/src/routes/issues.ts:150</code></li>
+<li>实际逻辑：<code>backend/src/modules/runs/startIssueRun.ts:66</code></li>
+</ul>
+<p>3) <code>startIssueRun</code> 做 4 件事（强约束路径）</p>
+<ul>
+<li>选 agent：优先指定 <code>agentId</code>，否则选 <code>status=online &amp;&amp; currentLoad &lt; maxConcurrentRuns</code></li>
+<li>创建 Run + 推进 Issue/Agent 状态：Run=<code>running</code>、Issue=<code>running</code>、Agent <code>currentLoad +1</code></li>
+<li>创建 workspace（依赖注入的 <code>createWorkspace</code>，从 <code>backend/src/index.ts</code> 传入；当前实现返回 <code>workspaceMode=clone</code>，workspacePath 固定 <code>/workspace</code>，并生成 <code>run/&lt;name&gt;</code> 分支名）</li>
+<li>组装 prompt + init：写入大量 <code>TUIXIU_*</code> 环境变量，合并 init scripts，并通过 ACP 隧道发送到 proxy/agent（<code>backend/src/modules/runs/startIssueRun.ts:610</code>）</li>
+</ul>
+<p>4) ACP 隧道：确保 sandbox/agent 已打开，再发送 prompt</p>
+<ul>
+<li><code>backend/src/modules/acp/acpTunnel.ts:69</code>（创建隧道）</li>
+<li><code>backend/src/modules/acp/acpTunnel.ts:451</code>（<code>promptRun</code>：必要时发送 <code>acp_open</code>，随后 <code>prompt_send</code>，等待 <code>prompt_result</code>，并把 <code>acpSessionId</code> 落库）</li>
+</ul>
+<p>5) Proxy 收到 <code>acp_open</code>，启动 sandbox 并初始化 agent</p>
+<ul>
+<li>WS message dispatch：<code>acp-proxy/src/runProxyCli.ts</code>（<code>onMessage</code> 分发到 handlers）</li>
+<li><code>acp_open</code> handler：<code>acp-proxy/src/handlers/handleAcpOpen.ts:12</code></li>
+<li><code>ensureRuntime/ensureInitialized</code>：建立 per-run runtime 状态</li>
+<li><code>runInitScript</code>：执行 <code>init.script</code>（由后端下发，包含 workspace 初始化/role init/skills mount 相关）</li>
+<li><code>startAgent</code>：启动 ACP agent 进程（默认 <code>agent_command=[&quot;codex-acp&quot;]</code>）</li>
+</ul>
+<p>6) Proxy/Agent 输出流式更新，回写 backend → Event → UI</p>
+<ul>
+<li>Proxy 将 ACP <code>session/update</code> 等转成 <code>prompt_update</code> 回传 backend</li>
+<li>backend <code>/ws/agent</code> 收到后：</li>
+<li>进入 <code>backend/src/websocket/gateway.ts</code>（agent connection 消息处理）</li>
+<li>部分更新会落为 <code>Event(source=&quot;acp&quot;, type=&quot;acp.update.received&quot;)</code>（由 <code>backend/src/modules/acp/acpTunnel.ts</code> 负责持久化与 chunk 合并）</li>
+<li>同时广播到 <code>/ws/client</code>，前端 <code>RunConsole</code> 增量渲染（<code>frontend/src/components/RunConsole.tsx</code>）</li>
+</ul>
+<h3 id="h-13">3.3 关键链路 B：继续对话（Run.prompt）</h3>
+<p>两条入口都存在（HTTP 与 WS client command），共同目标：调用 <code>acpTunnel.promptRun(...)</code> 并尽量复用 <code>Run.acpSessionId</code>：</p>
+<ul>
+<li>HTTP：<code>backend/src/routes/runs.ts</code>（<code>POST /api/runs/:id/prompt</code>，并支持图片附件物化）</li>
+<li>WS（UI 直连 backend WS client）：<code>backend/src/websocket/gateway.ts</code> 内 <code>handleClientCommand</code>（<code>type=prompt_run</code>）</li>
+</ul>
+<p>当检测到 sandbox <code>missing</code> 时，会走降级：</p>
+<ul>
+<li>用 <code>buildChatContextFromEvents(...)</code> 构造上下文</li>
+<li>用 <code>buildRecoveryInit(...)</code> 构造恢复用 init（见 <code>backend/src/websocket/gateway.ts</code> 中对应逻辑）</li>
+</ul>
+<h3 id="h-14">3.4 关键链路 C：创建 PR / 合并 PR（受控动作 + 审批）</h3>
+<ul>
+<li>创建 PR：<code>backend/src/routes/runs.ts</code> → <code>backend/src/modules/scm/runReviewRequest.ts</code></li>
+<li>先校验 sandbox git push 能力：<code>isSandboxGitPushEnabled(...)</code>（由 agent capabilities 决定）</li>
+<li>先执行 <code>sandboxGitPush</code>（后端通过 WS 让 proxy 在 sandbox 内 push）再调用 GitLab/GitHub API 创建 PR</li>
+<li>结果写回 <code>Run.scm*</code> 字段（而不是仅写 Artifact），并可推进 Run 到 <code>waiting_ci</code></li>
+<li>合并 PR：<code>POST /api/runs/:id/merge-pr</code> 默认返回 <code>APPROVAL_REQUIRED</code> 并创建 <code>Approval</code>，由 <code>/api/approvals</code> 队列批准后执行（见 <code>backend/src/routes/runs.ts</code> 的审批逻辑）</li>
+</ul>
+<h3 id="h-15">3.5 时序图（Mermaid：启动 Run）</h3>
+<pre class="codeblock mermaid"><code class="language-mermaid">sequenceDiagram
+  autonumber
+  participant UI as Browser UI (frontend)
+  participant BE as Orchestrator (backend)
+  participant DB as Postgres (Prisma)
+  participant WS as WS /ws/agent (gateway)
+  participant PX as acp-proxy
+  participant SB as Sandbox (container_oci/boxlite/host)
+  participant AG as ACP Agent
+
+  UI-&gt;&gt;BE: POST /api/issues/:id/start
+  BE-&gt;&gt;DB: create Run; update Issue/Agent
+  BE-&gt;&gt;BE: startIssueRun: build prompt + initEnv + initScript
+  BE-&gt;&gt;WS: sendToAgent(acp_open)
+  WS-&gt;&gt;PX: WS msg acp_open
+  PX-&gt;&gt;SB: ensureInstanceRunning + runInitScript
+  PX-&gt;&gt;AG: start agent (stdio/NDJSON)
+  BE-&gt;&gt;WS: sendToAgent(prompt_send)
+  WS-&gt;&gt;PX: WS msg prompt_send
+  PX-&gt;&gt;AG: ACP session/prompt
+  AG--&gt;&gt;PX: session/update (stream)
+  PX--&gt;&gt;WS: prompt_update
+  WS--&gt;&gt;BE: acpTunnel persist events (chunk/flush)
+  BE--&gt;&gt;UI: WS /ws/client event_added
+</code></pre>
+<p>---</p>
+<h2 id="h-16">04. 核心模块深挖（High-Leverage Subsystems）</h2>
+<h3 id="h-17">4.1 Backend 组装点（<code>backend/src/index.ts</code>）</h3>
+<p>职责：把配置、存储、WS 网关、ACP 隧道、路由与鉴权组装起来。</p>
+<p>关键点：</p>
+<ul>
+<li>Env 校验：<code>backend/src/config.ts</code>（Zod；并提供 workspaces/attachments/skill-packages 的默认目录）</li>
+<li>静态资源托管：<code>backend/src/index.ts</code> 会尝试从多个 root 提供 <code>index.html</code>，并在找不到 bundle 时给出清晰 404 文案（减少“白屏”）</li>
+<li>鉴权/授权：</li>
+<li><code>registerAuth(...)</code> + <code>preHandler</code> 钩子统一保护 <code>/api/*</code>（放行 <code>/api/auth/*</code>、<code>/api/health</code>、webhooks、proxy register 等）</li>
+<li>对 Project/Role/Policy/WorkflowTemplate 的写操作做 admin gate（见 <code>backend/src/index.ts</code> 中 isProjectCreate/isRoleTemplateMutation... 判断）</li>
+<li>WebSocket：</li>
+<li><code>createWebSocketGateway(...).init(server)</code>：连接 <code>/ws/agent</code> 与 <code>/ws/client</code></li>
+<li><code>createAcpTunnel(...)</code>：把 run 的 ACP 生命周期/事件持久化封装为可复用组件</li>
+<li><code>createSandboxControlClient(...)</code>：向 proxy 发起 sandbox 控制类命令（git push 等）</li>
+</ul>
+<p>扩展点：</p>
+<ul>
+<li>增加新的 REST 路由/模块：在 <code>backend/src/index.ts</code> 注册 <code>server.register(makeXxxRoutes(...), { prefix })</code></li>
+<li>增加新的系统级依赖（例如新 AttachmentStore/S3）：替换 <code>createLocalAttachmentStore</code> 的实现并注入到 routes/gateway</li>
+</ul>
+<h3 id="h-18">4.2 Run 启动与初始化（<code>backend/src/modules/runs/startIssueRun.ts</code>）</h3>
+<p>职责：把“需求池里的 Issue”转换成“可执行的 Run”，并把执行所需的 workspace、初始化脚本、环境变量、skills manifest 一次性准备好。</p>
+<p>关键流程（浓缩）：</p>
+<ul>
+<li>选 Agent 与 RoleTemplate：RoleKey 可来自请求、Project 默认、或 PM 分析（见 <code>backend/src/modules/pm/pmAutomation.ts</code>）</li>
+<li>Workspace Policy：由 platform/project/role/profile 合并出 <code>resolvedWorkspacePolicy</code>（并写入 <code>Run.resolvedWorkspacePolicy/workspacePolicySource</code>）</li>
+<li>Prompt 组装：</li>
+<li>workspace notice：来自 <code>Project.agentWorkspaceNoticeTemplate</code> 或 env <code>AGENT_WORKSPACE_NOTICE_TEMPLATE</code></li>
+<li>role prompt：渲染 <code>RoleTemplate.promptTemplate</code></li>
+<li>Issue 描述/验收/约束/测试要求拼接</li>
+<li>Init（关键）：</li>
+<li><code>init.env</code> 里写入大量 <code>TUIXIU_*</code>（project/run/workspace/branch/scm…）</li>
+<li>runtime skills mounting：如果 <code>Project.enableRuntimeSkillsMounting</code> 且 Role 绑定了 skill versions，会构造 <code>skillsManifest</code> 下发给 proxy（由 proxy 在运行时挂载到 <code>CODEX_HOME</code>）</li>
+<li>init.script：<code>buildWorkspaceInitScript()</code> + <code>RoleTemplate.initScript</code> 合并（并可设置 <code>initTimeoutSeconds</code>）</li>
+</ul>
+<p>风险点（值得在代码评审时特别关注）：</p>
+<ul>
+<li><code>RoleTemplate.initScript</code> 在 <code>acp-proxy</code> 所在机器/容器执行，等同远程代码执行能力；需要权限与审计（仓库文档也明确提示）</li>
+<li>Git token 进入 <code>init.env</code> 并被传入 proxy/sandbox；需要严格控制日志与 allowlist（proxy config 有 <code>agent_env_allowlist</code> 机制）</li>
+</ul>
+<h3 id="h-19">4.3 ACP 隧道与事件持久化（<code>backend/src/modules/acp/acpTunnel.ts</code>）</h3>
+<p>职责：把“多条 WS 消息 + ACP session 状态 + 流式输出”封装成 per-run 的状态机，并负责：</p>
+<ul>
+<li><code>ensureOpen</code>：对每个 run 只打开一次 sandbox/agent（发送 <code>acp_open</code>，等待 <code>acp_opened</code>）</li>
+<li><code>promptRun</code>：发送 <code>prompt_send</code>，等待 <code>prompt_result</code>（带 timeout），并写回 <code>Run.acpSessionId</code></li>
+<li>chunk 合并：对 <code>*_chunk</code> 类 session update 做 buffer/flush（减少 DB 写压力与 UI 噪声）</li>
+<li>terminal 收尾：<code>persistPromptResult</code> + <code>finalizeRunIfRunning</code>（把 Run 从 running 推到 completed/failed，并驱动 task/PM 自动推进）</li>
+</ul>
+<p>扩展点：</p>
+<ul>
+<li>新增 session control（mode/model/config）：同文件内已有 <code>setSessionMode/setSessionModel/...</code> 模式可复用</li>
+<li>调整超时/缓冲策略：通过 env（例如 <code>ACP_PROMPT_TIMEOUT_MS</code>）+ 常量（chunk flush interval/上限）</li>
+</ul>
+<h3 id="h-20">4.4 WS 网关（<code>backend/src/websocket/gateway.ts</code>）</h3>
+<p>职责：承接两类连接：</p>
+<ul>
+<li>proxy/agent：<code>/ws/agent</code>（注册、心跳、prompt_update/result、sandbox inventory/status）</li>
+<li>浏览器：<code>/ws/client</code>（订阅 event_added/artifact_added 等实时更新；也可直接发 <code>prompt_run</code> 命令）</li>
+</ul>
+<p>关键机制：</p>
+<ul>
+<li>agent 注册：<code>register_agent</code> 会 upsert <code>Agent(proxyId)</code> 并标记 online，同时会 <code>resumeRunningRuns(...)</code>（proxy 重连后尝试续跑/提醒）</li>
+<li>client 直发 prompt：<code>handleClientCommand</code> 会写入一条 <code>user.message</code> event（best-effort），再调用 <code>acpTunnel.promptRun</code></li>
+</ul>
+<p>扩展点：</p>
+<ul>
+<li>新增 WS 消息类型：按 <code>AnyAgentMessage</code> / <code>ClientCommand</code> 增加 schema 与 handler</li>
+<li>增加广播事件：统一走 <code>broadcastToClients({ type, ... })</code>，前端按 type 分发</li>
+</ul>
+<h3 id="h-21">4.5 Proxy：WS ↔ ACP 桥接与 sandbox 抽象（<code>acp-proxy/</code>）</h3>
+<p>核心结构：</p>
+<ul>
+<li><code>acp-proxy/src/runProxyCli.ts</code>：连接 orchestrator（WS），分发消息到 handlers，并周期性上报 inventory</li>
+<li>handlers：</li>
+<li><code>handleAcpOpen</code>：确保 sandbox runtime、执行 init、启动 agent、初始化 ACP（并处理 runtime skills 挂载到 <code>CODEX_HOME</code>）</li>
+<li><code>handlePromptSend</code>：将 orchestrator 的 <code>prompt_send</code> 转成 ACP prompt 并把更新转回 <code>prompt_update</code>/<code>prompt_result</code></li>
+<li><code>handleSandboxControl</code>：执行 git push / 运行命令等 sandbox 控制类动作</li>
+<li>sandbox/provider：</li>
+<li><code>container_oci</code> / <code>boxlite_oci</code> / <code>host_process</code> 统一抽象在 <code>acp-proxy/src/sandbox/*</code>、<code>acp-proxy/src/platform/*</code></li>
+</ul>
+<p>扩展点：</p>
+<ul>
+<li>新增 sandbox provider：实现 <code>ProxySandbox</code> 接口并在 <code>createProxySandbox(...)</code> 里接入</li>
+<li>新增 skills 分发/校验：在 <code>acp-proxy/src/skills/*</code> 扩展 manifest 解析与下载策略</li>
+</ul>
+<h3 id="h-22">4.6 Frontend：RunConsole 与交互面（<code>frontend/</code>）</h3>
+<p>关键点：</p>
+<ul>
+<li>路由与权限：<code>frontend/src/App.tsx</code>，<code>RequireAuth/RequireAdmin</code></li>
+<li>Issue 详情页组合：<code>frontend/src/pages/issueDetail/IssueDetailPage.tsx</code>（Summary/Console/Run/Changes）</li>
+<li>RunConsole：<code>frontend/src/components/RunConsole.tsx</code></li>
+<li>对事件做归并（<code>buildConsoleItems</code>）、过滤噪声（例如 sandbox status 文本）</li>
+<li>默认只展示最近 N 条，支持“显示更多/全部”，并处理滚动粘滞（避免 live 更新把用户卷走）</li>
+</ul>
+<p>扩展点：</p>
+<ul>
+<li>新增事件类型展示：从 <code>buildConsoleItems(...)</code> 与 toolCallInfo 体系接入</li>
+<li>新增卡片/区块：IssueDetailPage 采用“sections”组织，局部扩展成本低</li>
+</ul>
+<p>---</p>
+<h2 id="h-23">05. 上手实操（本地跑起来）</h2>
+<p>以仓库文档为准：<code>README.md</code> 与 <code>docs/03_guides/quick-start.md</code>。</p>
+<p>最小路径（Windows / PowerShell，三终端）：</p>
+<pre class="codeblock"><code class="language-powershell">pnpm install
+docker compose up -d
+
+Copy-Item backend/.env.example backend/.env
+Copy-Item acp-proxy/config.toml.example acp-proxy/config.toml
+</code></pre>
+<pre class="codeblock"><code class="language-powershell"># 终端 1
+pnpm -C backend dev
+</code></pre>
+<pre class="codeblock"><code class="language-powershell"># 终端 2
+$env:OPENAI_API_KEY=&quot;...&quot;
+pnpm -C acp-proxy dev
+</code></pre>
+<pre class="codeblock"><code class="language-powershell"># 终端 3
+pnpm -C frontend dev
+</code></pre>
+<p>访问：<code>http://localhost:5173/login</code>（首次可初始化管理员）</p>
+<p>常见坑（与代码/配置强相关）：</p>
+<ul>
+<li>前端直连 backend 静态资源：<code>backend/src/index.ts</code> 会尝试托管 <code>frontend/dist</code>，但开发态建议直接用 Vite（5173）</li>
+<li>Proxy 连接地址：<code>acp-proxy/config.toml</code> 的 <code>orchestrator_url</code> 要与 backend 的 <code>/ws/agent</code> 一致</li>
+<li>Token/Secrets：Project 的 SCM token 当前会写入 DB（明文）；<code>RoleTemplate.initScript</code> 有执行风险（仅在可信环境使用）</li>
+</ul>
+<p>---</p>
+<h2 id="h-24">06. 二次开发指南（可操作清单）</h2>
+<h3 id="h-25">6.1 新增一种“执行器”（ExecutorType）</h3>
+<p>目标：支持新的 Step/Run 执行方式（例如 “policy gate”、“custom pipeline”）。</p>
+<ul>
+<li>数据层：<code>backend/prisma/schema.prisma</code>（<code>ExecutorType</code> enum）</li>
+<li>调度分发：<code>backend/src/modules/workflow/executionDispatch.ts</code>（按 <code>executorType</code> 分支）</li>
+<li>实现执行：在 <code>backend/src/executors/*</code> 增加 <code>startXxxExecution</code> 并接入 dispatch</li>
+<li>事件与状态：确保写入 <code>Run.status</code>、必要时写 <code>Event/Artifact</code>，并触发 <code>triggerTaskAutoAdvance(...)</code>（保持工作流推进一致）</li>
+</ul>
+<h3 id="h-26">6.2 新增一种受控动作（ApprovalAction）</h3>
+<ul>
+<li>Schema：<code>backend/prisma/schema.prisma</code>（<code>ApprovalAction/ApprovalStatus</code>）</li>
+<li>请求创建：<code>backend/src/modules/approvals/approvalRequests.ts</code>（参照 create_pr/merge_pr）</li>
+<li>路由暴露：<code>backend/src/routes/approvals.ts</code> 与对应业务路由（例如 runs.ts）</li>
+<li>UI：在 <code>frontend/src/pages/AdminPage.tsx</code> 或相关页面增加审批队列展示/操作</li>
+</ul>
+<h3 id="h-27">6.3 新增/替换 SCM provider</h3>
+<ul>
+<li>统一入口：<code>backend/src/modules/scm/runReviewRequest.ts</code>（create/merge/sync）</li>
+<li>provider 细节：<code>backend/src/integrations/github.ts</code>、<code>backend/src/integrations/gitlab.ts</code></li>
+<li>Project 配置：<code>Project.scmType/*AccessToken/*WebhookSecret</code> 等字段</li>
+</ul>
+<h3 id="h-28">6.4 新增 runtime skills</h3>
+<ul>
+<li>后端侧：Role 绑定 skills（<code>RoleSkillBinding</code> / <code>SkillVersion</code>），<code>startIssueRun</code> 会构造 <code>skillsManifest</code> 下发</li>
+<li>proxy 侧：<code>acp-proxy/src/skills/skillsMount.ts</code> + <code>handleAcpOpen</code> 会把 skills 挂载到 <code>CODEX_HOME</code></li>
+<li>风险：对下载大小/来源做限制（<code>acp-proxy/config.toml.example</code> 已预留 <code>skills_download_max_bytes</code>）</li>
+</ul>
+<p>---</p>
+<h2 id="h-29">07. 仓库文档总结（Docs for Dev/Agent）</h2>
+<p>优点：</p>
+<ul>
+<li>文档“以真实实现为准”，并标记过时内容；且统一 front matter（见 <code>docs/01_architecture/system-architecture.md</code>、<code>docs/02_modules/codebase-navigation.md</code>）</li>
+<li>跑通闭环的步骤清晰：<code>docs/03_guides/quick-start.md</code></li>
+<li>Runbook/Process/Decision 分层明确：<code>docs/06_runbooks</code>、<code>docs/05_process</code>、<code>docs/04_decisions</code></li>
+</ul>
+<p>建议：</p>
+<ul>
+<li>增补“一页式 SSOT 入口”：把 README 与 <code>docs/README.md</code> 做明确分工（新手入口/深入链接），避免重复与漂移</li>
+<li>为“安全敏感点”增加强提示与最小权限建议（token 明文、initScript 风险、skills 下载来源）</li>
+</ul>
+<p>---</p>
+<h2 id="h-30">08. 评分（100 分制，多维度，证据驱动）</h2>
+<p>总分（建议）：78 / 100</p>
+<p>1) 架构清晰度：9/10 证据：三层结构与关键数据流在 <code>docs/01_architecture/system-architecture.md</code> 清晰落地；代码组织与仓库结构一致（backend/acp-proxy/frontend）。</p>
+<p>2) 可扩展性：8/10 证据：workflow 的 executor 分发在 <code>backend/src/modules/workflow/executionDispatch.ts</code>；SCM 抽象在 <code>backend/src/modules/scm/runReviewRequest.ts</code>；sandbox/provider 抽象在 <code>acp-proxy/src/sandbox/*</code>。 扣分：部分扩展仍需要跨层改动（schema+backend+proxy+ui），缺少“插件式注册”。</p>
+<p>3) 可维护性：7/10 证据：Zod schema、TypeScript ESM、模块分目录清晰；docs 维护意识强。 扣分：若干关键文件较长（例如 <code>acpTunnel.ts</code>），建议进一步拆分并补充更细粒度测试。</p>
+<p>4) 可靠性与错误处理：8/10 证据：run/issue 队列化（避免并发踩踏）、prompt timeout、chunk buffer、proxy 重连续跑（<code>backend/src/websocket/gateway.ts</code> 的 <code>resumeRunningRuns</code>）、审批动作默认受控。 扣分：缺少更系统的幂等键/重放设计说明（尤其是 webhook/CI 回写）。</p>
+<p>5) 可观测性：7/10 证据：Event 模型与 WS 广播让“可回放的执行轨迹”天然存在。 扣分：缺少 trace/span、结构化 request id 全链路贯穿；日志策略偏分散。</p>
+<p>6) 文档质量：9/10 证据：<code>docs/03_guides/quick-start.md</code>、<code>docs/02_modules/codebase-navigation.md</code>、<code>docs/01_architecture/system-architecture.md</code>。</p>
+<p>7) 示例与教程：7/10 证据：quick start + API 示例（curl/pwsh）。 扣分：缺少一个可一键跑通的端到端 demo（包含真实 repo + mock agent 输出 + PR 创建的 sandbox stub）。</p>
+<p>8) 测试与 CI：7/10 证据：backend/frontend/acp-proxy 都配置了 Vitest；前端 <code>RunConsole.test.tsx</code> 等覆盖关键展示逻辑。 扣分：未看到稳定的 e2e（UI+WS+DB+proxy）流水线；建议引入最小 e2e 作为回归保护。</p>
+<p>9) 安全与配置管理：6/10 证据：文档已提示风险；proxy 对 env allowlist/skills 下载限制有配置口。 扣分：Project token 明文入库；Role initScript 执行等同 RCE，需要更强的权限/审计/隔离策略（例如 RBAC、审计日志、签名/白名单、最小权限 token）。</p>
+<p>10) 开发者体验（DX）：10/10 证据：pnpm workspace、<code>pnpm dev</code>、Docker compose、Prisma migrate deploy 自动化、文档与 runbook 齐全。</p>
+<p>Top 改进建议（按影响/成本排序）： 1. 给高危能力加“硬闸”：token 加密/脱敏、initScript/skills 的审批与审计、默认最小权限模板（中成本，高收益） 2. 增加最小 e2e：起 DB+backend+proxy（可 mock agent），覆盖“start run→event→create pr（stub）”关键链路（中成本，高收益） 3. 拆分 <code>acpTunnel.ts</code>：按“open/prompt/control/persist/chunk-buffer”分模块，并补单测（低到中成本，中收益）</p>
+<p>---</p>
+<h2 id="h-31">09. 附录：关键文件/符号速查</h2>
+<p>入口点：</p>
+<ul>
+<li><code>backend/src/index.ts:416</code>（listen）</li>
+<li><code>acp-proxy/src/runProxyCli.ts:37</code>（CLI 主入口）</li>
+<li><code>frontend/src/App.tsx</code>（路由与权限）</li>
+</ul>
+<p>关键路由：</p>
+<ul>
+<li><code>backend/src/routes/issues.ts:150</code>：<code>POST /api/issues/:id/start</code></li>
+<li><code>backend/src/routes/runs.ts</code>：<code>POST /api/runs/:id/prompt</code>、<code>POST /api/runs/:id/create-pr</code>、<code>POST /api/runs/:id/merge-pr</code></li>
+</ul>
+<p>关键模块：</p>
+<ul>
+<li><code>backend/src/modules/runs/startIssueRun.ts:66</code>（Run 启动/初始化）</li>
+<li><code>backend/src/modules/acp/acpTunnel.ts:69</code> / <code>backend/src/modules/acp/acpTunnel.ts:451</code>（ACP 隧道）</li>
+<li><code>backend/src/websocket/gateway.ts</code>（/ws/agent + /ws/client）</li>
+<li><code>acp-proxy/src/handlers/handleAcpOpen.ts:12</code>（sandbox/agent 启动与 skills 挂载）</li>
+<li><code>frontend/src/components/RunConsole.tsx</code>（事件流渲染）</li>
+</ul>
+    </main>
+  </div>
+</body>
+</html>
