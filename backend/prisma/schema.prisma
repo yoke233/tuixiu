@@ -154,8 +154,11 @@ model Project {
   scmType                String   @default("gitlab") @db.VarChar(20)
   defaultBranch          String   @default("main") @db.VarChar(100)
   workspaceMode          String   @default("worktree") @db.VarChar(20)
+  workspacePolicy        String?  @db.VarChar(20)
   gitAuthMode            String   @default("https_pat") @db.VarChar(20)
   defaultRoleKey         String?  @db.VarChar(100)
+  executionProfileId     String?  @db.Uuid
+  executionProfile       ExecutionProfile? @relation(fields: [executionProfileId], references: [id], onDelete: SetNull)
   gitlabProjectId        Int?     @unique
   gitlabAccessToken      String?  @db.Text
   gitlabWebhookSecret    String?  @db.VarChar(255)
@@ -271,6 +274,13 @@ model Run {
   workspaceType  String?   @db.VarChar(20)
   workspacePath  String?   @db.VarChar(500)
   branchName     String?   @db.VarChar(200)
+  resolvedWorkspacePolicy String? @db.VarChar(20)
+  workspacePolicySource   Json?
+  bundleSource   Json?
+
+  executionProfileId String? @db.Uuid
+  executionProfile   ExecutionProfile? @relation(fields: [executionProfileId], references: [id], onDelete: SetNull)
+  executionProfileSnapshot Json?
 
   sandboxInstanceName String? @db.VarChar(200)
   keepaliveTtlSeconds Int?
@@ -412,6 +422,9 @@ model RoleTemplate {
   initScript         String?  @db.Text
   initTimeoutSeconds Int      @default(300)
   envText            String?  @db.Text
+  workspacePolicy    String?  @db.VarChar(20)
+  executionProfileId String?  @db.Uuid
+  executionProfile   ExecutionProfile? @relation(fields: [executionProfileId], references: [id], onDelete: SetNull)
 
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -421,6 +434,49 @@ model RoleTemplate {
 
   @@unique([projectId, key])
   @@index([projectId])
+}
+
+model ExecutionProfile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  key                String   @unique @db.VarChar(100)
+  displayName        String?  @db.VarChar(255)
+  description        String?  @db.Text
+  workspacePolicy    String?  @db.VarChar(20)
+  skillsPolicy       String?  @db.VarChar(20)
+  toolPolicy         Json?
+  dataPolicy         Json?
+
+  createdByUserId    String?  @db.Uuid
+  createdByUser      User?    @relation("ExecutionProfileCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedByUserId    String?  @db.Uuid
+  updatedByUser      User?    @relation("ExecutionProfileUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  roles              RoleTemplate[]
+  projects           Project[]
+  runs               Run[]
+  tasks              Task[]
+  auditLogs          ExecutionProfileAuditLog[]
+
+  @@index([createdAt])
+}
+
+model ExecutionProfileAuditLog {
+  id                 String   @id @default(uuid()) @db.Uuid
+  executionProfileId String   @db.Uuid
+  executionProfile   ExecutionProfile @relation(fields: [executionProfileId], references: [id], onDelete: Cascade)
+
+  action             String   @db.VarChar(50)
+  actorUserId        String?  @db.Uuid
+  actorUser          User?    @relation("ExecutionProfileAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  payload            Json?
+
+  createdAt          DateTime @default(now())
+
+  @@index([executionProfileId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
 }
 
 model Skill {
@@ -562,6 +618,9 @@ model User {
   updatedAt    DateTime @updatedAt
 
   tasksCreated Task[]   @relation("TaskCreatedBy")
+  executionProfilesCreated ExecutionProfile[] @relation("ExecutionProfileCreatedBy")
+  executionProfilesUpdated ExecutionProfile[] @relation("ExecutionProfileUpdatedBy")
+  executionProfileAuditLogs ExecutionProfileAuditLog[] @relation("ExecutionProfileAuditActor")
 }
 
 model Task {
@@ -581,6 +640,14 @@ model Task {
   workspacePath  String?   @db.VarChar(500)
   branchName     String?   @db.VarChar(200)
   baseBranch     String?   @db.VarChar(100)
+  workspacePolicy String?  @db.VarChar(20)
+  resolvedWorkspacePolicy String? @db.VarChar(20)
+  workspacePolicySource   Json?
+  bundleSource    Json?
+
+  executionProfileId String? @db.Uuid
+  executionProfile   ExecutionProfile? @relation(fields: [executionProfileId], references: [id], onDelete: SetNull)
+  executionProfileSnapshot Json?
 
   createdByUserId String?  @db.Uuid
   createdByUser   User?    @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)

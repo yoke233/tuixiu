@@ -68,6 +68,12 @@ Invoke-RestMethod -Method Patch `
     - host_process：`CODEX_HOME=<workspaceHostPath>\\.tuixiu\\codex-home`
 - run 结束：清理 run 视图目录（缓存保留，便于复用与加速）。
 
+### 3.1 无仓库初始化角色（workspacePolicy=empty）
+
+- workspace 仍然存在，但不会执行 repo clone。
+- init pipeline 会确保生成 `context-inventory`，并把技能目录复制/映射到可列举位置（默认 `workspace/.tuixiu/skills`）。
+- 适用于技能审查、策略评估等无需代码仓库的角色。
+
 ---
 
 ## 4. 端到端验证（Checklist）
@@ -78,6 +84,8 @@ Invoke-RestMethod -Method Patch `
 4. 在 sandbox/workspace 内检查：
    - `CODEX_HOME` 环境变量已设置
    - `CODEX_HOME/skills/<skill>/SKILL.md` 存在
+   - `workspace/.tuixiu/skills/` 可列举并包含技能目录
+   - `workspace/.tuixiu/context-inventory.json` 已生成
 
 ---
 

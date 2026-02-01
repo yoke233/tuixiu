@@ -14,12 +14,16 @@ import type { AcpTunnel } from "../acp/acpTunnel.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
 import { getSandboxWorkspaceMode } from "../../utils/sandboxCaps.js";
 import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
+import { resolveExecutionProfile } from "../../utils/executionProfile.js";
 import {
   assertRoleGitAuthEnv,
   pickGitAccessToken,
   resolveGitAuthMode,
   resolveGitHttpUsername,
 } from "../../utils/gitAuth.js";
+import { buildInitPipeline } from "../../utils/initPipeline.js";
+import { stringifyContextInventory } from "../../utils/contextInventory.js";
+import { assertWorkspacePolicyCompat, resolveWorkspacePolicy } from "../../utils/workspacePolicy.js";
 
 export type WorkspaceMode = "worktree" | "clone";
 
@@ -134,6 +138,27 @@ export async function startIssueRun(opts: {
     };
   }
 
+  const project = (issue as any).project as any;
+  const executionProfile = await resolveExecutionProfile({
+    prisma: opts.prisma,
+    platformProfileKey: process.env.EXECUTION_PROFILE_DEFAULT_KEY ?? null,
+    roleProfileId: (role as any)?.executionProfileId ?? null,
+    projectProfileId: project?.executionProfileId ?? null,
+  });
+  const resolvedPolicy = resolveWorkspacePolicy({
+    platformDefault: process.env.WORKSPACE_POLICY_DEFAULT ?? null,
+    projectPolicy: project?.workspacePolicy ?? null,
+    rolePolicy: (role as any)?.workspacePolicy ?? null,
+    taskPolicy: null,
+    profilePolicy: executionProfile?.workspacePolicy ?? null,
+  });
+  if (resolvedPolicy.resolved === "bundle") {
+    return {
+      success: false,
+      error: { code: "BUNDLE_MISSING", message: "bundle policy 需要提供 bundle 来源" },
+    };
+  }
+
   const requestedTtl = normalizeKeepaliveTtlSeconds(opts.keepaliveTtlSeconds);
   const keepaliveTtlSeconds =
     requestedTtl === null
@@ -150,6 +175,10 @@ export async function startIssueRun(opts: {
       sandboxInstanceName: deriveSandboxInstanceName(runId),
       keepaliveTtlSeconds,
       sandboxStatus: "creating",
+      resolvedWorkspacePolicy: resolvedPolicy.resolved,
+      workspacePolicySource: resolvedPolicy,
+      executionProfileId: executionProfile?.id ?? null,
+      executionProfileSnapshot: executionProfile ?? null,
       metadata: role ? ({ roleKey: (role as any).key } as any) : undefined,
     },
   });
@@ -165,8 +194,8 @@ export async function startIssueRun(opts: {
 
   const issueIsGitHub = String((issue as any).externalProvider ?? "").toLowerCase() === "github";
   const githubIssueNumber = Number((issue as any).externalNumber ?? 0);
-  const githubAccessToken = String(((issue as any).project as any)?.githubAccessToken ?? "").trim();
-  const repoUrl = String(((issue as any).project as any)?.repoUrl ?? "").trim();
+  const githubAccessToken = String(project?.githubAccessToken ?? "").trim();
+  const repoUrl = String(project?.repoUrl ?? "").trim();
 
   if (issueIsGitHub && githubAccessToken) {
     await postGitHubIssueCommentBestEffort({
@@ -184,12 +213,11 @@ export async function startIssueRun(opts: {
 
   let workspacePath = "";
   let branchName = "";
-  let baseBranchForRun =
-    String(((issue as any).project as any).defaultBranch ?? "").trim() || "main";
+  let baseBranchForRun = String(project?.defaultBranch ?? "").trim() || "main";
   let workspaceMode: WorkspaceMode = "clone";
   let gitAuthModeFromWorkspace: string | null = null;
   try {
-    const baseBranch = ((issue as any).project as any).defaultBranch || "main";
+    const baseBranch = project?.defaultBranch || "main";
     const runNumber = (Array.isArray((issue as any).runs) ? (issue as any).runs.length : 0) + 1;
     const name =
       typeof worktreeName === "string" && worktreeName.trim()
@@ -228,6 +256,7 @@ export async function startIssueRun(opts: {
         ? (caps as any).sandbox.provider
         : null;
 
+    assertWorkspacePolicyCompat({ policy: resolvedPolicy.resolved, capabilities: caps });
     const sandboxWorkspaceMode = getSandboxWorkspaceMode(caps);
     gitAuthModeFromWorkspace = ws.gitAuthMode ?? null;
     const snapshot = {
@@ -363,7 +392,9 @@ export async function startIssueRun(opts: {
   try {
     const project: any = (issue as any).project;
     const roleEnv = normalizeRoleEnv(role ? parseEnvText(String((role as any).envText)) : {});
-    assertRoleGitAuthEnv(roleEnv, role ? String((role as any).key ?? "") : null);
+    if (resolvedPolicy.resolved === "git") {
+      assertRoleGitAuthEnv(roleEnv, role ? String((role as any).key ?? "") : null);
+    }
     const gitAuthMode = resolveGitAuthMode({
       repoUrl: String(project?.repoUrl ?? ""),
       scmType: project?.scmType ?? null,
@@ -383,25 +414,37 @@ export async function startIssueRun(opts: {
       gitAuthMode: project?.gitAuthMode ?? null,
     });
 
+    const repoEnv =
+      resolvedPolicy.resolved === "git"
+        ? {
+            TUIXIU_REPO_URL: String(project?.repoUrl ?? ""),
+            TUIXIU_SCM_TYPE: String(project?.scmType ?? ""),
+            TUIXIU_DEFAULT_BRANCH: String(project?.defaultBranch ?? ""),
+          }
+        : {};
+    const gitCredEnv =
+      resolvedPolicy.resolved === "git"
+        ? {
+            ...(project?.githubAccessToken
+              ? {
+                  GH_TOKEN: String(project.githubAccessToken),
+                  GITHUB_TOKEN: String(project.githubAccessToken),
+                }
+              : {}),
+            ...(project?.gitlabAccessToken
+              ? {
+                  GITLAB_TOKEN: String(project.gitlabAccessToken),
+                  GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken),
+                }
+              : {}),
+          }
+        : {};
     const initEnv: Record<string, string> = {
-      ...(project?.githubAccessToken
-        ? {
-            GH_TOKEN: String(project.githubAccessToken),
-            GITHUB_TOKEN: String(project.githubAccessToken),
-          }
-        : {}),
-      ...(project?.gitlabAccessToken
-        ? {
-            GITLAB_TOKEN: String(project.gitlabAccessToken),
-            GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken),
-          }
-        : {}),
+      ...gitCredEnv,
       ...roleEnv,
       TUIXIU_PROJECT_ID: String((issue as any).projectId),
       TUIXIU_PROJECT_NAME: String(project?.name ?? ""),
-      TUIXIU_REPO_URL: String(project?.repoUrl ?? ""),
-      TUIXIU_SCM_TYPE: String(project?.scmType ?? ""),
-      TUIXIU_DEFAULT_BRANCH: String(project?.defaultBranch ?? ""),
+      ...repoEnv,
       TUIXIU_BASE_BRANCH: String(baseBranchForRun),
       TUIXIU_RUN_ID: String((run as any).id),
       TUIXIU_RUN_BRANCH: String(branchName),
@@ -476,6 +519,59 @@ export async function startIssueRun(opts: {
         skillsManifest = { runId: String((run as any).id), skillVersions };
       }
     }
+    const hasSkills = !!skillsManifest?.skillVersions?.length;
+    const pipeline = buildInitPipeline({
+      policy: resolvedPolicy.resolved,
+      hasSkills,
+      hasBundle: resolvedPolicy.resolved === "bundle",
+    });
+    if (pipeline.actions.length) {
+      initEnv.TUIXIU_INIT_ACTIONS = pipeline.actions.map((a) => a.type).join(",");
+    }
+
+    const inventoryItems: Array<{
+      key: string;
+      source: "repo" | "skills" | "bundle" | "artifact";
+      ref?: string | null;
+      version?: string | null;
+      hash?: string | null;
+    }> = [];
+    if (resolvedPolicy.resolved === "git" && project?.repoUrl) {
+      inventoryItems.push({
+        key: "repo",
+        source: "repo",
+        ref: String(project.repoUrl ?? ""),
+        version: String(baseBranchForRun ?? ""),
+      });
+    }
+    if (skillsManifest?.skillVersions?.length) {
+      for (const sv of skillsManifest.skillVersions) {
+        inventoryItems.push({
+          key: `skill:${String(sv.skillName ?? sv.skillId)}`,
+          source: "skills",
+          ref: String(sv.storageUri ?? ""),
+          version: String(sv.skillVersionId ?? ""),
+          hash: String(sv.contentHash ?? ""),
+        });
+      }
+    }
+    if (inventoryItems.length) {
+      const inventory = stringifyContextInventory(inventoryItems);
+      initEnv.TUIXIU_INVENTORY_PATH = inventory.path;
+      initEnv.TUIXIU_INVENTORY_JSON = inventory.json;
+      const baseMetadata =
+        (run as any)?.metadata && typeof (run as any).metadata === "object" ? (run as any).metadata : {};
+      await opts.prisma.run
+        .update({
+          where: { id: (run as any).id },
+          data: { metadata: { ...baseMetadata, contextInventory: inventoryItems } } as any,
+        })
+        .catch(() => {});
+    }
+    if (hasSkills) {
+      initEnv.TUIXIU_SKILLS_SRC = `${agentWorkspacePath}/.tuixiu/codex-home/skills`;
+    }
+
     if (sandboxWorkspaceMode) {
       initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
       if (sandboxWorkspaceMode === "mount") {
@@ -483,14 +579,16 @@ export async function startIssueRun(opts: {
       }
     }
     if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
-    if (initEnv.TUIXIU_GIT_AUTH_MODE === undefined) initEnv.TUIXIU_GIT_AUTH_MODE = gitAuthMode;
-    if (initEnv.TUIXIU_GIT_HTTP_USERNAME === undefined && gitHttpUsername) {
+    if (resolvedPolicy.resolved === "git") {
+      if (initEnv.TUIXIU_GIT_AUTH_MODE === undefined) initEnv.TUIXIU_GIT_AUTH_MODE = gitAuthMode;
+    }
+    if (resolvedPolicy.resolved === "git" && initEnv.TUIXIU_GIT_HTTP_USERNAME === undefined && gitHttpUsername) {
       initEnv.TUIXIU_GIT_HTTP_USERNAME = gitHttpUsername;
     }
-    if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined && gitHttpPassword) {
+    if (resolvedPolicy.resolved === "git" && initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined && gitHttpPassword) {
       initEnv.TUIXIU_GIT_HTTP_PASSWORD = gitHttpPassword;
     }
-    if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined) {
+    if (resolvedPolicy.resolved === "git" && initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined) {
       const fallbackToken =
         initEnv.GITHUB_TOKEN ||
         initEnv.GH_TOKEN ||

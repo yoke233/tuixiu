@@ -8,6 +8,20 @@ schema: spec-driven
 #     Tech stack: TypeScript, React, Node.js
 #     We use conventional commits
 #     Domain: e-commerce platform
+context: |
+  Repo: pnpm workspace with backend, acp-proxy, and frontend packages.
+  Tech stack: Node.js 20+, TypeScript (ESM), Fastify, Prisma, Vite + React.
+  Runtime: backend REST API + WebSocket gateway; acp-proxy bridges WS <-> ACP.
+  Testing: Vitest (frontend uses jsdom + Testing Library).
+  Test stack: Vitest (TypeScript + Vite/React), backend Vitest.
+  Repo constraints:
+  - Deterministic tests: fixed clock/timezone/seed; avoid flaky.
+  - Provide runnable single test command for CI/local (pnpm test).
+  Coverage: Provide before/after for touched modules (or packages).
+  Conventions: 2-space indentation; conventional commits; backend files camelCase,
+  React components PascalCase, tests in *.test.ts/ *.test.tsx.
+  Environment: Windows PowerShell (pwsh).
+  Safety: keep diffs minimal, don't edit .worktrees or commit secrets.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

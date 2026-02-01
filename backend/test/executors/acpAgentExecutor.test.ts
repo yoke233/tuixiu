@@ -254,6 +254,191 @@ describe("acpAgentExecutor", () => {
     );
   });
 
+  it("mount workspace mode sets skip init", async () => {
+    const run = makeRun({ kind: "test.run" });
+    const role = makeRoleTemplate({
+      envText: "",
+      workspacePolicy: "mount",
+    });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "mount" } } });
+
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
+    } as any;
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([agent]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      issue: { update: vi.fn().mockResolvedValue(undefined) },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(role) },
+      task: { update: vi.fn().mockResolvedValue(undefined) },
+    } as any;
+
+    await startAcpAgentExecution({ prisma, acp }, "r1");
+
+    const initEnv = acp.promptRun.mock.calls[0][0].init.env as Record<string, string>;
+    expect(initEnv.TUIXIU_WORKSPACE_MODE).toBe("mount");
+    expect(initEnv.TUIXIU_SKIP_WORKSPACE_INIT).toBe("1");
+  });
+
+  it("empty workspace policy skips repo env and includes skills inventory", async () => {
+    const run = makeRun({ kind: "test.run" });
+    const role = makeRoleTemplate({
+      id: "role-1",
+      envText: "",
+      workspacePolicy: "empty",
+    });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "mount" } } });
+
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
+    } as any;
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([agent]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      issue: { update: vi.fn().mockResolvedValue(undefined) },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(role) },
+      task: { update: vi.fn().mockResolvedValue(undefined) },
+      roleSkillBinding: {
+        findMany: vi.fn().mockResolvedValue([
+          { skillId: "s1", versionPolicy: "latest", pinnedVersionId: null },
+        ]),
+      },
+      skill: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: "s1", name: "Demo Skill", latestVersionId: "v1" },
+        ]),
+      },
+      skillVersion: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: "v1", skillId: "s1", contentHash: "h1", storageUri: "/api/acp-proxy/skills/packages/h1.zip" },
+        ]),
+      },
+    } as any;
+    (run.task.issue.project as any).enableRuntimeSkillsMounting = true;
+
+    await startAcpAgentExecution({ prisma, acp }, "r1");
+
+    const initEnv = acp.promptRun.mock.calls[0][0].init.env as Record<string, string>;
+    expect(initEnv.TUIXIU_REPO_URL).toBeUndefined();
+    expect(initEnv.TUIXIU_GIT_AUTH_MODE).toBeUndefined();
+    expect(initEnv.TUIXIU_INIT_ACTIONS).toEqual("ensure_workspace,mount_skills,write_inventory");
+    expect(initEnv.TUIXIU_SKILLS_SRC).toContain(".tuixiu/codex-home/skills");
+
+    const inventory = JSON.parse(String(initEnv.TUIXIU_INVENTORY_JSON ?? "{}"));
+    expect(inventory.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "skills", version: "v1", hash: "h1" }),
+      ]),
+    );
+  });
+
+  it("throws when bundle policy is set but bundle source is missing", async () => {
+    const run = makeRun({ kind: "test.run" });
+    run.task.workspacePolicy = "bundle";
+    run.task.bundleSource = null;
+
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([makeAgent()]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      issue: { update: vi.fn().mockResolvedValue(undefined) },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
+      task: { update: vi.fn().mockResolvedValue(undefined) },
+    } as any;
+
+    await expect(
+      startAcpAgentExecution({ prisma, acp: { promptRun: vi.fn() } as any }, "r1"),
+    ).rejects.toThrow("bundle policy 需要提供 bundle 来源");
+  });
+
+  it("bundle policy injects bundle path and inventory", async () => {
+    const run = makeRun({ kind: "test.run" });
+    run.task.workspacePolicy = "bundle";
+    run.task.bundleSource = { path: "C:/bundle.zip", hash: "bh1" };
+    const role = makeRoleTemplate({
+      envText:
+        "TUIXIU_GIT_AUTH_MODE=https_pat\nTUIXIU_GIT_HTTP_PASSWORD=token\nGITHUB_TOKEN=role-gh\n",
+    });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "mount" } } });
+
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
+    } as any;
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([agent]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      issue: { update: vi.fn().mockResolvedValue(undefined) },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(role) },
+      task: { update: vi.fn().mockResolvedValue(undefined) },
+    } as any;
+
+    await startAcpAgentExecution({ prisma, acp }, "r1");
+
+    const initEnv = acp.promptRun.mock.calls[0][0].init.env as Record<string, string>;
+    expect(initEnv.TUIXIU_BUNDLE_PATH).toBe("C:/bundle.zip");
+    const inventory = JSON.parse(String(initEnv.TUIXIU_INVENTORY_JSON ?? "{}"));
+    expect(inventory.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "bundle", hash: "bh1", ref: "C:/bundle.zip" }),
+      ]),
+    );
+  });
+
+  it("git policy keeps repo env and git auth", async () => {
+    const run = makeRun({ kind: "test.run" });
+    const role = makeRoleTemplate({
+      envText:
+        "TUIXIU_GIT_AUTH_MODE=https_pat\nTUIXIU_GIT_HTTP_PASSWORD=token\nGITHUB_TOKEN=role-gh\n",
+    });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
+
+    const acp = {
+      promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
+    } as any;
+    const prisma = {
+      run: {
+        findUnique: vi.fn().mockResolvedValue(run),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      agent: {
+        findMany: vi.fn().mockResolvedValue([agent]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      issue: { update: vi.fn().mockResolvedValue(undefined) },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue(role) },
+      task: { update: vi.fn().mockResolvedValue(undefined) },
+    } as any;
+
+    await startAcpAgentExecution({ prisma, acp }, "r1");
+
+    const initEnv = acp.promptRun.mock.calls[0][0].init.env as Record<string, string>;
+    expect(initEnv.TUIXIU_REPO_URL).toBe("https://example.com/repo.git");
+    expect(initEnv.TUIXIU_GIT_AUTH_MODE).toBe("https_pat");
+  });
+
   it("uses code.review template vars", async () => {
     const run = makeRun({
       kind: "code.review",

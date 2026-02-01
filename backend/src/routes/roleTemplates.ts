@@ -65,6 +65,8 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         initScript: z.string().optional(),
         initTimeoutSeconds: z.coerce.number().int().positive().max(3600).default(300),
         envText: z.string().max(20000).optional(),
+        workspacePolicy: z.enum(["git", "mount", "empty", "bundle"]).optional(),
+        executionProfileId: z.string().uuid().optional(),
       });
 
       const { projectId } = paramsSchema.parse(request.params);
@@ -86,6 +88,8 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
           promptTemplate: body.promptTemplate,
           initScript: body.initScript,
           initTimeoutSeconds: body.initTimeoutSeconds,
+          workspacePolicy: body.workspacePolicy ?? null,
+          executionProfileId: body.executionProfileId ?? null,
           ...(envText !== undefined ? { envText } : {}),
         },
       });
@@ -102,6 +106,8 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         initScript: z.string().optional(),
         initTimeoutSeconds: z.coerce.number().int().positive().max(3600).optional(),
         envText: z.string().max(20000).nullable().optional(),
+        workspacePolicy: z.enum(["git", "mount", "empty", "bundle"]).nullable().optional(),
+        executionProfileId: z.string().uuid().nullable().optional(),
       });
 
       const { projectId, roleId } = paramsSchema.parse(request.params);
@@ -123,6 +129,8 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
           promptTemplate: body.promptTemplate,
           initScript: body.initScript,
           initTimeoutSeconds: body.initTimeoutSeconds,
+          workspacePolicy: body.workspacePolicy,
+          executionProfileId: body.executionProfileId,
           ...(envText !== undefined ? { envText } : {}),
         },
       });

@@ -34,6 +34,8 @@ const envSchema = z.object({
   SKILL_PACKAGES_MAX_BYTES: z.coerce.number().int().positive().default(200 * 1024 * 1024),
   SKILLS_CLI_NPX_PACKAGE: z.string().min(1).default("skills@latest"),
   SKILLS_CLI_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+  WORKSPACE_POLICY_DEFAULT: z.string().optional(),
+  EXECUTION_PROFILE_DEFAULT_KEY: z.string().optional(),
   GITLAB_URL: z.string().optional(),
   GITLAB_ACCESS_TOKEN: z.string().optional(),
   GITLAB_PROJECT_ID: z.string().optional(),

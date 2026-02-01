@@ -7,6 +7,7 @@ import { toPublicProject } from "../utils/publicProject.js";
 
 const workspaceModeSchema = z.enum(["worktree", "clone"]);
 const gitAuthModeSchema = z.enum(["https_pat", "ssh"]);
+const workspacePolicySchema = z.enum(["git", "mount", "empty", "bundle"]);
 
 const createProjectBodySchema = z.object({
   name: z.string().min(1),
@@ -14,8 +15,10 @@ const createProjectBodySchema = z.object({
   scmType: z.string().min(1).optional(),
   defaultBranch: z.string().min(1).optional(),
   workspaceMode: workspaceModeSchema.optional(),
+  workspacePolicy: workspacePolicySchema.optional(),
   gitAuthMode: gitAuthModeSchema.optional(),
   defaultRoleKey: z.string().min(1).max(100).optional(),
+  executionProfileId: z.string().uuid().optional(),
   agentWorkspaceNoticeTemplate: z.string().optional(),
   gitlabProjectId: z.coerce.number().int().positive().optional(),
   gitlabAccessToken: z.string().min(1).optional(),
@@ -42,8 +45,10 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
           scmType: body.scmType ?? "gitlab",
           defaultBranch: body.defaultBranch ?? "main",
           workspaceMode: body.workspaceMode ?? "worktree",
+          workspacePolicy: body.workspacePolicy ?? null,
           gitAuthMode: body.gitAuthMode ?? "https_pat",
           defaultRoleKey: body.defaultRoleKey,
+          executionProfileId: body.executionProfileId,
           agentWorkspaceNoticeTemplate: body.agentWorkspaceNoticeTemplate,
           gitlabProjectId: body.gitlabProjectId,
           gitlabAccessToken: body.gitlabAccessToken,
@@ -64,8 +69,10 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
         scmType: z.string().min(1).optional(),
         defaultBranch: z.string().min(1).optional(),
         workspaceMode: workspaceModeSchema.nullable().optional(),
+        workspacePolicy: workspacePolicySchema.nullable().optional(),
         gitAuthMode: gitAuthModeSchema.nullable().optional(),
         defaultRoleKey: z.string().min(1).max(100).nullable().optional(),
+        executionProfileId: z.string().uuid().nullable().optional(),
         agentWorkspaceNoticeTemplate: z.string().nullable().optional(),
         gitlabProjectId: z.coerce.number().int().positive().nullable().optional(),
         gitlabAccessToken: z.string().min(1).nullable().optional(),
@@ -89,8 +96,10 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
       if (body.scmType !== undefined) data.scmType = body.scmType;
       if (body.defaultBranch !== undefined) data.defaultBranch = body.defaultBranch;
       if (body.workspaceMode !== undefined) data.workspaceMode = body.workspaceMode;
+      if (body.workspacePolicy !== undefined) data.workspacePolicy = body.workspacePolicy;
       if (body.gitAuthMode !== undefined) data.gitAuthMode = body.gitAuthMode;
       if (body.defaultRoleKey !== undefined) data.defaultRoleKey = body.defaultRoleKey;
+      if (body.executionProfileId !== undefined) data.executionProfileId = body.executionProfileId;
       if (body.agentWorkspaceNoticeTemplate !== undefined) data.agentWorkspaceNoticeTemplate = body.agentWorkspaceNoticeTemplate;
       if (body.gitlabProjectId !== undefined) data.gitlabProjectId = body.gitlabProjectId;
       if (body.gitlabAccessToken !== undefined) data.gitlabAccessToken = body.gitlabAccessToken;

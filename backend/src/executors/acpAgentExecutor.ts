@@ -8,12 +8,16 @@ import { renderTextTemplate } from "../utils/textTemplate.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../utils/agentInit.js";
 import { getSandboxWorkspaceMode } from "../utils/sandboxCaps.js";
 import { resolveAgentWorkspaceCwd } from "../utils/agentWorkspaceCwd.js";
+import { resolveExecutionProfile } from "../utils/executionProfile.js";
 import {
   assertRoleGitAuthEnv,
   pickGitAccessToken,
   resolveGitAuthMode,
   resolveGitHttpUsername,
 } from "../utils/gitAuth.js";
+import { buildInitPipeline } from "../utils/initPipeline.js";
+import { stringifyContextInventory } from "../utils/contextInventory.js";
+import { assertWorkspacePolicyCompat, resolveWorkspacePolicy } from "../utils/workspacePolicy.js";
 
 import type { CreateWorkspace, CreateWorkspaceResult } from "./types.js";
 
@@ -281,6 +285,7 @@ export async function startAcpAgentExecution(
   const step = (run as any).step as any;
   const issue = task?.issue as any;
   const project = issue?.project as any;
+  const bundleSource = task?.bundleSource ?? null;
 
   if (!task || !step || !issue || !project) {
     throw new Error("Run 缺少 task/step/issue/project 上下文");
@@ -289,14 +294,6 @@ export async function startAcpAgentExecution(
   const preferredAgentId = typeof issue.assignedAgentId === "string" ? issue.assignedAgentId : null;
   const agent = await selectAvailableAgent(deps.prisma, preferredAgentId);
   if (!agent) throw new Error("没有可用的 Agent");
-
-  const { workspace, mode } = await ensureWorkspace({
-    prisma: deps.prisma,
-    createWorkspace: deps.createWorkspace,
-    run,
-    task,
-    issue,
-  });
 
   const roleKey =
     typeof step.roleKey === "string" && step.roleKey.trim()
@@ -312,8 +309,56 @@ export async function startAcpAgentExecution(
     : null;
   if (roleKey && !role) throw new Error("RoleTemplate 不存在");
 
+  const executionProfile = await resolveExecutionProfile({
+    prisma: deps.prisma,
+    platformProfileKey: process.env.EXECUTION_PROFILE_DEFAULT_KEY ?? null,
+    taskProfileId: task.executionProfileId ?? null,
+    roleProfileId: (role as any)?.executionProfileId ?? null,
+    projectProfileId: project?.executionProfileId ?? null,
+  });
+  const resolvedPolicy = resolveWorkspacePolicy({
+    platformDefault: process.env.WORKSPACE_POLICY_DEFAULT ?? null,
+    projectPolicy: project?.workspacePolicy ?? null,
+    rolePolicy: (role as any)?.workspacePolicy ?? null,
+    taskPolicy: task?.workspacePolicy ?? null,
+    profilePolicy: executionProfile?.workspacePolicy ?? null,
+  });
+  if (resolvedPolicy.resolved === "bundle" && !bundleSource?.path) {
+    throw new Error("bundle policy 需要提供 bundle 来源");
+  }
+  assertWorkspacePolicyCompat({ policy: resolvedPolicy.resolved, capabilities: agent?.capabilities });
+
+  const { workspace, mode } = await ensureWorkspace({
+    prisma: deps.prisma,
+    createWorkspace: deps.createWorkspace,
+    run,
+    task,
+    issue,
+  });
+
   await deps.prisma.run
-    .update({ where: { id: run.id }, data: { agentId: agent.id } as any })
+    .update({
+      where: { id: run.id },
+      data: {
+        agentId: agent.id,
+        resolvedWorkspacePolicy: resolvedPolicy.resolved,
+        workspacePolicySource: resolvedPolicy,
+        executionProfileId: executionProfile?.id ?? null,
+        executionProfileSnapshot: executionProfile ?? null,
+        bundleSource: bundleSource ?? null,
+      } as any,
+    })
+    .catch(() => {});
+  await deps.prisma.task
+    .update({
+      where: { id: task.id },
+      data: {
+        resolvedWorkspacePolicy: resolvedPolicy.resolved,
+        workspacePolicySource: resolvedPolicy,
+        executionProfileId: executionProfile?.id ?? null,
+        executionProfileSnapshot: executionProfile ?? null,
+      } as any,
+    })
     .catch(() => {});
   await deps.prisma.issue
     .update({
@@ -403,7 +448,9 @@ export async function startAcpAgentExecution(
   }
 
   const roleEnv = normalizeRoleEnv(role?.envText ? parseEnvText(String(role.envText)) : {});
-  assertRoleGitAuthEnv(roleEnv, role?.key ?? null);
+  if (resolvedPolicy.resolved === "git") {
+    assertRoleGitAuthEnv(roleEnv, role?.key ?? null);
+  }
   const gitAuthMode = resolveGitAuthMode({
     repoUrl: String(project?.repoUrl ?? ""),
     scmType: project?.scmType ?? null,
@@ -422,18 +469,113 @@ export async function startAcpAgentExecution(
     repoUrl: project?.repoUrl ?? null,
     gitAuthMode: project?.gitAuthMode ?? null,
   });
+  const enableRuntimeSkillsMounting = project?.enableRuntimeSkillsMounting === true;
+  let skillsManifest: any | null = null;
+  if (enableRuntimeSkillsMounting && role?.id) {
+    const bindings = await deps.prisma.roleSkillBinding.findMany({
+      where: { roleTemplateId: role.id, enabled: true } as any,
+      orderBy: { createdAt: "asc" },
+      select: { skillId: true, versionPolicy: true, pinnedVersionId: true },
+    });
+
+    if (bindings.length) {
+      const skillIds = bindings.map((b: any) => String(b.skillId ?? "")).filter(Boolean);
+      const skills = await deps.prisma.skill.findMany({
+        where: { id: { in: skillIds } } as any,
+        select: { id: true, name: true, latestVersionId: true },
+      });
+      const skillById = new Map<string, any>();
+      for (const s of skills as any[]) skillById.set(String(s.id ?? ""), s);
+
+      const resolved = bindings.map((b: any) => {
+        const skillId = String(b.skillId ?? "");
+        const skill = skillById.get(skillId) ?? null;
+        if (!skill) throw new Error(`role skills 配置包含不存在的 skillId: ${skillId}`);
+
+        const policy = String(b.versionPolicy ?? "latest");
+        if (policy === "pinned") {
+          const pinnedVersionId = String(b.pinnedVersionId ?? "").trim();
+          if (!pinnedVersionId)
+            throw new Error(`role skills 配置 pinned 缺少 pinnedVersionId（skillId=${skillId}）`);
+          return { skillId, skillName: String(skill.name ?? ""), skillVersionId: pinnedVersionId };
+        }
+
+        const latestVersionId = String(skill.latestVersionId ?? "").trim();
+        if (!latestVersionId)
+          throw new Error(`role skills 配置 latest 但 Skill 未发布 latestVersionId（skillId=${skillId}）`);
+        return { skillId, skillName: String(skill.name ?? ""), skillVersionId: latestVersionId };
+      });
+
+      const versionIds = Array.from(new Set(resolved.map((x) => x.skillVersionId)));
+      const versions = await deps.prisma.skillVersion.findMany({
+        where: { id: { in: versionIds } } as any,
+        select: { id: true, skillId: true, contentHash: true, storageUri: true },
+      });
+      const versionById = new Map<string, any>();
+      for (const v of versions as any[]) versionById.set(String(v.id ?? ""), v);
+
+      const missing = versionIds.filter((id) => !versionById.has(id));
+      if (missing.length) throw new Error(`role skills 解析失败：SkillVersion 不存在: ${missing.join(", ")}`);
+
+      const skillVersions = resolved.map((x) => {
+        const v = versionById.get(x.skillVersionId);
+        if (!v) throw new Error("unreachable");
+        if (String(v.skillId ?? "") !== x.skillId) {
+          throw new Error(
+            `role skills 解析失败：SkillVersion 不属于该 Skill（skillId=${x.skillId}, skillVersionId=${x.skillVersionId}）`,
+          );
+        }
+        const storageUri = typeof v.storageUri === "string" ? String(v.storageUri).trim() : "";
+        if (!storageUri)
+          throw new Error(`role skills 解析失败：SkillVersion.storageUri 为空（skillVersionId=${x.skillVersionId}）`);
+        return {
+          skillId: x.skillId,
+          skillName: x.skillName,
+          skillVersionId: x.skillVersionId,
+          contentHash: String(v.contentHash ?? ""),
+          storageUri,
+        };
+      });
+
+      skillsManifest = { runId: String(run.id), skillVersions };
+    }
+  }
   const sandboxWorkspaceMode = getSandboxWorkspaceMode((agent as any)?.capabilities);
   const agentWorkspaceCwd = resolveAgentWorkspaceCwd({
     runId: String(run.id),
     sandboxWorkspaceMode,
   });
+  const gitCredEnv =
+    resolvedPolicy.resolved === "git"
+      ? {
+          ...(project?.githubAccessToken
+            ? {
+                GH_TOKEN: String(project.githubAccessToken),
+                GITHUB_TOKEN: String(project.githubAccessToken),
+              }
+            : {}),
+          ...(project?.gitlabAccessToken
+            ? {
+                GITLAB_TOKEN: String(project.gitlabAccessToken),
+                GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken),
+              }
+            : {}),
+        }
+      : {};
+  const repoEnv =
+    resolvedPolicy.resolved === "git"
+      ? {
+          TUIXIU_REPO_URL: String(project.repoUrl ?? ""),
+          TUIXIU_SCM_TYPE: String(project.scmType ?? ""),
+          TUIXIU_DEFAULT_BRANCH: String(project.defaultBranch ?? ""),
+        }
+      : {};
   const initEnv: Record<string, string> = {
+    ...gitCredEnv,
     ...roleEnv,
     TUIXIU_PROJECT_ID: String(issue.projectId),
     TUIXIU_PROJECT_NAME: String(project.name ?? ""),
-    TUIXIU_REPO_URL: String(project.repoUrl ?? ""),
-    TUIXIU_SCM_TYPE: String(project.scmType ?? ""),
-    TUIXIU_DEFAULT_BRANCH: String(project.defaultBranch ?? ""),
+    ...repoEnv,
     TUIXIU_BASE_BRANCH: baseBranchForPrompt,
     TUIXIU_RUN_ID: String(run.id),
     TUIXIU_RUN_BRANCH: String(workspace.branchName),
@@ -441,6 +583,68 @@ export async function startAcpAgentExecution(
     TUIXIU_WORKSPACE_GUEST: agentWorkspaceCwd,
     TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(issue.projectId)}`,
   };
+  const hasSkills = !!skillsManifest?.skillVersions?.length;
+  const pipeline = buildInitPipeline({
+    policy: resolvedPolicy.resolved,
+    hasSkills,
+    hasBundle: resolvedPolicy.resolved === "bundle" || !!bundleSource?.path,
+  });
+  if (pipeline.actions.length) {
+    initEnv.TUIXIU_INIT_ACTIONS = pipeline.actions.map((a) => a.type).join(",");
+  }
+
+  const inventoryItems: Array<{
+    key: string;
+    source: "repo" | "skills" | "bundle" | "artifact";
+    ref?: string | null;
+    version?: string | null;
+    hash?: string | null;
+  }> = [];
+  if (resolvedPolicy.resolved === "git" && project?.repoUrl) {
+    inventoryItems.push({
+      key: "repo",
+      source: "repo",
+      ref: String(project.repoUrl ?? ""),
+      version: String(baseBranchForPrompt ?? ""),
+    });
+  }
+  if (skillsManifest?.skillVersions?.length) {
+    for (const sv of skillsManifest.skillVersions) {
+      inventoryItems.push({
+        key: `skill:${String(sv.skillName ?? sv.skillId)}`,
+        source: "skills",
+        ref: String(sv.storageUri ?? ""),
+        version: String(sv.skillVersionId ?? ""),
+        hash: String(sv.contentHash ?? ""),
+      });
+    }
+  }
+  if (bundleSource?.path) {
+    initEnv.TUIXIU_BUNDLE_PATH = String(bundleSource.path);
+    inventoryItems.push({
+      key: "bundle",
+      source: "bundle",
+      ref: String(bundleSource.path ?? ""),
+      hash: bundleSource.hash ? String(bundleSource.hash) : null,
+    });
+  }
+  if (inventoryItems.length) {
+    const inventory = stringifyContextInventory(inventoryItems);
+    initEnv.TUIXIU_INVENTORY_PATH = inventory.path;
+    initEnv.TUIXIU_INVENTORY_JSON = inventory.json;
+    const baseMetadata =
+      (run as any)?.metadata && typeof (run as any).metadata === "object" ? (run as any).metadata : {};
+    await deps.prisma.run
+      .update({
+        where: { id: run.id },
+        data: { metadata: { ...baseMetadata, contextInventory: inventoryItems } } as any,
+      })
+      .catch(() => {});
+  }
+  if (hasSkills) {
+    initEnv.TUIXIU_SKILLS_SRC = `${agentWorkspaceCwd}/.tuixiu/codex-home/skills`;
+  }
+
   if (sandboxWorkspaceMode) {
     initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
     if (sandboxWorkspaceMode === "mount") {
@@ -448,20 +652,22 @@ export async function startAcpAgentExecution(
     }
   }
   if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
-  if (initEnv.TUIXIU_GIT_AUTH_MODE === undefined) initEnv.TUIXIU_GIT_AUTH_MODE = gitAuthMode;
-  if (initEnv.TUIXIU_GIT_HTTP_USERNAME === undefined && gitHttpUsername) {
-    initEnv.TUIXIU_GIT_HTTP_USERNAME = gitHttpUsername;
-  }
-  if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined && gitHttpPassword) {
-    initEnv.TUIXIU_GIT_HTTP_PASSWORD = gitHttpPassword;
-  }
-  if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined) {
-    const fallbackToken =
-      initEnv.GITHUB_TOKEN ||
-      initEnv.GH_TOKEN ||
-      initEnv.GITLAB_ACCESS_TOKEN ||
-      initEnv.GITLAB_TOKEN;
-    if (fallbackToken) initEnv.TUIXIU_GIT_HTTP_PASSWORD = fallbackToken;
+  if (resolvedPolicy.resolved === "git") {
+    if (initEnv.TUIXIU_GIT_AUTH_MODE === undefined) initEnv.TUIXIU_GIT_AUTH_MODE = gitAuthMode;
+    if (initEnv.TUIXIU_GIT_HTTP_USERNAME === undefined && gitHttpUsername) {
+      initEnv.TUIXIU_GIT_HTTP_USERNAME = gitHttpUsername;
+    }
+    if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined && gitHttpPassword) {
+      initEnv.TUIXIU_GIT_HTTP_PASSWORD = gitHttpPassword;
+    }
+    if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined) {
+      const fallbackToken =
+        initEnv.GITHUB_TOKEN ||
+        initEnv.GH_TOKEN ||
+        initEnv.GITLAB_ACCESS_TOKEN ||
+        initEnv.GITLAB_TOKEN;
+      if (fallbackToken) initEnv.TUIXIU_GIT_HTTP_PASSWORD = fallbackToken;
+    }
   }
 
   const baseInitScript = buildWorkspaceInitScript();
@@ -471,6 +677,7 @@ export async function startAcpAgentExecution(
     script: mergeInitScripts(baseInitScript, roleInitScript),
     timeout_seconds: role?.initTimeoutSeconds,
     env: initEnv,
+    ...(skillsManifest ? { skillsManifest } : {}),
   };
 
   await deps.acp.promptRun({

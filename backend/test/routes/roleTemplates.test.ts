@@ -123,6 +123,39 @@ describe("RoleTemplate routes", () => {
     await server.close();
   });
 
+  it("POST /api/projects/:projectId/roles accepts workspacePolicy and executionProfileId", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      project: { findUnique: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000010" }) },
+      roleTemplate: {
+        create: vi.fn().mockImplementation(async ({ data }: any) => data),
+      },
+    } as any;
+
+    await server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/projects/00000000-0000-0000-0000-000000000010/roles",
+      payload: {
+        key: "auditor",
+        displayName: "Auditor",
+        workspacePolicy: "empty",
+        executionProfileId: "11111111-1111-1111-1111-111111111111",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prisma.roleTemplate.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspacePolicy: "empty",
+        executionProfileId: "11111111-1111-1111-1111-111111111111",
+      }),
+    });
+
+    await server.close();
+  });
+
   it("PATCH /api/projects/:projectId/roles/:roleId returns NOT_FOUND when role missing", async () => {
     const server = createHttpServer();
     const prisma = {
@@ -180,6 +213,35 @@ describe("RoleTemplate routes", () => {
     expect(prisma.roleTemplate.update).toHaveBeenCalledWith({
       where: { id: "00000000-0000-0000-0000-000000000099" },
       data: expect.objectContaining({ envText: null }),
+    });
+
+    await server.close();
+  });
+
+  it("PATCH /api/projects/:projectId/roles/:roleId accepts workspacePolicy", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      roleTemplate: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "00000000-0000-0000-0000-000000000099",
+          projectId: "00000000-0000-0000-0000-000000000010",
+        }),
+        update: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000099" }),
+      },
+    } as any;
+
+    await server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
+
+    const res = await server.inject({
+      method: "PATCH",
+      url: "/api/projects/00000000-0000-0000-0000-000000000010/roles/00000000-0000-0000-0000-000000000099",
+      payload: { workspacePolicy: "empty" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(prisma.roleTemplate.update).toHaveBeenCalledWith({
+      where: { id: "00000000-0000-0000-0000-000000000099" },
+      data: expect.objectContaining({ workspacePolicy: "empty" }),
     });
 
     await server.close();

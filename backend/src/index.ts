@@ -3,8 +3,7 @@ import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
-import Fastify from "fastify";
-import fs from "node:fs";
+import Fastify from "fastify";\nimport { ZodError } from "zod";\nimport fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,6 +36,7 @@ import { makeRoleSkillBindingRoutes } from "./routes/roleSkillBindings.js";
 import { makeStepRoutes } from "./routes/steps.js";
 import { makeTaskRoutes } from "./routes/tasks.js";
 import { makeTextTemplateRoutes } from "./routes/textTemplates.js";
+import { makeExecutionProfileRoutes } from "./routes/executionProfiles.js";
 import { createPmAutomation } from "./modules/pm/pmAutomation.js";
 import { createAcpTunnel } from "./modules/acp/acpTunnel.js";
 import { createSandboxControlClient } from "./modules/sandbox/sandboxControl.js";
@@ -290,6 +290,7 @@ server.register(
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
+server.register(makeExecutionProfileRoutes({ prisma }), { prefix: "/api" });
 server.register(makePolicyRoutes({ prisma }), { prefix: "/api" });
 server.register(makeWorkflowTemplateRoutes({ prisma }), { prefix: "/api" });
 server.register(makeGitHubIssueRoutes({ prisma, onIssueUpserted: pm.triggerAutoStart }), {
@@ -378,6 +379,17 @@ server.register(makeAcpProxyRoutes({ bootstrapToken: env.ACP_PROXY_BOOTSTRAP_TOK
 });
 server.register(makeSkillPackageRoutes({ packages: skillPackages }), { prefix: "/api/acp-proxy" });
 
+server.setErrorHandler((err, request, reply) => {
+  const pathOnly = String(request.url ?? "").split("?")[0] ?? "";
+  if (pathOnly.startsWith("/api/") && (err instanceof ZodError || String((err as any)?.name ?? "") === "ZodError")) {
+    reply.code(400).send({
+      success: false,
+      error: { code: "BAD_REQUEST", message: "参数校验失败", details: (err as any).errors ?? [] },
+    });
+    return;
+  }
+  reply.send(err);
+});
 server.setNotFoundHandler(async (request, reply) => {
   const url = String(request.url ?? "");
   const pathOnly = url.split("?")[0] ?? url;
@@ -412,3 +424,4 @@ server.setNotFoundHandler(async (request, reply) => {
 });
 
 await server.listen({ port: env.PORT, host: env.HOST });
+
