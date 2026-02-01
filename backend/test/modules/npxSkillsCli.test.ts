@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 
 import { describe, expect, it, vi } from "vitest";
 
-const spawnMock = vi.fn((_cmd: string, _args: string[]) => {
+const spawnMock = vi.fn(() => {
   const proc = new EventEmitter() as any;
   proc.stdout = new PassThrough();
   proc.stderr = new PassThrough();
@@ -47,4 +47,3 @@ describe("createNpxSkillsCliRunner", () => {
     }
   });
 });
-

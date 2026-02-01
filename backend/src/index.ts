@@ -3,7 +3,9 @@ import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
-import Fastify from "fastify";\nimport { ZodError } from "zod";\nimport fs from "node:fs";
+import Fastify from "fastify";
+import { ZodError } from "zod";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 

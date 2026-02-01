@@ -1,4 +1,5 @@
 import type { PrismaDeps } from "../../db.js";
+import { Prisma } from "@prisma/client";
 import { uuidv7 } from "../../utils/uuid.js";
 import { toPublicProject } from "../../utils/publicProject.js";
 import { suggestRunKeyWithLlm } from "../../utils/gitWorkspace.js";
@@ -152,7 +153,8 @@ export async function startIssueRun(opts: {
     taskPolicy: null,
     profilePolicy: executionProfile?.workspacePolicy ?? null,
   });
-  if (resolvedPolicy.resolved === "bundle") {
+  const hasBundle = resolvedPolicy.resolved === "bundle";
+  if (hasBundle) {
     return {
       success: false,
       error: { code: "BUNDLE_MISSING", message: "bundle policy 需要提供 bundle 来源" },
@@ -178,7 +180,9 @@ export async function startIssueRun(opts: {
       resolvedWorkspacePolicy: resolvedPolicy.resolved,
       workspacePolicySource: resolvedPolicy,
       executionProfileId: executionProfile?.id ?? null,
-      executionProfileSnapshot: executionProfile ?? null,
+      executionProfileSnapshot: executionProfile
+        ? (executionProfile as unknown as Prisma.InputJsonValue)
+        : Prisma.DbNull,
       metadata: role ? ({ roleKey: (role as any).key } as any) : undefined,
     },
   });
@@ -414,37 +418,10 @@ export async function startIssueRun(opts: {
       gitAuthMode: project?.gitAuthMode ?? null,
     });
 
-    const repoEnv =
-      resolvedPolicy.resolved === "git"
-        ? {
-            TUIXIU_REPO_URL: String(project?.repoUrl ?? ""),
-            TUIXIU_SCM_TYPE: String(project?.scmType ?? ""),
-            TUIXIU_DEFAULT_BRANCH: String(project?.defaultBranch ?? ""),
-          }
-        : {};
-    const gitCredEnv =
-      resolvedPolicy.resolved === "git"
-        ? {
-            ...(project?.githubAccessToken
-              ? {
-                  GH_TOKEN: String(project.githubAccessToken),
-                  GITHUB_TOKEN: String(project.githubAccessToken),
-                }
-              : {}),
-            ...(project?.gitlabAccessToken
-              ? {
-                  GITLAB_TOKEN: String(project.gitlabAccessToken),
-                  GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken),
-                }
-              : {}),
-          }
-        : {};
     const initEnv: Record<string, string> = {
-      ...gitCredEnv,
       ...roleEnv,
       TUIXIU_PROJECT_ID: String((issue as any).projectId),
       TUIXIU_PROJECT_NAME: String(project?.name ?? ""),
-      ...repoEnv,
       TUIXIU_BASE_BRANCH: String(baseBranchForRun),
       TUIXIU_RUN_ID: String((run as any).id),
       TUIXIU_RUN_BRANCH: String(branchName),
@@ -452,6 +429,19 @@ export async function startIssueRun(opts: {
       TUIXIU_WORKSPACE_GUEST: String(agentWorkspacePath),
       TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String((issue as any).projectId)}`,
     };
+    if (resolvedPolicy.resolved === "git") {
+      if (initEnv.GH_TOKEN === undefined && project?.githubAccessToken) initEnv.GH_TOKEN = String(project.githubAccessToken);
+      if (initEnv.GITHUB_TOKEN === undefined && project?.githubAccessToken)
+        initEnv.GITHUB_TOKEN = String(project.githubAccessToken);
+      if (initEnv.GITLAB_TOKEN === undefined && project?.gitlabAccessToken)
+        initEnv.GITLAB_TOKEN = String(project.gitlabAccessToken);
+      if (initEnv.GITLAB_ACCESS_TOKEN === undefined && project?.gitlabAccessToken)
+        initEnv.GITLAB_ACCESS_TOKEN = String(project.gitlabAccessToken);
+
+      initEnv.TUIXIU_REPO_URL = String(project?.repoUrl ?? "");
+      initEnv.TUIXIU_SCM_TYPE = String(project?.scmType ?? "");
+      initEnv.TUIXIU_DEFAULT_BRANCH = String(project?.defaultBranch ?? "");
+    }
 
     const enableRuntimeSkillsMounting = project?.enableRuntimeSkillsMounting === true;
     let skillsManifest: any | null = null;
@@ -523,7 +513,7 @@ export async function startIssueRun(opts: {
     const pipeline = buildInitPipeline({
       policy: resolvedPolicy.resolved,
       hasSkills,
-      hasBundle: resolvedPolicy.resolved === "bundle",
+      hasBundle,
     });
     if (pipeline.actions.length) {
       initEnv.TUIXIU_INIT_ACTIONS = pipeline.actions.map((a) => a.type).join(",");

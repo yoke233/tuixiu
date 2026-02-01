@@ -87,13 +87,13 @@ describe("Skill package routes", () => {
       });
 
       expect(res.statusCode).toBe(200);
-      expect(res.headers["etag"]).toBe(`\"${contentHash}\"`);
+      expect(res.headers["etag"]).toBe(`"${contentHash}"`);
       expect(res.headers["cache-control"]).toContain("immutable");
 
       const res304 = await server.inject({
         method: "GET",
         url: `/api/acp-proxy/skills/packages/${contentHash}.zip`,
-        headers: { authorization: `Bearer ${token}`, "if-none-match": `\"${contentHash}\"` },
+        headers: { authorization: `Bearer ${token}`, "if-none-match": `"${contentHash}"` },
       });
       expect(res304.statusCode).toBe(304);
 

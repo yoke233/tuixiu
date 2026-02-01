@@ -12,10 +12,12 @@ export type SkillsShRef = {
 function stripAnsi(input: string): string {
   // Minimal ANSI escape stripper (covers CSI sequences like \x1b[0m).
   // We avoid bringing an extra dependency for this.
+  // eslint-disable-next-line no-control-regex
   return input.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 }
 
 function safeSegment(value: string): string | null {
+  // eslint-disable-next-line no-control-regex
   const v = stripAnsi(value).replace(/[\u0000-\u001F\u007F]/g, "").trim();
   if (!v) return null;
   if (v.includes("/") || v.includes("\\") || v.includes("..")) return null;

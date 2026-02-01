@@ -545,37 +545,10 @@ export async function startAcpAgentExecution(
     runId: String(run.id),
     sandboxWorkspaceMode,
   });
-  const gitCredEnv =
-    resolvedPolicy.resolved === "git"
-      ? {
-          ...(project?.githubAccessToken
-            ? {
-                GH_TOKEN: String(project.githubAccessToken),
-                GITHUB_TOKEN: String(project.githubAccessToken),
-              }
-            : {}),
-          ...(project?.gitlabAccessToken
-            ? {
-                GITLAB_TOKEN: String(project.gitlabAccessToken),
-                GITLAB_ACCESS_TOKEN: String(project.gitlabAccessToken),
-              }
-            : {}),
-        }
-      : {};
-  const repoEnv =
-    resolvedPolicy.resolved === "git"
-      ? {
-          TUIXIU_REPO_URL: String(project.repoUrl ?? ""),
-          TUIXIU_SCM_TYPE: String(project.scmType ?? ""),
-          TUIXIU_DEFAULT_BRANCH: String(project.defaultBranch ?? ""),
-        }
-      : {};
   const initEnv: Record<string, string> = {
-    ...gitCredEnv,
     ...roleEnv,
     TUIXIU_PROJECT_ID: String(issue.projectId),
     TUIXIU_PROJECT_NAME: String(project.name ?? ""),
-    ...repoEnv,
     TUIXIU_BASE_BRANCH: baseBranchForPrompt,
     TUIXIU_RUN_ID: String(run.id),
     TUIXIU_RUN_BRANCH: String(workspace.branchName),
@@ -583,6 +556,19 @@ export async function startAcpAgentExecution(
     TUIXIU_WORKSPACE_GUEST: agentWorkspaceCwd,
     TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(issue.projectId)}`,
   };
+  if (resolvedPolicy.resolved === "git") {
+    if (initEnv.GH_TOKEN === undefined && project?.githubAccessToken) initEnv.GH_TOKEN = String(project.githubAccessToken);
+    if (initEnv.GITHUB_TOKEN === undefined && project?.githubAccessToken)
+      initEnv.GITHUB_TOKEN = String(project.githubAccessToken);
+    if (initEnv.GITLAB_TOKEN === undefined && project?.gitlabAccessToken)
+      initEnv.GITLAB_TOKEN = String(project.gitlabAccessToken);
+    if (initEnv.GITLAB_ACCESS_TOKEN === undefined && project?.gitlabAccessToken)
+      initEnv.GITLAB_ACCESS_TOKEN = String(project.gitlabAccessToken);
+
+    initEnv.TUIXIU_REPO_URL = String(project.repoUrl ?? "");
+    initEnv.TUIXIU_SCM_TYPE = String(project.scmType ?? "");
+    initEnv.TUIXIU_DEFAULT_BRANCH = String(project.defaultBranch ?? "");
+  }
   const hasSkills = !!skillsManifest?.skillVersions?.length;
   const pipeline = buildInitPipeline({
     policy: resolvedPolicy.resolved,
