@@ -215,13 +215,12 @@ export class BubblewrapProxySandbox implements ProxySandbox {
   constructor(private readonly opts: { config: BubblewrapSandboxCfg; log: Logger }) {
     this.opts.log("bubblewrap proxy sandbox init", {
       workspaceHostRoot: opts.config.workspaceHostRoot,
-      bwrap: opts.config.bwrapBin ?? "bwrap",
+      bwrap: "bwrap",
     });
   }
 
   private resolveBwrapBin(): string {
-    const raw = this.opts.config.bwrapBin?.trim() ?? "";
-    return raw || "bwrap";
+    return "bwrap";
   }
 
   private resolveWorkspaceHostRoot(): string {

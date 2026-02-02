@@ -21,7 +21,6 @@ terminalEnabled = true
 
 # provider: "container_oci" | "boxlite_oci" | "host_process" | "bwrap"
 provider = "bwrap"
-bwrapBin = "bwrap"
 
 # host_process（PoC，低隔离）：在宿主机直接启动 ACP agent。
 # ⚠️ 风险提示：几乎没有隔离，只建议本地开发/排障；必须关闭 terminalEnabled，

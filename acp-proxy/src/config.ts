@@ -40,7 +40,6 @@ export type SandboxConfig = {
   execTimeoutSeconds?: number;
   execLogIntervalSeconds?: number;
   bootstrap?: SandboxBootstrapConfig;
-  bwrapBin?: string;
 };
 
 export type AgentConfig = {
@@ -431,12 +430,6 @@ function buildSchema() {
         format: ["boxlite_oci", "container_oci", "host_process", "bwrap"],
         default: "container_oci",
         env: "ACP_PROXY_SANDBOX_PROVIDER",
-      },
-      bwrapBin: {
-        doc: "bubblewrap binary (provider=bwrap)",
-        format: "String",
-        default: "bwrap",
-        env: "ACP_PROXY_BWRAP_BIN",
       },
       image: {
         doc: "Sandbox image",
