@@ -299,4 +299,15 @@
     background-color: var(--background);
     color: var(--foreground);
   }
+
+  /* Radix Select（react-remove-scroll）打开时会给 body 注入滚动条补偿（padding/margin），导致页面“蹦一下”。
+     这里仅在 Select 打开期间移除补偿，避免布局抖动。 */
+  body:has([data-radix-select-viewport])[data-scroll-locked] {
+    margin-right: 0 !important;
+    overflow-y: auto !important;
+  }
+
+  body:has([data-radix-select-viewport]).with-scroll-bars-hidden {
+    padding-right: 0 !important;
+  }
 }
