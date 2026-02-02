@@ -57,6 +57,7 @@ export function useIssueListController() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const clearError = useCallback(() => setError(null), []);
 
   const onIssueUpdated = useCallback((issue: Issue) => {
     setIssues((prev) => {
@@ -276,6 +277,7 @@ export function useIssueListController() {
     issues,
     loading,
     error,
+    clearError,
     searchText,
     setSearchText,
     selectedProjectId,

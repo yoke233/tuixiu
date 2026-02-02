@@ -422,6 +422,7 @@ model RoleTemplate {
   initScript         String?  @db.Text
   initTimeoutSeconds Int      @default(300)
   envText            String?  @db.Text
+  agentInputs        Json?
   workspacePolicy    String?  @db.VarChar(20)
   executionProfileId String?  @db.Uuid
   executionProfile   ExecutionProfile? @relation(fields: [executionProfileId], references: [id], onDelete: SetNull)

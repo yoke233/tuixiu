@@ -148,6 +148,72 @@ describe("startIssueRun", () => {
     );
   });
 
+  it("merges RoleTemplate.agentInputs into init.agentInputs", async () => {
+    (suggestRunKeyWithLlm as any).mockResolvedValue("run-key");
+    const issue = makeIssue();
+    const agent = makeAgent();
+    const prisma = {
+      issue: { findUnique: vi.fn().mockResolvedValue(issue), update: vi.fn() },
+      agent: { findMany: vi.fn().mockResolvedValue([agent]), update: vi.fn().mockResolvedValue(undefined) },
+      roleTemplate: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "r1",
+          key: "dev",
+          envText: "",
+          workspacePolicy: "empty",
+          agentInputs: {
+            version: 1,
+            envPatch: { HOME: "/root", USER: "agent" },
+            items: [
+              {
+                id: "agents-md",
+                apply: "writeFile",
+                source: { type: "inlineText", text: "hi" },
+                target: { root: "USER_HOME", path: ".codex/AGENTS.md" },
+              },
+            ],
+          },
+        }),
+      },
+      run: { create: vi.fn().mockResolvedValue({ id: "run1" }), update: vi.fn().mockResolvedValue(undefined) },
+      roleSkillBinding: { findMany: vi.fn().mockResolvedValue([]) },
+      skill: { findMany: vi.fn().mockResolvedValue([]) },
+      skillVersion: { findMany: vi.fn().mockResolvedValue([]) },
+    } as any;
+
+    const acp = { promptRun: vi.fn().mockResolvedValue({}) } as any;
+    const createWorkspace = vi.fn().mockResolvedValue({
+      workspacePath: "C:/ws",
+      branchName: "run-branch",
+      baseBranch: "main",
+      workspaceMode: "worktree",
+      gitAuthMode: "https_pat",
+      timingsMs: {},
+    });
+
+    const res = await startIssueRun({
+      prisma,
+      acp,
+      createWorkspace,
+      issueId: "i1",
+      roleKey: "dev",
+    });
+
+    expect(res.success).toBe(true);
+    const agentInputs = acp.promptRun.mock.calls[0][0].init.agentInputs as any;
+    expect(agentInputs.envPatch).toEqual({ HOME: "/root", USER: "agent" });
+    expect(agentInputs.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "agents-md",
+          apply: "writeFile",
+          source: { type: "inlineText", text: "hi" },
+          target: { root: "USER_HOME", path: ".codex/AGENTS.md" },
+        }),
+      ]),
+    );
+  });
+
   it("clamps keepalive ttl to minimum", async () => {
     (suggestRunKeyWithLlm as any).mockResolvedValue("run-key");
     const issue = makeIssue();

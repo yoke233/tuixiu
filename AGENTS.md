@@ -64,3 +64,12 @@ pnpm dev
 
 - Copy `backend/.env.example` → `backend/.env` and `acp-proxy/config.toml.example` → `acp-proxy/config.toml`.
 - Treat PATs/API keys as secrets (e.g., `OPENAI_API_KEY`, GitHub tokens). Never commit them or paste into logs/issues.
+
+## Prisma / Database Rules (Important)
+
+- Do not hand-write ad-hoc SQL to change database schema. Any tables/columns/indexes/constraints changes MUST go through Prisma migrations.
+- Use these commands (run from repo root):
+  - Apply migrations (first run / day-to-day): `pnpm -C backend prisma:migrate`
+  - Generate Prisma Client: `pnpm -C backend prisma:generate`
+  - Inspect/verify DB state (debugging): `pnpm -C backend prisma:studio`
+- One-off data fixes: don’t paste SQL into routes/startup scripts. Write a reproducible script or a migration step, and document how to run it in the PR description.

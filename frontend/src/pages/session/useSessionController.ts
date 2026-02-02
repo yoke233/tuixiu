@@ -83,6 +83,11 @@ export function useSessionController() {
     }
   }, []);
 
+  const clearError = useCallback(() => {
+    clearErrorTimer();
+    setError(null);
+  }, [clearErrorTimer]);
+
   const setTransientError = useCallback(
     (message: string | null) => {
       clearErrorTimer();
@@ -479,6 +484,7 @@ export function useSessionController() {
     loading,
     refreshing,
     error,
+    clearError,
     chatText,
     setChatText,
     pendingImages,

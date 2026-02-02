@@ -132,6 +132,7 @@ export function useIssueDetailController(opts: {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const clearError = useCallback(() => setError(null), []);
   const [changesOpen, setChangesOpen] = useState(false);
   const [pmLoading, setPmLoading] = useState(false);
   const [pmDispatching, setPmDispatching] = useState(false);
@@ -1012,6 +1013,7 @@ export function useIssueDetailController(opts: {
     loading,
     refreshing,
     error,
+    clearError,
     setError,
 
     // refresh

@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:14
+    container_name: tuixiu-acp-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: acp_user
+      POSTGRES_PASSWORD: acp_password
+      POSTGRES_DB: acp_system
+    ports:
+      - "5432:5432"
+    volumes:
+      - acp_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acp_user -d acp_system"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    networks:
+      - tuixiu-network
+
+  acp-proxy:
+    build:
+      context: .
+      dockerfile: acp-proxy/Dockerfile
+    container_name: tuixiu-acp-proxy
+    restart: always
+    # bwrap 需要创建 user namespace；Docker Desktop/默认 seccomp 可能会禁止，导致 init 失败。
+    # 这里为本地开发/冒烟测试放宽限制，确保 bwrap provider 能跑通。
+    privileged: true
+    security_opt:
+      - seccomp=unconfined
+    volumes:
+      - "./acp-proxy/config-local.toml:/config/config.toml:ro"
+      - "./acp-proxy/.codex:/root/.codex"
+      - acp_workspaces_data:/workspaces
+    environment:
+      ACP_PROXY_REGISTER_URL: http://host.docker.internal:3000/api/admin/acp-proxy/register
+      ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tuixiu-network
+
+volumes:
+  acp_postgres_data:
+  acp_workspaces_data:
+
+networks:
+  tuixiu-network:

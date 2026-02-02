@@ -1,5 +1,5 @@
 import { apiGet, apiPatch, apiPost, apiRequest } from "./client";
-import type { RoleTemplate } from "../types";
+import type { AgentInputsManifestV1, RoleTemplate } from "../types";
 
 export type CreateRoleTemplateInput = {
   key: string;
@@ -9,6 +9,7 @@ export type CreateRoleTemplateInput = {
   initScript?: string;
   initTimeoutSeconds?: number;
   envText?: string;
+  agentInputs?: AgentInputsManifestV1 | null;
 };
 
 export async function listRoles(projectId: string): Promise<RoleTemplate[]> {

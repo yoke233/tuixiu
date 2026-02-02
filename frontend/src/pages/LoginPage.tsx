@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { GlobalErrorToast } from "@/components/GlobalErrorToast";
 
 function getNextPath(search: string): string {
   try {
@@ -61,11 +62,7 @@ export function LoginPage() {
         <ThemeToggle />
       </div>
 
-      {error ? (
-        <div role="alert" className="alert">
-          {error}
-        </div>
-      ) : null}
+      {error ? <GlobalErrorToast message={error} onDismiss={() => setError(null)} /> : null}
 
       <Card>
         <CardContent className="grid gap-4 p-6">

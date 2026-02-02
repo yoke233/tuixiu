@@ -37,11 +37,15 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   const json = text ? (JSON.parse(text) as ApiEnvelope<T>) : null;
 
   if (!res.ok) {
-    const msg =
+    const apiMsg =
       json && typeof json === "object" && "success" in json && (json as any).success === false
-        ? (json as any).error?.message ?? res.statusText
+        ? ((json as any).error?.message as string | undefined) ?? res.statusText
         : res.statusText;
-    throw new Error(`HTTP ${res.status}: ${msg}`);
+    const err = new Error(`HTTP ${res.status}: ${apiMsg}`) as any;
+    if (json && typeof json === "object" && (json as any)?.error?.details != null) {
+      err.details = (json as any).error.details;
+    }
+    throw err;
   }
 
   if (!json || typeof json !== "object") {
@@ -49,7 +53,9 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   }
 
   if (json.success === false) {
-    throw new Error(json.error.message);
+    const err = new Error(json.error.message) as any;
+    if ((json as any)?.error?.details != null) err.details = (json as any).error.details;
+    throw err;
   }
 
   return json.data;

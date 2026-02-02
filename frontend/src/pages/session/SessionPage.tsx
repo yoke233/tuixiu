@@ -2,6 +2,7 @@ import { SessionConsoleCard } from "./sections/SessionConsoleCard";
 import { SessionMobileHeader } from "./sections/SessionMobileHeader";
 import { SessionSidebar } from "./sections/SessionSidebar";
 import { useSessionController } from "./useSessionController";
+import { GlobalErrorToast } from "@/components/GlobalErrorToast";
 
 export function SessionPage() {
   const model = useSessionController();
@@ -15,9 +16,7 @@ export function SessionPage() {
         <SessionMobileHeader model={model} />
 
         {visibleError ? (
-          <div role="alert" className="alert">
-            {visibleError}
-          </div>
+          <GlobalErrorToast message={visibleError} onDismiss={model.clearError} />
         ) : null}
 
         <SessionConsoleCard model={model} />

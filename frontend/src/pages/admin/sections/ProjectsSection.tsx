@@ -28,6 +28,285 @@ type Props = {
   onSelectedProjectIdChange: (next: string) => void;
 };
 
+type ManageMode = "edit" | "create";
+
+type ProjectManageDraft = {
+  name: string;
+  repoUrl: string;
+  scmType: string;
+  defaultBranch: string;
+  workspaceMode: "worktree" | "clone";
+  gitAuthMode: "https_pat" | "ssh";
+  defaultRoleKey: string;
+
+  workspaceNoticeMode: WorkspaceNoticeMode;
+  workspaceNoticeTemplate: string;
+
+  gitlabProjectId: string;
+  gitlabAccessToken: string;
+  gitlabAccessTokenClear: boolean;
+  gitlabWebhookSecret: string;
+  gitlabWebhookSecretClear: boolean;
+
+  githubAccessToken: string;
+  githubAccessTokenClear: boolean;
+  githubPollingEnabled: boolean;
+};
+
+function ProjectManageForm(props: {
+  mode: ManageMode;
+  effectiveProjectId: string;
+  effectiveProject: Project | null;
+  saving: boolean;
+  canSave: boolean;
+  draft: ProjectManageDraft;
+  onChange: (patch: Partial<ProjectManageDraft>) => void;
+  onReset: () => void;
+  onSubmit: () => Promise<void> | void;
+}) {
+  const { mode, effectiveProjectId, effectiveProject, saving, canSave, draft, onChange, onReset, onSubmit } = props;
+
+  const submitLabel = mode === "edit" ? "保存" : "创建";
+  const resetLabel = mode === "edit" ? "重置" : "清空";
+  const title = mode === "edit" ? "编辑当前项目" : "创建新项目";
+  const subtitle = mode === "edit" ? (effectiveProjectId ? <>projectId: <code>{effectiveProjectId}</code></> : "—") : "用于配置仓库、SCM、认证方式等。";
+
+  const nameTrimmed = draft.name.trim();
+  const repoUrlTrimmed = draft.repoUrl.trim();
+  const submitDisabled =
+    saving ||
+    !canSave ||
+    !nameTrimmed ||
+    !repoUrlTrimmed ||
+    (mode === "edit" && !effectiveProjectId);
+
+  return (
+    <div className="rounded-lg border bg-card p-4" style={{ marginTop: 14 }}>
+      <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 800 }}>{title}</div>
+          <div className="muted" style={{ marginTop: 4 }}>
+            {subtitle}
+          </div>
+        </div>
+        <div className="row gap" style={{ flexWrap: "wrap" }}>
+          <Button type="button" variant="secondary" size="sm" onClick={onReset} disabled={saving}>
+            {resetLabel}
+          </Button>
+          <Button type="button" size="sm" onClick={() => void onSubmit()} disabled={submitDisabled}>
+            {saving ? "处理中…" : submitLabel}
+          </Button>
+        </div>
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void onSubmit();
+        }}
+        className="form"
+        style={{ marginTop: 12 }}
+      >
+        <h3 style={{ marginTop: 0 }}>基础</h3>
+        <label className="label">
+          名称 *
+          <Input value={draft.name} onChange={(e) => onChange({ name: e.target.value })} disabled={saving} />
+        </label>
+        <label className="label">
+          Repo URL *
+          <Input value={draft.repoUrl} onChange={(e) => onChange({ repoUrl: e.target.value })} disabled={saving} />
+        </label>
+        <label className="label">
+          SCM
+          <Select value={draft.scmType} onValueChange={(v) => onChange({ scmType: v })} disabled={saving}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gitlab">gitlab</SelectItem>
+              <SelectItem value="github">github</SelectItem>
+              <SelectItem value="gitee">gitee</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+        <label className="label">
+          默认分支
+          <Input value={draft.defaultBranch} onChange={(e) => onChange({ defaultBranch: e.target.value })} disabled={saving} />
+        </label>
+        <label className="label">
+          Git 认证
+          <Select value={draft.gitAuthMode} onValueChange={(v) => onChange({ gitAuthMode: v as any })} disabled={saving}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="https_pat">https_pat（token）</SelectItem>
+              <SelectItem value="ssh">ssh</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+
+        {mode === "edit" ? (
+          <label className="label">
+            默认 Role Key（可选）
+            <Input
+              value={draft.defaultRoleKey}
+              onChange={(e) => onChange({ defaultRoleKey: e.target.value })}
+              disabled={saving}
+              placeholder="例如：backend-dev（留空=清除）"
+            />
+          </label>
+        ) : null}
+
+        <details style={{ marginTop: 12 }}>
+          <summary>Agent 工作区提示（可选）</summary>
+          <div className="muted" style={{ marginTop: 6 }}>
+            支持模板变量：<code>{"{{workspace}}"}</code> <code>{"{{branch}}"}</code>{" "}
+            <code>{"{{repoUrl}}"}</code> <code>{"{{scmType}}"}</code>{" "}
+            <code>{"{{defaultBranch}}"}</code> <code>{"{{baseBranch}}"}</code>。平台默认可通过{" "}
+            <code>AGENT_WORKSPACE_NOTICE_TEMPLATE</code> 配置。
+          </div>
+          <label className="label">
+            模式
+            <Select
+              value={draft.workspaceNoticeMode}
+              disabled={saving}
+              onValueChange={(v) => onChange({ workspaceNoticeMode: v as WorkspaceNoticeMode })}
+            >
+              <SelectTrigger className="w-[220px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">使用平台默认</SelectItem>
+                <SelectItem value="hidden">隐藏提示</SelectItem>
+                <SelectItem value="custom">自定义</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          {draft.workspaceNoticeMode === "custom" ? (
+            <label className="label">
+              模板
+              <Textarea
+                value={draft.workspaceNoticeTemplate}
+                disabled={saving}
+                onChange={(e) => onChange({ workspaceNoticeTemplate: e.target.value })}
+                rows={4}
+                placeholder="例如：请在 {{workspace}} 中修改；若为 Git 仓库请 git commit。"
+              />
+            </label>
+          ) : null}
+        </details>
+
+        {draft.scmType === "gitlab" ? (
+          <details style={{ marginTop: 12 }}>
+            <summary>GitLab 配置（可选）</summary>
+            <label className="label">
+              GitLab Project ID{mode === "edit" ? "（留空=清除）" : ""}
+              <Input
+                value={draft.gitlabProjectId}
+                onChange={(e) => onChange({ gitlabProjectId: e.target.value })}
+                placeholder="12345"
+                disabled={saving}
+              />
+            </label>
+
+            <label className="label">
+              GitLab Access Token{mode === "edit" ? "（留空=不改）" : ""}
+              <Input
+                type="password"
+                value={draft.gitlabAccessToken}
+                onChange={(e) => onChange({ gitlabAccessToken: e.target.value })}
+                placeholder={
+                  mode === "edit" && effectiveProject?.hasGitlabAccessToken ? "已设置（留空不改）" : "glpat-..."
+                }
+                disabled={saving || (mode === "edit" && draft.gitlabAccessTokenClear)}
+              />
+              {mode === "edit" ? (
+                <span className="row gap" style={{ alignItems: "center" }}>
+                  <Checkbox
+                    checked={draft.gitlabAccessTokenClear}
+                    onCheckedChange={(v) => onChange({ gitlabAccessTokenClear: v === true })}
+                    disabled={saving}
+                  />
+                  <span className="muted">清除 token</span>
+                </span>
+              ) : null}
+            </label>
+
+            <label className="label">
+              GitLab Webhook Secret{mode === "edit" ? "（留空=不改）" : "（可选）"}
+              <Input
+                type="password"
+                value={draft.gitlabWebhookSecret}
+                onChange={(e) => onChange({ gitlabWebhookSecret: e.target.value })}
+                placeholder={mode === "edit" ? "留空不改" : ""}
+                disabled={saving || (mode === "edit" && draft.gitlabWebhookSecretClear)}
+              />
+              {mode === "edit" ? (
+                <span className="row gap" style={{ alignItems: "center" }}>
+                  <Checkbox
+                    checked={draft.gitlabWebhookSecretClear}
+                    onCheckedChange={(v) => onChange({ gitlabWebhookSecretClear: v === true })}
+                    disabled={saving}
+                  />
+                  <span className="muted">清除 secret</span>
+                </span>
+              ) : null}
+            </label>
+          </details>
+        ) : draft.scmType === "github" ? (
+          <details style={{ marginTop: 12 }}>
+            <summary>GitHub 配置（可选）</summary>
+            <label className="label">
+              GitHub Access Token{mode === "edit" ? "（留空=不改）" : ""}
+              <Input
+                type="password"
+                value={draft.githubAccessToken}
+                onChange={(e) => onChange({ githubAccessToken: e.target.value })}
+                placeholder={
+                  mode === "edit" && effectiveProject?.hasGithubAccessToken ? "已设置（留空不改）" : "ghp_... / github_pat_..."
+                }
+                disabled={saving || (mode === "edit" && draft.githubAccessTokenClear)}
+              />
+              {mode === "edit" ? (
+                <span className="row gap" style={{ alignItems: "center" }}>
+                  <Checkbox
+                    checked={draft.githubAccessTokenClear}
+                    onCheckedChange={(v) => onChange({ githubAccessTokenClear: v === true })}
+                    disabled={saving}
+                  />
+                  <span className="muted">清除 token</span>
+                </span>
+              ) : null}
+            </label>
+            <label className="label">
+              <span className="row gap" style={{ alignItems: "center" }}>
+                <Checkbox
+                  checked={draft.githubPollingEnabled}
+                  onCheckedChange={(v) => onChange({ githubPollingEnabled: v === true })}
+                  disabled={saving}
+                />
+                启用 GitHub 轮询监听（每分钟导入 Issues/PR）
+              </span>
+            </label>
+            {mode === "edit" ? (
+              <div className="muted">
+                上次同步：{effectiveProject?.githubPollingCursor ? new Date(effectiveProject.githubPollingCursor).toLocaleString() : "未同步"}
+              </div>
+            ) : null}
+          </details>
+        ) : null}
+
+        {!canSave ? (
+          <div className="muted" style={{ marginTop: 10 }}>
+            需要管理员权限才能{mode === "edit" ? "保存" : "创建"} Project。
+          </div>
+        ) : null}
+      </form>
+    </div>
+  );
+}
+
 export function ProjectsSection(props: Props) {
   const {
     active,
@@ -44,6 +323,7 @@ export function ProjectsSection(props: Props) {
   const auth = useAuth();
 
   const [savingProjectEdit, setSavingProjectEdit] = useState(false);
+  const [savingProjectCreate, setSavingProjectCreate] = useState(false);
 
   const [editName, setEditName] = useState("");
   const [editRepoUrl, setEditRepoUrl] = useState("");
@@ -86,7 +366,7 @@ export function ProjectsSection(props: Props) {
     useState<WorkspaceNoticeMode>("default");
   const [projectAgentWorkspaceNoticeTemplate, setProjectAgentWorkspaceNoticeTemplate] =
     useState("");
-  const [manageTab, setManageTab] = useState<"view" | "edit" | "create">("view");
+  const [manageTab, setManageTab] = useState<ManageMode>("edit");
 
   useEffect(() => {
     if (!effectiveProject) return;
@@ -133,7 +413,7 @@ export function ProjectsSection(props: Props) {
       return;
     }
     if (!effectiveProjectId) {
-      setManageTab("view");
+      setManageTab("edit");
       return;
     }
   }, [active, loading, projects.length]);
@@ -174,12 +454,28 @@ export function ProjectsSection(props: Props) {
     }
   }, [effectiveProject]);
 
+  const onResetProjectCreate = useCallback(() => {
+    setProjectName("");
+    setProjectRepoUrl("");
+    setProjectScmType("gitlab");
+    setProjectDefaultBranch("main");
+    setProjectWorkspaceMode("worktree");
+    setProjectGitAuthMode("https_pat");
+    setProjectGitlabProjectId("");
+    setProjectGitlabAccessToken("");
+    setProjectGitlabWebhookSecret("");
+    setProjectGithubAccessToken("");
+    setProjectGithubPollingEnabled(false);
+    setProjectAgentWorkspaceNoticeMode("default");
+    setProjectAgentWorkspaceNoticeTemplate("");
+  }, []);
+
   const onCreateProject = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
+    async () => {
       setError(null);
       if (!requireAdmin()) return;
 
+      setSavingProjectCreate(true);
       try {
         const gitlabProjectIdRaw = projectGitlabProjectId.trim();
         const gitlabProjectId = gitlabProjectIdRaw ? Number(gitlabProjectIdRaw) : undefined;
@@ -203,24 +499,14 @@ export function ProjectsSection(props: Props) {
           githubAccessToken: projectGithubAccessToken.trim() || undefined,
           githubPollingEnabled: projectGithubPollingEnabled,
         });
-        setProjectName("");
-        setProjectRepoUrl("");
-        setProjectScmType("gitlab");
-        setProjectDefaultBranch("main");
-        setProjectWorkspaceMode("worktree");
-        setProjectGitAuthMode("https_pat");
-        setProjectGitlabProjectId("");
-        setProjectGitlabAccessToken("");
-        setProjectGitlabWebhookSecret("");
-        setProjectGithubAccessToken("");
-        setProjectGithubPollingEnabled(false);
-        setProjectAgentWorkspaceNoticeMode("default");
-        setProjectAgentWorkspaceNoticeTemplate("");
+        onResetProjectCreate();
         await onRefreshGlobal();
         onSelectedProjectIdChange(p.id);
         setManageTab("edit");
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSavingProjectCreate(false);
       }
     },
     [
@@ -241,6 +527,8 @@ export function ProjectsSection(props: Props) {
       projectWorkspaceMode,
       requireAdmin,
       setError,
+      onResetProjectCreate,
+      setSavingProjectCreate,
     ],
   );
 
@@ -349,47 +637,138 @@ export function ProjectsSection(props: Props) {
 
   const canSave = auth.hasRole(["admin"]);
 
+  const draft: ProjectManageDraft = manageTab === "edit"
+    ? {
+      name: editName,
+      repoUrl: editRepoUrl,
+      scmType: editScmType,
+      defaultBranch: editDefaultBranch,
+      workspaceMode: editWorkspaceMode,
+      gitAuthMode: editGitAuthMode,
+      defaultRoleKey: editDefaultRoleKey,
+
+      workspaceNoticeMode: editWorkspaceNoticeMode,
+      workspaceNoticeTemplate: editWorkspaceNoticeTemplate,
+
+      gitlabProjectId: editGitlabProjectId,
+      gitlabAccessToken: editGitlabAccessToken,
+      gitlabAccessTokenClear: editGitlabAccessTokenClear,
+      gitlabWebhookSecret: editGitlabWebhookSecret,
+      gitlabWebhookSecretClear: editGitlabWebhookSecretClear,
+
+      githubAccessToken: editGithubAccessToken,
+      githubAccessTokenClear: editGithubAccessTokenClear,
+      githubPollingEnabled: editGithubPollingEnabled,
+    }
+    : {
+      name: projectName,
+      repoUrl: projectRepoUrl,
+      scmType: projectScmType,
+      defaultBranch: projectDefaultBranch,
+      workspaceMode: projectWorkspaceMode,
+      gitAuthMode: projectGitAuthMode,
+      defaultRoleKey: "",
+
+      workspaceNoticeMode: projectAgentWorkspaceNoticeMode,
+      workspaceNoticeTemplate: projectAgentWorkspaceNoticeTemplate,
+
+      gitlabProjectId: projectGitlabProjectId,
+      gitlabAccessToken: projectGitlabAccessToken,
+      gitlabAccessTokenClear: false,
+      gitlabWebhookSecret: projectGitlabWebhookSecret,
+      gitlabWebhookSecretClear: false,
+
+      githubAccessToken: projectGithubAccessToken,
+      githubAccessTokenClear: false,
+      githubPollingEnabled: projectGithubPollingEnabled,
+    };
+
+  const onChangeDraft = useCallback((patch: Partial<ProjectManageDraft>) => {
+    if (manageTab === "edit") {
+      if (patch.name !== undefined) setEditName(patch.name);
+      if (patch.repoUrl !== undefined) setEditRepoUrl(patch.repoUrl);
+      if (patch.scmType !== undefined) setEditScmType(patch.scmType);
+      if (patch.defaultBranch !== undefined) setEditDefaultBranch(patch.defaultBranch);
+      if (patch.workspaceMode !== undefined) setEditWorkspaceMode(patch.workspaceMode);
+      if (patch.gitAuthMode !== undefined) setEditGitAuthMode(patch.gitAuthMode);
+      if (patch.defaultRoleKey !== undefined) setEditDefaultRoleKey(patch.defaultRoleKey);
+
+      if (patch.workspaceNoticeMode !== undefined) setEditWorkspaceNoticeMode(patch.workspaceNoticeMode);
+      if (patch.workspaceNoticeTemplate !== undefined) setEditWorkspaceNoticeTemplate(patch.workspaceNoticeTemplate);
+
+      if (patch.gitlabProjectId !== undefined) setEditGitlabProjectId(patch.gitlabProjectId);
+      if (patch.gitlabAccessToken !== undefined) setEditGitlabAccessToken(patch.gitlabAccessToken);
+      if (patch.gitlabAccessTokenClear !== undefined) setEditGitlabAccessTokenClear(patch.gitlabAccessTokenClear);
+      if (patch.gitlabWebhookSecret !== undefined) setEditGitlabWebhookSecret(patch.gitlabWebhookSecret);
+      if (patch.gitlabWebhookSecretClear !== undefined) setEditGitlabWebhookSecretClear(patch.gitlabWebhookSecretClear);
+
+      if (patch.githubAccessToken !== undefined) setEditGithubAccessToken(patch.githubAccessToken);
+      if (patch.githubAccessTokenClear !== undefined) setEditGithubAccessTokenClear(patch.githubAccessTokenClear);
+      if (patch.githubPollingEnabled !== undefined) setEditGithubPollingEnabled(patch.githubPollingEnabled);
+      return;
+    }
+
+    if (patch.name !== undefined) setProjectName(patch.name);
+    if (patch.repoUrl !== undefined) setProjectRepoUrl(patch.repoUrl);
+    if (patch.scmType !== undefined) setProjectScmType(patch.scmType);
+    if (patch.defaultBranch !== undefined) setProjectDefaultBranch(patch.defaultBranch);
+    if (patch.workspaceMode !== undefined) setProjectWorkspaceMode(patch.workspaceMode);
+    if (patch.gitAuthMode !== undefined) setProjectGitAuthMode(patch.gitAuthMode);
+
+    if (patch.workspaceNoticeMode !== undefined) setProjectAgentWorkspaceNoticeMode(patch.workspaceNoticeMode);
+    if (patch.workspaceNoticeTemplate !== undefined) setProjectAgentWorkspaceNoticeTemplate(patch.workspaceNoticeTemplate);
+
+    if (patch.gitlabProjectId !== undefined) setProjectGitlabProjectId(patch.gitlabProjectId);
+    if (patch.gitlabAccessToken !== undefined) setProjectGitlabAccessToken(patch.gitlabAccessToken);
+    if (patch.gitlabWebhookSecret !== undefined) setProjectGitlabWebhookSecret(patch.gitlabWebhookSecret);
+
+    if (patch.githubAccessToken !== undefined) setProjectGithubAccessToken(patch.githubAccessToken);
+    if (patch.githubPollingEnabled !== undefined) setProjectGithubPollingEnabled(patch.githubPollingEnabled);
+  }, [
+    manageTab,
+    setEditDefaultBranch,
+    setEditDefaultRoleKey,
+    setEditGitAuthMode,
+    setEditGithubAccessToken,
+    setEditGithubAccessTokenClear,
+    setEditGithubPollingEnabled,
+    setEditGitlabAccessToken,
+    setEditGitlabAccessTokenClear,
+    setEditGitlabProjectId,
+    setEditGitlabWebhookSecret,
+    setEditGitlabWebhookSecretClear,
+    setEditName,
+    setEditRepoUrl,
+    setEditScmType,
+    setEditWorkspaceMode,
+    setEditWorkspaceNoticeMode,
+    setEditWorkspaceNoticeTemplate,
+    setProjectAgentWorkspaceNoticeMode,
+    setProjectAgentWorkspaceNoticeTemplate,
+    setProjectDefaultBranch,
+    setProjectGitAuthMode,
+    setProjectGithubAccessToken,
+    setProjectGithubPollingEnabled,
+    setProjectGitlabAccessToken,
+    setProjectGitlabProjectId,
+    setProjectGitlabWebhookSecret,
+    setProjectName,
+    setProjectRepoUrl,
+    setProjectScmType,
+    setProjectWorkspaceMode,
+  ]);
+
   return (
     <>
       <section className="card" hidden={!active} style={{ marginBottom: 16 }}>
         <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
           <div>
             <h2 style={{ marginTop: 0, marginBottom: 4 }}>项目管理</h2>
-            <div className="muted">查看 / 修改当前 Project，或创建新的 Project。</div>
+            <div className="muted">编辑当前 Project，或创建新的 Project。</div>
           </div>
-          {manageTab === "edit" ? (
-            <div className="row gap" style={{ flexWrap: "wrap" }}>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={onResetProjectEdit}
-                disabled={!effectiveProjectId || savingProjectEdit}
-              >
-                重置
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void onSaveProjectEdit()}
-                disabled={!effectiveProjectId || savingProjectEdit || !canSave}
-              >
-                {savingProjectEdit ? "保存中…" : "保存"}
-              </Button>
-            </div>
-          ) : null}
         </div>
 
         <div className="row gap" style={{ marginTop: 10, flexWrap: "wrap" }}>
-          <Button
-            type="button"
-            size="sm"
-            variant={manageTab === "view" ? "default" : "secondary"}
-            onClick={() => setManageTab("view")}
-            disabled={!projects.length || !effectiveProjectId}
-          >
-            查看当前项目
-          </Button>
           <Button
             type="button"
             size="sm"
@@ -409,57 +788,20 @@ export function ProjectsSection(props: Props) {
           </Button>
         </div>
 
-        {manageTab === "view" ? (
-          !effectiveProject ? (
-            <div className="muted" style={{ marginTop: 10 }}>
-              暂无 Project，请先创建。
-            </div>
-          ) : (
-            <div className="form" style={{ marginTop: 10 }}>
-              <h3 style={{ marginTop: 0 }}>基础</h3>
-              <label className="label">
-                名称
-                <Input value={effectiveProject.name ?? ""} readOnly />
-              </label>
-              <label className="label">
-                Repo URL
-                <Textarea
-                  value={effectiveProject.repoUrl ?? ""}
-                  readOnly
-                  rows={2}
-                  style={{ resize: "none" }}
-                />
-              </label>
-              <div className="grid2" style={{ marginBottom: 0 }}>
-                <label className="label">
-                  SCM
-                  <Input value={effectiveProject.scmType ?? ""} readOnly />
-                </label>
-                <label className="label">
-                  默认分支
-                  <Input value={effectiveProject.defaultBranch ?? ""} readOnly />
-                </label>
-              </div>
-              <div className="grid2" style={{ marginBottom: 0 }}>
-                <label className="label">
-                  Workspace 模式
-                  <Input value={effectiveProject.workspaceMode ?? ""} readOnly />
-                </label>
-                <label className="label">
-                  Git 认证
-                  <Input value={effectiveProject.gitAuthMode ?? ""} readOnly />
-                </label>
-              </div>
-              <label className="label">
-                默认 Role Key
-                <Input value={effectiveProject.defaultRoleKey ?? ""} readOnly placeholder="—" />
-              </label>
-              <div className="muted" style={{ marginTop: 8 }}>
-                {effectiveProject.createdAt ? `创建时间：${new Date(effectiveProject.createdAt).toLocaleString()}` : ""}
-              </div>
-            </div>
-          )
-        ) : manageTab === "edit" ? (
+        <ProjectManageForm
+          mode={manageTab}
+          effectiveProjectId={effectiveProjectId}
+          effectiveProject={effectiveProject}
+          saving={manageTab === "edit" ? savingProjectEdit : savingProjectCreate}
+          canSave={canSave}
+          draft={draft}
+          onChange={onChangeDraft}
+          onReset={manageTab === "edit" ? onResetProjectEdit : onResetProjectCreate}
+          onSubmit={manageTab === "edit" ? onSaveProjectEdit : onCreateProject}
+        />
+
+        <div style={{ display: "none" }}>
+        {manageTab === "edit" ? (
           !effectiveProjectId ? (
             <div className="muted" style={{ marginTop: 10 }}>
               请先创建/选择 Project
@@ -685,7 +1027,14 @@ export function ProjectsSection(props: Props) {
               用于配置仓库、SCM、认证方式等。
             </div>
 
-            <form onSubmit={(e) => void onCreateProject(e)} className="form" style={{ marginTop: 12 }}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void onCreateProject();
+              }}
+              className="form"
+              style={{ marginTop: 12 }}
+            >
               <div className="grid2" style={{ marginBottom: 0 }}>
                 <div>
                   <label className="label">
@@ -808,12 +1157,15 @@ export function ProjectsSection(props: Props) {
                 </details>
               ) : null}
 
-              <Button type="submit" disabled={!projectName.trim() || !projectRepoUrl.trim()}>
-                创建
-              </Button>
+              {!canSave ? (
+                <div className="muted" style={{ marginTop: 10 }}>
+                  需要管理员权限才能创建 Project。
+                </div>
+              ) : null}
             </form>
           </div>
         )}
+        </div>
       </section>
 
       <section className="card" hidden={!active}>

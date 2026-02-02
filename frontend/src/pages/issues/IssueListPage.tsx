@@ -3,6 +3,7 @@ import { IssueDetailOverlay } from "./sections/IssueDetailOverlay";
 import { IssuesTopBar } from "./sections/IssuesTopBar";
 import { KanbanBoard } from "./sections/KanbanBoard";
 import { useIssueListController } from "./useIssueListController";
+import { GlobalErrorToast } from "@/components/GlobalErrorToast";
 
 export function IssueListPage() {
   const model = useIssueListController();
@@ -13,9 +14,7 @@ export function IssueListPage() {
 
       <div>
         {model.error ? (
-          <div role="alert" className="alert">
-            {model.error}
-          </div>
+          <GlobalErrorToast message={model.error} onDismiss={model.clearError} />
         ) : null}
       </div>
 
@@ -30,4 +29,3 @@ export function IssueListPage() {
     </div>
   );
 }
-

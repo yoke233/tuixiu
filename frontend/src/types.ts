@@ -255,10 +255,35 @@ export type RoleTemplate = {
   promptTemplate?: string | null;
   initScript?: string | null;
   initTimeoutSeconds: number;
+  agentInputs?: AgentInputsManifestV1 | null;
   envKeys?: string[];
   envText?: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AgentInputsTargetRoot = "WORKSPACE" | "USER_HOME";
+export type AgentInputsApply = "bindMount" | "downloadExtract" | "writeFile" | "copy";
+export type AgentInputsAccess = "ro" | "rw";
+
+export type AgentInputsEnvPatch = Partial<Record<"HOME" | "USER" | "LOGNAME", string>>;
+
+export type AgentInputItem = {
+  id: string;
+  name?: string;
+  apply: AgentInputsApply;
+  access?: AgentInputsAccess;
+  source:
+    | { type: "hostPath"; path: string }
+    | { type: "httpZip"; uri: string; contentHash?: string }
+    | { type: "inlineText"; text: string };
+  target: { root: AgentInputsTargetRoot; path: string };
+};
+
+export type AgentInputsManifestV1 = {
+  version: 1;
+  envPatch?: AgentInputsEnvPatch;
+  items: AgentInputItem[];
 };
 
 export type GitHubIssue = {

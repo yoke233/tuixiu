@@ -29,6 +29,7 @@ import { RolesSection } from "./sections/RolesSection";
 import { SettingsSection } from "./sections/SettingsSection";
 import { SkillsSection } from "./sections/SkillsSection";
 import { TextTemplatesSection } from "./sections/TextTemplatesSection";
+import { GlobalErrorToast } from "@/components/GlobalErrorToast";
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -347,11 +348,7 @@ export function AdminPage() {
             </div>
           </div>
 
-          {error ? (
-            <div role="alert" className="alert">
-              {error}
-            </div>
-          ) : null}
+          {error ? <GlobalErrorToast message={error} onDismiss={() => setError(null)} /> : null}
 
           <ApprovalsSection
             active={activeSection === "approvals"}

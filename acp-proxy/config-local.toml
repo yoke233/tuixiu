@@ -1,0 +1,36 @@
+# 复制为 config.toml 使用
+orchestrator_url = "ws://host.docker.internal:3000/ws/agent"
+auth_token = ""
+register_url = "http://host.docker.internal:3000/api/admin/acp-proxy/register"
+bootstrap_token = "154f78aeed244d329303fddf851d44fd"
+
+heartbeat_seconds = 30
+mock_mode = false
+
+# 在 sandbox 内启动 ACP agent 的命令（建议镜像内预装 codex-acp，然后直接运行）
+agent_command = ["codex-acp"]
+
+[sandbox]
+# 统一沙箱配置：provider + image + 运行参数
+terminalEnabled = true
+
+# provider: "container_oci" | "boxlite_oci" | "host_process" | "bwrap"
+provider = "bwrap"
+
+# 容器/BoxLite 内的工作目录（Run 的 workspace 固定在 guest 内 /workspace；通常由 `acp_open.init.script` 负责 git clone）
+workingDir = "/workspace"
+
+workspaceMode = "mount"
+
+# 宿主机 workspace 根目录（仅 mount 模式需要）
+workspaceHostRoot = "/workspaces"
+
+
+[agent]
+# 上报到 orchestrator 的 agent 识别信息（建议全局唯一 id）
+id = "codex-agent-1"
+name = "codex-agent-1"
+max_concurrent = 5
+
+[agent.capabilities]
+languages = ["typescript"]

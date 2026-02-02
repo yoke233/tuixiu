@@ -25,6 +25,7 @@ import {
 import { buildInitPipeline } from "../../utils/initPipeline.js";
 import { stringifyContextInventory } from "../../utils/contextInventory.js";
 import { assertWorkspacePolicyCompat, resolveWorkspacePolicy } from "../../utils/workspacePolicy.js";
+import { mergeAgentInputsManifests } from "../agentInputs/mergeAgentInputs.js";
 
 export type WorkspaceMode = "worktree" | "clone";
 
@@ -627,8 +628,8 @@ export async function startIssueRun(opts: {
           };
         });
 
-        return {
-          version: 1,
+        const base = {
+          version: 1 as const,
           items: [
             {
               id: "workspace",
@@ -640,6 +641,8 @@ export async function startIssueRun(opts: {
             ...skillItems,
           ],
         };
+
+        return mergeAgentInputsManifests(base, (role as any)?.agentInputs ?? null);
       })(),
     };
 

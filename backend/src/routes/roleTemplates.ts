@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 import type { PrismaDeps } from "../db.js";
+import { normalizeAgentInputs } from "../modules/agentInputs/agentInputsSchema.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { listEnvKeys } from "../utils/envText.js";
 
@@ -32,8 +33,8 @@ async function isAdminRequest(request: any): Promise<boolean> {
 }
 
 function toRoleDto(role: any, opts?: { includeEnvText?: boolean }): any {
-  const { envText, ...rest } = role ?? {};
-  const base = { ...rest, envKeys: listEnvKeys(envText) };
+  const { envText, agentInputs, ...rest } = role ?? {};
+  const base = { ...rest, agentInputs: agentInputs ?? null, envKeys: listEnvKeys(envText) };
   return opts?.includeEnvText ? { ...base, envText: envText ?? null } : base;
 }
 
@@ -65,6 +66,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         initScript: z.string().optional(),
         initTimeoutSeconds: z.coerce.number().int().positive().max(3600).default(300),
         envText: z.string().max(20000).optional(),
+        agentInputs: z.unknown().optional(),
         workspacePolicy: z.enum(["git", "mount", "empty", "bundle"]).optional(),
         executionProfileId: z.string().uuid().optional(),
       });
@@ -72,6 +74,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const { projectId } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
       const envText = normalizeEnvText(body.envText);
+      const agentInputs = normalizeAgentInputs(body.agentInputs);
 
       const project = await deps.prisma.project.findUnique({ where: { id: projectId } });
       if (!project) {
@@ -91,6 +94,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
           workspacePolicy: body.workspacePolicy ?? null,
           executionProfileId: body.executionProfileId ?? null,
           ...(envText !== undefined ? { envText } : {}),
+          ...(agentInputs !== undefined ? { agentInputs } : {}),
         },
       });
 
@@ -106,6 +110,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
         initScript: z.string().optional(),
         initTimeoutSeconds: z.coerce.number().int().positive().max(3600).optional(),
         envText: z.string().max(20000).nullable().optional(),
+        agentInputs: z.unknown().nullable().optional(),
         workspacePolicy: z.enum(["git", "mount", "empty", "bundle"]).nullable().optional(),
         executionProfileId: z.string().uuid().nullable().optional(),
       });
@@ -113,6 +118,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const { projectId, roleId } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
       const envText = normalizeEnvText(body.envText);
+      const agentInputs = normalizeAgentInputs(body.agentInputs);
 
       const existing = await deps.prisma.roleTemplate.findFirst({
         where: { id: roleId, projectId },
@@ -132,6 +138,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
           workspacePolicy: body.workspacePolicy,
           executionProfileId: body.executionProfileId,
           ...(envText !== undefined ? { envText } : {}),
+          ...(agentInputs !== undefined ? { agentInputs } : {}),
         },
       });
 

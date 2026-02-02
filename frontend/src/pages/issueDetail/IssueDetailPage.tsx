@@ -8,6 +8,7 @@ import { ConsoleCard } from "./sections/ConsoleCard";
 import { IssueSummaryCard } from "./sections/IssueSummaryCard";
 import { PageHeader } from "./sections/PageHeader";
 import { RunCard } from "./sections/RunCard";
+import { GlobalErrorToast } from "@/components/GlobalErrorToast";
 
 export function IssueDetailPage() {
   const params = useParams();
@@ -19,11 +20,7 @@ export function IssueDetailPage() {
     <div className="container">
       <PageHeader model={model} />
 
-      {model.error ? (
-        <div role="alert" className="alert">
-          {model.error}
-        </div>
-      ) : null}
+      {model.error ? <GlobalErrorToast message={model.error} onDismiss={model.clearError} /> : null}
 
       {model.loading && !model.issue ? (
         <div className="muted">加载中…</div>

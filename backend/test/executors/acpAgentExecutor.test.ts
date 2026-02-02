@@ -193,7 +193,6 @@ describe("acpAgentExecutor", () => {
             TUIXIU_GIT_AUTH_MODE: "https_pat",
             TUIXIU_RUN_ID: "r1",
             TUIXIU_RUN_BRANCH: "run-branch",
-            TUIXIU_WORKSPACE: "C:/ws",
             TUIXIU_WORKSPACE_GUEST: "/workspace",
             TUIXIU_PROJECT_ID: "p1",
             TUIXIU_PROJECT_NAME: "P1",

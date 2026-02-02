@@ -1,0 +1,184 @@
+name: full-scope-lock
+version: 1
+description: Full-scope locked OpenSpec workflow - ALL requirements MUST land (no defer)
+artifacts:
+  - id: intake
+    generates: intake.md
+    description: Canonical requirement intake list (source of truth). No drops allowed.
+    template: intake.md
+    instruction: |
+      Create intake.md as the SINGLE source of truth for scope.
+
+      SCOPE LOCK (MANDATORY):
+      - Extract ALL requirement points mentioned by the user in the conversation/context.
+      - Do NOT merge away distinct requirements. Keep them separately numbered.
+      - NO requirement may be deferred, postponed, or marked as "future work".
+      - BANNED phrases anywhere: "out of scope", "later", "phase 2", "future enhancement", "postpone", "next iteration".
+      - If a requirement is unclear/complex/risky, you MUST still include it as a requirement item with:
+        - Assumptions (what we assume to proceed)
+        - Open questions (what must be clarified)
+        - Acceptance signals (how we know it is satisfied)
+
+      Output format (MUST follow exactly):
+      # Requirement Intake
+      ## R1 <short title>
+      - Description: ...
+      - Rationale: ...
+      - Acceptance signals: ...
+      - Assumptions: ...
+      - Open questions: ...
+      - Dependencies/Constraints: ...
+
+      ## R2 ...
+      (repeat)
+
+      Completeness check (MUST include):
+      - Total requirements captured: <N>
+      - Any dropped requirement? MUST be "no"
+    requires: []
+
+  - id: proposal
+    generates: proposal.md
+    description: Proposal derived from intake; capabilities MUST cover all R-items.
+    template: proposal.md
+    instruction: |
+      Create proposal.md. It MUST be derived from intake.md and MUST cover ALL requirements.
+
+      HARD RULES:
+      - Every requirement (R1..RN) MUST map to >=1 Capability.
+      - No requirement may be excluded. No deferral language allowed (see banned phrases).
+      - If a requirement is ambiguous, create a capability anyway and keep assumptions/open questions.
+
+      Sections (MUST include):
+      - Why (1-2 sentences)
+      - What Changes (bullets; mark BREAKING)
+      - Capabilities (CRITICAL):
+        For each capability:
+        - Name: kebab-case
+        - Scope: 1-2 sentences
+        - Maps to: R# list (e.g., R1,R3)
+      - Impact (code/APIs/deps/systems)
+
+      Completeness check (MUST include):
+      - Requirements covered: list all R# and the capability names that cover them
+      - Any uncovered requirement? MUST be "no"
+    requires: [intake]
+
+  - id: specs
+    generates: specs/**/*.md
+    description: One spec per capability; each requirement has scenarios; must trace back to intake R#
+    template: spec.md
+    instruction: |
+      Create specification files for EVERY capability in proposal.md.
+
+      RULES:
+      - One spec file per capability: specs/<capability>/spec.md
+      - Specs define WHAT. Use SHALL/MUST. No "should/may".
+      - Each requirement block must be:
+        ### Requirement: <name>
+        <normative description>
+        #### Scenario: <name>
+        - **WHEN** ...
+        - **THEN** ...
+
+      CRITICAL:
+      - Scenario headings MUST use exactly 4 hashtags: #### Scenario:
+      - Every spec requirement MUST map back to intake items with a "Trace" line:
+        Trace: R#(,R#...)
+
+      Validation steps (MUST do and reflect in output):
+      - For each intake requirement R#, ensure it appears in at least one spec file trace line.
+      - If something cannot be specified due to missing info:
+        - still create a requirement marked "Placeholder"
+        - include assumptions/open questions
+        - keep Trace: R#
+
+      Completeness report (MUST add a file):
+      - Create specs/TRACE.md with a table:
+        R# | Covered in capability | Spec file | Requirement name(s) | Notes
+    requires: [proposal]
+
+  - id: design
+    generates: design.md
+    description: ALWAYS create design.md; even minimal. Must address risks/migration/open questions.
+    template: design.md
+    instruction: |
+      Create design.md ALWAYS (never skip).
+
+      HARD RULES:
+      - Must reference proposal.md and specs.
+      - Must explicitly list and address ALL open questions from intake.md (even if unresolved).
+      - If unresolved: propose decision options and what info is needed.
+
+      Sections (MUST include):
+      - Context
+      - Goals / Non-Goals (Non-Goals allowed ONLY if NOT conflicting with intake requirements)
+      - Decisions (with rationale + alternatives)
+      - Risks / Trade-offs ([Risk] -> Mitigation)
+      - Migration Plan (if applicable)
+      - Open Questions (carry over from intake, with status)
+    requires: [proposal, specs]
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist. MUST cover all spec requirements and all intake R# via trace.
+    template: tasks.md
+    instruction: |
+      Create tasks.md as an executable checklist.
+
+      FORMAT (STRICT):
+      - Group under "## 1.", "## 2." headings
+      - Each task MUST be a checkbox: - [ ] X.Y Task description
+
+      HARD RULES:
+      - Every intake requirement R# MUST map to >=1 task.
+      - Every spec requirement MUST map to >=1 task.
+      - NO deferral language allowed (banned phrases apply).
+      - If a task is blocked by missing info, still create it and label as "BLOCKED:" with the question.
+
+      REQUIRED SECTIONS:
+      ## 1. Setup
+      ## 2. Core
+      ## 3. Validation
+      ## 4. Rollout (if applicable)
+
+      At the end, MUST include:
+      ## Requirement → Task Trace
+      - R1: 1.2,2.1,...
+      - R2: ...
+      - ...
+      And a check:
+      - Any requirement without tasks? MUST be "no"
+    requires: [specs, design]
+
+  - id: test-plan
+    generates: evidence/test_plan.md
+    description: Change-scoped test plan. Must trace R# and spec requirements to tests/risks.
+    template: test-plan.md
+    instruction: |
+      Create evidence/test_plan.md as PR acceptance evidence.
+      This is PLAN ONLY. Do not write test code here.
+
+      HARD RULES:
+      - Must run offline by default (no external network dependencies).
+      - One command to run all tests.
+      - Coverage must improve; otherwise explain why and provide alternative evidence.
+      - Per impacted module: at least 1 normal + 2 boundary + 2 error cases.
+      - Avoid flaky tests: fix time, timezone, random seed.
+      - Must include a trace matrix that covers ALL intake requirements R#.
+
+      Output order:
+      1) Change fingerprint (BASE_REF, HEAD_SHA, DIFF_CMD)
+      2) Coverage map
+      3) Test cards (titles only)
+      4) Evidence (run command + coverage before/after)
+      5) Trace matrix (R# -> spec req -> tests -> risks)
+    requires: [tasks]
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    Read context files and execute pending tasks.
+    Mark tasks complete as you go.
+    If you hit blockers, STOP and ask for clarification (do not continue with guesses that change behavior).

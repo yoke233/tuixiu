@@ -19,6 +19,15 @@ if (typeof Element !== "undefined") {
   if (typeof proto.scrollIntoView !== "function") proto.scrollIntoView = () => undefined;
 }
 
+// Radix useSize relies on ResizeObserver which jsdom doesn't provide by default.
+if (typeof (globalThis as any).ResizeObserver === "undefined") {
+  (globalThis as any).ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
 
