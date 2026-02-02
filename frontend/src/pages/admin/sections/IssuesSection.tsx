@@ -99,7 +99,7 @@ export function IssuesSection(props: Props) {
 
   return (
     <>
-      <section id="issue-github-import" className="card" hidden={!active}>
+      <section id="issue-github-import" style={{ marginBottom: 16 }} className="card" hidden={!active}>
         <h2 style={{ marginTop: 0 }}>导入 GitHub Issue</h2>
         {effectiveProject?.scmType?.toLowerCase() === "github" ? (
           <form onSubmit={(e) => void onImportGithubIssue(e)} className="form">

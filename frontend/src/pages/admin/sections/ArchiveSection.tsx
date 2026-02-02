@@ -4,7 +4,9 @@ import { Link } from "react-router-dom";
 import { listIssues, updateIssue } from "../../../api/issues";
 import { StatusBadge } from "../../../components/StatusBadge";
 import type { Issue, IssueStatus } from "../../../types";
+import { getShowArchivedIssues, setShowArchivedIssues } from "../../../utils/settings";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -41,6 +43,9 @@ export function ArchiveSection(props: Props) {
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [archiveBusyId, setArchiveBusyId] = useState("");
   const [archiveReloadToken, setArchiveReloadToken] = useState(0);
+  const [showArchivedOnBoard, setShowArchivedOnBoardState] = useState<boolean>(() =>
+    getShowArchivedIssues(),
+  );
 
   useEffect(() => {
     if (!active) return;
@@ -105,6 +110,11 @@ export function ArchiveSection(props: Props) {
     [onRefreshGlobal, requireAdmin, setError],
   );
 
+  const onShowArchivedOnBoardChange = useCallback((next: boolean) => {
+    setShowArchivedOnBoardState(next);
+    setShowArchivedIssues(next);
+  }, []);
+
   return (
     <section className="card" style={{ gridColumn: "1 / -1" }} hidden={!active}>
       <div className="row spaceBetween" style={{ alignItems: "baseline" }}>
@@ -122,6 +132,16 @@ export function ArchiveSection(props: Props) {
           刷新
         </Button>
       </div>
+
+      <label className="row gap" style={{ alignItems: "center", marginTop: 10 }}>
+        <Checkbox
+          aria-label="主界面显示已归档 Issue"
+          checked={showArchivedOnBoard}
+          onCheckedChange={(v) => onShowArchivedOnBoardChange(v === true)}
+        />
+        <span>主界面显示已归档 Issue</span>
+        <span className="muted">影响看板展示，不影响归档列表筛选。</span>
+      </label>
 
       {!effectiveProjectId ? (
         <div className="muted">请先创建 Project</div>

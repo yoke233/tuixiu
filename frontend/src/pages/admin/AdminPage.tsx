@@ -399,53 +399,41 @@ export function AdminPage() {
             onLoadingChange={setSkillsLoading}
           />
 
-          <div
-            className="grid2"
-            hidden={
-              activeSection === "approvals" ||
-              activeSection === "settings" ||
-              activeSection === "acpSessions" ||
-              activeSection === "policy" ||
-              activeSection === "skills" ||
-              activeSection === "textTemplates"
-            }
-          >
-            <ProjectsSection
-              active={activeSection === "projects"}
-              loading={loading}
-              projects={projects}
-              effectiveProject={effectiveProject}
-              effectiveProjectId={effectiveProjectId}
-              requireAdmin={requireAdmin}
-              setError={setError}
-              onRefreshGlobal={refresh}
-              onSelectedProjectIdChange={setSelectedProjectId}
-            />
+          <ProjectsSection
+            active={activeSection === "projects"}
+            loading={loading}
+            projects={projects}
+            effectiveProject={effectiveProject}
+            effectiveProjectId={effectiveProjectId}
+            requireAdmin={requireAdmin}
+            setError={setError}
+            onRefreshGlobal={refresh}
+            onSelectedProjectIdChange={setSelectedProjectId}
+          />
 
-            <IssuesSection
-              active={activeSection === "issues"}
-              effectiveProject={effectiveProject}
-              effectiveProjectId={effectiveProjectId}
-              requireAdmin={requireAdmin}
-              setError={setError}
-              onRefreshGlobal={refresh}
-            />
+          <IssuesSection
+            active={activeSection === "issues"}
+            effectiveProject={effectiveProject}
+            effectiveProjectId={effectiveProjectId}
+            requireAdmin={requireAdmin}
+            setError={setError}
+            onRefreshGlobal={refresh}
+          />
 
-            <RolesSection
-              active={activeSection === "roles"}
-              effectiveProjectId={effectiveProjectId}
-              requireAdmin={requireAdmin}
-              setError={setError}
-            />
+          <RolesSection
+            active={activeSection === "roles"}
+            effectiveProjectId={effectiveProjectId}
+            requireAdmin={requireAdmin}
+            setError={setError}
+          />
 
-            <ArchiveSection
-              active={activeSection === "archive"}
-              effectiveProjectId={effectiveProjectId}
-              requireAdmin={requireAdmin}
-              setError={setError}
-              onRefreshGlobal={refresh}
-            />
-          </div>
+          <ArchiveSection
+            active={activeSection === "archive"}
+            effectiveProjectId={effectiveProjectId}
+            requireAdmin={requireAdmin}
+            setError={setError}
+            onRefreshGlobal={refresh}
+          />
         </div>
       </main>
     </div>

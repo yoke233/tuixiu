@@ -159,7 +159,7 @@ export function RolesSection(props: Props) {
     setRoleInitScript(role.initScript ?? "");
     setRoleInitTimeoutSeconds(String(role.initTimeoutSeconds ?? 300));
     setRoleEnvText(role.envText ?? "");
-    queueMicrotask(() => roleCreateKeyRef.current?.focus());
+    setTimeout(() => roleCreateKeyRef.current?.focus(), 0);
   }, []);
 
   const onCreateRole = useCallback(
@@ -470,11 +470,22 @@ export function RolesSection(props: Props) {
                     const busy = roleSavingId === role.id || roleDeletingId === role.id;
                     return (
                       <li key={role.id} className={`listItem adminListItem ${selected ? "selected" : ""}`}>
-                        <button
-                          type="button"
+                        <div
                           className="adminListItemButton"
-                          onClick={() => startRoleEdit(role)}
-                          disabled={busy}
+                          onClick={() => {
+                            if (busy) return;
+                            startRoleEdit(role);
+                          }}
+                          role="button"
+                          tabIndex={busy ? -1 : 0}
+                          aria-disabled={busy}
+                          onKeyDown={(e) => {
+                            if (busy) return;
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              startRoleEdit(role);
+                            }
+                          }}
                         >
                           <div className="row spaceBetween" style={{ gap: 10, alignItems: "center" }}>
                             <div className="cellStack" style={{ minWidth: 0 }}>
@@ -500,7 +511,7 @@ export function RolesSection(props: Props) {
                               复制
                             </Button>
                           </div>
-                        </button>
+                        </div>
                       </li>
                     );
                   })}

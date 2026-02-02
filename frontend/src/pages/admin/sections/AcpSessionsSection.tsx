@@ -11,6 +11,7 @@ import {
 import { listAgents } from "../../../api/agents";
 import {
   pruneSandboxOrphans,
+  controlSandboxForRun,
   removeSandboxWorkspace,
   reportSandboxInventory,
   listSandboxes,
@@ -55,6 +56,7 @@ export function AcpSessionsSection(props: Props) {
   const [reportingInventoryProxyId, setReportingInventoryProxyId] = useState<string>("");
   const [pruningOrphansProxyId, setPruningOrphansProxyId] = useState<string>("");
   const [removingWorkspaceProxyId, setRemovingWorkspaceProxyId] = useState<string>("");
+  const [sandboxControlBusyKey, setSandboxControlBusyKey] = useState<string>("");
   const [sandboxInventoryFilter, setSandboxInventoryFilter] = useState<SandboxInventoryFilter>("all");
   const [cancelingAcpSessionKey, setCancelingAcpSessionKey] = useState<string>("");
   const [forceClosingAcpSessionKey, setForceClosingAcpSessionKey] = useState<string>("");
@@ -289,6 +291,37 @@ export function AcpSessionsSection(props: Props) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setRemovingWorkspaceProxyId("");
+      }
+    },
+    [refreshAcpProxies, requireAdmin, setError],
+  );
+
+  const onControlSandboxForRun = useCallback(
+    async (opts: { runId: string; action: "stop" | "remove" }) => {
+      setError(null);
+      if (!requireAdmin()) return;
+
+      const runId = opts.runId.trim();
+      if (!runId) return;
+
+      const actionLabel = opts.action === "remove" ? "删除 sandbox 实例" : "停止 sandbox 实例";
+      const extraWarning =
+        opts.action === "remove"
+          ? "\n\n注意：这将删除该 run 的 sandbox 实例（容器/进程），但不一定会删除 workspace（可单独点 Remove Workspace）。"
+          : "";
+
+      if (!window.confirm(`确认${actionLabel}？\n\nrunId: ${runId}${extraWarning}`)) return;
+
+      const key = `${opts.action}:${runId}`;
+      setSandboxControlBusyKey(key);
+      try {
+        await controlSandboxForRun(runId, opts.action);
+        window.alert(`已下发 ${opts.action}，请稍后刷新查看 inventory 更新。`);
+        setTimeout(() => void refreshAcpProxies(), 800);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSandboxControlBusyKey("");
       }
     },
     [refreshAcpProxies, requireAdmin, setError],
@@ -544,6 +577,7 @@ export function AcpSessionsSection(props: Props) {
                               <th>lastSeen</th>
                               <th>Issue</th>
                               <th>Run</th>
+                              <th>操作</th>
                               <th>Console</th>
                               <th>error</th>
                             </tr>
@@ -588,6 +622,46 @@ export function AcpSessionsSection(props: Props) {
                                 <td>
                                   {s.runId ? (
                                     <code title={s.runId}>{s.runId.slice(0, 8)}…</code>
+                                  ) : (
+                                    <span className="muted">-</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {s.runId ? (
+                                    <div className="row gap" style={{ flexWrap: "wrap" }}>
+                                      <Button
+                                        type="button"
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() =>
+                                          void onRemoveWorkspace({
+                                            proxyId,
+                                            defaultRunId: s.runId ?? "",
+                                          })
+                                        }
+                                        disabled={removingWorkspace || sandboxControlBusyKey !== ""}
+                                      >
+                                        Remove Workspace
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => void onControlSandboxForRun({ runId: s.runId ?? "", action: "stop" })}
+                                        disabled={sandboxControlBusyKey === `stop:${s.runId}` || removingWorkspace}
+                                      >
+                                        {sandboxControlBusyKey === `stop:${s.runId}` ? "Stopping…" : "Stop"}
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={() => void onControlSandboxForRun({ runId: s.runId ?? "", action: "remove" })}
+                                        disabled={sandboxControlBusyKey === `remove:${s.runId}` || removingWorkspace}
+                                      >
+                                        {sandboxControlBusyKey === `remove:${s.runId}` ? "Removing…" : "Remove"}
+                                      </Button>
+                                    </div>
                                   ) : (
                                     <span className="muted">-</span>
                                   )}

@@ -38,3 +38,13 @@ export async function removeSandboxWorkspace(runId: string): Promise<{ ok: true;
     runId,
   });
 }
+
+export async function controlSandboxForRun(
+  runId: string,
+  action: "inspect" | "ensure_running" | "stop" | "remove",
+): Promise<{ ok: true }> {
+  return apiPost<{ ok: true }>(`/admin/sandboxes/control`, {
+    action,
+    runId,
+  });
+}
