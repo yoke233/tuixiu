@@ -16,7 +16,9 @@ backend/.prisma/
 backend/prisma/.env
 
 frontend/dist/
+frontend/coverage/
 
+acp-proxy/coverage/
 acp-proxy/bin/
 acp-proxy/*.log
 acp-proxy/config.json

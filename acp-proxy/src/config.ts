@@ -21,7 +21,7 @@ export type SandboxBootstrapConfig = {
 
 export type SandboxConfig = {
   terminalEnabled: boolean;
-  provider: "boxlite_oci" | "container_oci" | "host_process";
+  provider: "boxlite_oci" | "container_oci" | "host_process" | "bwrap";
   image?: string;
   workingDir?: string;
   volumes?: VolumeConfig[];
@@ -40,6 +40,7 @@ export type SandboxConfig = {
   execTimeoutSeconds?: number;
   execLogIntervalSeconds?: number;
   bootstrap?: SandboxBootstrapConfig;
+  bwrapBin?: string;
 };
 
 export type AgentConfig = {
@@ -386,7 +387,14 @@ function buildSchema() {
       doc: "Allowlist of env keys passed to agent (from init.env)",
       format: "string-array",
       default: [
-        "CODEX_HOME",
+        "USER_HOME",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "TUIXIU_BWRAP_USERNAME",
+        "TUIXIU_BWRAP_UID",
+        "TUIXIU_BWRAP_GID",
+        "TUIXIU_BWRAP_HOME_PATH",
         "TUIXIU_PROJECT_ID",
         "TUIXIU_PROJECT_NAME",
         "TUIXIU_REPO_URL",
@@ -420,9 +428,15 @@ function buildSchema() {
       },
       provider: {
         doc: "Sandbox provider",
-        format: ["boxlite_oci", "container_oci", "host_process"],
+        format: ["boxlite_oci", "container_oci", "host_process", "bwrap"],
         default: "container_oci",
         env: "ACP_PROXY_SANDBOX_PROVIDER",
+      },
+      bwrapBin: {
+        doc: "bubblewrap binary (provider=bwrap)",
+        format: "String",
+        default: "bwrap",
+        env: "ACP_PROXY_BWRAP_BIN",
       },
       image: {
         doc: "Sandbox image",

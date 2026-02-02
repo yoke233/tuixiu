@@ -228,7 +228,7 @@ sequenceDiagram
 
 ### 4.2 Run 启动与初始化（`backend/src/modules/runs/startIssueRun.ts`）
 
-职责：把“需求池里的 Issue”转换成“可执行的 Run”，并把执行所需的 workspace、初始化脚本、环境变量、skills manifest 一次性准备好。
+职责：把“需求池里的 Issue”转换成“可执行的 Run”，并把执行所需的 workspace、初始化脚本、环境变量、统一输入清单（`agentInputs`）一次性准备好。
 
 关键流程（浓缩）：
 - 选 Agent 与 RoleTemplate：RoleKey 可来自请求、Project 默认、或 PM 分析（见 `backend/src/modules/pm/pmAutomation.ts`）
@@ -239,7 +239,7 @@ sequenceDiagram
   - Issue 描述/验收/约束/测试要求拼接
 - Init（关键）：
   - `init.env` 里写入大量 `TUIXIU_*`（project/run/workspace/branch/scm…）
-  - runtime skills mounting：如果 `Project.enableRuntimeSkillsMounting` 且 Role 绑定了 skill versions，会构造 `skillsManifest` 下发给 proxy（由 proxy 在运行时挂载到 `CODEX_HOME`）
+  - runtime skills mounting：如果 `Project.enableRuntimeSkillsMounting` 且 Role 绑定了 skill versions，会在 `agentInputs` 中加入 skills 的 `downloadExtract` 输入项（由 proxy 落地到 `USER_HOME/.codex/skills`）
   - init.script：`buildWorkspaceInitScript()` + `RoleTemplate.initScript` 合并（并可设置 `initTimeoutSeconds`）
 
 风险点（值得在代码评审时特别关注）：
@@ -277,7 +277,7 @@ sequenceDiagram
 核心结构：
 - `acp-proxy/src/runProxyCli.ts`：连接 orchestrator（WS），分发消息到 handlers，并周期性上报 inventory
 - handlers：
-  - `handleAcpOpen`：确保 sandbox runtime、执行 init、启动 agent、初始化 ACP（并处理 runtime skills 挂载到 `CODEX_HOME`）
+  - `handleAcpOpen`：确保 sandbox runtime、应用 `agentInputs`（落地 workspace/skills 等输入）、启动 agent、初始化 ACP
   - `handlePromptSend`：将 orchestrator 的 `prompt_send` 转成 ACP prompt 并把更新转回 `prompt_update`/`prompt_result`
   - `handleSandboxControl`：执行 git push / 运行命令等 sandbox 控制类动作
 - sandbox/provider：
@@ -367,8 +367,8 @@ pnpm -C frontend dev
 
 ### 6.4 新增 runtime skills
 
-- 后端侧：Role 绑定 skills（`RoleSkillBinding` / `SkillVersion`），`startIssueRun` 会构造 `skillsManifest` 下发
-- proxy 侧：`acp-proxy/src/skills/skillsMount.ts` + `handleAcpOpen` 会把 skills 挂载到 `CODEX_HOME`
+- 后端侧：Role 绑定 skills（`RoleSkillBinding` / `SkillVersion`），`startIssueRun` 会在 `agentInputs` 中构造 skills 输入项并下发
+- proxy 侧：`handleAcpOpen` 会按 `agentInputs` 落地输入，skills 以 `USER_HOME/.codex/skills` 对 agent 可见
 - 风险：对下载大小/来源做限制（`acp-proxy/config.toml.example` 已预留 `skills_download_max_bytes`）
 
 ---
@@ -451,4 +451,3 @@ Top 改进建议（按影响/成本排序）：
 - `backend/src/websocket/gateway.ts`（/ws/agent + /ws/client）
 - `acp-proxy/src/handlers/handleAcpOpen.ts:12`（sandbox/agent 启动与 skills 挂载）
 - `frontend/src/components/RunConsole.tsx`（事件流渲染）
-

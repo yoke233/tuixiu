@@ -124,7 +124,15 @@ describe("proxy/handlers", () => {
       log: () => {},
     };
 
-    const p = handleAcpOpen(ctx as any, { type: "acp_open", run_id: "r1" });
+    const p = handleAcpOpen(ctx as any, {
+      type: "acp_open",
+      run_id: "r1",
+      init: {
+        script: "",
+        env: { USER_HOME: "/root" },
+        agentInputs: { version: 1, items: [] },
+      },
+    });
 
     const initReq = await waitFor(() => h.received.find((m) => m.method === "initialize"), 2_000);
     await h.sendStdout({

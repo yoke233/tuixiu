@@ -235,9 +235,28 @@ const createWorkspace: CreateWorkspace = async ({
 
   const branchName = defaultRunBranchName(name);
   const resolvedBase = String(baseBranch ?? "").trim() || String(project.defaultBranch ?? "main");
+
+  // workspacePath 是“acp-proxy 所在宿主机可写目录”（需要对 proxy 可见）。
+  // 本地 Windows + Docker(acp-proxy) 的组合下，建议把 WORKSPACES_ROOT 设为 `/workspaces`
+  // （容器内路径），并让 proxy 在该目录完成 clone/checkout，再 bind 到 bwrap 的 `/workspace`。
+  const rootRaw = String(env.WORKSPACES_ROOT ?? "").trim() || "";
+  const workspacePath = rootRaw.startsWith("/")
+    ? path.posix.join(rootRaw, `run-${String(runId)}`)
+    : path.join(rootRaw, `run-${String(runId)}`);
+
+  // 只有当它看起来是本机文件系统路径时，才尝试创建目录。
+  // Windows 下 `/workspaces/...` 不是有效本机路径（但对 Docker 容器是有效的），这里跳过。
+  if (!(process.platform === "win32" && rootRaw.startsWith("/"))) {
+    try {
+      fs.mkdirSync(workspacePath, { recursive: true });
+    } catch {
+      // ignore
+    }
+  }
+
   return {
-    workspaceMode: "clone",
-    workspacePath: "/workspace",
+    workspaceMode: "worktree",
+    workspacePath,
     branchName,
     baseBranch: resolvedBase,
     gitAuthMode: resolveGitAuthMode({

@@ -23,7 +23,13 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
+    bubblewrap \
+    uidmap \
   && rm -rf /var/lib/apt/lists/*
+
+# bwrap 在 ro-bind / 的模式下，要求目标挂载点（如 /workspace）在只读根里已存在，
+# 否则会尝试 mkdir 并因只读文件系统失败。
+RUN mkdir -p /workspace
 
 WORKDIR /app
 

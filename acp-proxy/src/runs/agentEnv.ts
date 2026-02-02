@@ -7,7 +7,6 @@ export function filterAgentInitEnv(
 ): Record<string, string> {
   const allowRaw = Array.isArray(ctx.cfg.agent_env_allowlist) ? ctx.cfg.agent_env_allowlist : [];
   const allow = new Set<string>(allowRaw.map((k) => String(k ?? "").trim()).filter(Boolean));
-  allow.add("CODEX_HOME");
 
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
@@ -23,4 +22,3 @@ export function filterAgentInitEnv(
 
   return out;
 }
-

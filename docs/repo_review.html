@@ -355,7 +355,7 @@
 <li>Issue 描述/验收/约束/测试要求拼接</li>
 <li>Init（关键）：</li>
 <li><code>init.env</code> 里写入大量 <code>TUIXIU_*</code>（project/run/workspace/branch/scm…）</li>
-<li>runtime skills mounting：如果 <code>Project.enableRuntimeSkillsMounting</code> 且 Role 绑定了 skill versions，会构造 <code>skillsManifest</code> 下发给 proxy（由 proxy 在运行时挂载到 <code>CODEX_HOME</code>）</li>
+<li>runtime skills mounting：如果 <code>Project.enableRuntimeSkillsMounting</code> 且 Role 绑定了 skill versions，会在 <code>agentInputs</code> 中加入 skills 的 <code>downloadExtract</code> 输入项（由 proxy 落地到 <code>USER_HOME/.codex/skills</code>）</li>
 <li>init.script：<code>buildWorkspaceInitScript()</code> + <code>RoleTemplate.initScript</code> 合并（并可设置 <code>initTimeoutSeconds</code>）</li>
 </ul>
 <p>风险点（值得在代码评审时特别关注）：</p>
@@ -397,7 +397,7 @@
 <ul>
 <li><code>acp-proxy/src/runProxyCli.ts</code>：连接 orchestrator（WS），分发消息到 handlers，并周期性上报 inventory</li>
 <li>handlers：</li>
-<li><code>handleAcpOpen</code>：确保 sandbox runtime、执行 init、启动 agent、初始化 ACP（并处理 runtime skills 挂载到 <code>CODEX_HOME</code>）</li>
+<li><code>handleAcpOpen</code>：确保 sandbox runtime、应用 <code>agentInputs</code>（落地 workspace/skills 等输入）、启动 agent、初始化 ACP</li>
 <li><code>handlePromptSend</code>：将 orchestrator 的 <code>prompt_send</code> 转成 ACP prompt 并把更新转回 <code>prompt_update</code>/<code>prompt_result</code></li>
 <li><code>handleSandboxControl</code>：执行 git push / 运行命令等 sandbox 控制类动作</li>
 <li>sandbox/provider：</li>
@@ -474,8 +474,8 @@ pnpm -C frontend dev
 </ul>
 <h3 id="h-28">6.4 新增 runtime skills</h3>
 <ul>
-<li>后端侧：Role 绑定 skills（<code>RoleSkillBinding</code> / <code>SkillVersion</code>），<code>startIssueRun</code> 会构造 <code>skillsManifest</code> 下发</li>
-<li>proxy 侧：<code>acp-proxy/src/skills/skillsMount.ts</code> + <code>handleAcpOpen</code> 会把 skills 挂载到 <code>CODEX_HOME</code></li>
+<li>后端侧：Role 绑定 skills（<code>RoleSkillBinding</code> / <code>SkillVersion</code>），<code>startIssueRun</code> 会在 <code>agentInputs</code> 中构造 skills 输入项并下发</li>
+<li>proxy 侧：<code>handleAcpOpen</code> 会按 <code>agentInputs</code> 落地输入，skills 以 <code>USER_HOME/.codex/skills</code> 对 agent 可见</li>
 <li>风险：对下载大小/来源做限制（<code>acp-proxy/config.toml.example</code> 已预留 <code>skills_download_max_bytes</code>）</li>
 </ul>
 <p>---</p>
@@ -523,7 +523,7 @@ pnpm -C frontend dev
 <li><code>backend/src/modules/runs/startIssueRun.ts:66</code>（Run 启动/初始化）</li>
 <li><code>backend/src/modules/acp/acpTunnel.ts:69</code> / <code>backend/src/modules/acp/acpTunnel.ts:451</code>（ACP 隧道）</li>
 <li><code>backend/src/websocket/gateway.ts</code>（/ws/agent + /ws/client）</li>
-<li><code>acp-proxy/src/handlers/handleAcpOpen.ts:12</code>（sandbox/agent 启动与 skills 挂载）</li>
+<li><code>acp-proxy/src/handlers/handleAcpOpen.ts:12</code>（sandbox/agent 启动与 agentInputs 落地）</li>
 <li><code>frontend/src/components/RunConsole.tsx</code>（事件流渲染）</li>
 </ul>
     </main>

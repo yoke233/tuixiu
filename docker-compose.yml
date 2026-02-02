@@ -1,32 +1,4 @@
 services:
-  app:
-    image: yoke233/tuixiu-service:latest
-    container_name: tuixiu-service
-    restart: always
-    environment:
-      DATABASE_URL: postgres://acp_user:acp_password@postgres:5432/acp_system
-      HOST: 0.0.0.0
-      PORT: 3000
-      ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
-    ports:
-      - "3000:3000"
-    healthcheck:
-      # 不要求登录：只要服务能返回（哪怕是 401）就认为就绪。
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3000/api/auth/me').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))",
-        ]
-      interval: 5s
-      timeout: 2s
-      retries: 30
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - tuixiu-network
   acp-proxy:
     image: yoke233/tuixiu-acp-proxy:latest
     build:
@@ -34,14 +6,20 @@ services:
       dockerfile: acp-proxy/Dockerfile
     container_name: tuixiu-acp-proxy
     restart: always
+    # bwrap 需要创建 user namespace；Docker Desktop/默认 seccomp 可能会禁止，导致 init 失败。
+    # 这里为本地开发/冒烟测试放宽限制，确保 bwrap provider 能跑通。
+    privileged: true
+    security_opt:
+      - seccomp=unconfined
     volumes:
       - "./acp-proxy/config-host-docker.toml:/config/config.toml:ro"
       - "./acp-proxy/.codex:/root/.codex"
+      - acp_workspaces_data:/workspaces
     environment:
-      ACP_PROXY_REGISTER_URL: http://app:3000/api/admin/acp-proxy/register
+      ACP_PROXY_REGISTER_URL: http://host.docker.internal:3000/api/admin/acp-proxy/register
       ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
     depends_on:
-      app:
+      postgres:
         condition: service_healthy
     networks:
       - tuixiu-network
@@ -67,6 +45,7 @@ services:
 
 volumes:
   acp_postgres_data:
+  acp_workspaces_data:
 
 networks:
   tuixiu-network:

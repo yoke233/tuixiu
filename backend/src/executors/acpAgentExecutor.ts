@@ -470,7 +470,13 @@ export async function startAcpAgentExecution(
     gitAuthMode: project?.gitAuthMode ?? null,
   });
   const enableRuntimeSkillsMounting = project?.enableRuntimeSkillsMounting === true;
-  let skillsManifest: any | null = null;
+  const skillInputs: Array<{
+    skillId: string;
+    skillName: string;
+    skillVersionId: string;
+    contentHash: string;
+    storageUri: string;
+  }> = [];
   if (enableRuntimeSkillsMounting && role?.id) {
     const bindings = await deps.prisma.roleSkillBinding.findMany({
       where: { roleTemplateId: role.id, enabled: true } as any,
@@ -537,7 +543,7 @@ export async function startAcpAgentExecution(
         };
       });
 
-      skillsManifest = { runId: String(run.id), skillVersions };
+      skillInputs.push(...skillVersions);
     }
   }
   const sandboxWorkspaceMode = getSandboxWorkspaceMode((agent as any)?.capabilities);
@@ -552,7 +558,6 @@ export async function startAcpAgentExecution(
     TUIXIU_BASE_BRANCH: baseBranchForPrompt,
     TUIXIU_RUN_ID: String(run.id),
     TUIXIU_RUN_BRANCH: String(workspace.branchName),
-    TUIXIU_WORKSPACE: String(workspace.workspacePath),
     TUIXIU_WORKSPACE_GUEST: agentWorkspaceCwd,
     TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(issue.projectId)}`,
   };
@@ -569,10 +574,14 @@ export async function startAcpAgentExecution(
     initEnv.TUIXIU_SCM_TYPE = String(project.scmType ?? "");
     initEnv.TUIXIU_DEFAULT_BRANCH = String(project.defaultBranch ?? "");
   }
-  const hasSkills = !!skillsManifest?.skillVersions?.length;
+  if (!initEnv.USER_HOME) initEnv.USER_HOME = "/root";
+  if (!initEnv.TUIXIU_BWRAP_USERNAME) initEnv.TUIXIU_BWRAP_USERNAME = "agent";
+  if (!initEnv.TUIXIU_BWRAP_UID) initEnv.TUIXIU_BWRAP_UID = "1000";
+  if (!initEnv.TUIXIU_BWRAP_GID) initEnv.TUIXIU_BWRAP_GID = initEnv.TUIXIU_BWRAP_UID;
+  if (!initEnv.TUIXIU_BWRAP_HOME_PATH) initEnv.TUIXIU_BWRAP_HOME_PATH = initEnv.USER_HOME;
+  const hasSkills = skillInputs.length > 0;
   const pipeline = buildInitPipeline({
     policy: resolvedPolicy.resolved,
-    hasSkills,
     hasBundle: resolvedPolicy.resolved === "bundle" || !!bundleSource?.path,
   });
   if (pipeline.actions.length) {
@@ -594,8 +603,8 @@ export async function startAcpAgentExecution(
       version: String(baseBranchForPrompt ?? ""),
     });
   }
-  if (skillsManifest?.skillVersions?.length) {
-    for (const sv of skillsManifest.skillVersions) {
+  if (hasSkills) {
+    for (const sv of skillInputs) {
       inventoryItems.push({
         key: `skill:${String(sv.skillName ?? sv.skillId)}`,
         source: "skills",
@@ -628,7 +637,7 @@ export async function startAcpAgentExecution(
       .catch(() => {});
   }
   if (hasSkills) {
-    initEnv.TUIXIU_SKILLS_SRC = `${agentWorkspaceCwd}/.tuixiu/codex-home/skills`;
+    // skills 将通过 agentInputs 落地到 USER_HOME/.codex/skills（不再拷贝进 workspace）
   }
 
   if (sandboxWorkspaceMode) {
@@ -663,7 +672,44 @@ export async function startAcpAgentExecution(
     script: mergeInitScripts(baseInitScript, roleInitScript),
     timeout_seconds: role?.initTimeoutSeconds,
     env: initEnv,
-    ...(skillsManifest ? { skillsManifest } : {}),
+    agentInputs: (() => {
+      const kebabCase = (value: string) =>
+        value
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 80);
+
+      const usedNames = new Set<string>();
+      const skillItems = skillInputs.map((sv) => {
+        let dirName = kebabCase(String(sv.skillName ?? ""));
+        if (!dirName) dirName = `skill-${String(sv.skillId).slice(0, 8)}`;
+        if (usedNames.has(dirName)) dirName = `${dirName}-${String(sv.contentHash).slice(0, 8)}`;
+        usedNames.add(dirName);
+        return {
+          id: `skill:${dirName}`,
+          apply: "downloadExtract",
+          access: "rw",
+          source: { type: "httpZip", uri: String(sv.storageUri), contentHash: String(sv.contentHash) },
+          target: { root: "USER_HOME", path: `.codex/skills/${dirName}` },
+        };
+      });
+
+      return {
+        version: 1,
+        items: [
+          {
+            id: "workspace",
+            apply: "bindMount",
+            access: "rw",
+            source: { type: "hostPath", path: String(workspace.workspacePath) },
+            target: { root: "WORKSPACE", path: "." },
+          },
+          ...skillItems,
+        ],
+      };
+    })(),
   };
 
   await deps.acp.promptRun({

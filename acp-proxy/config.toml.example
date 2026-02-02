@@ -20,7 +20,7 @@ skills_mounting_enabled = false
 
 # 仅透传给 agent 的 init.env 白名单（仅记录 key，不记录 value）。
 # 默认已包含本项目运行所需的 TUIXIU_* 与常用 Token。
-# agent_env_allowlist = ["CODEX_HOME", "TUIXIU_PROJECT_ID", "TUIXIU_REPO_URL"]
+# agent_env_allowlist = ["USER_HOME", "HOME", "USER", "LOGNAME", "TUIXIU_PROJECT_ID", "TUIXIU_REPO_URL"]
 
 # 在 sandbox 内启动 ACP agent 的命令（建议镜像内预装 codex-acp，然后直接运行）
 agent_command = ["codex-acp"]
@@ -34,7 +34,7 @@ terminalEnabled = true
 # - boxlite_oci: 使用 "exec" 模式
 
 
-# provider: "container_oci" | "boxlite_oci" | "host_process"
+# provider: "container_oci" | "boxlite_oci" | "host_process" | "bwrap"
 provider = "container_oci"
 
 # host_process（PoC，低隔离）：在宿主机直接启动 ACP agent。

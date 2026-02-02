@@ -24,6 +24,7 @@ export type AcpOpenMessage = {
     script: string;
     timeout_seconds?: number;
     env?: Record<string, string>;
+    agentInputs?: unknown;
   };
 };
 
@@ -45,6 +46,7 @@ export type PromptSendMessage = {
     script: string;
     timeout_seconds?: number;
     env?: Record<string, string>;
+    agentInputs?: unknown;
   };
 };
 

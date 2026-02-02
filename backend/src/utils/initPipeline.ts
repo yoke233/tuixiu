@@ -4,7 +4,6 @@ export type InitActionType =
   | "ensure_workspace"
   | "init_repo"
   | "init_bundle"
-  | "mount_skills"
   | "write_inventory";
 
 export type InitAction = {
@@ -18,13 +17,11 @@ export type InitPipeline = {
 
 export function buildInitPipeline(opts: {
   policy: WorkspacePolicy;
-  hasSkills: boolean;
   hasBundle: boolean;
 }): InitPipeline {
   const actions: InitAction[] = [{ type: "ensure_workspace" }];
   if (opts.policy === "git") actions.push({ type: "init_repo" });
   if (opts.policy === "bundle" || opts.hasBundle) actions.push({ type: "init_bundle" });
-  if (opts.hasSkills) actions.push({ type: "mount_skills" });
   actions.push({ type: "write_inventory" });
   return { actions };
 }

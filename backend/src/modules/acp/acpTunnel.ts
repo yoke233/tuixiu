@@ -14,6 +14,7 @@ type AcpOpenPayload = {
   script: string;
   timeout_seconds?: number;
   env?: Record<string, string>;
+  agentInputs?: unknown;
 };
 
 type OpenDeferred = {

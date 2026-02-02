@@ -1,7 +1,7 @@
 # 复制为 config.toml 使用
-orchestrator_url = "ws://app:3000/ws/agent"
+orchestrator_url = "ws://host.docker.internal:3000/ws/agent"
 auth_token = ""
-register_url = "http://app:3000/api/admin/acp-proxy/register"
+register_url = "http://host.docker.internal:3000/api/admin/acp-proxy/register"
 bootstrap_token = "154f78aeed244d329303fddf851d44fd"
 
 heartbeat_seconds = 30
@@ -19,8 +19,9 @@ terminalEnabled = true
 # - boxlite_oci: 使用 "exec" 模式
 
 
-# provider: "container_oci" | "boxlite_oci" | "host_process"
-provider = "host_process"
+# provider: "container_oci" | "boxlite_oci" | "host_process" | "bwrap"
+provider = "bwrap"
+bwrapBin = "bwrap"
 
 # host_process（PoC，低隔离）：在宿主机直接启动 ACP agent。
 # ⚠️ 风险提示：几乎没有隔离，只建议本地开发/排障；必须关闭 terminalEnabled，
@@ -41,7 +42,7 @@ workspaceMode = "mount"
 
 
 # 宿主机 workspace 根目录（仅 mount 模式需要）
-workspaceHostRoot = "/root/workspaces"
+workspaceHostRoot = "/workspaces"
 # BoxLite 模式（simple=默认，jsbox=可复用 box）
 # boxMode = "jsbox"
 # boxName + boxReuse=shared 可复用缓存（不再重复创建/安装）
@@ -61,7 +62,7 @@ workspaceHostRoot = "/root/workspaces"
 # extraRunArgs = ["--network=host"]
 
 [sandbox.env]
-OPENAI_API_KEY = "<set-me>"
+# 不在这里注入 OPENAI_API_KEY：优先使用挂载进来的 `/root/.codex/config.toml`（避免把占位符覆盖掉真实配置）。
 
 # Codex（`codex` / `codex-acp`）通常需要读取宿主机的 `~/.codex/config.toml`。
 # 这里建议把该文件以只读方式挂载到容器内 `/root/.codex/config.toml`（镜像默认以 root 运行）。

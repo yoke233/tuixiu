@@ -8,6 +8,8 @@ export type RunRuntime = {
   hostWorkspacePath?: string | null;
   hostWorkspaceReady?: boolean;
   workspaceMounts?: Array<{ hostPath: string; guestPath: string; readOnly?: boolean }>;
+  hostUserHomePath?: string | null;
+  userHomeGuestPath?: string | null;
 
   agent: import("../acp/agentBridge.js").AgentBridge | null;
   suppressNextAcpExit: boolean;
@@ -19,7 +21,4 @@ export type RunRuntime = {
 
   // 用于避免对同一个 session 反复发送 set_config_option（例如 mode=auto）。
   autoConfigOptionAppliedSessionIds?: Set<string>;
-
-  // runtime skills mounting
-  skillsCodexHomeHostPath?: string | null;
 };

@@ -333,14 +333,33 @@ describe("acpAgentExecutor", () => {
     const initEnv = acp.promptRun.mock.calls[0][0].init.env as Record<string, string>;
     expect(initEnv.TUIXIU_REPO_URL).toBeUndefined();
     expect(initEnv.TUIXIU_GIT_AUTH_MODE).toBeUndefined();
-    expect(initEnv.TUIXIU_INIT_ACTIONS).toEqual("ensure_workspace,mount_skills,write_inventory");
-    expect(initEnv.TUIXIU_SKILLS_SRC).toContain(".tuixiu/codex-home/skills");
+    expect(initEnv.TUIXIU_INIT_ACTIONS).toEqual("ensure_workspace,write_inventory");
 
     const inventory = JSON.parse(String(initEnv.TUIXIU_INVENTORY_JSON ?? "{}"));
     expect(inventory.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ source: "skills", version: "v1", hash: "h1" }),
       ]),
+    );
+
+    const agentInputs = acp.promptRun.mock.calls[0][0].init.agentInputs as any;
+    expect(agentInputs).toEqual(
+      expect.objectContaining({
+        version: 1,
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            id: "workspace",
+            apply: "bindMount",
+            source: expect.objectContaining({ type: "hostPath" }),
+            target: { root: "WORKSPACE", path: "." },
+          }),
+          expect.objectContaining({
+            apply: "downloadExtract",
+            source: { type: "httpZip", uri: "/api/acp-proxy/skills/packages/h1.zip", contentHash: "h1" },
+            target: { root: "USER_HOME", path: ".codex/skills/demo-skill" },
+          }),
+        ]),
+      }),
     );
   });
 

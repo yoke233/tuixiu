@@ -20,6 +20,7 @@ import { AgentBridge } from "../acp/agentBridge.js";
 import type { RunRuntime } from "./runTypes.js";
 import { defaultCwdForRun } from "./workspacePath.js";
 import { filterAgentInitEnv } from "./agentEnv.js";
+import { parseAgentInputsFromInit } from "./agentInputs.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -64,6 +65,16 @@ function resolveTerminalEnabled(ctx: ProxyContext): boolean {
   return ctx.cfg.sandbox.terminalEnabled === true;
 }
 
+function normalizeAbsolutePosixPath(p: string): string {
+  const raw = String(p ?? "").replaceAll("\\", "/").trim();
+  if (!raw) throw new Error("path empty");
+  if (!raw.startsWith("/")) throw new Error("path must be absolute (posix)");
+  if (raw.split("/").some((seg) => seg === "..")) throw new Error("path must not include '..'");
+  const normalized = path.posix.normalize(raw);
+  if (!normalized.startsWith("/")) throw new Error("path must be absolute (posix)");
+  return normalized;
+}
+
 export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRuntime> {
   const runId = validateRunId(msg?.run_id);
   const instanceName =
@@ -81,6 +92,13 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
   run.expiresAt = null;
   run.lastUsedAt = Date.now();
 
+  const init = isRecord(msg?.init) ? (msg.init as any) : undefined;
+  const initEnv =
+    init?.env && typeof init.env === "object" && !Array.isArray(init.env)
+      ? (init.env as Record<string, string>)
+      : undefined;
+  const agentInputs = parseAgentInputsFromInit(init);
+
   const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
   const workspaceGuestRoot = defaultCwdForRun({ workspaceMode, runId });
   if (workspaceMode === "mount") {
@@ -89,15 +107,76 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
       throw new Error("sandbox.workspaceHostRoot 未配置，无法使用 mount 模式");
     }
     const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
-    const hostWorkspacePath = path.join(root, `run-${runId}`);
+
+    const agentInputsWorkspaceBind = (() => {
+      if (!agentInputs) return "";
+      for (const item of agentInputs.items) {
+        if (item.apply !== "bindMount") continue;
+        if (item.source.type !== "hostPath") continue;
+        if (item.target.root !== "WORKSPACE") continue;
+        const targetPath = String(item.target.path ?? "").replaceAll("\\", "/").trim();
+        if (targetPath && targetPath !== ".") continue;
+        return String(item.source.path ?? "").trim();
+      }
+      return "";
+    })();
+
+    // 兼容旧链路：如果仍提供了 TUIXIU_WORKSPACE，则作为兜底提示。
+    // 新推荐：由 agentInputs 中 WORKSPACE bindMount 的 hostPath 决定。
+    const hintedWorkspace = initEnv ? String(initEnv.TUIXIU_WORKSPACE ?? "").trim() : "";
+
+    const candidate = (() => {
+      if (agentInputsWorkspaceBind && path.isAbsolute(agentInputsWorkspaceBind)) return agentInputsWorkspaceBind;
+      if (hintedWorkspace && path.isAbsolute(hintedWorkspace)) return hintedWorkspace;
+      return path.join(root, `run-${runId}`);
+    })();
+    const hostWorkspacePath = path.resolve(candidate);
+    const rootResolved = path.resolve(root);
+    const rel = path.relative(rootResolved, hostWorkspacePath);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      if (agentInputsWorkspaceBind) {
+        throw new Error("agentInputs WORKSPACE bindMount hostPath must be under sandbox.workspaceHostRoot");
+      }
+      throw new Error("TUIXIU_WORKSPACE must be under sandbox.workspaceHostRoot");
+    }
+
     await mkdir(hostWorkspacePath, { recursive: true });
     run.hostWorkspacePath = hostWorkspacePath;
     run.hostWorkspaceReady = false;
-    run.workspaceMounts = [{ hostPath: hostWorkspacePath, guestPath: WORKSPACE_GUEST_PATH }];
+
+    const userHomeGuestPathHint =
+      initEnv && (String(initEnv.USER_HOME ?? "").trim() || String(initEnv.HOME ?? "").trim())
+        ? String(initEnv.USER_HOME ?? initEnv.HOME ?? "").trim()
+        : "/root";
+    const userHomeGuestPath = normalizeAbsolutePosixPath(userHomeGuestPathHint);
+    const wsRootNorm = normalizeAbsolutePosixPath(WORKSPACE_GUEST_PATH);
+    if (
+      userHomeGuestPath === wsRootNorm ||
+      userHomeGuestPath.startsWith(wsRootNorm.endsWith("/") ? wsRootNorm : `${wsRootNorm}/`)
+    ) {
+      throw new Error("USER_HOME/HOME must not be /workspace or inside /workspace");
+    }
+    const hostUserHomePath = path.resolve(path.join(rootResolved, `home-${runId}`));
+    const homeRel = path.relative(rootResolved, hostUserHomePath);
+    if (homeRel.startsWith("..") || path.isAbsolute(homeRel)) {
+      throw new Error("resolved hostUserHomePath outside sandbox.workspaceHostRoot");
+    }
+    await mkdir(hostUserHomePath, { recursive: true });
+    await mkdir(path.join(hostUserHomePath, ".codex", "skills"), { recursive: true });
+
+    run.hostUserHomePath = hostUserHomePath;
+    run.userHomeGuestPath = userHomeGuestPath;
+
+    run.workspaceMounts = [
+      { hostPath: hostWorkspacePath, guestPath: WORKSPACE_GUEST_PATH },
+      { hostPath: hostUserHomePath, guestPath: userHomeGuestPath },
+    ];
   } else {
     run.hostWorkspacePath = null;
     run.hostWorkspaceReady = false;
     run.workspaceMounts = undefined;
+    run.hostUserHomePath = null;
+    run.userHomeGuestPath = null;
   }
 
   if (!run.acpClient) {
