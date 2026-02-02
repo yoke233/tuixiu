@@ -86,7 +86,7 @@ export function ProjectsSection(props: Props) {
     useState<WorkspaceNoticeMode>("default");
   const [projectAgentWorkspaceNoticeTemplate, setProjectAgentWorkspaceNoticeTemplate] =
     useState("");
-  const [createOpen, setCreateOpen] = useState(false);
+  const [manageTab, setManageTab] = useState<"edit" | "create">("edit");
 
   useEffect(() => {
     if (!effectiveProject) return;
@@ -128,7 +128,7 @@ export function ProjectsSection(props: Props) {
   useEffect(() => {
     if (!active) return;
     if (loading) return;
-    if (!projects.length) setCreateOpen(true);
+    if (!projects.length) setManageTab("create");
   }, [active, loading, projects.length]);
 
   const onResetProjectEdit = useCallback(() => {
@@ -211,7 +211,7 @@ export function ProjectsSection(props: Props) {
         setProjectAgentWorkspaceNoticeTemplate("");
         await onRefreshGlobal();
         onSelectedProjectIdChange(p.id);
-        setCreateOpen(false);
+        setManageTab("edit");
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -428,33 +428,56 @@ export function ProjectsSection(props: Props) {
             <h2 style={{ marginTop: 0, marginBottom: 4 }}>项目管理</h2>
             <div className="muted">保存后会影响新建 Run 的行为（凭证仅 admin 可操作）。</div>
           </div>
-          <div className="row gap" style={{ flexWrap: "wrap" }}>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={onResetProjectEdit}
-              disabled={!effectiveProjectId || savingProjectEdit}
-            >
-              重置
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => void onSaveProjectEdit()}
-              disabled={!effectiveProjectId || savingProjectEdit || !canSave}
-            >
-              {savingProjectEdit ? "保存中…" : "保存"}
-            </Button>
-          </div>
+          {manageTab === "edit" ? (
+            <div className="row gap" style={{ flexWrap: "wrap" }}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={onResetProjectEdit}
+                disabled={!effectiveProjectId || savingProjectEdit}
+              >
+                重置
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void onSaveProjectEdit()}
+                disabled={!effectiveProjectId || savingProjectEdit || !canSave}
+              >
+                {savingProjectEdit ? "保存中…" : "保存"}
+              </Button>
+            </div>
+          ) : null}
         </div>
 
-        {!effectiveProjectId ? (
-          <div className="muted" style={{ marginTop: 10 }}>
-            请先创建/选择 Project
-          </div>
-        ) : (
-          <div className="form" style={{ marginTop: 10 }}>
+        <div className="row gap" style={{ marginTop: 10, flexWrap: "wrap" }}>
+          <Button
+            type="button"
+            size="sm"
+            variant={manageTab === "edit" ? "default" : "secondary"}
+            onClick={() => setManageTab("edit")}
+            disabled={!projects.length}
+          >
+            编辑当前项目
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={manageTab === "create" ? "default" : "secondary"}
+            onClick={() => setManageTab("create")}
+          >
+            创建新项目
+          </Button>
+        </div>
+
+        {manageTab === "edit" ? (
+          !effectiveProjectId ? (
+            <div className="muted" style={{ marginTop: 10 }}>
+              请先创建/选择 Project
+            </div>
+          ) : (
+            <div className="form" style={{ marginTop: 10 }}>
             <h3 style={{ marginTop: 0 }}>基础</h3>
             <label className="label">
               名称 *
@@ -666,20 +689,14 @@ export function ProjectsSection(props: Props) {
               </div>
             ) : null}
           </div>
-        )}
-
-        <div className="rounded-lg border bg-card p-4" style={{ marginTop: 14 }}>
-          <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap", gap: 12 }}>
-            <div>
-              <div style={{ fontWeight: 800 }}>创建 Project</div>
-              <div className="muted">用于配置仓库、SCM、认证方式等。</div>
+          )
+        ) : (
+          <div className="rounded-lg border bg-card p-4" style={{ marginTop: 14 }}>
+            <div style={{ fontWeight: 800 }}>创建 Project</div>
+            <div className="muted" style={{ marginTop: 4 }}>
+              用于配置仓库、SCM、认证方式等。
             </div>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setCreateOpen((v) => !v)}>
-              {createOpen ? "收起" : "展开"}
-            </Button>
-          </div>
 
-          {createOpen ? (
             <form onSubmit={(e) => void onCreateProject(e)} className="form" style={{ marginTop: 12 }}>
               <div className="grid2" style={{ marginBottom: 0 }}>
                 <div>
@@ -807,12 +824,8 @@ export function ProjectsSection(props: Props) {
                 创建
               </Button>
             </form>
-          ) : (
-            <div className="muted" style={{ marginTop: 12 }}>
-              点击右上角「展开」开始创建。
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </section>
     </>
   );
