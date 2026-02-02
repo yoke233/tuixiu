@@ -14,6 +14,16 @@ type RecoveryInit = {
   script: string;
   timeout_seconds?: number;
   env: Record<string, string>;
+  agentInputs?: {
+    version: 1;
+    items: Array<{
+      id: string;
+      apply: "bindMount";
+      access?: "ro" | "rw";
+      source: { type: "hostPath"; path: string };
+      target: { root: "WORKSPACE"; path: string };
+    }>;
+  };
 };
 
 function normalizeRoleEnv(env: Record<string, string>): Record<string, string> {
@@ -134,9 +144,25 @@ export async function buildRecoveryInit(opts: {
   const baseInitScript = buildWorkspaceInitScript();
   const roleInitScript = role?.initScript?.trim() ? String(role.initScript) : "";
 
+  const workspacePath = String(opts.run?.workspacePath ?? "").trim();
+
   return {
     script: mergeInitScripts(baseInitScript, roleInitScript),
     timeout_seconds: role?.initTimeoutSeconds,
     env: initEnv,
+    agentInputs: workspacePath
+      ? {
+          version: 1,
+          items: [
+            {
+              id: "workspace",
+              apply: "bindMount",
+              access: "rw",
+              source: { type: "hostPath", path: workspacePath },
+              target: { root: "WORKSPACE", path: "." },
+            },
+          ],
+        }
+      : undefined,
   };
 }

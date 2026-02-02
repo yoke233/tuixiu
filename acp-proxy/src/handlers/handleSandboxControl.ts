@@ -693,7 +693,25 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
             reply({ ok: false, error: `workspace path escape: ${hostWorkspace}` });
             return;
           }
+
+          const run = ctx.runs.get(effectiveRunId);
+          const hostUserHome = (() => {
+            if (run?.hostUserHomePath && path.isAbsolute(run.hostUserHomePath)) return run.hostUserHomePath;
+            return path.resolve(resolvedRoot, `home-${effectiveRunId}`);
+          })();
+          if (!hostUserHome.startsWith(rootPrefix)) {
+            reply({ ok: false, error: `home path escape: ${hostUserHome}` });
+            return;
+          }
+
           await rm(hostWorkspace, { recursive: true, force: true });
+          await rm(hostUserHome, { recursive: true, force: true });
+          if (run) {
+            run.hostWorkspaceReady = false;
+            run.hostUserHomePath = null;
+            run.userHomeGuestPath = null;
+            run.workspaceMounts = undefined;
+          }
           reportDeletedWorkspace({ runId: effectiveRunId });
           reply({ ok: true });
           return;

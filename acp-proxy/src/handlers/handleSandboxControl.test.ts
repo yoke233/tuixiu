@@ -136,7 +136,9 @@ describe("handleSandboxControl", () => {
 
     const root = await mkdtemp(path.join(os.tmpdir(), "acp-ws-"));
     const hostWorkspace = path.join(root, "run-r1");
+    const hostHome = path.join(root, "home-r1");
     await mkdir(hostWorkspace, { recursive: true });
+    await mkdir(hostHome, { recursive: true });
 
     const exists = async (p: string) => {
       try {
@@ -170,6 +172,7 @@ describe("handleSandboxControl", () => {
       );
       expect(result?.ok).toBe(true);
       expect(await exists(hostWorkspace)).toBe(false);
+      expect(await exists(hostHome)).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
