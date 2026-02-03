@@ -193,7 +193,8 @@ describe("Projects routes", () => {
       project: {
         findUnique: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000001" }),
         update: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000001" }),
-      }
+      },
+      projectScmConfig: { findUnique: vi.fn().mockResolvedValue(null) },
     } as any;
 
     await server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
@@ -209,6 +210,9 @@ describe("Projects routes", () => {
       where: { id: "00000000-0000-0000-0000-000000000001" },
       data: expect.objectContaining({ workspacePolicy: "mount" }),
     });
+    expect(prisma.projectScmConfig.findUnique).toHaveBeenCalledWith({
+      where: { projectId: "00000000-0000-0000-0000-000000000001" },
+    });
     await server.close();
   });
 
@@ -218,7 +222,8 @@ describe("Projects routes", () => {
       project: {
         findUnique: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000001" }),
         update: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000001" }),
-      }
+      },
+      projectScmConfig: { findUnique: vi.fn().mockResolvedValue(null) },
     } as any;
 
     await server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
@@ -233,6 +238,9 @@ describe("Projects routes", () => {
     expect(prisma.project.update).toHaveBeenCalledWith({
       where: { id: "00000000-0000-0000-0000-000000000001" },
       data: expect.objectContaining({ workspacePolicy: null }),
+    });
+    expect(prisma.projectScmConfig.findUnique).toHaveBeenCalledWith({
+      where: { projectId: "00000000-0000-0000-0000-000000000001" },
     });
     await server.close();
   });

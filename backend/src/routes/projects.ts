@@ -105,7 +105,15 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
         data: data as any
       });
 
-      return { success: true, data: { project: toPublicProject(project as any) } };
+      const scmConfig =
+        typeof (deps.prisma as any)?.projectScmConfig?.findUnique === "function"
+          ? await deps.prisma.projectScmConfig.findUnique({ where: { projectId: id } as any }).catch(() => null)
+          : null;
+
+      return {
+        success: true,
+        data: { project: toPublicProject({ ...(project as any), scmConfig: scmConfig ?? null }) },
+      };
     });
   };
 }
