@@ -6,6 +6,7 @@ import type { PrismaDeps, SendToAgent } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { buildChatContextFromEvents } from "../modules/runs/runContext.js";
 import { buildRecoveryInit } from "../modules/runs/runRecovery.js";
+import { GitAuthEnvError } from "../utils/gitAuth.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
 import {
   clientAcpPromptSchema,
@@ -410,12 +411,33 @@ export function makeRunRoutes(deps: {
         });
         const chatContext = buildChatContextFromEvents(recentEvents);
         context = chatContext || undefined;
-        init = (await buildRecoveryInit({
-          prisma: deps.prisma,
-          run,
-          issue: run.issue,
-          project: run.issue?.project,
-        })) as any;
+        try {
+          init = (await buildRecoveryInit({
+            prisma: deps.prisma,
+            run,
+            issue: run.issue,
+            project: run.issue?.project,
+          })) as any;
+        } catch (error) {
+          if (error instanceof GitAuthEnvError) {
+            return {
+              success: false,
+              error: {
+                code: error.code,
+                message: error.message,
+                ...(error.details ? { details: error.details } : {}),
+              },
+            };
+          }
+          return {
+            success: false,
+            error: {
+              code: "RECOVERY_INIT_FAILED",
+              message: "构建恢复环境失败",
+              details: String(error),
+            },
+          };
+        }
       }
 
       const cwd = run.workspacePath ?? "";

@@ -37,10 +37,19 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   const json = text ? (JSON.parse(text) as ApiEnvelope<T>) : null;
 
   if (!res.ok) {
-    const apiMsg =
-      json && typeof json === "object" && "success" in json && (json as any).success === false
-        ? ((json as any).error?.message as string | undefined) ?? res.statusText
-        : res.statusText;
+    const apiMsg = (() => {
+      if (json && typeof json === "object") {
+        if ("success" in json && (json as any).success === false) {
+          return ((json as any).error?.message as string | undefined) ?? res.statusText;
+        }
+
+        // Fastify 默认错误格式：{ statusCode, error, message }
+        const msg = (json as any).message;
+        if (typeof msg === "string" && msg.trim()) return msg.trim();
+      }
+
+      return res.statusText;
+    })();
     const err = new Error(`HTTP ${res.status}: ${apiMsg}`) as any;
     if (json && typeof json === "object" && (json as any)?.error?.details != null) {
       err.details = (json as any).error.details;

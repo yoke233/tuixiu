@@ -18,6 +18,7 @@ import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
 import { resolveExecutionProfile } from "../../utils/executionProfile.js";
 import {
   assertRoleGitAuthEnv,
+  GitAuthEnvError,
   pickGitAccessToken,
   resolveGitAuthMode,
   resolveGitHttpUsername,
@@ -674,6 +675,11 @@ export async function startIssueRun(opts: {
       });
     }
   } catch (error) {
+    const gitAuthErr =
+      error instanceof GitAuthEnvError
+        ? { code: error.code, message: error.message, details: error.details }
+        : null;
+
     await opts.prisma.run.update({
       where: { id: (run as any).id },
       data: {
@@ -695,11 +701,13 @@ export async function startIssueRun(opts: {
 
     return {
       success: false,
-      error: {
-        code: "AGENT_SEND_FAILED",
-        message: "发送任务到 Agent 失败",
-        details: String(error),
-      },
+      error:
+        gitAuthErr ??
+        ({
+          code: "AGENT_SEND_FAILED",
+          message: "发送任务到 Agent 失败",
+          details: String(error),
+        } as any),
       data: { issue: toPublicIssue(issue as any), run },
     };
   }

@@ -12,6 +12,17 @@ export type GitAuthProject = {
   gitlabAccessToken?: string | null;
 };
 
+export class GitAuthEnvError extends Error {
+  code: string;
+  details?: string;
+
+  constructor(code: string, message: string, details?: string) {
+    super(message);
+    this.code = code;
+    this.details = details;
+  }
+}
+
 export function assertRoleGitAuthEnv(
   roleEnv: Record<string, string>,
   roleKey?: string | null,
@@ -19,7 +30,10 @@ export function assertRoleGitAuthEnv(
   const label = roleKey ? `角色(${roleKey})` : "角色";
   const modeRaw = roleEnv.TUIXIU_GIT_AUTH_MODE?.trim();
   if (!modeRaw) {
-    throw new Error(`${label} 未配置 Git 认证：缺少 TUIXIU_GIT_AUTH_MODE`);
+    throw new GitAuthEnvError(
+      "GIT_AUTH_MODE_MISSING",
+      `${label} 未配置 Git 认证：缺少 TUIXIU_GIT_AUTH_MODE`,
+    );
   }
   const mode = modeRaw.toLowerCase();
   if (mode === "ssh") {
@@ -29,7 +43,8 @@ export function assertRoleGitAuthEnv(
       !!roleEnv.TUIXIU_GIT_SSH_KEY?.trim() ||
       !!roleEnv.TUIXIU_GIT_SSH_KEY_PATH?.trim();
     if (!hasSsh) {
-      throw new Error(
+      throw new GitAuthEnvError(
+        "GIT_SSH_AUTH_MISSING",
         `${label} SSH 认证缺失：请配置 TUIXIU_GIT_SSH_COMMAND 或 TUIXIU_GIT_SSH_KEY(_B64/_PATH)`,
       );
     }
@@ -43,7 +58,8 @@ export function assertRoleGitAuthEnv(
     !!roleEnv.GITLAB_ACCESS_TOKEN?.trim() ||
     !!roleEnv.GITLAB_TOKEN?.trim();
   if (!hasHttpsToken) {
-    throw new Error(
+    throw new GitAuthEnvError(
+      "GIT_HTTPS_AUTH_MISSING",
       `${label} HTTPS 认证缺失：请配置 TUIXIU_GIT_HTTP_PASSWORD 或 GH_TOKEN/GITHUB_TOKEN/GITLAB_ACCESS_TOKEN/GITLAB_TOKEN`,
     );
   }

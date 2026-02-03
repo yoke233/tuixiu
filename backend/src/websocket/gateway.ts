@@ -17,6 +17,7 @@ import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
 import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
 import { uuidv7 } from "../utils/uuid.js";
 import { deriveSandboxInstanceName } from "../utils/sandbox.js";
+import { GitAuthEnvError } from "../utils/gitAuth.js";
 
 type AgentRegisterMessage = {
   type: "register_agent";
@@ -532,6 +533,19 @@ export function createWebSocketGateway(deps: {
           });
         }
 
+        const errorPayload =
+          error instanceof GitAuthEnvError
+            ? {
+                code: error.code,
+                message: error.message,
+                ...(error.details ? { details: error.details } : {}),
+              }
+            : {
+                code: "AGENT_SEND_FAILED",
+                message: "发送消息到 Agent 失败",
+                details: String(error),
+              };
+
         // 失败也落一条 system event，便于 UI/审计在刷新后仍能看到原因。
         try {
           const createdEvent = await deps.prisma.event.create({
@@ -544,11 +558,7 @@ export function createWebSocketGateway(deps: {
                 type: "client_command_result",
                 request_id: requestId,
                 ok: false,
-                error: {
-                  code: "AGENT_SEND_FAILED",
-                  message: "发送消息到 Agent 失败",
-                  details: String(error),
-                },
+                error: errorPayload,
               } as any,
               timestamp: new Date(),
             },
@@ -565,7 +575,7 @@ export function createWebSocketGateway(deps: {
           run_id: runId,
           request_id: requestId,
           ok: false,
-          error: { code: "AGENT_SEND_FAILED", message: "发送消息到 Agent 失败", details: String(error) },
+          error: errorPayload,
         });
       }
     });
