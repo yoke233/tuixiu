@@ -210,7 +210,7 @@ describe("proxy/handlers", () => {
     expect(errorUpdate?.content?.text).toContain("agentInputs missing");
   });
 
-  it("handlePromptSend: forwards session/update as acp_update and replies prompt_result(ok)", async () => {
+  it("handlePromptSend: prompt_send implicit open works and replies prompt_result(ok)", async () => {
     const h = createHarness();
     const messages: any[] = [];
 
@@ -253,6 +253,11 @@ describe("proxy/handlers", () => {
       run_id: "r1",
       prompt_id: "p1",
       prompt: [{ type: "text", text: "1+1=?" }],
+      init: {
+        script: "",
+        env: { USER_HOME: "/root" },
+        agentInputs: { version: 1, items: [] },
+      },
     });
 
     const initReq = await waitFor(() => h.received.find((m) => m.method === "initialize"), 2_000);
@@ -295,6 +300,8 @@ describe("proxy/handlers", () => {
     });
 
     await p;
+
+    expect(h.received.filter((m) => m.method === "initialize")).toHaveLength(1);
 
     expect(
       messages.some(
@@ -381,6 +388,11 @@ describe("proxy/handlers", () => {
       run_id: "r1",
       prompt_id: "p1",
       prompt: [{ type: "text", text: "1+1=?" }],
+      init: {
+        script: "",
+        env: { USER_HOME: "/root" },
+        agentInputs: { version: 1, items: [] },
+      },
     });
 
     const initReq = await waitFor(() => h.received.find((m) => m.method === "initialize"), 2_000);

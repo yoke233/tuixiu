@@ -1,18 +1,15 @@
 import type { ProxyContext } from "../proxyContext.js";
 import {
   assertPromptBlocksSupported,
-  composePromptWithContext,
-  ensureInitialized,
   ensureRuntime,
   ensureSessionForPrompt,
   getPromptCapabilities,
-  runInitScript,
   sendUpdate,
   shouldRecreateSession,
-  startAgent,
   withAuthRetry,
 } from "../runs/runRuntime.js";
 import { defaultCwdForRun } from "../runs/workspacePath.js";
+import { ensureRunOpen } from "../runs/ensureRunOpen.js";
 
 export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<void> {
   const runId = String(msg?.run_id ?? "").trim();
@@ -47,6 +44,10 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
     const run = await ensureRuntime(ctx, msg);
     const init =
       msg?.init && typeof msg.init === "object" && !Array.isArray(msg.init) ? msg.init : undefined;
+    const initEnv =
+      init?.env && typeof init.env === "object" && !Array.isArray(init.env)
+        ? (init.env as Record<string, string>)
+        : undefined;
 
     const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
     const defaultCwd = defaultCwdForRun({ workspaceMode, runId });
@@ -66,15 +67,7 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
       : 3600_000;
 
     await ctx.runs.enqueue(run.runId, async () => {
-      if (ctx.sandbox.agentMode === "exec") {
-        const initOk = await runInitScript(ctx, run, init);
-        if (!initOk) throw new Error("init_failed");
-        await startAgent(ctx, run, init);
-      } else {
-        await startAgent(ctx, run, init);
-      }
-
-      await ensureInitialized(ctx, run);
+      await ensureRunOpen(ctx, run, { init, initEnv });
 
       run.activePromptId = promptIdRaw;
       try {
