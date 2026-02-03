@@ -29,4 +29,18 @@ describe("loadEnv", () => {
     if (prevHost === undefined) delete process.env.HOST;
     else process.env.HOST = prevHost;
   });
+
+  it("applies auth token ttl defaults", () => {
+    const prevDb = process.env.DATABASE_URL;
+    delete process.env.AUTH_ACCESS_TOKEN_TTL_SECONDS;
+    delete process.env.AUTH_REFRESH_TOKEN_TTL_SECONDS;
+    process.env.DATABASE_URL = "postgresql://example";
+
+    const env = loadEnv();
+    expect(env.AUTH_ACCESS_TOKEN_TTL_SECONDS).toBeGreaterThan(0);
+    expect(env.AUTH_REFRESH_TOKEN_TTL_SECONDS).toBeGreaterThan(env.AUTH_ACCESS_TOKEN_TTL_SECONDS);
+
+    if (prevDb === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = prevDb;
+  });
 });

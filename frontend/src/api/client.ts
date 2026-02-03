@@ -1,5 +1,4 @@
 import type { ApiEnvelope } from "../types";
-import { getStoredToken } from "../auth/storage";
 export function getApiBaseUrl(): string {
   const base = import.meta.env.VITE_API_URL as string | undefined;
   if (base && base.trim()) {
@@ -16,16 +15,11 @@ export function apiUrl(path: string): string {
   return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiRequest<T>(path: string, init?: RequestInit, retry = 0): Promise<T> {
   const url = `${getApiBaseUrl()}${path.startsWith("/") ? "" : "/"}${path}`;
 
   const headers = new Headers(init?.headers ?? {});
   if (!headers.has("content-type")) headers.set("content-type", "application/json");
-
-  const token = getStoredToken();
-  if (token && !headers.has("authorization")) {
-    headers.set("authorization", `Bearer ${token}`);
-  }
 
   const res = await fetch(url, {
     ...init,
@@ -35,6 +29,23 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
 
   const text = await res.text();
   const json = text ? (JSON.parse(text) as ApiEnvelope<T>) : null;
+
+  const pathOnly = path.split("?")[0];
+  const skipRefresh =
+    pathOnly === "/auth/login" ||
+    pathOnly === "/auth/bootstrap" ||
+    pathOnly === "/auth/refresh" ||
+    pathOnly === "/auth/logout";
+  if (res.status === 401 && retry === 0 && !skipRefresh) {
+    try {
+      const refreshRes = await fetch(apiUrl("/auth/refresh"), { method: "POST", credentials: "include", headers });
+      if (refreshRes.ok) {
+        return apiRequest<T>(path, init, retry + 1);
+      }
+    } catch {
+      // ignore and fall through to error handling
+    }
+  }
 
   if (!res.ok) {
     const apiMsg = (() => {

@@ -42,12 +42,20 @@ function tryClearAuthCookie(opts: { reply: any; name: string; options: any }) {
 export function makeAuthRoutes(deps: {
   prisma: PrismaDeps;
   auth: AuthHelpers;
+  tokens: { accessTtlSeconds: number; refreshTtlSeconds: number };
   bootstrap?: { username?: string; password?: string };
   cookie?: { secure?: boolean };
 }): FastifyPluginAsync {
-  const cookieName = "tuixiu_token";
-  const cookieOptions = (secure?: boolean) => ({
+  const accessCookieName = "tuixiu_access";
+  const refreshCookieName = "tuixiu_refresh";
+  const accessCookieOptions = (secure?: boolean) => ({
     path: "/",
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: !!secure,
+  });
+  const refreshCookieOptions = (secure?: boolean) => ({
+    path: "/api/auth",
     httpOnly: true,
     sameSite: "lax" as const,
     secure: !!secure,
@@ -77,9 +85,27 @@ export function makeAuthRoutes(deps: {
         data: { id: uuidv7(), username, passwordHash, role: "admin" as UserRole } as any,
       });
 
-      const token = deps.auth.sign({ userId: user.id, username: user.username, role: user.role });
-      trySetAuthCookie({ reply, name: cookieName, token, options: cookieOptions(deps.cookie?.secure) });
-      return { success: true, data: { token, user: toPublicUser(user) } };
+      const accessToken = deps.auth.sign(
+        { userId: user.id, username: user.username, role: user.role, tokenType: "access" },
+        { expiresIn: deps.tokens.accessTtlSeconds },
+      );
+      const refreshToken = deps.auth.sign(
+        { userId: user.id, username: user.username, role: user.role, tokenType: "refresh" },
+        { expiresIn: deps.tokens.refreshTtlSeconds },
+      );
+      trySetAuthCookie({
+        reply,
+        name: accessCookieName,
+        token: accessToken,
+        options: accessCookieOptions(deps.cookie?.secure),
+      });
+      trySetAuthCookie({
+        reply,
+        name: refreshCookieName,
+        token: refreshToken,
+        options: refreshCookieOptions(deps.cookie?.secure),
+      });
+      return { success: true, data: { user: toPublicUser(user) } };
     });
 
     server.post("/login", async (request, reply) => {
@@ -100,13 +126,65 @@ export function makeAuthRoutes(deps: {
         return { success: false, error: { code: "BAD_CREDENTIALS", message: "用户名或密码错误" } };
       }
 
-      const token = deps.auth.sign({ userId: user.id, username: user.username, role: user.role });
-      trySetAuthCookie({ reply, name: cookieName, token, options: cookieOptions(deps.cookie?.secure) });
-      return { success: true, data: { token, user: toPublicUser(user) } };
+      const accessToken = deps.auth.sign(
+        { userId: user.id, username: user.username, role: user.role, tokenType: "access" },
+        { expiresIn: deps.tokens.accessTtlSeconds },
+      );
+      const refreshToken = deps.auth.sign(
+        { userId: user.id, username: user.username, role: user.role, tokenType: "refresh" },
+        { expiresIn: deps.tokens.refreshTtlSeconds },
+      );
+      trySetAuthCookie({
+        reply,
+        name: accessCookieName,
+        token: accessToken,
+        options: accessCookieOptions(deps.cookie?.secure),
+      });
+      trySetAuthCookie({
+        reply,
+        name: refreshCookieName,
+        token: refreshToken,
+        options: refreshCookieOptions(deps.cookie?.secure),
+      });
+      return { success: true, data: { user: toPublicUser(user) } };
+    });
+
+    server.post("/refresh", async (request, reply) => {
+      const refresh = String((request as any)?.cookies?.tuixiu_refresh ?? "").trim();
+      if (!refresh) {
+        return { success: false, error: { code: "UNAUTHORIZED", message: "未登录" } };
+      }
+
+      let payload: any = null;
+      try {
+        payload = await (server as any).jwt.verify(refresh);
+      } catch {
+        reply.code(401);
+        return { success: false, error: { code: "UNAUTHORIZED", message: "未登录" } };
+      }
+
+      if (!payload || payload.tokenType !== "refresh") {
+        reply.code(401);
+        return { success: false, error: { code: "UNAUTHORIZED", message: "未登录" } };
+      }
+
+      const accessToken = deps.auth.sign(
+        { userId: payload.userId, username: payload.username, role: payload.role, tokenType: "access" },
+        { expiresIn: deps.tokens.accessTtlSeconds },
+      );
+      trySetAuthCookie({
+        reply,
+        name: accessCookieName,
+        token: accessToken,
+        options: accessCookieOptions(deps.cookie?.secure),
+      });
+
+      return { success: true, data: { ok: true } };
     });
 
     server.post("/logout", async (_request, reply) => {
-      tryClearAuthCookie({ reply, name: cookieName, options: cookieOptions(deps.cookie?.secure) });
+      tryClearAuthCookie({ reply, name: accessCookieName, options: accessCookieOptions(deps.cookie?.secure) });
+      tryClearAuthCookie({ reply, name: refreshCookieName, options: refreshCookieOptions(deps.cookie?.secure) });
       return { success: true, data: { ok: true } };
     });
 

@@ -4,7 +4,6 @@ import type { User, UserRole } from "../types";
 
 export type AuthState = {
   status: "loading" | "anonymous" | "authenticated";
-  token: string | null;
   user: User | null;
   login: (input: { username: string; password: string }) => Promise<void>;
   bootstrap: (input: { username?: string; password?: string }) => Promise<void>;
@@ -19,7 +18,6 @@ export function useAuth(): AuthState {
   if (!ctx) {
     return {
       status: "anonymous",
-      token: null,
       user: null,
       login: async () => {},
       bootstrap: async () => {},
@@ -29,4 +27,3 @@ export function useAuth(): AuthState {
   }
   return ctx;
 }
-

@@ -15,34 +15,21 @@ export type WsMessage = {
   error?: { code: string; message: string; details?: string };
 };
 
-function appendToken(url: string, token: string | null): string {
-  const t = typeof token === "string" ? token.trim() : "";
-  if (!t) return url;
-  try {
-    const u = new URL(url);
-    if (!u.searchParams.get("token")) u.searchParams.set("token", t);
-    return u.toString();
-  } catch {
-    return url;
-  }
-}
-
-function getWsUrl(token: string | null): string {
+function getWsUrl(): string {
   const base = import.meta.env.VITE_WS_URL as string | undefined;
   if (base && base.trim()) {
-    return appendToken(`${base.replace(/\/+$/, "")}/ws/client`, token);
+    return `${base.replace(/\/+$/, "")}/ws/client`;
   }
   if (typeof window !== "undefined" && window.location) {
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsBase = `${wsProtocol}//${window.location.host}`;
-    return appendToken(`${wsBase}/ws/client`, token);
+    return `${wsBase}/ws/client`;
   }
-  return appendToken("ws://localhost:3000/ws/client", token);
+  return "ws://localhost:3000/ws/client";
 }
 
-export function useWsClient(onMessage: (msg: WsMessage) => void, opts?: { token?: string | null }) {
-  const token = opts?.token ?? null;
-  const url = useMemo(() => getWsUrl(token), [token]);
+export function useWsClient(onMessage: (msg: WsMessage) => void) {
+  const url = useMemo(() => getWsUrl(), []);
   const [status, setStatus] = useState<"connecting" | "open" | "closed">("connecting");
   const socketRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
@@ -93,10 +80,18 @@ export function useWsClient(onMessage: (msg: WsMessage) => void, opts?: { token?
         reconnectAttemptRef.current = 0;
         setStatus("open");
       };
-      ws.onclose = () => {
+      ws.onclose = (evt) => {
         if (disposed) return;
         if (socketRef.current === ws) socketRef.current = null;
         setStatus("closed");
+        if (evt.code === 1008) {
+          void fetch("/api/auth/refresh", { method: "POST", credentials: "include" })
+            .catch(() => {})
+            .finally(() => {
+              scheduleReconnect();
+            });
+          return;
+        }
         scheduleReconnect();
       };
       ws.onerror = () => {

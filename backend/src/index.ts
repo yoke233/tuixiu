@@ -109,6 +109,10 @@ server.register(
     prisma,
     auth,
     bootstrap: { username: env.BOOTSTRAP_ADMIN_USERNAME, password: env.BOOTSTRAP_ADMIN_PASSWORD },
+    tokens: {
+      accessTtlSeconds: env.AUTH_ACCESS_TOKEN_TTL_SECONDS,
+      refreshTtlSeconds: env.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+    },
     cookie: { secure: env.COOKIE_SECURE === "1" || env.COOKIE_SECURE === "true" },
   }),
   { prefix: "/api/auth" },
@@ -445,4 +449,3 @@ server.setNotFoundHandler(async (request, reply) => {
 });
 
 await server.listen({ port: env.PORT, host: env.HOST });
-

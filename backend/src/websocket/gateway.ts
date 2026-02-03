@@ -1536,20 +1536,44 @@ export function createWebSocketGateway(deps: {
     });
   }
 
-  function extractToken(request: any): string {
-    const url = new URL(String(request?.url ?? ""), "http://localhost");
-    const tokenFromQuery = url.searchParams.get("token")?.trim() ?? "";
+  function extractBearerToken(request: any): string {
     const authHeader = String(request?.headers?.authorization ?? "").trim();
-    const tokenFromHeader = authHeader.toLowerCase().startsWith("bearer ")
-      ? authHeader.slice(7).trim()
-      : "";
-    const tokenFromCookie = String((request as any)?.cookies?.tuixiu_token ?? "").trim();
-    return tokenFromCookie || tokenFromHeader || tokenFromQuery;
+    return authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
+  }
+
+  function extractCookieToken(request: any, name: string): string {
+    const tokenFromCookie = String((request as any)?.cookies?.[name] ?? "").trim();
+    if (tokenFromCookie) return tokenFromCookie;
+    const cookieHeader = String(request?.headers?.cookie ?? "").trim();
+    if (!cookieHeader) return "";
+    const parts = cookieHeader.split(";").map((part) => part.trim());
+    for (const part of parts) {
+      if (!part) continue;
+      const idx = part.indexOf("=");
+      if (idx === -1) continue;
+      const key = part.slice(0, idx).trim();
+      if (key !== name) continue;
+      return decodeURIComponent(part.slice(idx + 1).trim());
+    }
+    return "";
+  }
+
+  function extractClientToken(request: any): string {
+    const tokenFromCookie = extractCookieToken(request, "tuixiu_access");
+    const tokenFromHeader = extractBearerToken(request);
+    return tokenFromCookie || tokenFromHeader;
+  }
+
+  function extractAgentToken(request: any): string {
+    const tokenFromHeader = extractBearerToken(request);
+    if (tokenFromHeader) return tokenFromHeader;
+    const url = new URL(String(request?.url ?? ""), "http://localhost");
+    return url.searchParams.get("token")?.trim() ?? "";
   }
 
   async function authenticateClientSocket(socket: WebSocket, server: FastifyInstance, request: any) {
     try {
-      const token = extractToken(request);
+      const token = extractClientToken(request);
       if (!token) {
         socket.close(1008, "Unauthorized");
         return false;
@@ -1564,7 +1588,7 @@ export function createWebSocketGateway(deps: {
 
   async function authenticateAgentSocket(socket: WebSocket, server: FastifyInstance, request: any) {
     try {
-      const token = extractToken(request);
+      const token = extractAgentToken(request);
       if (!token) {
         socket.close(1008, "Unauthorized");
         return false;

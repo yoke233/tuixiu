@@ -544,7 +544,7 @@ export function useIssueDetailController(opts: {
     },
     [currentRunId, issueId, maybeSwitchToRunFromWs, refresh, refreshTasksOnly],
   );
-  const ws = useWsClient(onWs, { token: auth.token });
+  const ws = useWsClient(onWs);
   useEffect(() => {
     wsStatusRef.current = ws.status;
   }, [ws.status]);

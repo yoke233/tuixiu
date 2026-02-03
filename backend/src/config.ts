@@ -44,6 +44,8 @@ const envSchema = z.object({
   CODEUP_WEBHOOK_SECRET: z.string().optional(),
   MESSAGE_WEBHOOK_SECRET: z.string().optional(),
   COOKIE_SECURE: z.string().optional(),
+  AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
+  AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(2592000),
   ACP_PROXY_BOOTSTRAP_TOKEN: z.string().optional(),
 
   PM_AUTOMATION_ENABLED: z.string().optional(),
