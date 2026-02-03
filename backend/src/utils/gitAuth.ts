@@ -5,7 +5,7 @@ import path from "node:path";
 export type GitAuthMode = "https_pat" | "ssh";
 
 export type GitAuthProject = {
-  repoUrl: string;
+  repoUrl: string | null | undefined;
   scmType?: string | null;
   gitAuthMode?: string | null;
   githubAccessToken?: string | null;
