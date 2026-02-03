@@ -428,7 +428,7 @@ Expected: FAIL
   - `workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount"`
   - mount：用 Node `rm(hostWorkspacePath,{recursive:true,force:true})`，并确保路径在 `workspaceHostRoot` 下
   - git_clone：`ctx.sandbox.execProcess({ command:["bash","-lc","rm -rf /workspace/*"], ... })`（后续会升级为 per-run path）
-  - 成功后发送 `sandbox_inventory` with `deleted_workspaces`（需要定义字段；或先复用 `agent_update`/event，MVP 先不存 DB）
+  - 成功后发送 `sandbox_inventory` with `deleted_workspaces`（需要定义字段；或先复用 `proxy_update`/event，MVP 先不存 DB）
 
 **Step 4: Run tests to verify they pass**
 

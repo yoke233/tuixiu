@@ -193,7 +193,7 @@ export async function handleSessionSetConfigOption(ctx: ProxyContext, msg: any):
     if (configOptions) {
       try {
         ctx.send({
-          type: "prompt_update",
+          type: "acp_update",
           run_id: runId,
           prompt_id: run.activePromptId ?? null,
           session_id: sessionId,

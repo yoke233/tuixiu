@@ -189,7 +189,7 @@ BoxLite 支持两种工作区模式（`sandbox.boxlite.workspaceMode`）：
 准备一个可运行的 ACP Agent 镜像（推荐）：
 
 - Dockerfile：`acp-proxy/agent-images/codex-acp/Dockerfile`
-- 该镜像内置 `git`，默认启动 `npx --yes @zed-industries/codex-acp`，工作目录 `/workspace`
+- 该镜像内置 `git`，默认启动 `codex-acp`，工作目录 `/workspace`
 
 示例（构建并推送到 registry，供 BoxLite 拉取）：
 

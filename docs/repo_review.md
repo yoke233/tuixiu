@@ -149,7 +149,7 @@ graph TD
      - `startAgent`：启动 ACP agent 进程（默认 `agent_command=["codex-acp"]`）
 
 6) Proxy/Agent 输出流式更新，回写 backend → Event → UI  
-   - Proxy 将 ACP `session/update` 等转成 `prompt_update` 回传 backend
+   - Proxy 将 ACP `session/update` 等转成 `acp_update` 回传 backend
    - backend `/ws/agent` 收到后：
      - 进入 `backend/src/websocket/gateway.ts`（agent connection 消息处理）
      - 部分更新会落为 `Event(source="acp", type="acp.update.received")`（由 `backend/src/modules/acp/acpTunnel.ts` 负责持久化与 chunk 合并）
@@ -198,7 +198,7 @@ sequenceDiagram
   WS->>PX: WS msg prompt_send
   PX->>AG: ACP session/prompt
   AG-->>PX: session/update (stream)
-  PX-->>WS: prompt_update
+  PX-->>WS: acp_update
   WS-->>BE: acpTunnel persist events (chunk/flush)
   BE-->>UI: WS /ws/client event_added
 ```
@@ -261,7 +261,7 @@ sequenceDiagram
 ### 4.4 WS 网关（`backend/src/websocket/gateway.ts`）
 
 职责：承接两类连接：
-- proxy/agent：`/ws/agent`（注册、心跳、prompt_update/result、sandbox inventory/status）
+- proxy/agent：`/ws/agent`（注册、心跳、acp_update/result、sandbox inventory/status）
 - 浏览器：`/ws/client`（订阅 event_added/artifact_added 等实时更新；也可直接发 `prompt_run` 命令）
 
 关键机制：
@@ -278,7 +278,7 @@ sequenceDiagram
 - `acp-proxy/src/runProxyCli.ts`：连接 orchestrator（WS），分发消息到 handlers，并周期性上报 inventory
 - handlers：
   - `handleAcpOpen`：确保 sandbox runtime、应用 `agentInputs`（落地 workspace/skills 等输入）、启动 agent、初始化 ACP
-  - `handlePromptSend`：将 orchestrator 的 `prompt_send` 转成 ACP prompt 并把更新转回 `prompt_update`/`prompt_result`
+  - `handlePromptSend`：将 orchestrator 的 `prompt_send` 转成 ACP prompt 并把更新转回 `acp_update`/`prompt_result`
   - `handleSandboxControl`：执行 git push / 运行命令等 sandbox 控制类动作
 - sandbox/provider：
   - `container_oci` / `boxlite_oci` / `host_process` 统一抽象在 `acp-proxy/src/sandbox/*`、`acp-proxy/src/platform/*`

@@ -56,10 +56,10 @@ describe("runs/runRuntime", () => {
       expect.objectContaining({ sessionId: "s1", configId: "mode", value: "auto" }),
     );
 
-    // session/new 返回的 configOptions 应该被合成为一条 prompt_update 上报给后端。
+    // session/new 返回的 configOptions 应该被合成为一条 acp_update 上报给后端。
     expect(ctx.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "prompt_update",
+        type: "acp_update",
         run_id: "r1",
         session_id: "s1",
         update: expect.objectContaining({ sessionUpdate: "config_option_update" }),

@@ -149,7 +149,7 @@ describe("proxy/handlers", () => {
     expect(messages).toContainEqual({ type: "acp_opened", run_id: "r1", ok: true });
   });
 
-  it("handlePromptSend: forwards session/update as prompt_update and replies prompt_result(ok)", async () => {
+  it("handlePromptSend: forwards session/update as acp_update and replies prompt_result(ok)", async () => {
     const h = createHarness();
     const messages: any[] = [];
 
@@ -240,7 +240,7 @@ describe("proxy/handlers", () => {
         (m) =>
           m &&
           typeof m === "object" &&
-          (m as any).type === "prompt_update" &&
+          (m as any).type === "acp_update" &&
           (m as any).run_id === "r1" &&
           (m as any).prompt_id === "p1" &&
           (m as any).update?.sessionUpdate === "agent_message_chunk" &&
@@ -253,10 +253,12 @@ describe("proxy/handlers", () => {
         (m) =>
           m &&
           typeof m === "object" &&
-          (m as any).type === "agent_update" &&
+          (m as any).type === "acp_update" &&
           (m as any).run_id === "r1" &&
-          (m as any).content?.type === "session_created" &&
-          (m as any).content?.session_id === "s1",
+          (m as any).prompt_id === "p1" &&
+          (m as any).session_id === "s1" &&
+          (m as any).update?.sessionUpdate === "session_created" &&
+          (m as any).update?.content?.type === "session_created",
       ),
     ).toBe(true);
 

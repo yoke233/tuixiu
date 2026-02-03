@@ -149,7 +149,7 @@ ACP 原生设计:
   3) 发送 register_agent
   4) 启动三个循环:
      - ws read loop: 处理 execute_task/cancel_task
-     - agent stdout read loop: 处理 session/update 并转发 agent_update
+    - agent stdout read loop: 处理 session/update 并转发 acp_update
      - heartbeat loop: 定期发送 heartbeat
 
 进程管理:

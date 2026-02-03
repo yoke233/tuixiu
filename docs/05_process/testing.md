@@ -72,7 +72,7 @@ pnpm typecheck
 目录：
 
 - `backend/test/routes/*.test.ts`：projects/issues/runs/agents 的路由行为与错误码
-- `backend/test/websocket/gateway.test.ts`：`/ws/agent` 消息处理（register/heartbeat/agent_update）与广播行为
+- `backend/test/websocket/gateway.test.ts`：`/ws/agent` 消息处理（register/heartbeat/acp_update/proxy_update）与广播行为
 - `backend/test/config.test.ts`：环境变量校验（DATABASE_URL 等）
 
 验收重点：
@@ -80,7 +80,7 @@ pnpm typecheck
 - Issue 创建默认进入需求池（`pending`）
 - `/api/issues/:id/start` 能选择 agent、创建 Run、创建 worktree 并下发 `execute_task`
 - `/api/runs/:id/prompt` 会写 user event，并下发 `prompt_run`（携带 `Run.acpSessionId` 与 `context`）
-- `agent_update` 中的 `session_created` 会落库到 `Run.acpSessionId`
+- `proxy_update` 中的 `session_created` 会落库到 `Run.acpSessionId`
 
 ---
 

@@ -76,7 +76,7 @@ last_reviewed: "2026-01-27"
 
 1. proxy 将 `execute_task` 转成 ACP `session/new` + `session/prompt`
 2. agent 通过 `session/update` 流式输出 chunk/tool_call
-3. proxy 以 `agent_update` 形式转发给 backend
+3. proxy 以 `acp_update`（ACP `session/update`）与 `proxy_update`（proxy 自产信号）转发给 backend
 4. backend 写入 `Event` 并广播到 `/ws/client`
 5. Web UI 的 RunConsole 增量渲染（chunk 合并、tool 折叠）
 

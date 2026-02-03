@@ -35,9 +35,9 @@ async function pathExists(p: string): Promise<boolean> {
 
 export function sendUpdate(ctx: ProxyContext, runId: string, content: unknown): void {
   try {
-    ctx.send({ type: "agent_update", run_id: runId, content });
+    ctx.send({ type: "proxy_update", run_id: runId, content });
   } catch (err) {
-    ctx.log("failed to send agent_update", { runId, err: String(err) });
+    ctx.log("failed to send proxy_update", { runId, err: String(err) });
   }
 }
 
@@ -589,27 +589,14 @@ export async function startAgent(
 
         try {
           ctx.send({
-            type: "prompt_update",
+            type: "acp_update",
             run_id: run.runId,
             prompt_id: run.activePromptId,
             session_id: sessionId || null,
             update,
           });
         } catch (err) {
-          ctx.log("failed to send prompt_update", { runId: run.runId, err: String(err) });
-        }
-
-        // Persist session lifecycle/state to backend even before the first prompt finishes.
-        // Backend uses `agent_update` with `content.type` to update Run.acpSessionId and session metadata.
-        if (sessionId && isRecord(update)) {
-          const content = (update as any).content;
-          const contentType = isRecord(content) ? String((content as any).type ?? "") : "";
-          if (contentType === "session_created") {
-            sendUpdate(ctx, run.runId, { type: "session_created", session_id: sessionId });
-          }
-          if (contentType === "session_state") {
-            sendUpdate(ctx, run.runId, { ...(content as any), session_id: sessionId });
-          }
+          ctx.log("failed to send acp_update", { runId: run.runId, err: String(err) });
         }
 
         // 自动把 codex-acp 的 Approval Preset 从 read-only 切到 auto（如果 Agent 提供了该 configOption）。
@@ -917,14 +904,28 @@ export async function ensureSessionForPrompt(
 
     // session/new 的返回里通常包含 configOptions，但不一定会立刻触发 session/update 通知。
     // 为了让后端/前端能在“第一条对话输出之前”就知道可配置项，这里把它作为一条合成的 config_option_update 上报。
-    sendUpdate(ctx, run.runId, { type: "session_created", session_id: createdSessionId });
+    try {
+      ctx.send({
+        type: "acp_update",
+        run_id: run.runId,
+        prompt_id: run.activePromptId ?? null,
+        session_id: createdSessionId,
+        update: { sessionUpdate: "session_created", content: { type: "session_created" } },
+      });
+    } catch (err) {
+      ctx.log("failed to send synthetic session_created", {
+        runId: run.runId,
+        sessionId: createdSessionId,
+        err: String(err),
+      });
+    }
     const configOptions = Array.isArray((created as any)?.configOptions)
       ? ((created as any).configOptions as any[])
       : null;
     if (configOptions) {
       try {
         ctx.send({
-          type: "prompt_update",
+          type: "acp_update",
           run_id: run.runId,
           prompt_id: run.activePromptId ?? null,
           session_id: createdSessionId,

@@ -112,8 +112,8 @@
 
 不强制，但强烈建议：
 
-- 最快上手：让 guest 里用 `npx --yes @zed-industries/codex-acp` 现装现跑（需要 guest 能访问公网）
-- 更稳更快：构建你自己的 `sandbox.image`，把 Node 与 `@zed-industries/codex-acp`（以及 git/ssh 等工具）预装在镜像里，然后把 `agent_command` 改成直接运行它
+- 推荐默认：构建你自己的 `sandbox.image`，把 Node 与 `codex-acp`（以及 git/ssh 等工具）预装在镜像里，并使用 `agent_command=["codex-acp"]`
+- 临时验证：也可以让 guest 里用 `npx --yes @zed-industries/codex-acp` 现装现跑（需要 guest 能访问公网）
 
 ## Codex 配置文件挂载（推荐）
 

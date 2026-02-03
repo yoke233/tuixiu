@@ -271,7 +271,7 @@
 </ul>
 <p>6) Proxy/Agent 输出流式更新，回写 backend → Event → UI</p>
 <ul>
-<li>Proxy 将 ACP <code>session/update</code> 等转成 <code>prompt_update</code> 回传 backend</li>
+<li>Proxy 将 ACP <code>session/update</code> 等转成 <code>acp_update</code> 回传 backend</li>
 <li>backend <code>/ws/agent</code> 收到后：</li>
 <li>进入 <code>backend/src/websocket/gateway.ts</code>（agent connection 消息处理）</li>
 <li>部分更新会落为 <code>Event(source=&quot;acp&quot;, type=&quot;acp.update.received&quot;)</code>（由 <code>backend/src/modules/acp/acpTunnel.ts</code> 负责持久化与 chunk 合并）</li>
@@ -318,7 +318,7 @@
   WS-&gt;&gt;PX: WS msg prompt_send
   PX-&gt;&gt;AG: ACP session/prompt
   AG--&gt;&gt;PX: session/update (stream)
-  PX--&gt;&gt;WS: prompt_update
+  PX--&gt;&gt;WS: acp_update
   WS--&gt;&gt;BE: acpTunnel persist events (chunk/flush)
   BE--&gt;&gt;UI: WS /ws/client event_added
 </code></pre>
@@ -379,7 +379,7 @@
 <h3 id="h-20">4.4 WS 网关（<code>backend/src/websocket/gateway.ts</code>）</h3>
 <p>职责：承接两类连接：</p>
 <ul>
-<li>proxy/agent：<code>/ws/agent</code>（注册、心跳、prompt_update/result、sandbox inventory/status）</li>
+<li>proxy/agent：<code>/ws/agent</code>（注册、心跳、acp_update/prompt_result、sandbox inventory/status）</li>
 <li>浏览器：<code>/ws/client</code>（订阅 event_added/artifact_added 等实时更新；也可直接发 <code>prompt_run</code> 命令）</li>
 </ul>
 <p>关键机制：</p>
@@ -398,7 +398,7 @@
 <li><code>acp-proxy/src/runProxyCli.ts</code>：连接 orchestrator（WS），分发消息到 handlers，并周期性上报 inventory</li>
 <li>handlers：</li>
 <li><code>handleAcpOpen</code>：确保 sandbox runtime、应用 <code>agentInputs</code>（落地 workspace/skills 等输入）、启动 agent、初始化 ACP</li>
-<li><code>handlePromptSend</code>：将 orchestrator 的 <code>prompt_send</code> 转成 ACP prompt 并把更新转回 <code>prompt_update</code>/<code>prompt_result</code></li>
+<li><code>handlePromptSend</code>：将 orchestrator 的 <code>prompt_send</code> 转成 ACP prompt 并把更新转回 <code>acp_update</code>/<code>prompt_result</code></li>
 <li><code>handleSandboxControl</code>：执行 git push / 运行命令等 sandbox 控制类动作</li>
 <li>sandbox/provider：</li>
 <li><code>container_oci</code> / <code>boxlite_oci</code> / <code>host_process</code> 统一抽象在 <code>acp-proxy/src/sandbox/*</code>、<code>acp-proxy/src/platform/*</code></li>

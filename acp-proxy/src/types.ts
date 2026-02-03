@@ -82,8 +82,8 @@ export type SessionPermissionMessage = {
   option_id?: string;
 };
 
-export type AgentUpdateMessage = {
-  type: "agent_update";
+export type ProxyUpdateMessage = {
+  type: "proxy_update";
   run_id: string;
   content: unknown;
 };
