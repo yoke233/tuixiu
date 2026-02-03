@@ -1,14 +1,14 @@
 import type { PrismaDeps } from "../../db.js";
 import * as gitlab from "../../integrations/gitlab.js";
 import * as github from "../../integrations/github.js";
-import type { GitAuthProject } from "../../utils/gitAuth.js";
 import { isSandboxGitPushEnabled } from "../../utils/sandboxCaps.js";
+import { loadProjectCredentials } from "../../utils/projectCredentials.js";
 import { postGitHubPrCreatedCommentBestEffort } from "./githubIssueComments.js";
 import { buildRunScmStateUpdate } from "./runScmState.js";
 
 export type RunReviewDeps = {
   prisma: PrismaDeps;
-  sandboxGitPush?: (opts: { run: any; branch: string; project: GitAuthProject }) => Promise<void>;
+  sandboxGitPush?: (opts: { run: any; branch: string; project: any }) => Promise<void>;
   gitlab?: {
     inferBaseUrl?: typeof gitlab.inferGitlabBaseUrl;
     createMergeRequest?: typeof gitlab.createMergeRequest;
@@ -144,11 +144,19 @@ export async function createReviewRequestForRun(
     return { success: false, error: { code: "GIT_PUSH_FAILED", message: "git push 失败", details: String(err) } };
   }
 
+  const { admin } = await loadProjectCredentials(deps.prisma, project as any);
+
   if (scm === "gitlab" || scm === "codeup") {
-    if (!project.gitlabProjectId || !project.gitlabAccessToken) {
+    const scmConfig = await deps.prisma.projectScmConfig
+      .findUnique({ where: { projectId: String((project as any)?.id ?? "") } } as any)
+      .catch(() => null);
+    const gitlabProjectId = Number((scmConfig as any)?.gitlabProjectId ?? 0);
+    const token = String((admin as any)?.gitlabAccessToken ?? "").trim();
+
+    if (!gitlabProjectId || !token) {
       return {
         success: false,
-        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab/Codeup projectId/token" }
+        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab/Codeup projectId/token" },
       };
     }
 
@@ -159,8 +167,8 @@ export async function createReviewRequestForRun(
 
     const auth: gitlab.GitLabAuth = {
       baseUrl,
-      projectId: project.gitlabProjectId,
-      accessToken: project.gitlabAccessToken
+      projectId: gitlabProjectId,
+      accessToken: token,
     };
 
     let mergeRequest: gitlab.GitLabMergeRequest;
@@ -203,7 +211,7 @@ export async function createReviewRequestForRun(
     const issueIsGitHub = String((run as any)?.issue?.externalProvider ?? "").toLowerCase() === "github";
     const issueNumber = Number((run as any)?.issue?.externalNumber ?? 0);
     const repoUrlForIssue = String((run as any)?.issue?.externalUrl ?? project.repoUrl ?? "").trim();
-    const githubTokenForComment = String(project.githubAccessToken ?? "").trim();
+    const githubTokenForComment = String((admin as any)?.githubAccessToken ?? "").trim();
     if (issueIsGitHub && githubTokenForComment) {
       await postGitHubPrCreatedCommentBestEffort({
         prisma: deps.prisma,
@@ -225,7 +233,7 @@ export async function createReviewRequestForRun(
   }
 
   if (scm === "github") {
-    const token = project.githubAccessToken;
+    const token = String((admin as any)?.githubAccessToken ?? "").trim();
     if (!token) {
       return { success: false, error: { code: "NO_GITHUB_CONFIG", message: "Project 未配置 GitHub token" } };
     }
@@ -352,6 +360,7 @@ export async function mergeReviewRequestForRun(
 
   const project = run.issue.project;
   const scm = String(project.scmType ?? "").toLowerCase();
+  const { admin } = await loadProjectCredentials(deps.prisma, project as any);
 
   const prNumberFromRun = Number.isFinite((run as any).scmPrNumber as any) ? Number((run as any).scmPrNumber) : null;
   const prUrlFromRun = typeof (run as any).scmPrUrl === "string" ? String((run as any).scmPrUrl).trim() : "";
@@ -406,10 +415,16 @@ export async function mergeReviewRequestForRun(
     return { success: false, error: { code: "NO_PR", message: "Run 暂无 PR 信息" } };
   }
   if (scm === "gitlab" || scm === "codeup") {
-    if (!project.gitlabProjectId || !project.gitlabAccessToken) {
+    const scmConfig = await deps.prisma.projectScmConfig
+      .findUnique({ where: { projectId: String((project as any)?.id ?? "") } } as any)
+      .catch(() => null);
+    const gitlabProjectId = Number((scmConfig as any)?.gitlabProjectId ?? 0);
+    const token = String((admin as any)?.gitlabAccessToken ?? "").trim();
+
+    if (!gitlabProjectId || !token) {
       return {
         success: false,
-        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab/Codeup projectId/token" }
+        error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab/Codeup projectId/token" },
       };
     }
 
@@ -420,8 +435,8 @@ export async function mergeReviewRequestForRun(
 
     const auth: gitlab.GitLabAuth = {
       baseUrl,
-      projectId: project.gitlabProjectId,
-      accessToken: project.gitlabAccessToken
+      projectId: gitlabProjectId,
+      accessToken: token,
     };
 
     let mergeRequest: gitlab.GitLabMergeRequest;
@@ -476,7 +491,7 @@ export async function mergeReviewRequestForRun(
   }
 
   if (scm === "github") {
-    const token = project.githubAccessToken;
+    const token = String((admin as any)?.githubAccessToken ?? "").trim();
     if (!token) {
       return { success: false, error: { code: "NO_GITHUB_CONFIG", message: "Project 未配置 GitHub token" } };
     }
@@ -577,6 +592,7 @@ export async function syncReviewRequestForRun(
 
   const project = run.issue.project;
   const scm = String(project.scmType ?? "").toLowerCase();
+  const { admin } = await loadProjectCredentials(deps.prisma, project as any);
 
   const prNumberFromRun = Number.isFinite((run as any).scmPrNumber as any) ? Number((run as any).scmPrNumber) : null;
   const prUrlFromRun = typeof (run as any).scmPrUrl === "string" ? String((run as any).scmPrUrl).trim() : "";
@@ -619,7 +635,13 @@ export async function syncReviewRequestForRun(
     return { success: false, error: { code: "NO_PR", message: "Run 暂无 PR 信息" } };
   }
   if (scm === "gitlab" || scm === "codeup") {
-    if (!project.gitlabProjectId || !project.gitlabAccessToken) {
+    const scmConfig = await deps.prisma.projectScmConfig
+      .findUnique({ where: { projectId: String((project as any)?.id ?? "") } } as any)
+      .catch(() => null);
+    const gitlabProjectId = Number((scmConfig as any)?.gitlabProjectId ?? 0);
+    const token = String((admin as any)?.gitlabAccessToken ?? "").trim();
+
+    if (!gitlabProjectId || !token) {
       return {
         success: false,
         error: { code: "NO_GITLAB_CONFIG", message: "Project 未配置 GitLab/Codeup projectId/token" },
@@ -633,8 +655,8 @@ export async function syncReviewRequestForRun(
 
     const auth: gitlab.GitLabAuth = {
       baseUrl,
-      projectId: project.gitlabProjectId,
-      accessToken: project.gitlabAccessToken,
+      projectId: gitlabProjectId,
+      accessToken: token,
     };
 
     let mergeRequest: gitlab.GitLabMergeRequest;
@@ -677,7 +699,7 @@ export async function syncReviewRequestForRun(
   }
 
   if (scm === "github") {
-    const token = project.githubAccessToken;
+    const token = String((admin as any)?.githubAccessToken ?? "").trim();
     if (!token) {
       return { success: false, error: { code: "NO_GITHUB_CONFIG", message: "Project 未配置 GitHub token" } };
     }

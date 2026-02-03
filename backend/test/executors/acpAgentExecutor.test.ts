@@ -22,7 +22,7 @@ function makeAgent(overrides?: Partial<any>) {
   };
 }
 
-const defaultRoleEnv = "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=role-gh\n";
+const defaultRoleEnv = "FOO=bar\n";
 
 function makeRoleTemplate(overrides?: Partial<any>) {
   return {
@@ -55,8 +55,7 @@ function makeRun(opts?: {
     scmType: "github",
     defaultBranch: "main",
     defaultRoleKey: "dev",
-    githubAccessToken: "proj-gh",
-    gitlabAccessToken: "proj-gl",
+    runGitCredentialId: "c-run",
     agentWorkspaceNoticeTemplate: opts?.projectNoticeTemplate,
   };
 
@@ -166,6 +165,14 @@ describe("acpAgentExecutor", () => {
       issue: { update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(role) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
     } as any;
 
     await startAcpAgentExecution({ prisma, acp }, "r1");
@@ -188,9 +195,11 @@ describe("acpAgentExecutor", () => {
           script: expect.stringContaining("echo hi"),
           timeout_seconds: 10,
           env: expect.objectContaining({
-            GH_TOKEN: "role-gh",
-            GITHUB_TOKEN: "role-gh",
+            GH_TOKEN: "gh-run",
+            GITHUB_TOKEN: "gh-run",
             TUIXIU_GIT_AUTH_MODE: "https_pat",
+            TUIXIU_GIT_HTTP_USERNAME: "x-access-token",
+            TUIXIU_GIT_HTTP_PASSWORD: "gh-run",
             TUIXIU_RUN_ID: "r1",
             TUIXIU_RUN_BRANCH: "run-branch",
             TUIXIU_WORKSPACE_GUEST: "/workspace",
@@ -237,6 +246,14 @@ describe("acpAgentExecutor", () => {
       issue: { update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(role) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
     } as any;
 
     await startAcpAgentExecution({ prisma, acp }, "r1");
@@ -391,8 +408,7 @@ describe("acpAgentExecutor", () => {
     run.task.workspacePolicy = "bundle";
     run.task.bundleSource = { path: "C:/bundle.zip", hash: "bh1" };
     const role = makeRoleTemplate({
-      envText:
-        "TUIXIU_GIT_AUTH_MODE=https_pat\nTUIXIU_GIT_HTTP_PASSWORD=token\nGITHUB_TOKEN=role-gh\n",
+      envText: "FOO=bar\n",
     });
     const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "mount" } } });
 
@@ -428,8 +444,7 @@ describe("acpAgentExecutor", () => {
   it("git policy keeps repo env and git auth", async () => {
     const run = makeRun({ kind: "test.run" });
     const role = makeRoleTemplate({
-      envText:
-        "TUIXIU_GIT_AUTH_MODE=https_pat\nTUIXIU_GIT_HTTP_PASSWORD=token\nGITHUB_TOKEN=role-gh\n",
+      envText: "FOO=bar\n",
     });
     const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
 
@@ -448,6 +463,14 @@ describe("acpAgentExecutor", () => {
       issue: { update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(role) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
     } as any;
 
     await startAcpAgentExecution({ prisma, acp }, "r1");
@@ -485,6 +508,14 @@ describe("acpAgentExecutor", () => {
       issue: { update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
     } as any;
 
     const acp = {
@@ -533,6 +564,14 @@ describe("acpAgentExecutor", () => {
       issue: { update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
       task: { update: vi.fn().mockResolvedValue(undefined) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
     } as any;
 
     const acp = {

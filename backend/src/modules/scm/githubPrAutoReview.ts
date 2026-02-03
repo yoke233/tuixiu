@@ -3,7 +3,8 @@ import { z } from "zod";
 import type { PrismaDeps } from "../../db.js";
 import * as github from "../../integrations/github.js";
 import { uuidv7 } from "../../utils/uuid.js";
-import { parseEnvText } from "../../utils/envText.js";
+import { loadProjectCredentials } from "../../utils/projectCredentials.js";
+import { parseEnvText, stripForbiddenGitEnv } from "../../utils/envText.js";
 import { renderTextTemplate } from "../../utils/textTemplate.js";
 import type { AcpTunnel } from "../acp/acpTunnel.js";
 import { extractAgentTextFromEvents, extractTaggedCodeBlock } from "../runs/agentOutput.js";
@@ -159,7 +160,8 @@ async function runGitHubPrAutoReviewOnce(
   const project: any = issue?.project;
   if (!run || !issue || !project) return;
 
-  const token = String(project.githubAccessToken ?? "").trim();
+  const { admin } = await loadProjectCredentials(deps.prisma, project ?? {});
+  const token = String((admin as any)?.githubAccessToken ?? "").trim();
   if (!token) return;
 
   const content = ((prArtifact as any).content ?? {}) as any;
@@ -266,7 +268,7 @@ async function runGitHubPrAutoReviewOnce(
         } else {
           await deps.prisma.agent.update({ where: { id: agent.id }, data: { currentLoad: { increment: 1 } } }).catch(() => {});
 
-          const roleEnv = role?.envText ? parseEnvText(String(role.envText)) : {};
+          const roleEnv = role?.envText ? stripForbiddenGitEnv(parseEnvText(String(role.envText))) : {};
           const init =
             role?.initScript?.trim()
               ? {

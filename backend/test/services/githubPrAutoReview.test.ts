@@ -36,10 +36,11 @@ describe("githubPrAutoReview", () => {
           run: {
             id: "r1",
             metadata: {},
-            issue: { project: { githubAccessToken: "tok", repoUrl: "https://github.com/o/r" } },
+            issue: { project: { id: "p1", repoUrl: "https://github.com/o/r", scmAdminCredentialId: "c-admin" } },
           },
         }),
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
       run: { update: vi.fn().mockResolvedValue({}) },
       event: { create: vi.fn().mockResolvedValue({}) },
     } as any;
@@ -89,7 +90,7 @@ describe("githubPrAutoReview", () => {
       run: {
         id: "r1",
         metadata: { githubPrAutoReview: { lastHeadSha: "abcdef" } },
-        issue: { project: { githubAccessToken: "tok", repoUrl: "https://github.com/o/r" } },
+        issue: { project: { id: "p1", repoUrl: "https://github.com/o/r", scmAdminCredentialId: "c-admin" } },
       },
     });
 
@@ -128,9 +129,10 @@ describe("githubPrAutoReview", () => {
           id: "a1",
           type: "pr",
           content: { number: 12, webUrl: "https://github.com/o/r/pull/12" },
-          run: { id: "r1", metadata: {}, issue: { projectId: "p1", project: { githubAccessToken: "tok", repoUrl: "https://github.com/o/r" } } },
+          run: { id: "r1", metadata: {}, issue: { projectId: "p1", project: { id: "p1", repoUrl: "https://github.com/o/r", scmAdminCredentialId: "c-admin" } } },
         }),
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
       run: { update: vi.fn().mockResolvedValue({}) },
       event: { create: vi.fn().mockResolvedValue({}) },
     } as any;
@@ -156,9 +158,10 @@ describe("githubPrAutoReview", () => {
           id: "a1",
           type: "pr",
           content: { number: 12, webUrl: "https://github.com/o/r/pull/12" },
-          run: { id: "r1", metadata: {}, issue: { projectId: "p1", project: { githubAccessToken: "tok", repoUrl: "https://github.com/o/r" } } },
+          run: { id: "r1", metadata: {}, issue: { projectId: "p1", project: { id: "p1", repoUrl: "https://github.com/o/r", scmAdminCredentialId: "c-admin" } } },
         }),
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
       run: { update: vi.fn().mockResolvedValue({}) },
       event: { create: vi.fn().mockResolvedValue({}) },
     } as any;
@@ -197,10 +200,11 @@ describe("githubPrAutoReview", () => {
             branchName: "run/r1",
             workspacePath: "C:/ws",
             metadata: {},
-            issue: { id: "i1", projectId: "p1", title: "t", description: "d", project: { name: "P", repoUrl: "https://github.com/o/r", defaultBranch: "main", githubAccessToken: "tok" } },
+            issue: { id: "i1", projectId: "p1", title: "t", description: "d", project: { id: "p1", name: "P", repoUrl: "https://github.com/o/r", defaultBranch: "main", scmAdminCredentialId: "c-admin" } },
           },
         }),
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
       agent: {
         findMany: vi.fn().mockResolvedValue([{ id: "agent-1", status: "online", currentLoad: 0, maxConcurrentRuns: 1, proxyId: "proxy-1", capabilities: {} }]),
         update: vi.fn().mockResolvedValue({}),

@@ -7,13 +7,7 @@ export type CreateProjectInput = {
   scmType?: string;
   defaultBranch?: string;
   workspaceMode?: "worktree" | "clone";
-  gitAuthMode?: "https_pat" | "ssh";
   agentWorkspaceNoticeTemplate?: string;
-  gitlabProjectId?: number;
-  gitlabAccessToken?: string;
-  gitlabWebhookSecret?: string;
-  githubAccessToken?: string;
-  githubPollingEnabled?: boolean;
 };
 
 export async function listProjects(): Promise<Project[]> {
@@ -32,14 +26,8 @@ export type UpdateProjectInput = {
   scmType?: string;
   defaultBranch?: string;
   workspaceMode?: "worktree" | "clone" | null;
-  gitAuthMode?: "https_pat" | "ssh" | null;
   defaultRoleKey?: string | null;
   agentWorkspaceNoticeTemplate?: string | null;
-  gitlabProjectId?: number | null;
-  gitlabAccessToken?: string | null;
-  gitlabWebhookSecret?: string | null;
-  githubAccessToken?: string | null;
-  githubPollingEnabled?: boolean;
 };
 
 export async function updateProject(projectId: string, input: UpdateProjectInput): Promise<Project> {

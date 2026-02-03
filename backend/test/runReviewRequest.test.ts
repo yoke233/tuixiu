@@ -8,10 +8,12 @@ function makeDeps(overrides: {
   run?: Record<string, unknown>;
 }) {
   const project = {
+    id: "p1",
     scmType: "github",
     repoUrl: "https://github.com/o/r",
     defaultBranch: "main",
-    githubAccessToken: "ghp_xxx",
+    runGitCredentialId: "c-run",
+    scmAdminCredentialId: "c-admin",
     ...overrides.project,
   };
 
@@ -43,6 +45,12 @@ function makeDeps(overrides: {
     },
     artifact: {
       create: vi.fn().mockResolvedValue({ id: "a1" }),
+    },
+    gitCredential: {
+      findMany: vi.fn().mockResolvedValue([
+        { id: "c-run", projectId: "p1", githubAccessToken: "gh-run", gitlabAccessToken: "gl-run", gitAuthMode: "https_pat" },
+        { id: "c-admin", projectId: "p1", githubAccessToken: "gh-admin", gitlabAccessToken: "gl-admin", gitAuthMode: "https_pat" },
+      ]),
     },
   } as any;
 
@@ -85,6 +93,20 @@ describe("createReviewRequestForRun", () => {
       expect.anything(),
       expect.objectContaining({ body: "Issue desc\n\nCloses #3" }),
     );
+  });
+
+  it("push 使用 run credential；GitHub PR API 使用 scm admin credential", async () => {
+    const { prisma, sandboxGitPush, parseRepo, createPullRequest } = makeDeps({});
+
+    const res = await createReviewRequestForRun(
+      { prisma, sandboxGitPush, github: { parseRepo, createPullRequest } } as any,
+      "r1",
+      {},
+    );
+
+    expect(res.success).toBe(true);
+    expect(sandboxGitPush).toHaveBeenCalledWith(expect.objectContaining({ project: expect.objectContaining({ runGitCredentialId: "c-run" }) }));
+    expect(createPullRequest).toHaveBeenCalledWith(expect.objectContaining({ accessToken: "gh-admin" }), expect.anything());
   });
 
   it("body 已包含 issue 引用时，不重复追加", async () => {
@@ -239,12 +261,12 @@ describe("createReviewRequestForRun", () => {
 
   it("GitLab: creates merge request and updates run scm state", async () => {
     const project = {
+      id: "p1",
       scmType: "gitlab",
       repoUrl: "https://gitlab.example.com/group/repo.git",
       defaultBranch: "main",
-      gitlabProjectId: 123,
-      gitlabAccessToken: "tok",
-      githubAccessToken: "gh",
+      runGitCredentialId: "c-run",
+      scmAdminCredentialId: "c-admin",
     };
     const issue = {
       id: "i1",
@@ -268,6 +290,13 @@ describe("createReviewRequestForRun", () => {
     const prisma = {
       run: { findUnique: vi.fn().mockResolvedValue(run), update: vi.fn().mockResolvedValue({}) },
       artifact: { findFirst: vi.fn() },
+      projectScmConfig: { findUnique: vi.fn().mockResolvedValue({ projectId: "p1", gitlabProjectId: 123 }) },
+      gitCredential: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: "c-run", projectId: "p1", gitAuthMode: "https_pat" },
+          { id: "c-admin", projectId: "p1", gitlabAccessToken: "tok", gitAuthMode: "https_pat" },
+        ]),
+      },
     } as any;
 
     const sandboxGitPush = vi.fn().mockResolvedValue(undefined);
@@ -288,7 +317,7 @@ describe("createReviewRequestForRun", () => {
     );
 
     expect(res.success).toBe(true);
-    expect(createMergeRequest).toHaveBeenCalled();
+    expect(createMergeRequest).toHaveBeenCalledWith(expect.objectContaining({ projectId: 123, accessToken: "tok" }), expect.anything());
     expect(prisma.run.update).toHaveBeenCalled();
   });
 });
@@ -318,12 +347,23 @@ describe("mergeReviewRequestForRun", () => {
           issueId: "i1",
           scmPrNumber: 7,
           scmPrUrl: "https://gitlab.example.com/mr/7",
-          issue: { id: "i1", project: { scmType: "gitlab", repoUrl: "https://gitlab.example.com/group/repo.git", gitlabProjectId: 123, gitlabAccessToken: "tok" } },
+          issue: {
+            id: "i1",
+            project: {
+              id: "p1",
+              scmType: "gitlab",
+              repoUrl: "https://gitlab.example.com/group/repo.git",
+              runGitCredentialId: "c-run",
+              scmAdminCredentialId: "c-admin",
+            },
+          },
           artifacts: [],
         }),
         update: vi.fn().mockResolvedValue({}),
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
+      projectScmConfig: { findUnique: vi.fn().mockResolvedValue({ projectId: "p1", gitlabProjectId: 123 }) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", gitlabAccessToken: "tok" }]) },
     } as any;
 
     const mergeMergeRequest = vi.fn().mockResolvedValue({
@@ -354,6 +394,7 @@ describe("mergeReviewRequestForRun", () => {
     expect(res.success).toBe(true);
     expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
     expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
+    expect(mergeMergeRequest).toHaveBeenCalledWith(expect.objectContaining({ projectId: 123, accessToken: "tok" }), expect.anything());
   });
 
   it("GitHub: merges PR and updates issue/run when merged", async () => {
@@ -364,12 +405,22 @@ describe("mergeReviewRequestForRun", () => {
           issueId: "i1",
           scmPrNumber: 9,
           scmPrUrl: "https://github.com/o/r/pull/9",
-          issue: { id: "i1", project: { scmType: "github", repoUrl: "https://github.com/o/r", githubAccessToken: "tok" } },
+          issue: {
+            id: "i1",
+            project: {
+              id: "p1",
+              scmType: "github",
+              repoUrl: "https://github.com/o/r",
+              runGitCredentialId: "c-run",
+              scmAdminCredentialId: "c-admin",
+            },
+          },
           artifacts: [],
         }),
         update: vi.fn().mockResolvedValue({}),
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
     } as any;
 
     const parseRepo = vi.fn().mockReturnValue({ apiBaseUrl: "https://api.github.com", owner: "o", repo: "r" });
@@ -385,6 +436,7 @@ describe("mergeReviewRequestForRun", () => {
     expect(res.success).toBe(true);
     expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
     expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
+    expect(mergePullRequest).toHaveBeenCalledWith(expect.objectContaining({ accessToken: "tok" }), expect.anything());
   });
 });
 
@@ -398,12 +450,22 @@ describe("syncReviewRequestForRun", () => {
           scmPrNumber: 9,
           scmPrUrl: "https://github.com/o/r/pull/9",
           scmHeadSha: "h1",
-          issue: { id: "i1", project: { scmType: "github", repoUrl: "https://github.com/o/r", githubAccessToken: "tok" } },
+          issue: {
+            id: "i1",
+            project: {
+              id: "p1",
+              scmType: "github",
+              repoUrl: "https://github.com/o/r",
+              runGitCredentialId: "c-run",
+              scmAdminCredentialId: "c-admin",
+            },
+          },
           artifacts: [],
         }),
         update: vi.fn().mockResolvedValue({}),
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
     } as any;
 
     const parseRepo = vi.fn().mockReturnValue({ apiBaseUrl: "https://api.github.com", owner: "o", repo: "r" });
@@ -425,5 +487,6 @@ describe("syncReviewRequestForRun", () => {
     expect(res.success).toBe(true);
     expect(prisma.issue.update).toHaveBeenCalledWith({ where: { id: "i1" }, data: { status: "done" } });
     expect(prisma.run.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "completed" } });
+    expect(getPullRequest).toHaveBeenCalledWith(expect.objectContaining({ accessToken: "tok" }), expect.anything());
   });
 });

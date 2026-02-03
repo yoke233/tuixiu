@@ -1,6 +1,6 @@
 import type { PrismaDeps } from "../db.js";
 import { suggestRunKeyWithLlm } from "../utils/gitWorkspace.js";
-import { parseEnvText } from "../utils/envText.js";
+import { parseEnvText, stripForbiddenGitEnv } from "../utils/envText.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
 import { buildContextPackPrompt } from "../modules/acp/contextPack.js";
 import { renderTextTemplateFromDb } from "../modules/templates/textTemplates.js";
@@ -9,12 +9,8 @@ import { buildWorkspaceInitScript, mergeInitScripts } from "../utils/agentInit.j
 import { getSandboxWorkspaceMode } from "../utils/sandboxCaps.js";
 import { resolveAgentWorkspaceCwd } from "../utils/agentWorkspaceCwd.js";
 import { resolveExecutionProfile } from "../utils/executionProfile.js";
-import {
-  assertRoleGitAuthEnv,
-  pickGitAccessToken,
-  resolveGitAuthMode,
-  resolveGitHttpUsername,
-} from "../utils/gitAuth.js";
+import { GitAuthEnvError } from "../utils/gitAuth.js";
+import { buildGitRuntimeEnv } from "../utils/gitCredentialRuntime.js";
 import { buildInitPipeline } from "../utils/initPipeline.js";
 import { stringifyContextInventory } from "../utils/contextInventory.js";
 import { assertWorkspacePolicyCompat, resolveWorkspacePolicy } from "../utils/workspacePolicy.js";
@@ -46,13 +42,14 @@ function inferTestCommand(step: any, issue: any): string {
 }
 
 function normalizeRoleEnv(env: Record<string, string>): Record<string, string> {
-  if (env.GH_TOKEN && env.GITHUB_TOKEN === undefined) env.GITHUB_TOKEN = env.GH_TOKEN;
-  if (env.GITHUB_TOKEN && env.GH_TOKEN === undefined) env.GH_TOKEN = env.GITHUB_TOKEN;
-  if (env.GITLAB_TOKEN && env.GITLAB_ACCESS_TOKEN === undefined)
-    env.GITLAB_ACCESS_TOKEN = env.GITLAB_TOKEN;
-  if (env.GITLAB_ACCESS_TOKEN && env.GITLAB_TOKEN === undefined)
-    env.GITLAB_TOKEN = env.GITLAB_ACCESS_TOKEN;
-  return env;
+  const out = { ...env };
+  if (out.GH_TOKEN && out.GITHUB_TOKEN === undefined) out.GITHUB_TOKEN = out.GH_TOKEN;
+  if (out.GITHUB_TOKEN && out.GH_TOKEN === undefined) out.GH_TOKEN = out.GITHUB_TOKEN;
+  if (out.GITLAB_TOKEN && out.GITLAB_ACCESS_TOKEN === undefined)
+    out.GITLAB_ACCESS_TOKEN = out.GITLAB_TOKEN;
+  if (out.GITLAB_ACCESS_TOKEN && out.GITLAB_TOKEN === undefined)
+    out.GITLAB_TOKEN = out.GITLAB_ACCESS_TOKEN;
+  return stripForbiddenGitEnv(out);
 }
 
 async function buildStepInstruction(prisma: PrismaDeps, step: any, issue: any): Promise<string> {
@@ -449,27 +446,21 @@ export async function startAcpAgentExecution(
   }
 
   const roleEnv = normalizeRoleEnv(role?.envText ? parseEnvText(String(role.envText)) : {});
-  if (resolvedPolicy.resolved === "git") {
-    assertRoleGitAuthEnv(roleEnv, role?.key ?? null);
+  const runGitCredentialId =
+    resolvedPolicy.resolved === "git" ? String((project as any)?.runGitCredentialId ?? "").trim() : "";
+  if (resolvedPolicy.resolved === "git" && !runGitCredentialId) {
+    throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
   }
-  const gitAuthMode = resolveGitAuthMode({
-    repoUrl: String(project?.repoUrl ?? ""),
-    scmType: project?.scmType ?? null,
-    gitAuthMode: workspace.gitAuthMode ?? project?.gitAuthMode ?? null,
-    githubAccessToken: project?.githubAccessToken ?? null,
-    gitlabAccessToken: project?.gitlabAccessToken ?? null,
-  });
-  const gitHttpUsername = resolveGitHttpUsername({
-    repoUrl: String(project?.repoUrl ?? ""),
-    scmType: project?.scmType ?? null,
-  });
-  const gitHttpPassword = pickGitAccessToken({
-    scmType: project?.scmType ?? null,
-    githubAccessToken: project?.githubAccessToken ?? null,
-    gitlabAccessToken: project?.gitlabAccessToken ?? null,
-    repoUrl: project?.repoUrl ?? null,
-    gitAuthMode: project?.gitAuthMode ?? null,
-  });
+  const runGitCredential =
+    resolvedPolicy.resolved === "git"
+      ? await deps.prisma.gitCredential.findUnique({ where: { id: runGitCredentialId } } as any)
+      : null;
+  if (
+    resolvedPolicy.resolved === "git" &&
+    (!runGitCredential || String((runGitCredential as any)?.projectId ?? "") !== String((project as any)?.id ?? ""))
+  ) {
+    throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
+  }
   const enableRuntimeSkillsMounting = project?.enableRuntimeSkillsMounting === true;
   const skillInputs: Array<{
     skillId: string;
@@ -563,17 +554,17 @@ export async function startAcpAgentExecution(
     TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(issue.projectId)}`,
   };
   if (resolvedPolicy.resolved === "git") {
-    if (initEnv.GH_TOKEN === undefined && project?.githubAccessToken) initEnv.GH_TOKEN = String(project.githubAccessToken);
-    if (initEnv.GITHUB_TOKEN === undefined && project?.githubAccessToken)
-      initEnv.GITHUB_TOKEN = String(project.githubAccessToken);
-    if (initEnv.GITLAB_TOKEN === undefined && project?.gitlabAccessToken)
-      initEnv.GITLAB_TOKEN = String(project.gitlabAccessToken);
-    if (initEnv.GITLAB_ACCESS_TOKEN === undefined && project?.gitlabAccessToken)
-      initEnv.GITLAB_ACCESS_TOKEN = String(project.gitlabAccessToken);
-
     initEnv.TUIXIU_REPO_URL = String(project.repoUrl ?? "");
     initEnv.TUIXIU_SCM_TYPE = String(project.scmType ?? "");
     initEnv.TUIXIU_DEFAULT_BRANCH = String(project.defaultBranch ?? "");
+
+    Object.assign(
+      initEnv,
+      buildGitRuntimeEnv({
+        project: { repoUrl: String(project.repoUrl ?? ""), scmType: project.scmType ?? null },
+        credential: runGitCredential as any,
+      }),
+    );
   }
   if (!initEnv.USER_HOME) initEnv.USER_HOME = "/root";
   if (!initEnv.TUIXIU_BWRAP_USERNAME) initEnv.TUIXIU_BWRAP_USERNAME = "agent";
@@ -648,23 +639,6 @@ export async function startAcpAgentExecution(
     }
   }
   if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
-  if (resolvedPolicy.resolved === "git") {
-    if (initEnv.TUIXIU_GIT_AUTH_MODE === undefined) initEnv.TUIXIU_GIT_AUTH_MODE = gitAuthMode;
-    if (initEnv.TUIXIU_GIT_HTTP_USERNAME === undefined && gitHttpUsername) {
-      initEnv.TUIXIU_GIT_HTTP_USERNAME = gitHttpUsername;
-    }
-    if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined && gitHttpPassword) {
-      initEnv.TUIXIU_GIT_HTTP_PASSWORD = gitHttpPassword;
-    }
-    if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined) {
-      const fallbackToken =
-        initEnv.GITHUB_TOKEN ||
-        initEnv.GH_TOKEN ||
-        initEnv.GITLAB_ACCESS_TOKEN ||
-        initEnv.GITLAB_TOKEN;
-      if (fallbackToken) initEnv.TUIXIU_GIT_HTTP_PASSWORD = fallbackToken;
-    }
-  }
 
   const baseInitScript = buildWorkspaceInitScript();
   const roleInitScript = role?.initScript?.trim() ? String(role.initScript) : "";

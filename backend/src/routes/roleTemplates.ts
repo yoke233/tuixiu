@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import type { PrismaDeps } from "../db.js";
 import { normalizeAgentInputs } from "../modules/agentInputs/agentInputsSchema.js";
 import { uuidv7 } from "../utils/uuid.js";
-import { listEnvKeys } from "../utils/envText.js";
+import { listEnvKeys, listForbiddenGitEnvKeys } from "../utils/envText.js";
 
 function normalizeEnvText(raw: unknown): string | null | undefined {
   if (raw === undefined) return undefined;
@@ -75,6 +75,21 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const { projectId } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
       const envText = normalizeEnvText(body.envText);
+
+      if (envText !== undefined) {
+        const forbidden = listForbiddenGitEnvKeys(envText);
+        if (forbidden.length) {
+          return {
+            success: false,
+            error: {
+              code: "ROLE_ENV_GIT_KEYS_FORBIDDEN",
+              message: "Git 认证已迁移到 GitCredential，请在 Project 凭证中配置",
+              details: forbidden as any,
+            },
+          };
+        }
+      }
+
       const agentInputs = normalizeAgentInputs(body.agentInputs);
       const agentInputsForDb =
         agentInputs === undefined ? undefined : agentInputs === null ? Prisma.DbNull : agentInputs;
@@ -123,6 +138,21 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const { projectId, roleId } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body ?? {});
       const envText = normalizeEnvText(body.envText);
+
+      if (envText !== undefined) {
+        const forbidden = listForbiddenGitEnvKeys(envText);
+        if (forbidden.length) {
+          return {
+            success: false,
+            error: {
+              code: "ROLE_ENV_GIT_KEYS_FORBIDDEN",
+              message: "Git 认证已迁移到 GitCredential，请在 Project 凭证中配置",
+              details: forbidden as any,
+            },
+          };
+        }
+      }
+
       const agentInputs = normalizeAgentInputs(body.agentInputs);
       const agentInputsForDb =
         agentInputs === undefined ? undefined : agentInputs === null ? Prisma.DbNull : agentInputs;

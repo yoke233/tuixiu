@@ -87,10 +87,10 @@ export function useRunChangesController(props: Props) {
   const provider = useMemo(() => (props.project?.scmType ?? "").toLowerCase(), [props.project]);
   const providerLabel = "PR";
   const canUseApi =
-    (provider === "github" && Boolean(props.project?.hasGithubAccessToken)) ||
+    (provider === "github" && Boolean(props.project?.hasScmAdminCredential)) ||
     ((provider === "gitlab" || provider === "codeup") &&
       Boolean(props.project?.gitlabProjectId) &&
-      Boolean(props.project?.hasGitlabAccessToken));
+      Boolean(props.project?.hasScmAdminCredential));
 
   const requireLogin = useCallback((): boolean => {
     if (auth.user) return true;

@@ -20,7 +20,7 @@ describe("PM automation", () => {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     CODEX_API_KEY: process.env.CODEX_API_KEY,
   };
-  const defaultRoleEnv = "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=role-gh\n";
+  const defaultRoleEnv = "FOO=bar\n";
 
   beforeEach(() => {
     delete process.env.PM_LLM_BASE_URL;
@@ -57,7 +57,14 @@ describe("PM automation", () => {
             acceptanceCriteria: [],
             constraints: [],
             testRequirements: null,
-            project: { id: "p1", defaultRoleKey: "dev", defaultBranch: "main", repoUrl: "https://example.com/repo" },
+            project: {
+              id: "p1",
+              defaultRoleKey: "dev",
+              defaultBranch: "main",
+              repoUrl: "https://example.com/repo",
+              scmType: "github",
+              runGitCredentialId: "c-run",
+            },
           })
           .mockResolvedValueOnce({
             id: "i1",
@@ -69,7 +76,14 @@ describe("PM automation", () => {
             constraints: [],
             testRequirements: null,
             runs: [],
-            project: { id: "p1", defaultRoleKey: "dev", defaultBranch: "main", repoUrl: "https://example.com/repo" },
+            project: {
+              id: "p1",
+              defaultRoleKey: "dev",
+              defaultBranch: "main",
+              repoUrl: "https://example.com/repo",
+              scmType: "github",
+              runGitCredentialId: "c-run",
+            },
           }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
@@ -107,6 +121,14 @@ describe("PM automation", () => {
       },
       artifact: {
         create: vi.fn().mockResolvedValue({ id: "art-1" }),
+      },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
       },
     } as any;
 

@@ -16,6 +16,8 @@ export type User = {
   role: UserRole;
 };
 
+export type GitAuthMode = "https_pat" | "ssh";
+
 export type Project = {
   id: string;
   name: string;
@@ -23,15 +25,36 @@ export type Project = {
   scmType: string;
   defaultBranch: string;
   workspaceMode?: "worktree" | "clone";
-  gitAuthMode?: "https_pat" | "ssh";
   defaultRoleKey?: string | null;
   agentWorkspaceNoticeTemplate?: string | null;
+  runGitCredentialId?: string | null;
+  scmAdminCredentialId?: string | null;
+  hasRunGitCredential?: boolean;
+  hasScmAdminCredential?: boolean;
   gitlabProjectId?: number | null;
-  hasGitlabAccessToken?: boolean;
-  hasGithubAccessToken?: boolean;
   githubPollingEnabled?: boolean;
   githubPollingCursor?: string | null;
   createdAt: string;
+};
+
+export type GitCredential = {
+  id: string;
+  projectId: string;
+  key: string;
+  purpose: string | null;
+  gitAuthMode: GitAuthMode;
+  hasGithubAccessToken: boolean;
+  hasGitlabAccessToken: boolean;
+  hasSshKey: boolean;
+  updatedAt: string;
+};
+
+export type ProjectScmConfig = {
+  projectId: string;
+  gitlabProjectId: number | null;
+  hasGitlabWebhookSecret: boolean;
+  githubPollingEnabled: boolean;
+  githubPollingCursor: string | null;
 };
 
 export type IssueStatus = "pending" | "running" | "reviewing" | "done" | "failed" | "cancelled";
