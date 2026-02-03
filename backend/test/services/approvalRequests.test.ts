@@ -83,11 +83,12 @@ describe("approvalRequests", () => {
             projectId: "p1",
             externalProvider: "github",
             externalNumber: 7,
-            project: { githubAccessToken: "tok", repoUrl: "https://github.com/o/r" },
+            project: { scmAdminCredentialId: "c-admin", repoUrl: "https://github.com/o/r" },
           },
           artifacts: [],
         }),
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", githubAccessToken: "tok" }]) },
       approval: {
         findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({

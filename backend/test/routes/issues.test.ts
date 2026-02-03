@@ -250,11 +250,26 @@ describe("Issues routes", () => {
           constraints: ["c1"],
           testRequirements: null,
           runs: [],
-          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
+          project: {
+            id: "p1",
+            defaultBranch: "main",
+            defaultRoleKey: "dev",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "github",
+            runGitCredentialId: "c-run",
+          },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -332,11 +347,26 @@ describe("Issues routes", () => {
           externalProvider: "github",
           externalNumber: 456,
           runs: [],
-          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
+          project: {
+            id: "p1",
+            defaultBranch: "main",
+            defaultRoleKey: "dev",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "github",
+            runGitCredentialId: "c-run",
+          },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -396,11 +426,26 @@ describe("Issues routes", () => {
           externalProvider: "github",
           externalNumber: 456,
           runs: [],
-          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
+          project: {
+            id: "p1",
+            defaultBranch: "main",
+            defaultRoleKey: "dev",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "github",
+            runGitCredentialId: "c-run",
+          },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -474,11 +519,26 @@ describe("Issues routes", () => {
             externalProvider: "github",
             externalNumber: 456,
             runs: [],
-            project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
+            project: {
+              id: "p1",
+              defaultBranch: "main",
+              defaultRoleKey: "dev",
+              repoUrl: "https://example.com/repo.git",
+              scmType: "github",
+              runGitCredentialId: "c-run",
+            },
           }),
           update: vi.fn().mockResolvedValue({ id: "i1" }),
         },
         roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
+        gitCredential: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "c-run",
+            projectId: "p1",
+            gitAuthMode: "https_pat",
+            githubAccessToken: "gh-run",
+          }),
+        },
         agent: {
           findUnique: vi.fn().mockResolvedValue({
             id: "a1",
@@ -540,11 +600,26 @@ describe("Issues routes", () => {
           constraints: [],
           testRequirements: null,
           runs: [],
-          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
+          project: {
+            id: "p1",
+            defaultBranch: "main",
+            defaultRoleKey: "dev",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "github",
+            runGitCredentialId: "c-run",
+          },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -594,6 +669,7 @@ describe("Issues routes", () => {
       issue: {
         findUnique: vi.fn().mockResolvedValue({
           id: "i1",
+          projectId: "p1",
           title: "t1",
           description: null,
           status: "pending",
@@ -601,11 +677,26 @@ describe("Issues routes", () => {
           constraints: [],
           testRequirements: "需要加单测",
           runs: [],
-          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
+          project: {
+            id: "p1",
+            defaultBranch: "main",
+            defaultRoleKey: "dev",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "github",
+            runGitCredentialId: "c-run",
+          },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -661,6 +752,7 @@ describe("Issues routes", () => {
       issue: {
         findUnique: vi.fn().mockResolvedValue({
           id: "i1",
+          projectId: "p1",
           title: "t1",
           description: "d1",
           status: "pending",
@@ -672,7 +764,9 @@ describe("Issues routes", () => {
             id: "p1",
             name: "Demo",
             repoUrl: "https://github.com/o/r",
+            scmType: "github",
             defaultBranch: "main",
+            runGitCredentialId: "c-run",
             githubAccessToken: "ghp_xxx",
             defaultRoleKey: "dev",
           },
@@ -688,6 +782,14 @@ describe("Issues routes", () => {
           initScript: "echo init",
           initTimeoutSeconds: 120,
           envText: "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=ghp_role_xxx",
+        }),
+      },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
         }),
       },
       agent: {
@@ -731,7 +833,7 @@ describe("Issues routes", () => {
         script: expect.stringContaining("echo init"),
         timeout_seconds: 120,
         env: expect.objectContaining({
-          GH_TOKEN: "ghp_role_xxx",
+          GH_TOKEN: "gh-run",
           TUIXIU_ROLE_KEY: "backend-dev",
           TUIXIU_RUN_ID: "r1",
         }),
@@ -757,6 +859,7 @@ describe("Issues routes", () => {
       issue: {
         findUnique: vi.fn().mockResolvedValue({
           id: "i1",
+          projectId: "p1",
           title: "t1",
           description: null,
           status: "pending",
@@ -764,11 +867,26 @@ describe("Issues routes", () => {
           constraints: [],
           testRequirements: null,
           runs: [],
-          project: { id: "p1", defaultBranch: "main", defaultRoleKey: "dev" },
+          project: {
+            id: "p1",
+            defaultBranch: "main",
+            defaultRoleKey: "dev",
+            repoUrl: "https://example.com/repo.git",
+            scmType: "github",
+            runGitCredentialId: "c-run",
+          },
         }),
         update: vi.fn().mockResolvedValue({ id: "i1" }),
       },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "c-run",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "gh-run",
+        }),
+      },
       agent: {
         findUnique: vi.fn().mockResolvedValue({
           id: "a1",
@@ -872,6 +990,8 @@ describe("Issues routes", () => {
               id: "p1",
               defaultBranch: "main",
               repoUrl: "https://github.com/o/r",
+              scmType: "github",
+              runGitCredentialId: "c-run",
               githubAccessToken: "ghp_test",
               defaultRoleKey: "dev",
             },
@@ -890,6 +1010,14 @@ describe("Issues routes", () => {
           update: vi.fn().mockResolvedValue({ id: "a1" }),
         },
         roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
+        gitCredential: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "c-run",
+            projectId: "p1",
+            gitAuthMode: "https_pat",
+            githubAccessToken: "gh-run",
+          }),
+        },
         run: {
           create: vi.fn().mockResolvedValue({ id: "r1", acpSessionId: null }),
           update: vi.fn().mockResolvedValue({ id: "r1" }),

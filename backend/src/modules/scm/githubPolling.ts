@@ -3,6 +3,7 @@ import * as github from "../../integrations/github.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { buildRunScmStateUpdate } from "./runScmState.js";
 import { TaskEngineError, createTaskFromTemplate } from "../workflow/taskEngine.js";
+import { loadProjectCredentials } from "../../utils/projectCredentials.js";
 
 type Logger = (msg: string, extra?: Record<string, unknown>) => void;
 
@@ -350,10 +351,11 @@ export async function syncGitHubProjectOnce(
   const scm = String(project?.scmType ?? "").trim().toLowerCase();
   if (scm !== "github") return;
 
-  const enabled = Boolean(project?.githubPollingEnabled);
+  const enabled = Boolean(project?.scmConfig?.githubPollingEnabled);
   if (!enabled) return;
 
-  const token = String(project?.githubAccessToken ?? "").trim();
+  const { admin } = await loadProjectCredentials(deps.prisma, project ?? {});
+  const token = String((admin as any)?.githubAccessToken ?? "").trim();
   if (!token) return;
 
   const parseRepo = deps.github?.parseRepo ?? github.parseGitHubRepo;
@@ -371,7 +373,8 @@ export async function syncGitHubProjectOnce(
   };
 
   const now = new Date();
-  const cursor = project?.githubPollingCursor instanceof Date ? (project.githubPollingCursor as Date) : parseIsoDate(project?.githubPollingCursor);
+  const cursorValue = (project as any)?.scmConfig?.githubPollingCursor;
+  const cursor = cursorValue instanceof Date ? cursorValue : parseIsoDate(cursorValue);
   const since = normalizeCursorWithOverlap(cursor, opts.overlapSeconds);
 
   // issues
@@ -471,10 +474,12 @@ export async function syncGitHubProjectOnce(
     }
   }
 
-  await deps.prisma.project.update({
-    where: { id: project.id },
-    data: { githubPollingCursor: now } as any,
-  });
+  await deps.prisma.projectScmConfig
+    .update({
+      where: { projectId: project.id },
+      data: { githubPollingCursor: now } as any,
+    } as any)
+    .catch(() => {});
 }
 
 const projectQueue = new Map<string, Promise<void>>();
@@ -495,7 +500,8 @@ export function startGitHubPollingLoop(opts: {
   const runOnce = async () => {
     const projects = await opts.prisma.project
       .findMany({
-        where: { githubPollingEnabled: true } as any,
+        where: { scmConfig: { is: { githubPollingEnabled: true } } } as any,
+        include: { scmConfig: true } as any,
         orderBy: { createdAt: "asc" },
       })
       .catch((err: unknown) => {

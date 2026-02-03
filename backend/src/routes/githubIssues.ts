@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { PrismaDeps } from "../db.js";
 import { uuidv7 } from "../utils/uuid.js";
 import * as github from "../integrations/github.js";
+import { loadProjectCredentials } from "../utils/projectCredentials.js";
 
 function parseIssueNumberFromUrl(url: string): number | null {
   const raw = url.trim();
@@ -60,8 +61,11 @@ export function makeGitHubIssueRoutes(deps: {
       if (!project) {
         return { success: false, error: { code: "NOT_FOUND", message: "Project 不存在" } };
       }
-      if (!project.githubAccessToken) {
-        return { success: false, error: { code: "NO_GITHUB_CONFIG", message: "Project 未配置 GitHub token" } };
+
+      const { admin } = await loadProjectCredentials(deps.prisma, project as any);
+      const token = String((admin as any)?.githubAccessToken ?? "").trim();
+      if (!token) {
+        return { success: false, error: { code: "NO_GITHUB_CONFIG", message: "未配置 scmAdmin credential 的 github token" } };
       }
 
       const parsed = parseRepo(project.repoUrl);
@@ -73,7 +77,7 @@ export function makeGitHubIssueRoutes(deps: {
         apiBaseUrl: parsed.apiBaseUrl,
         owner: parsed.owner,
         repo: parsed.repo,
-        accessToken: project.githubAccessToken,
+        accessToken: token,
       };
 
       try {
@@ -112,8 +116,11 @@ export function makeGitHubIssueRoutes(deps: {
       if (!project) {
         return { success: false, error: { code: "NOT_FOUND", message: "Project 不存在" } };
       }
-      if (!project.githubAccessToken) {
-        return { success: false, error: { code: "NO_GITHUB_CONFIG", message: "Project 未配置 GitHub token" } };
+
+      const { admin } = await loadProjectCredentials(deps.prisma, project as any);
+      const token = String((admin as any)?.githubAccessToken ?? "").trim();
+      if (!token) {
+        return { success: false, error: { code: "NO_GITHUB_CONFIG", message: "未配置 scmAdmin credential 的 github token" } };
       }
 
       const parsed = parseRepo(project.repoUrl);
@@ -130,7 +137,7 @@ export function makeGitHubIssueRoutes(deps: {
         apiBaseUrl: parsed.apiBaseUrl,
         owner: parsed.owner,
         repo: parsed.repo,
-        accessToken: project.githubAccessToken,
+        accessToken: token,
       };
 
       let external: github.GitHubIssue;
@@ -177,4 +184,3 @@ export function makeGitHubIssueRoutes(deps: {
     });
   };
 }
-

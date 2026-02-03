@@ -7,7 +7,14 @@ describe("GitHub issues routes", () => {
   it("GET /api/projects/:id/github/issues returns NO_GITHUB_CONFIG when token missing", async () => {
     const server = createHttpServer();
     const prisma = {
-      project: { findUnique: vi.fn().mockResolvedValue({ id: "p1", repoUrl: "https://github.com/a/b" }) }
+      project: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "p1",
+          repoUrl: "https://github.com/a/b",
+          scmAdminCredentialId: "c-admin",
+        }),
+      },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: null }]) },
     } as any;
 
     await server.register(makeGitHubIssueRoutes({ prisma }), { prefix: "/api/projects" });
@@ -19,7 +26,7 @@ describe("GitHub issues routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: false,
-      error: { code: "NO_GITHUB_CONFIG", message: "Project 未配置 GitHub token" }
+      error: { code: "NO_GITHUB_CONFIG", message: "未配置 scmAdmin credential 的 github token" }
     });
     await server.close();
   });
@@ -31,9 +38,10 @@ describe("GitHub issues routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: "p1",
           repoUrl: "https://github.com/o/r",
-          githubAccessToken: "ghp_xxx"
+          scmAdminCredentialId: "c-admin",
         })
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "ghp_xxx" }]) },
       issue: {
         findFirst: vi.fn().mockResolvedValue({ id: "i1", title: "t1" })
       }
@@ -70,9 +78,10 @@ describe("GitHub issues routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: "p1",
           repoUrl: "https://github.com/o/r",
-          githubAccessToken: "ghp_xxx"
+          scmAdminCredentialId: "c-admin",
         })
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "ghp_xxx" }]) },
       issue: {
         findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({ id: "i2", title: "Hello" })
@@ -116,4 +125,3 @@ describe("GitHub issues routes", () => {
     await server.close();
   });
 });
-

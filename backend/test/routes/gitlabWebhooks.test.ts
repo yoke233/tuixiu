@@ -7,7 +7,7 @@ describe("GitLab webhook routes", () => {
   it("POST /api/webhooks/gitlab returns BAD_PAYLOAD when body invalid", async () => {
     const server = createHttpServer();
     const prisma = {
-      project: { findFirst: vi.fn() },
+      projectScmConfig: { findUnique: vi.fn() },
       issue: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     } as any;
 
@@ -33,7 +33,14 @@ describe("GitLab webhook routes", () => {
     const server = createHttpServer();
     const onIssueUpserted = vi.fn();
     const prisma = {
-      project: { findFirst: vi.fn().mockResolvedValue({ id: "p1", gitlabProjectId: 123 }) },
+      projectScmConfig: {
+        findUnique: vi.fn().mockResolvedValue({
+          projectId: "p1",
+          gitlabProjectId: 123,
+          gitlabWebhookSecret: "s3cret",
+          project: { id: "p1" },
+        }),
+      },
       issue: {
         findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({ id: "i1" }),
@@ -90,7 +97,14 @@ describe("GitLab webhook routes", () => {
   it("POST /api/webhooks/gitlab handles pipeline success and updates waiting_ci run", async () => {
     const server = createHttpServer();
     const prisma = {
-      project: { findFirst: vi.fn().mockResolvedValue({ id: "p1", gitlabProjectId: 123 }) },
+      projectScmConfig: {
+        findUnique: vi.fn().mockResolvedValue({
+          projectId: "p1",
+          gitlabProjectId: 123,
+          gitlabWebhookSecret: "s3cret",
+          project: { id: "p1" },
+        }),
+      },
       run: {
         findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: null, stepId: null }),
         update: vi.fn().mockResolvedValue({})
@@ -134,7 +148,14 @@ describe("GitLab webhook routes", () => {
   it("POST /api/webhooks/gitlab rejects when token mismatch", async () => {
     const server = createHttpServer();
     const prisma = {
-      project: { findFirst: vi.fn().mockResolvedValue({ id: "p1", gitlabProjectId: 123, gitlabWebhookSecret: "s3cret" }) },
+      projectScmConfig: {
+        findUnique: vi.fn().mockResolvedValue({
+          projectId: "p1",
+          gitlabProjectId: 123,
+          gitlabWebhookSecret: "s3cret",
+          project: { id: "p1" },
+        }),
+      },
       issue: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     } as any;
 

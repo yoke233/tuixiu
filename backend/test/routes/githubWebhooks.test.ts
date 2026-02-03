@@ -206,7 +206,7 @@ describe("GitHub webhook routes", () => {
             id: "p1",
             repoUrl: "https://github.com/o/r",
             scmType: "github",
-            githubAccessToken: "token",
+            scmAdminCredentialId: "c-admin",
             branchProtection: {
               pmPolicy: {
                 version: 1,
@@ -218,6 +218,7 @@ describe("GitHub webhook routes", () => {
           },
         ]),
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "token" }]) },
       run: {
         findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: "t1", stepId: "s1" }),
         update: vi.fn().mockResolvedValue({}),
@@ -285,7 +286,7 @@ describe("GitHub webhook routes", () => {
             id: "p1",
             repoUrl: "https://github.com/o/r",
             scmType: "github",
-            githubAccessToken: "token",
+            scmAdminCredentialId: "c-admin",
             branchProtection: {
               pmPolicy: {
                 version: 1,
@@ -297,6 +298,7 @@ describe("GitHub webhook routes", () => {
           },
         ]),
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "token" }]) },
       run: {
         findFirst: vi.fn().mockResolvedValue({ id: "r1", issueId: "i1", taskId: "t1", stepId: "s1" }),
         update: vi.fn().mockResolvedValue({}),

@@ -37,7 +37,8 @@ describe("githubPolling", () => {
         findFirst: vi.fn().mockResolvedValue(null),
         update: vi.fn().mockResolvedValue({}),
       },
-      project: { update: vi.fn().mockResolvedValue({}) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
+      projectScmConfig: { update: vi.fn().mockResolvedValue({}) },
       step: { update: vi.fn().mockResolvedValue({}) },
     } as any;
 
@@ -70,9 +71,8 @@ describe("githubPolling", () => {
         id: "p1",
         scmType: "github",
         repoUrl: "https://github.com/o/r",
-        githubAccessToken: "tok",
-        githubPollingEnabled: true,
-        githubPollingCursor: null,
+        scmAdminCredentialId: "c-admin",
+        scmConfig: { githubPollingEnabled: true, githubPollingCursor: null },
       },
       { overlapSeconds: 0 },
     );
@@ -95,7 +95,7 @@ describe("githubPolling", () => {
       "issue-1",
       expect.objectContaining({ templateKey: "quick.dev.full" }),
     );
-    expect(prisma.project.update).toHaveBeenCalled();
+    expect(prisma.projectScmConfig.update).toHaveBeenCalled();
   });
 
   it("imports new GitHub PR and creates PR review task with githubPr params", async () => {
@@ -110,7 +110,8 @@ describe("githubPolling", () => {
         update: vi.fn().mockResolvedValue({}),
       },
       step: { update: vi.fn().mockResolvedValue({}) },
-      project: { update: vi.fn().mockResolvedValue({}) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
+      projectScmConfig: { update: vi.fn().mockResolvedValue({}) },
     } as any;
 
     (createTaskFromTemplate as any).mockResolvedValue({
@@ -146,9 +147,8 @@ describe("githubPolling", () => {
         id: "p1",
         scmType: "github",
         repoUrl: "https://github.com/o/r",
-        githubAccessToken: "tok",
-        githubPollingEnabled: true,
-        githubPollingCursor: null,
+        scmAdminCredentialId: "c-admin",
+        scmConfig: { githubPollingEnabled: true, githubPollingCursor: null },
       },
       { overlapSeconds: 0 },
     );
@@ -205,7 +205,8 @@ describe("githubPolling", () => {
         findFirst: vi.fn().mockResolvedValue({ id: "existing-task" }),
         update: vi.fn().mockResolvedValue({}),
       },
-      project: { update: vi.fn().mockResolvedValue({}) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
+      projectScmConfig: { update: vi.fn().mockResolvedValue({}) },
       step: { update: vi.fn().mockResolvedValue({}) },
     } as any;
 
@@ -258,9 +259,8 @@ describe("githubPolling", () => {
         id: "p1",
         scmType: "github",
         repoUrl: "https://github.com/o/r",
-        githubAccessToken: "tok",
-        githubPollingEnabled: true,
-        githubPollingCursor: "2026-01-26T00:00:00.000Z",
+        scmAdminCredentialId: "c-admin",
+        scmConfig: { githubPollingEnabled: true, githubPollingCursor: "2026-01-26T00:00:00.000Z" },
       },
       { overlapSeconds: 0 },
     );
@@ -288,7 +288,8 @@ describe("githubPolling", () => {
         update: vi.fn(),
       },
       step: { update: vi.fn().mockResolvedValue({}) },
-      project: { update: vi.fn().mockResolvedValue({}) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "tok" }]) },
+      projectScmConfig: { update: vi.fn().mockResolvedValue({}) },
     } as any;
 
     const parseRepo = vi.fn().mockReturnValue({
@@ -319,9 +320,8 @@ describe("githubPolling", () => {
         id: "p1",
         scmType: "github",
         repoUrl: "https://github.com/o/r",
-        githubAccessToken: "tok",
-        githubPollingEnabled: true,
-        githubPollingCursor: null,
+        scmAdminCredentialId: "c-admin",
+        scmConfig: { githubPollingEnabled: true, githubPollingCursor: null },
       },
       { overlapSeconds: 0 },
     );
@@ -341,4 +341,3 @@ describe("githubPolling", () => {
     );
   });
 });
-

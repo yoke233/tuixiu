@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { PrismaDeps } from "../../db.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { postGitHubApprovalCommentBestEffort } from "../scm/githubIssueComments.js";
+import { loadProjectCredentials } from "../../utils/projectCredentials.js";
 
 const approvalActionSchema = z.enum(["merge_pr", "create_pr", "publish_artifact"]);
 export type ApprovalAction = z.infer<typeof approvalActionSchema>;
@@ -168,7 +169,8 @@ export async function requestMergePrApproval(opts: {
   const project: any = issue?.project;
   const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
   const issueNumber = Number(issue?.externalNumber ?? 0);
-  const token = String(project?.githubAccessToken ?? "").trim();
+  const { admin } = await loadProjectCredentials(opts.prisma, project ?? {});
+  const token = String((admin as any)?.githubAccessToken ?? "").trim();
   const repoUrl = String(project?.repoUrl ?? "").trim();
 
   if (issueIsGitHub && token) {
@@ -253,7 +255,8 @@ export async function requestCreatePrApproval(opts: {
   const project: any = issue?.project;
   const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
   const issueNumber = Number(issue?.externalNumber ?? 0);
-  const token = String(project?.githubAccessToken ?? "").trim();
+  const { admin } = await loadProjectCredentials(opts.prisma, project ?? {});
+  const token = String((admin as any)?.githubAccessToken ?? "").trim();
   const repoUrl = String(project?.repoUrl ?? "").trim();
 
   if (issueIsGitHub && token) {
@@ -339,7 +342,8 @@ export async function requestPublishArtifactApproval(opts: {
   const project: any = issue?.project;
   const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
   const issueNumber = Number(issue?.externalNumber ?? 0);
-  const token = String(project?.githubAccessToken ?? "").trim();
+  const { admin } = await loadProjectCredentials(opts.prisma, project ?? {});
+  const token = String((admin as any)?.githubAccessToken ?? "").trim();
   const repoUrl = String(project?.repoUrl ?? "").trim();
 
   if (issueIsGitHub && token) {

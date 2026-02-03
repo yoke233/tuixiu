@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { PrismaDeps } from "../db.js";
 import * as github from "../integrations/github.js";
 import { uuidv7 } from "../utils/uuid.js";
+import { loadProjectCredentials } from "../utils/projectCredentials.js";
 import type { AcpTunnel } from "../modules/acp/acpTunnel.js";
 import { buildRunScmStateUpdate } from "../modules/scm/runScmState.js";
 import { advanceTaskFromRunTerminal, setTaskBlockedFromRun } from "../modules/workflow/taskProgress.js";
@@ -286,7 +287,8 @@ export function makeGitHubWebhookRoutes(deps: {
               typeof (policy as any)?.automation?.mergeMethod === "string" ? String((policy as any).automation.mergeMethod) : "squash";
             const ciGate = (policy as any)?.automation?.ciGate !== false;
 
-            const token = String((project as any)?.githubAccessToken ?? "").trim();
+            const { admin } = await loadProjectCredentials(deps.prisma, project as any);
+            const token = String((admin as any)?.githubAccessToken ?? "").trim();
             const prNumber =
               prNumbers.length === 1
                 ? prNumbers[0]

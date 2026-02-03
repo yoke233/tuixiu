@@ -456,11 +456,11 @@ describe("Runs routes", () => {
             title: "t1",
             description: "d1",
             project: {
+              id: "p1",
               repoUrl: "https://gitlab.example.com/group/repo.git",
               scmType: "gitlab",
               defaultBranch: "main",
-              gitlabProjectId: 123,
-              gitlabAccessToken: "tok",
+              scmAdminCredentialId: "c-admin",
             },
           },
           agent: { id: "a1", capabilities: { sandbox: { gitPush: true } } },
@@ -468,6 +468,8 @@ describe("Runs routes", () => {
         }),
         update: vi.fn().mockResolvedValue({}),
       },
+      projectScmConfig: { findUnique: vi.fn().mockResolvedValue({ projectId: "p1", gitlabProjectId: 123 }) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", gitlabAccessToken: "tok" }]) },
     } as any;
 
     const sandboxGitPush = vi.fn().mockResolvedValue(undefined);
@@ -597,10 +599,11 @@ describe("Runs routes", () => {
             title: "t1",
             description: "d1",
             project: {
+              id: "p1",
               repoUrl: "https://github.com/octo-org/octo-repo.git",
               scmType: "github",
               defaultBranch: "main",
-              githubAccessToken: "ghp_xxx",
+              scmAdminCredentialId: "c-admin",
             },
           },
           agent: { id: "a1", capabilities: { sandbox: { gitPush: true } } },
@@ -608,6 +611,7 @@ describe("Runs routes", () => {
         }),
         update: vi.fn().mockResolvedValue({}),
       },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "ghp_xxx" }]) },
     } as any;
 
     const sandboxGitPush = vi.fn().mockResolvedValue(undefined);
@@ -738,9 +742,10 @@ describe("Runs routes", () => {
           issue: {
             id: "i1",
             project: {
+              id: "p1",
               repoUrl: "https://github.com/octo-org/octo-repo.git",
               scmType: "github",
-              githubAccessToken: "ghp_xxx",
+              scmAdminCredentialId: "c-admin",
             },
           },
           artifacts: [],
@@ -748,6 +753,7 @@ describe("Runs routes", () => {
         update: vi.fn().mockResolvedValue({}),
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", githubAccessToken: "ghp_xxx" }]) },
     } as any;
 
     const getPullRequest = vi.fn().mockResolvedValue({
