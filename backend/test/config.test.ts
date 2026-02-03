@@ -30,6 +30,21 @@ describe("loadEnv", () => {
     else process.env.HOST = prevHost;
   });
 
+  it("parses CORS_ALLOWED_ORIGINS", () => {
+    const prevDb = process.env.DATABASE_URL;
+    const prevCors = process.env.CORS_ALLOWED_ORIGINS;
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.CORS_ALLOWED_ORIGINS = "https://a.com, https://b.com";
+
+    const env = loadEnv();
+    expect(env.CORS_ALLOWED_ORIGINS).toBe("https://a.com, https://b.com");
+
+    if (prevDb === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = prevDb;
+    if (prevCors === undefined) delete process.env.CORS_ALLOWED_ORIGINS;
+    else process.env.CORS_ALLOWED_ORIGINS = prevCors;
+  });
+
   it("applies auth token ttl defaults", () => {
     const prevDb = process.env.DATABASE_URL;
     delete process.env.AUTH_ACCESS_TOKEN_TTL_SECONDS;

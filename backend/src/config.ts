@@ -46,6 +46,9 @@ const envSchema = z.object({
   COOKIE_SECURE: z.string().optional(),
   AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
   AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(2592000),
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+  AUTH_BOOTSTRAP_TOKEN: z.string().optional(),
+  AUTH_BOOTSTRAP_TOKEN_FILE: z.string().optional(),
   ACP_PROXY_BOOTSTRAP_TOKEN: z.string().optional(),
 
   PM_AUTOMATION_ENABLED: z.string().optional(),

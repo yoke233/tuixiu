@@ -4,6 +4,13 @@ import { z } from "zod";
 
 import type { AuthHelpers, UserRole } from "../auth.js";
 import type { PrismaDeps } from "../db.js";
+import {
+  createRefreshSession,
+  findSessionByToken,
+  revokeAllForUser,
+  revokeSession,
+} from "../modules/auth/refreshSessions.js";
+import { removeBootstrapToken } from "../modules/auth/bootstrapToken.js";
 import { uuidv7 } from "../utils/uuid.js";
 
 function normalizeUsername(input: unknown): string {
@@ -44,6 +51,8 @@ export function makeAuthRoutes(deps: {
   auth: AuthHelpers;
   tokens: { accessTtlSeconds: number; refreshTtlSeconds: number };
   bootstrap?: { username?: string; password?: string };
+  bootstrapToken?: string | null;
+  bootstrapTokenFile?: string | null;
   cookie?: { secure?: boolean };
 }): FastifyPluginAsync {
   const accessCookieName = "tuixiu_access";
@@ -66,8 +75,17 @@ export function makeAuthRoutes(deps: {
       const bodySchema = z.object({
         username: z.string().min(1).max(100).optional(),
         password: z.string().min(6).max(200).optional(),
+        bootstrapToken: z.string().min(1).max(200).optional(),
       });
       const body = bodySchema.parse(request.body ?? {});
+
+      if (deps.bootstrapToken) {
+        const headerToken = String((request as any)?.headers?.["x-bootstrap-token"] ?? "").trim();
+        if (headerToken !== deps.bootstrapToken) {
+          reply.code(401);
+          return { success: false, error: { code: "UNAUTHORIZED", message: "bootstrap token 无效" } };
+        }
+      }
 
       const count = await deps.prisma.user.count().catch(() => 0);
       if (count > 0) {
@@ -85,6 +103,7 @@ export function makeAuthRoutes(deps: {
         data: { id: uuidv7(), username, passwordHash, role: "admin" as UserRole } as any,
       });
 
+      const now = Date.now();
       const accessToken = deps.auth.sign(
         { userId: user.id, username: user.username, role: user.role, tokenType: "access" },
         { expiresIn: deps.tokens.accessTtlSeconds },
@@ -93,6 +112,13 @@ export function makeAuthRoutes(deps: {
         { userId: user.id, username: user.username, role: user.role, tokenType: "refresh" },
         { expiresIn: deps.tokens.refreshTtlSeconds },
       );
+      await createRefreshSession(deps.prisma, {
+        userId: user.id,
+        token: refreshToken,
+        expiresAt: new Date(now + deps.tokens.refreshTtlSeconds * 1000),
+        ip: (request as any)?.ip ?? null,
+        userAgent: String((request as any)?.headers?.["user-agent"] ?? "") || null,
+      });
       trySetAuthCookie({
         reply,
         name: accessCookieName,
@@ -105,6 +131,9 @@ export function makeAuthRoutes(deps: {
         token: refreshToken,
         options: refreshCookieOptions(deps.cookie?.secure),
       });
+      if (deps.bootstrapTokenFile) {
+        await removeBootstrapToken(deps.bootstrapTokenFile).catch(() => {});
+      }
       return { success: true, data: { user: toPublicUser(user) } };
     });
 
@@ -126,6 +155,7 @@ export function makeAuthRoutes(deps: {
         return { success: false, error: { code: "BAD_CREDENTIALS", message: "用户名或密码错误" } };
       }
 
+      const now = Date.now();
       const accessToken = deps.auth.sign(
         { userId: user.id, username: user.username, role: user.role, tokenType: "access" },
         { expiresIn: deps.tokens.accessTtlSeconds },
@@ -134,6 +164,13 @@ export function makeAuthRoutes(deps: {
         { userId: user.id, username: user.username, role: user.role, tokenType: "refresh" },
         { expiresIn: deps.tokens.refreshTtlSeconds },
       );
+      await createRefreshSession(deps.prisma, {
+        userId: user.id,
+        token: refreshToken,
+        expiresAt: new Date(now + deps.tokens.refreshTtlSeconds * 1000),
+        ip: (request as any)?.ip ?? null,
+        userAgent: String((request as any)?.headers?.["user-agent"] ?? "") || null,
+      });
       trySetAuthCookie({
         reply,
         name: accessCookieName,
@@ -168,21 +205,88 @@ export function makeAuthRoutes(deps: {
         return { success: false, error: { code: "UNAUTHORIZED", message: "未登录" } };
       }
 
+      const session = await findSessionByToken(deps.prisma, refresh);
+      if (!session) {
+        reply.code(401);
+        return { success: false, error: { code: "UNAUTHORIZED", message: "未登录" } };
+      }
+
+      if (session.revokedAt) {
+        await revokeAllForUser(deps.prisma, (session as any).userId ?? payload.userId);
+        reply.code(401);
+        return { success: false, error: { code: "UNAUTHORIZED", message: "未登录" } };
+      }
+
+      if (session.expiresAt && session.expiresAt.getTime() <= Date.now()) {
+        reply.code(401);
+        return { success: false, error: { code: "UNAUTHORIZED", message: "未登录" } };
+      }
+
+      if ((session as any).userId && (session as any).userId !== payload.userId) {
+        reply.code(401);
+        return { success: false, error: { code: "UNAUTHORIZED", message: "未登录" } };
+      }
+
+      await revokeSession(deps.prisma, session.id);
+
+      const now = Date.now();
       const accessToken = deps.auth.sign(
         { userId: payload.userId, username: payload.username, role: payload.role, tokenType: "access" },
         { expiresIn: deps.tokens.accessTtlSeconds },
       );
+      const newRefreshToken = deps.auth.sign(
+        { userId: payload.userId, username: payload.username, role: payload.role, tokenType: "refresh" },
+        { expiresIn: deps.tokens.refreshTtlSeconds },
+      );
+      await createRefreshSession(deps.prisma, {
+        userId: payload.userId,
+        token: newRefreshToken,
+        expiresAt: new Date(now + deps.tokens.refreshTtlSeconds * 1000),
+        rotatedFromId: session.id,
+        ip: (request as any)?.ip ?? null,
+        userAgent: String((request as any)?.headers?.["user-agent"] ?? "") || null,
+      });
       trySetAuthCookie({
         reply,
         name: accessCookieName,
         token: accessToken,
         options: accessCookieOptions(deps.cookie?.secure),
       });
+      trySetAuthCookie({
+        reply,
+        name: refreshCookieName,
+        token: newRefreshToken,
+        options: refreshCookieOptions(deps.cookie?.secure),
+      });
 
       return { success: true, data: { ok: true } };
     });
 
-    server.post("/logout", async (_request, reply) => {
+    server.post("/logout", async (request, reply) => {
+      const refresh = String((request as any)?.cookies?.tuixiu_refresh ?? "").trim();
+      if (refresh) {
+        const session = await findSessionByToken(deps.prisma, refresh).catch(() => null);
+        if (session && !session.revokedAt) {
+          await revokeSession(deps.prisma, session.id).catch(() => {});
+        }
+      }
+      tryClearAuthCookie({ reply, name: accessCookieName, options: accessCookieOptions(deps.cookie?.secure) });
+      tryClearAuthCookie({ reply, name: refreshCookieName, options: refreshCookieOptions(deps.cookie?.secure) });
+      return { success: true, data: { ok: true } };
+    });
+
+    server.post("/logout-all", async (request, reply) => {
+      const refresh = String((request as any)?.cookies?.tuixiu_refresh ?? "").trim();
+      if (refresh) {
+        try {
+          const payload = (await (server as any).jwt.verify(refresh)) as any;
+          if (payload && payload.userId) {
+            await revokeAllForUser(deps.prisma, payload.userId);
+          }
+        } catch {
+          // ignore
+        }
+      }
       tryClearAuthCookie({ reply, name: accessCookieName, options: accessCookieOptions(deps.cookie?.secure) });
       tryClearAuthCookie({ reply, name: refreshCookieName, options: refreshCookieOptions(deps.cookie?.secure) });
       return { success: true, data: { ok: true } };

@@ -6,6 +6,7 @@ import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 import { ZodError } from "zod";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,6 +49,7 @@ import { startGitHubPollingLoop } from "./modules/scm/githubPolling.js";
 import { createLocalAttachmentStore } from "./modules/attachments/localAttachmentStore.js";
 import { createLocalSkillPackageStore } from "./modules/skills/skillPackageStore.js";
 import { createNpxSkillsCliRunner } from "./modules/skills/npxSkillsCli.js";
+import { readBootstrapToken, writeBootstrapToken } from "./modules/auth/bootstrapToken.js";
 import { resolveGitAuthMode } from "./utils/gitAuth.js";
 import { defaultRunBranchName } from "./utils/gitWorkspace.js";
 import { loadProjectCredentials } from "./utils/projectCredentials.js";
@@ -79,7 +81,18 @@ const server = Fastify({
   },
 });
 
-await server.register(cors, { origin: true, credentials: true });
+const corsAllowed = String(env.CORS_ALLOWED_ORIGINS ?? "").trim();
+const allowlist = corsAllowed
+  ? corsAllowed
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  : null;
+
+await server.register(cors, {
+  origin: allowlist ? (origin, cb) => cb(null, !origin || allowlist.includes(origin)) : true,
+  credentials: true,
+});
 await server.register(cookie);
 await server.register(websocket);
 
@@ -107,11 +120,26 @@ if (frontendRoot) {
 }
 
 const auth = await registerAuth(server, { jwtSecret: env.JWT_SECRET });
+const bootstrapFile =
+  env.AUTH_BOOTSTRAP_TOKEN_FILE?.trim() || path.join(os.homedir(), ".tuixiu", "bootstrap-token.json");
+let bootstrapToken = env.AUTH_BOOTSTRAP_TOKEN?.trim() || null;
+let bootstrapTokenFile: string | null = null;
+if (!bootstrapToken) {
+  const userCount = await prisma.user.count().catch(() => 0);
+  if (userCount === 0) {
+    bootstrapToken = (await readBootstrapToken(bootstrapFile)) ?? (await writeBootstrapToken(bootstrapFile));
+    bootstrapTokenFile = bootstrapFile;
+    server.log.info({ bootstrapFile }, "bootstrap token generated");
+    server.log.info({ bootstrapToken }, "use x-bootstrap-token once to initialize admin");
+  }
+}
 server.register(
   makeAuthRoutes({
     prisma,
     auth,
     bootstrap: { username: env.BOOTSTRAP_ADMIN_USERNAME, password: env.BOOTSTRAP_ADMIN_PASSWORD },
+    bootstrapToken,
+    bootstrapTokenFile,
     tokens: {
       accessTtlSeconds: env.AUTH_ACCESS_TOKEN_TTL_SECONDS,
       refreshTtlSeconds: env.AUTH_REFRESH_TOKEN_TTL_SECONDS,
