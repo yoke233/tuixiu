@@ -126,6 +126,16 @@ Session 的创建/复用/恢复由 `acp-proxy` 托管：
 | Agent → Server | `sandbox_inventory` | 上报实例清单/缺失/删除（用于对账与追踪删除） | `{inventory_id,captured_at?,instances?,missing_instances?,deleted_instances?,deleted_workspaces?}` |
 | Agent → Server | `workspace_inventory` | 上报 workspace 列表（估算/删除后对账） | `{inventory_id,captured_at,workspace_mode,workspaces:[...]}` |
 
+命名约定（重要）：
+
+- proxy ⇄ backend：使用下划线命名的 WS 消息类型（例如 `acp_update` / `proxy_update`）
+- backend → Web UI（`/ws/client`）：使用点分层的事件名（例如 `acp.update`）
+
+`/ws/client` 侧的常用事件：
+
+- `event_added`：DB 落库后的事件（权威流）
+- `acp.update`：低延迟的 ACP update 直出（payload 与 `/ws/agent` 的 `acp_update` 基本等价）
+
 服务器关键行为摘要：
 
 - `register_agent`：upsert `Agent`，置 `online`

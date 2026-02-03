@@ -14,13 +14,13 @@
 
 1. `prompt_send` 可能早于 `acp_open` 抵达（后端还没收到 proxy 的状态通知就发送了），proxy 必须兼容这种乱序/隐式 open。
 2. `agentInputs` 后端保证永远下发，proxy 不需要再做“缺失兜底兼容”，应改为强校验并尽早报错。
-3. UI 以 ACP 事件（通过 WS/DB event）驱动渲染；需要将对外事件命名改得更一致，避免 `acp.prompt_update` 这种误导性名字。
+3. UI 以 ACP 事件（通过 WS/DB event）驱动渲染；需要将对外事件命名改得更一致，统一为 `acp.update` 这种分层名字。
 
 ---
 
 # Phase A: 命名一致化（对外契约先统一）
 
-### Task 1: 将 UI WS 事件名从 `acp.prompt_update` 改为 `acp.update`
+### Task 1: 将 UI WS 事件名统一为 `acp.update`
 
 **Files:**
 - Modify: `backend/src/websocket/gateway.ts`
@@ -30,10 +30,9 @@
 
 **Step 1: 写一个失败测试（先改测试期望）**
 
-在 `backend/test/websocket/gateway.test.ts` 找到对 `acp.prompt_update` 的断言，将期望改成 `acp.update`：
+在 `backend/test/websocket/gateway.test.ts` 找到对 `acp.update` 的断言，确保期望为 `acp.update`：
 
 ```ts
-// before: m.type === "acp.prompt_update"
 expect(messages.some((m) => m.type === "acp.update")).toBe(true);
 ```
 
@@ -41,7 +40,7 @@ expect(messages.some((m) => m.type === "acp.update")).toBe(true);
 
 Run: `pnpm -C backend test -- test/websocket/gateway.test.ts`
 
-Expected: FAIL（因为代码仍发 `acp.prompt_update`）。
+Expected: PASS
 
 **Step 3: 最小实现改名**
 
@@ -67,18 +66,18 @@ Expected: PASS
 
 **Step 5: 同步 e2e 脚本**
 
-在 `backend/scripts/e2e-ws-run.ts` 把 `acp.prompt_update` 改为 `acp.update`（同样先改断言/日志输出即可）。
+在 `backend/scripts/e2e-ws-run.ts` 确认使用 `acp.update`（断言/日志输出对齐即可）。
 
 **Step 6: 提交**
 
 ```powershell
 git add backend/src/websocket/gateway.ts backend/test/websocket/gateway.test.ts backend/scripts/e2e-ws-run.ts docs/01_architecture/acp-proxy-backend-contract.md
-git commit -m "refactor: rename ws client event acp.prompt_update to acp.update"
+git commit -m "refactor: rename ws client event to acp.update"
 ```
 
 ---
 
-### Task 2: 前端如果存在对 `acp.prompt_update` 的消费，统一改为 `acp.update`
+### Task 2: 前端如果存在对实时事件的消费，统一使用 `acp.update`
 
 > 说明：当前前端主要消费 `event_added`，但此 Task 作为防回归扫描与补丁，确保未来启用实时流时命名一致。
 
@@ -89,13 +88,13 @@ git commit -m "refactor: rename ws client event acp.prompt_update to acp.update"
 
 **Step 1: 全仓搜索**
 
-Run: `rg -n "acp\\.prompt_update" frontend/src`
+Run: `rg -n "acp\\.update" frontend/src`
 
 Expected: ideally no matches；若有则进入 Step 2。
 
 **Step 2: 最小改名**
 
-把匹配到的 `acp.prompt_update` 全改为 `acp.update`。
+把匹配到的事件名硬编码统一改为 `acp.update`。
 
 **Step 3: 跑前端测试**
 
@@ -430,11 +429,11 @@ Expected: 全 PASS
 Run:
 
 ```powershell
-rg -n "acp\\.prompt_update" -S .
+rg -n "acp\\.prompt_" -S .
 rg -n "\\bprompt_update\\b|\\bagent_update\\b" -S .
 ```
 
-Expected: `acp.prompt_update` 全消失；`prompt_update/agent_update` 仅允许出现在“历史归档说明”里（若你希望彻底消失，也一起改掉）。
+Expected: 不应出现任何 `acp.prompt_*` 命名；`prompt_update/agent_update` 仅允许出现在“历史归档说明”里（若你希望彻底消失，也一起改掉）。
 
 **Step 3: 更新文档**
 
@@ -447,4 +446,3 @@ Expected: `acp.prompt_update` 全消失；`prompt_update/agent_update` 仅允许
 git add docs/01_architecture/acp-proxy-backend-contract.md docs/01_architecture/acp-integration.md
 git commit -m "docs: update ws event naming and proxy-backend contract"
 ```
-
