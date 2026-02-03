@@ -11,9 +11,10 @@ export async function loadProjectCredentials(
   const ids = Array.from(new Set([runId, adminId].filter(Boolean)));
   if (!ids.length) return { run: null, admin: null };
 
-  const rows = await prisma.gitCredential
-    .findMany({ where: { id: { in: ids } } as any })
-    .catch(() => [] as any[]);
+  const findMany = (prisma as any)?.gitCredential?.findMany;
+  if (typeof findMany !== "function") return { run: null, admin: null };
+
+  const rows = await findMany.call(prisma.gitCredential, { where: { id: { in: ids } } as any }).catch(() => [] as any[]);
 
   const byId = new Map<string, any>();
   for (const row of rows) {
@@ -31,4 +32,3 @@ export async function loadProjectCredentials(
 
   return { run, admin };
 }
-

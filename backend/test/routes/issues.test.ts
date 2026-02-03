@@ -14,7 +14,7 @@ function extractPromptText(prompt: unknown): string {
   return String(prompt ?? "");
 }
 
-const defaultRoleEnv = "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=role-gh\n";
+const defaultRoleEnv = "FOO=bar\n";
 
 function makeRoleTemplate(overrides?: Partial<any>) {
   return {
@@ -767,7 +767,6 @@ describe("Issues routes", () => {
             scmType: "github",
             defaultBranch: "main",
             runGitCredentialId: "c-run",
-            githubAccessToken: "ghp_xxx",
             defaultRoleKey: "dev",
           },
         }),
@@ -781,7 +780,7 @@ describe("Issues routes", () => {
           promptTemplate: "你是 {{role.name}}，请优先写单测。",
           initScript: "echo init",
           initTimeoutSeconds: 120,
-          envText: "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=ghp_role_xxx",
+          envText: "FOO=bar\n",
         }),
       },
       gitCredential: {
@@ -992,7 +991,7 @@ describe("Issues routes", () => {
               repoUrl: "https://github.com/o/r",
               scmType: "github",
               runGitCredentialId: "c-run",
-              githubAccessToken: "ghp_test",
+              scmAdminCredentialId: "c-admin",
               defaultRoleKey: "dev",
             },
           }),
@@ -1011,6 +1010,9 @@ describe("Issues routes", () => {
         },
         roleTemplate: { findFirst: vi.fn().mockResolvedValue(makeRoleTemplate()) },
         gitCredential: {
+          findMany: vi.fn().mockResolvedValue([
+            { id: "c-admin", projectId: "p1", githubAccessToken: "ghp_test" },
+          ]),
           findUnique: vi.fn().mockResolvedValue({
             id: "c-run",
             projectId: "p1",

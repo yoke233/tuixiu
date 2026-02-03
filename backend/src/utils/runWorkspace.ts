@@ -50,6 +50,10 @@ export async function createRunWorkspace(opts: {
   const timingsMs: Record<string, number> = {};
   const t0 = Date.now();
   const { env, cleanup, gitAuthMode } = await createGitProcessEnv(opts.project);
+  const repoUrl = String(opts.project.repoUrl ?? "").trim();
+  if (!repoUrl) {
+    throw new Error("Project 未配置 repoUrl");
+  }
 
   const workspacePath = path.join(opts.workspacesRoot, `run-${opts.runId}`);
   const repoCachePath = path.join(opts.repoCacheRoot, `${opts.project.id}.git`);
@@ -67,7 +71,7 @@ export async function createRunWorkspace(opts: {
     if (await pathExists(repoCachePath)) {
       await execFileAsync("git", ["-C", repoCachePath, "fetch", "--prune"], { env });
     } else {
-      await execFileAsync("git", ["clone", "--mirror", opts.project.repoUrl, repoCachePath], { env });
+      await execFileAsync("git", ["clone", "--mirror", repoUrl, repoCachePath], { env });
     }
     timingsMs.mirrorMs = Date.now() - m0;
     mirrorReady = true;
@@ -83,7 +87,7 @@ export async function createRunWorkspace(opts: {
       baseBranch,
       "--single-branch",
       ...(mirrorReady ? ["--reference-if-able", repoCachePath] : []),
-      opts.project.repoUrl,
+      repoUrl,
       workspacePath,
     ];
     await execFileAsync("git", cloneArgs, { env });
@@ -110,4 +114,3 @@ export async function createRunWorkspace(opts: {
     timingsMs,
   };
 }
-

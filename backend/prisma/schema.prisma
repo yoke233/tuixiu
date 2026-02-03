@@ -155,7 +155,6 @@ model Project {
   defaultBranch          String   @default("main") @db.VarChar(100)
   workspaceMode          String   @default("worktree") @db.VarChar(20)
   workspacePolicy        String?  @db.VarChar(20)
-  gitAuthMode            String   @default("https_pat") @db.VarChar(20)
   runGitCredentialId     String?  @db.Uuid
   runGitCredential       GitCredential? @relation("ProjectRunCredential", fields: [runGitCredentialId], references: [id], onDelete: SetNull)
   scmAdminCredentialId   String?  @db.Uuid
@@ -163,12 +162,6 @@ model Project {
   defaultRoleKey         String?  @db.VarChar(100)
   executionProfileId     String?  @db.Uuid
   executionProfile       ExecutionProfile? @relation(fields: [executionProfileId], references: [id], onDelete: SetNull)
-  gitlabProjectId        Int?     @unique
-  gitlabAccessToken      String?  @db.Text
-  gitlabWebhookSecret    String?  @db.VarChar(255)
-  githubAccessToken      String?  @db.Text
-  githubPollingEnabled   Boolean  @default(false)
-  githubPollingCursor    DateTime?
   enableRuntimeSkillsMounting Boolean @default(false)
   branchProtection       Json?
   agentAllocationStrategy String? @db.VarChar(20)
@@ -182,9 +175,6 @@ model Project {
   skillAuditLogs SkillAuditLog[]
   gitCredentials GitCredential[]
   scmConfig ProjectScmConfig?
-
-  @@index([gitlabProjectId])
-  @@index([githubPollingEnabled])
 }
 
 model GitCredential {

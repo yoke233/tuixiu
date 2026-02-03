@@ -50,6 +50,7 @@ import { createLocalSkillPackageStore } from "./modules/skills/skillPackageStore
 import { createNpxSkillsCliRunner } from "./modules/skills/npxSkillsCli.js";
 import { resolveGitAuthMode } from "./utils/gitAuth.js";
 import { defaultRunBranchName } from "./utils/gitWorkspace.js";
+import { loadProjectCredentials } from "./utils/projectCredentials.js";
 import { buildSandboxGitPushEnv } from "./utils/sandboxGitPush.js";
 import { createWebSocketGateway } from "./websocket/gateway.js";
 import { deriveSandboxInstanceName } from "./utils/sandbox.js";
@@ -266,6 +267,8 @@ const createWorkspace: CreateWorkspace = async ({
     }
   }
 
+  const { run: runCredential } = await loadProjectCredentials(prisma, project ?? {});
+
   return {
     workspaceMode: "worktree",
     workspacePath,
@@ -274,9 +277,9 @@ const createWorkspace: CreateWorkspace = async ({
     gitAuthMode: resolveGitAuthMode({
       repoUrl: String(project.repoUrl ?? ""),
       scmType: project.scmType ?? null,
-      gitAuthMode: project.gitAuthMode ?? null,
-      githubAccessToken: project.githubAccessToken ?? null,
-      gitlabAccessToken: project.gitlabAccessToken ?? null,
+      gitAuthMode: (runCredential as any)?.gitAuthMode ?? null,
+      githubAccessToken: (runCredential as any)?.githubAccessToken ?? null,
+      gitlabAccessToken: (runCredential as any)?.gitlabAccessToken ?? null,
     }),
     timingsMs: { totalMs: 0 },
   };

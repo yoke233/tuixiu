@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { GitAuthEnvError } from "../../../src/utils/gitAuth.js";
 import { buildRecoveryInit } from "../../../src/modules/runs/runRecovery.js";
 
 function makePrisma(opts?: { role?: any; credential?: any }) {

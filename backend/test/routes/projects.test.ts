@@ -123,15 +123,9 @@ describe("Projects routes", () => {
         defaultBranch: "main",
         workspaceMode: "worktree",
         workspacePolicy: null,
-        gitAuthMode: "https_pat",
         defaultRoleKey: undefined,
         executionProfileId: undefined,
         agentWorkspaceNoticeTemplate: undefined,
-        gitlabProjectId: undefined,
-        gitlabAccessToken: undefined,
-        gitlabWebhookSecret: undefined,
-        githubAccessToken: undefined,
-        githubPollingEnabled: false,
         enableRuntimeSkillsMounting: false,
       }
     });

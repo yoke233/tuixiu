@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { uuidv7 } from "../../utils/uuid.js";
 import { toPublicProject } from "../../utils/publicProject.js";
 import { suggestRunKeyWithLlm } from "../../utils/gitWorkspace.js";
-import { parseEnvText } from "../../utils/envText.js";
+import { parseEnvText, stripForbiddenGitEnv } from "../../utils/envText.js";
 import {
   DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS,
   deriveSandboxInstanceName,
@@ -22,6 +22,7 @@ import { buildInitPipeline } from "../../utils/initPipeline.js";
 import { stringifyContextInventory } from "../../utils/contextInventory.js";
 import { assertWorkspacePolicyCompat, resolveWorkspacePolicy } from "../../utils/workspacePolicy.js";
 import { mergeAgentInputsManifests } from "../agentInputs/mergeAgentInputs.js";
+import { loadProjectCredentials } from "../../utils/projectCredentials.js";
 
 export type WorkspaceMode = "worktree" | "clone";
 
@@ -52,13 +53,14 @@ function toPublicIssue<T extends { project?: unknown }>(issue: T): T {
 }
 
 function normalizeRoleEnv(env: Record<string, string>): Record<string, string> {
-  if (env.GH_TOKEN && env.GITHUB_TOKEN === undefined) env.GITHUB_TOKEN = env.GH_TOKEN;
-  if (env.GITHUB_TOKEN && env.GH_TOKEN === undefined) env.GH_TOKEN = env.GITHUB_TOKEN;
-  if (env.GITLAB_TOKEN && env.GITLAB_ACCESS_TOKEN === undefined)
-    env.GITLAB_ACCESS_TOKEN = env.GITLAB_TOKEN;
-  if (env.GITLAB_ACCESS_TOKEN && env.GITLAB_TOKEN === undefined)
-    env.GITLAB_TOKEN = env.GITLAB_ACCESS_TOKEN;
-  return env;
+  const out = { ...env };
+  if (out.GH_TOKEN && out.GITHUB_TOKEN === undefined) out.GITHUB_TOKEN = out.GH_TOKEN;
+  if (out.GITHUB_TOKEN && out.GH_TOKEN === undefined) out.GH_TOKEN = out.GITHUB_TOKEN;
+  if (out.GITLAB_TOKEN && out.GITLAB_ACCESS_TOKEN === undefined)
+    out.GITLAB_ACCESS_TOKEN = out.GITLAB_TOKEN;
+  if (out.GITLAB_ACCESS_TOKEN && out.GITLAB_TOKEN === undefined)
+    out.GITLAB_TOKEN = out.GITLAB_ACCESS_TOKEN;
+  return stripForbiddenGitEnv(out);
 }
 
 export async function startIssueRun(opts: {
@@ -204,7 +206,8 @@ export async function startIssueRun(opts: {
 
   const issueIsGitHub = String((issue as any).externalProvider ?? "").toLowerCase() === "github";
   const githubIssueNumber = Number((issue as any).externalNumber ?? 0);
-  const githubAccessToken = String(project?.githubAccessToken ?? "").trim();
+  const { admin } = await loadProjectCredentials(opts.prisma, project ?? {});
+  const githubAccessToken = String((admin as any)?.githubAccessToken ?? "").trim();
   const repoUrl = String(project?.repoUrl ?? "").trim();
 
   if (issueIsGitHub && githubAccessToken) {
@@ -272,7 +275,7 @@ export async function startIssueRun(opts: {
       workspacePath,
       branchName,
       baseBranch: resolvedBaseBranch,
-      gitAuthMode: ws.gitAuthMode ?? ((issue as any).project as any)?.gitAuthMode ?? null,
+      gitAuthMode: ws.gitAuthMode ?? null,
       sandbox: { provider: sandboxProvider, workspaceMode: sandboxWorkspaceMode ?? undefined },
       agent: { max_concurrent: (selectedAgent as any).maxConcurrentRuns },
       timingsMs: timingsMsSnapshot,

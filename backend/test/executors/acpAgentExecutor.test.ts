@@ -22,7 +22,7 @@ function makeAgent(overrides?: Partial<any>) {
   };
 }
 
-const defaultRoleEnv = "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=role-gh\n";
+const defaultRoleEnv = "FOO=bar\n";
 
 function makeRoleTemplate(overrides?: Partial<any>) {
   return {
@@ -56,8 +56,6 @@ function makeRun(opts?: {
     defaultBranch: "main",
     defaultRoleKey: "dev",
     runGitCredentialId: "c-run",
-    githubAccessToken: "proj-gh",
-    gitlabAccessToken: "proj-gl",
     agentWorkspaceNoticeTemplate: opts?.projectNoticeTemplate,
   };
 
@@ -410,8 +408,7 @@ describe("acpAgentExecutor", () => {
     run.task.workspacePolicy = "bundle";
     run.task.bundleSource = { path: "C:/bundle.zip", hash: "bh1" };
     const role = makeRoleTemplate({
-      envText:
-        "TUIXIU_GIT_AUTH_MODE=https_pat\nTUIXIU_GIT_HTTP_PASSWORD=token\nGITHUB_TOKEN=role-gh\n",
+      envText: "FOO=bar\n",
     });
     const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "mount" } } });
 
@@ -447,8 +444,7 @@ describe("acpAgentExecutor", () => {
   it("git policy keeps repo env and git auth", async () => {
     const run = makeRun({ kind: "test.run" });
     const role = makeRoleTemplate({
-      envText:
-        "TUIXIU_GIT_AUTH_MODE=https_pat\nTUIXIU_GIT_HTTP_PASSWORD=token\nGITHUB_TOKEN=role-gh\n",
+      envText: "FOO=bar\n",
     });
     const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
 

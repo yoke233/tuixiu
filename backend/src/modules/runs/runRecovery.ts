@@ -1,5 +1,5 @@
 import type { PrismaDeps } from "../../db.js";
-import { parseEnvText } from "../../utils/envText.js";
+import { parseEnvText, stripForbiddenGitEnv } from "../../utils/envText.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
 import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
 import { buildInitPipeline } from "../../utils/initPipeline.js";
@@ -17,13 +17,14 @@ type RecoveryInit = {
 };
 
 function normalizeRoleEnv(env: Record<string, string>): Record<string, string> {
-  if (env.GH_TOKEN && env.GITHUB_TOKEN === undefined) env.GITHUB_TOKEN = env.GH_TOKEN;
-  if (env.GITHUB_TOKEN && env.GH_TOKEN === undefined) env.GH_TOKEN = env.GITHUB_TOKEN;
-  if (env.GITLAB_TOKEN && env.GITLAB_ACCESS_TOKEN === undefined)
-    env.GITLAB_ACCESS_TOKEN = env.GITLAB_TOKEN;
-  if (env.GITLAB_ACCESS_TOKEN && env.GITLAB_TOKEN === undefined)
-    env.GITLAB_TOKEN = env.GITLAB_ACCESS_TOKEN;
-  return env;
+  const out = { ...env };
+  if (out.GH_TOKEN && out.GITHUB_TOKEN === undefined) out.GITHUB_TOKEN = out.GH_TOKEN;
+  if (out.GITHUB_TOKEN && out.GH_TOKEN === undefined) out.GH_TOKEN = out.GITHUB_TOKEN;
+  if (out.GITLAB_TOKEN && out.GITLAB_ACCESS_TOKEN === undefined)
+    out.GITLAB_ACCESS_TOKEN = out.GITLAB_TOKEN;
+  if (out.GITLAB_ACCESS_TOKEN && out.GITLAB_TOKEN === undefined)
+    out.GITLAB_TOKEN = out.GITLAB_ACCESS_TOKEN;
+  return stripForbiddenGitEnv(out);
 }
 
 function getRoleKey(run: any, project: any): string {

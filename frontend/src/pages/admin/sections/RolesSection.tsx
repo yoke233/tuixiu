@@ -160,7 +160,7 @@ function RoleTemplateManageForm(props: {
             <Textarea
               value={initScript}
               onChange={(e) => onInitScriptChange(e.target.value)}
-              placeholder={mode === "create" ? "# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init" : undefined}
+              placeholder={mode === "create" ? "# 可使用环境变量：TUIXIU_WORKSPACE 等\n\necho init" : undefined}
             />
           </label>
 
@@ -2657,7 +2657,7 @@ export function RolesSection(props: Props) {
                   <Textarea
                     value={roleInitScript}
                     onChange={(e) => setRoleInitScript(e.target.value)}
-                    placeholder={"# 可使用环境变量：GH_TOKEN/TUIXIU_WORKSPACE 等\n\necho init"}
+                    placeholder={"# 可使用环境变量：TUIXIU_WORKSPACE 等\n\necho init"}
                   />
                 </label>
                 <label className="label">

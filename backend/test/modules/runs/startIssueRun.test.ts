@@ -22,8 +22,6 @@ function makeIssue(overrides?: Partial<any>) {
       defaultBranch: "main",
       enableRuntimeSkillsMounting: true,
       runGitCredentialId: "00000000-0000-0000-0000-000000000100",
-      githubAccessToken: "",
-      gitlabAccessToken: "",
       workspacePolicy: null,
       executionProfileId: null,
     },

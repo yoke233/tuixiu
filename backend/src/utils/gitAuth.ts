@@ -65,47 +65,47 @@ export function assertRoleGitAuthEnv(
   }
 }
 
-function inferGitAuthMode(project: GitAuthProject): GitAuthMode {
-  const explicit = String(project.gitAuthMode ?? "")
+function inferGitAuthMode(input: GitAuthProject): GitAuthMode {
+  const explicit = String(input.gitAuthMode ?? "")
     .trim()
     .toLowerCase();
   if (explicit === "https_pat") return "https_pat";
   if (explicit === "ssh") return "ssh";
 
-  const url = String(project.repoUrl ?? "")
+  const url = String(input.repoUrl ?? "")
     .trim()
     .toLowerCase();
   if (url.startsWith("http://") || url.startsWith("https://")) return "https_pat";
   return "ssh";
 }
 
-function inferHttpsUsername(project: GitAuthProject): string {
-  const scm = String(project.scmType ?? "")
+function inferHttpsUsername(input: GitAuthProject): string {
+  const scm = String(input.scmType ?? "")
     .trim()
     .toLowerCase();
   if (scm === "gitlab" || scm === "codeup") return "oauth2";
   return "x-access-token";
 }
 
-function pickPatToken(project: GitAuthProject): string | null {
-  const scm = String(project.scmType ?? "")
+function pickPatToken(input: GitAuthProject): string | null {
+  const scm = String(input.scmType ?? "")
     .trim()
     .toLowerCase();
-  if (scm === "github") return project.githubAccessToken?.trim() || null;
-  if (scm === "gitlab" || scm === "codeup") return project.gitlabAccessToken?.trim() || null;
-  return project.githubAccessToken?.trim() || project.gitlabAccessToken?.trim() || null;
+  if (scm === "github") return input.githubAccessToken?.trim() || null;
+  if (scm === "gitlab" || scm === "codeup") return input.gitlabAccessToken?.trim() || null;
+  return input.githubAccessToken?.trim() || input.gitlabAccessToken?.trim() || null;
 }
 
-export function resolveGitAuthMode(project: GitAuthProject): GitAuthMode {
-  return inferGitAuthMode(project);
+export function resolveGitAuthMode(input: GitAuthProject): GitAuthMode {
+  return inferGitAuthMode(input);
 }
 
-export function resolveGitHttpUsername(project: GitAuthProject): string {
-  return inferHttpsUsername(project);
+export function resolveGitHttpUsername(input: GitAuthProject): string {
+  return inferHttpsUsername(input);
 }
 
-export function pickGitAccessToken(project: GitAuthProject): string | null {
-  return pickPatToken(project);
+export function pickGitAccessToken(input: GitAuthProject): string | null {
+  return pickPatToken(input);
 }
 
 async function writeAskPassScript(opts: {
@@ -150,12 +150,12 @@ async function writeAskPassScript(opts: {
   return { scriptPath, cleanup: async () => rm(dir, { recursive: true, force: true }) };
 }
 
-export async function createGitProcessEnv(project: GitAuthProject): Promise<{
+export async function createGitProcessEnv(input: GitAuthProject): Promise<{
   gitAuthMode: GitAuthMode;
   env: NodeJS.ProcessEnv;
   cleanup: () => Promise<void>;
 }> {
-  const gitAuthMode = inferGitAuthMode(project);
+  const gitAuthMode = inferGitAuthMode(input);
   if (gitAuthMode !== "https_pat") {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -172,11 +172,11 @@ export async function createGitProcessEnv(project: GitAuthProject): Promise<{
     };
   }
 
-  const token = pickPatToken(project);
+  const token = pickPatToken(input);
   if (!token) {
     throw new Error("gitAuthMode=https_pat 但未配置 accessToken");
   }
-  const username = inferHttpsUsername(project);
+  const username = inferHttpsUsername(input);
   const { scriptPath, cleanup } = await writeAskPassScript({ token, username });
 
   return {

@@ -688,9 +688,9 @@ describe("Runs routes", () => {
           issue: {
             id: "i1",
             project: {
+              id: "p1",
               repoUrl: "https://github.com/octo-org/octo-repo.git",
               scmType: "github",
-              githubAccessToken: "ghp_xxx",
             },
           },
           artifacts: [],
