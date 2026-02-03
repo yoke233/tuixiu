@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { NativePlatform } from "../platform/native/nativePlatform.js";
-import { ensureSessionForPrompt } from "./runRuntime.js";
+import { ensureSessionForPrompt } from "./session.js";
 
 describe("runs/runRuntime", () => {
   it("mode=auto: session/new applies config option when offered", async () => {

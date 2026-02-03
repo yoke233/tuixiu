@@ -1,12 +1,11 @@
 import type { ProxyContext } from "../proxyContext.js";
+import { ensureRuntime, withAuthRetry } from "../runs/runRuntime.js";
 import {
   assertPromptBlocksSupported,
-  ensureRuntime,
   ensureSessionForPrompt,
   getPromptCapabilities,
   shouldRecreateSession,
-  withAuthRetry,
-} from "../runs/runRuntime.js";
+} from "../runs/session.js";
 import { defaultCwdForRun } from "../runs/workspacePath.js";
 import { ensureRunOpen } from "../runs/ensureRunOpen.js";
 import { reportProxyError } from "../runs/updates.js";
