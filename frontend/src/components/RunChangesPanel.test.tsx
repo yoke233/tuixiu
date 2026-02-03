@@ -33,7 +33,7 @@ describe("RunChangesPanel", () => {
       repoUrl: "https://github.com/octo-org/octo-repo.git",
       scmType: "github",
       defaultBranch: "main",
-      hasGithubAccessToken: true,
+      hasScmAdminCredential: true,
       createdAt: "2026-01-25T00:00:00.000Z",
     };
 
@@ -104,7 +104,7 @@ describe("RunChangesPanel", () => {
       repoUrl: "https://github.com/octo-org/octo-repo.git",
       scmType: "github",
       defaultBranch: "main",
-      hasGithubAccessToken: false,
+      hasScmAdminCredential: false,
       createdAt: "2026-01-25T00:00:00.000Z",
     };
 
