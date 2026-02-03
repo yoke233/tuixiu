@@ -18,6 +18,7 @@ import { makeAcpSessionRoutes } from "./routes/acpSessions.js";
 import { makeAcpProxyRoutes } from "./routes/acpProxy.js";
 import { makeArtifactRoutes } from "./routes/artifacts.js";
 import { makeAuthRoutes } from "./routes/auth.js";
+import { makeGitCredentialRoutes } from "./routes/gitCredentials.js";
 import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
 import { makeGitHubWebhookRoutes } from "./routes/githubWebhooks.js";
 import { makeGitLabWebhookRoutes } from "./routes/gitlabWebhooks.js";
@@ -310,6 +311,7 @@ server.register(
 );
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
+server.register(makeGitCredentialRoutes({ prisma, auth }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeExecutionProfileRoutes({ prisma }), { prefix: "/api" });
 server.register(makePolicyRoutes({ prisma }), { prefix: "/api" });
@@ -445,4 +447,3 @@ server.setNotFoundHandler(async (request, reply) => {
 });
 
 await server.listen({ port: env.PORT, host: env.HOST });
-
