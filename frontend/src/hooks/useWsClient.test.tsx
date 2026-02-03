@@ -8,11 +8,6 @@ function TestComponent(props: { onMessage: (msg: any) => void }) {
   return <div>status:{ws.status}</div>;
 }
 
-function TestComponentWithToken(props: { onMessage: (msg: any) => void; token: string }) {
-  const ws = useWsClient(props.onMessage, { token: props.token });
-  return <div>status:{ws.status}</div>;
-}
-
 describe("useWsClient", () => {
   it("connects, parses messages, and closes on unmount", async () => {
     const onMessage = vi.fn();
@@ -33,14 +28,14 @@ describe("useWsClient", () => {
     expect(instance.readyState).toBe(3);
   });
 
-  it("appends token to ws url when provided", async () => {
+  it("does not append token to ws url", async () => {
     const onMessage = vi.fn();
-    render(<TestComponentWithToken onMessage={onMessage} token="t1" />);
+    render(<TestComponent onMessage={onMessage} />);
 
     await waitFor(() => expect(screen.getByText(/status:open/)).toBeInTheDocument());
 
     const WS = (globalThis as any).MockWebSocket;
     const instance = WS.instances[WS.instances.length - 1];
-    expect(String(instance.url)).toMatch(/token=t1/);
+    expect(String(instance.url)).not.toMatch(/token=/);
   });
 });

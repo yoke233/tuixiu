@@ -1018,7 +1018,12 @@ describe("WebSocketGateway", () => {
       get: (path: string, opts: any, handler: any) => {
         calls.push({ path, opts, handler });
       },
-      jwt: { verify: vi.fn().mockResolvedValue({ type: "acp_proxy" }) },
+      jwt: {
+        verify: vi.fn().mockImplementation(async (token: string) => {
+          if (token !== "t") throw new Error("bad token");
+          return { type: "acp_proxy" };
+        }),
+      },
       log: { error: vi.fn() },
     };
 
@@ -1036,7 +1041,7 @@ describe("WebSocketGateway", () => {
     const agentSocket = new FakeSocket();
     const clientSocket = new FakeSocket();
     await agentHandler(agentSocket as any, { url: "/ws/agent?token=t" } as any);
-    await clientHandler(clientSocket as any, { url: "/ws/client?token=t" } as any);
+    await clientHandler(clientSocket as any, { url: "/ws/client", headers: { cookie: "tuixiu_access=t" } } as any);
 
     expect(agentSocket.listenerCount("message")).toBeGreaterThan(0);
     expect(gateway.__testing.clientConnections.has(clientSocket as any)).toBe(true);

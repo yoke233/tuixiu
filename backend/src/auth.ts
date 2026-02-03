@@ -12,13 +12,13 @@ export type AuthUser = {
 export type AuthHelpers = {
   authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   requireRoles: (roles: UserRole[]) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-  sign: (user: AuthUser) => string;
+  sign: (payload: any, options?: any) => string;
 };
 
 export async function registerAuth(server: FastifyInstance, opts: { jwtSecret: string }): Promise<AuthHelpers> {
   await server.register(jwt, {
     secret: opts.jwtSecret,
-    cookie: { cookieName: "tuixiu_token", signed: false },
+    cookie: { cookieName: "tuixiu_access", signed: false },
   });
 
   const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -41,8 +41,7 @@ export async function registerAuth(server: FastifyInstance, opts: { jwtSecret: s
       }
     };
 
-  const sign = (user: AuthUser) => (server as any).jwt.sign(user);
+  const sign = (payload: any, options?: any) => (server as any).jwt.sign(payload, options);
 
   return { authenticate, requireRoles, sign };
 }
-

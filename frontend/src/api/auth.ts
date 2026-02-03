@@ -1,7 +1,8 @@
-import { apiGet, apiPost } from "./client";
+import { apiGet, apiPost, apiRequest } from "./client";
 import type { User } from "../types";
 
-export type AuthResponse = { token: string; user: User };
+export type AuthResponse = { user: User };
+export type AuthBootstrapInput = { username?: string; password?: string; bootstrapToken?: string };
 
 function isUser(value: unknown): value is User {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -9,22 +10,28 @@ function isUser(value: unknown): value is User {
   return typeof v.id === "string" && typeof v.username === "string" && typeof v.role === "string";
 }
 
-export async function bootstrapAuth(input: { username?: string; password?: string }): Promise<AuthResponse> {
-  const data = await apiPost<{ token: string; user: User }>("/auth/bootstrap", input);
+export async function bootstrapAuth(input: AuthBootstrapInput): Promise<AuthResponse> {
+  const headers = new Headers();
+  if (input.bootstrapToken && input.bootstrapToken.trim()) {
+    headers.set("x-bootstrap-token", input.bootstrapToken.trim());
+  }
+  const data = await apiRequest<{ user: User }>("/auth/bootstrap", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ username: input.username, password: input.password }),
+  });
   if (!data || typeof data !== "object") throw new Error("响应不合法");
-  const token = typeof (data as any).token === "string" ? String((data as any).token).trim() : "";
   const user = (data as any).user;
-  if (!token || !isUser(user)) throw new Error("响应不合法");
-  return { token, user };
+  if (!isUser(user)) throw new Error("响应不合法");
+  return { user };
 }
 
 export async function loginAuth(input: { username: string; password: string }): Promise<AuthResponse> {
-  const data = await apiPost<{ token: string; user: User }>("/auth/login", input);
+  const data = await apiPost<{ user: User }>("/auth/login", input);
   if (!data || typeof data !== "object") throw new Error("响应不合法");
-  const token = typeof (data as any).token === "string" ? String((data as any).token).trim() : "";
   const user = (data as any).user;
-  if (!token || !isUser(user)) throw new Error("响应不合法");
-  return { token, user };
+  if (!isUser(user)) throw new Error("响应不合法");
+  return { user };
 }
 
 export async function meAuth(): Promise<User> {
@@ -38,3 +45,6 @@ export async function logoutAuth(): Promise<void> {
   await apiPost("/auth/logout", {});
 }
 
+export async function refreshAuth(): Promise<void> {
+  await apiPost("/auth/refresh", {});
+}

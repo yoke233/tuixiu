@@ -298,7 +298,7 @@ export function useSessionController() {
     },
     [refresh, runId],
   );
-  const ws = useWsClient(onWs, { token: auth.token });
+  const ws = useWsClient(onWs);
   useEffect(() => {
     wsStatusRef.current = ws.status;
   }, [ws.status]);

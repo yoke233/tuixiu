@@ -18,7 +18,7 @@ function getNextPath(search: string): string {
   }
 }
 
-export function LoginPage() {
+export function BootstrapPage() {
   const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -26,6 +26,7 @@ export function LoginPage() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [bootstrapToken, setBootstrapToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +40,11 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await auth.login({ username: username.trim(), password });
+      await auth.bootstrap({
+        username: username.trim() || undefined,
+        password: password || undefined,
+        bootstrapToken: bootstrapToken.trim() || undefined,
+      });
       navigate(nextPath, { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -52,8 +57,8 @@ export function LoginPage() {
     <div className="container">
       <div className="header">
         <div>
-          <h1 className="m-0 text-2xl font-semibold tracking-tight">登录</h1>
-          <div className="muted">需要登录后才能执行创建/启动/回滚等写操作</div>
+          <h1 className="m-0 text-2xl font-semibold tracking-tight">初始化管理员</h1>
+          <div className="muted">仅首次初始化时可用，需要 bootstrap token</div>
         </div>
         <ThemeToggle />
       </div>
@@ -63,13 +68,22 @@ export function LoginPage() {
       <Card>
         <CardContent className="grid gap-4 p-6">
           <div className="grid gap-2">
+            <Label htmlFor="bootstrapToken">Bootstrap Token</Label>
+            <Input
+              id="bootstrapToken"
+              value={bootstrapToken}
+              onChange={(e) => setBootstrapToken(e.target.value)}
+              placeholder="从服务端启动日志复制"
+              autoFocus
+            />
+          </div>
+          <div className="grid gap-2">
             <Label htmlFor="username">用户名</Label>
             <Input
               id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="admin / dev / pm / reviewer"
-              autoFocus
+              placeholder="admin"
             />
           </div>
           <div className="grid gap-2">
@@ -79,7 +93,7 @@ export function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type="password"
-              placeholder="至少 6 位（bootstrap）"
+              placeholder="至少 6 位"
             />
           </div>
 
@@ -88,18 +102,14 @@ export function LoginPage() {
               <Button
                 type="button"
                 onClick={submit}
-                disabled={submitting || auth.status === "loading" || !username.trim() || !password}
+                disabled={submitting || auth.status === "loading" || !bootstrapToken.trim()}
               >
-                登录
+                初始化管理员
               </Button>
             </div>
             <Button variant="link" size="sm" asChild>
-              <Link to="/issues">返回看板</Link>
+              <Link to="/login">返回登录</Link>
             </Button>
-          </div>
-
-          <div className="text-xs text-muted-foreground">
-            没有管理员？前往 <Link to="/bootstrap">初始化管理员</Link>
           </div>
         </CardContent>
       </Card>

@@ -63,7 +63,7 @@ pnpm -C acp-proxy dev
 pnpm -C frontend dev
 ```
 
-打开：`http://localhost:5173/login` → 点击“初始化管理员（首次）” → 登录。
+打开：`http://localhost:5173/bootstrap` → 从后端启动日志复制 bootstrap token 初始化管理员 → 登录。
 
 ### 3) 在 UI 跑通一次闭环（最短路径）
 
@@ -97,6 +97,7 @@ docker compose up -d
 - 一页环境搭建（Windows/macOS/Linux）：`docs/03_guides/environment-setup.md`
 - 架构与链路深挖（开发者）：`docs/repo_review.md`
 - 文档索引（从这里开始）：`docs/00_overview/index.md`
+- 公网/IAP 部署建议：`docs/security/iap.md`
 
 ---
 
@@ -111,10 +112,15 @@ pnpm test
 ### 常见问题
 
 - **页面不刷新/看不到输出**：确认前端显示 `WS: connected`，以及 backend/proxy 都在运行
-- **无法启动 Step / 提示未登录**：先访问 `http://localhost:5173/login` 登录（首次用 bootstrap）
+- **无法启动 Step / 提示未登录**：先访问 `http://localhost:5173/login` 登录（首次用 `/bootstrap` 初始化管理员）
 - **Agent 无输出**：检查 `acp-proxy/config.toml` 的 `agent_command` 与 `orchestrator_url`，以及环境变量（如 `OPENAI_API_KEY`）
 - **PR 创建失败**：检查 Project token 权限、以及 `worktree` 模式下本机是否能 `git push origin <branch>`
 
 > Windows 下命令行调本地 API：建议用 `curl.exe --noproxy 127.0.0.1 ...`，避免系统代理影响。
 
 ---
+
+## 公网部署注意事项
+
+- 不要把后端 `3000` 端口直接暴露公网，置于反向代理/IAP/SSO/MFA 之后
+- `/api/*` 与 `/ws/*` 需受门禁保护；仅 `/api/webhooks/*` 可公网放行

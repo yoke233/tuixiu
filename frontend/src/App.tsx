@@ -9,6 +9,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { IssueDetailPage } from "./pages/IssueDetailPage";
 import { IssueListPage } from "./pages/IssueListPage";
 import { LoginPage } from "./pages/LoginPage";
+import { BootstrapPage } from "./pages/BootstrapPage";
 import { SessionPage } from "./pages/SessionPage";
 
 function RequireAdmin(props: { children: ReactElement }) {
@@ -45,6 +46,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/issues" replace />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/bootstrap" element={<BootstrapPage />} />
           <Route
             path="/issues"
             element={

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { bootstrapAuth, loginAuth, logoutAuth, meAuth } from "../api/auth";
+import { bootstrapAuth, loginAuth, logoutAuth, meAuth, refreshAuth } from "../api/auth";
 import type { User, UserRole } from "../types";
 import { AuthContext, type AuthState } from "./AuthContext";
-import { clearStoredAuth, getStoredToken, getStoredUser, setStoredToken, setStoredUser } from "./storage";
+import { clearStoredAuth, getStoredUser, setStoredUser } from "./storage";
 
 function parseHttpStatusFromError(err: unknown): number | null {
   const msg = err instanceof Error ? err.message : String(err);
@@ -15,7 +15,6 @@ function parseHttpStatusFromError(err: unknown): number | null {
 
 export function AuthProvider(props: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getStoredUser());
-  const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [status, setStatus] = useState<AuthState["status"]>("loading");
 
   useEffect(() => {
@@ -27,21 +26,40 @@ export function AuthProvider(props: { children: ReactNode }) {
         setStoredUser(u);
         setStatus("authenticated");
       })
-      .catch((err) => {
+      .catch(async (err) => {
         if (cancelled) return;
         const httpStatus = parseHttpStatusFromError(err);
-        const hadStoredAuth = Boolean(getStoredUser()) || Boolean(getStoredToken());
+        if (httpStatus === 401 || httpStatus === 403) {
+          try {
+            await refreshAuth();
+          } catch {
+            // ignore
+          }
 
-        // 401/403 视为 token/cookie 已失效：清理并进入匿名状态。
-        if (httpStatus === 401 || httpStatus === 403 || !hadStoredAuth) {
+          try {
+            const u = await meAuth();
+            if (cancelled) return;
+            setUser(u);
+            setStoredUser(u);
+            setStatus("authenticated");
+            return;
+          } catch {
+            if (cancelled) return;
+            clearStoredAuth();
+            setUser(null);
+            setStatus("anonymous");
+            return;
+          }
+        }
+
+        const hadStoredAuth = Boolean(getStoredUser());
+        if (!hadStoredAuth) {
           clearStoredAuth();
           setUser(null);
-          setToken(null);
           setStatus("anonymous");
           return;
         }
 
-        // 其他错误（网络/临时故障）：保留本地登录态，避免“瞬间被登出”。
         setStatus((prev) => (prev === "loading" ? "authenticated" : prev));
       });
 
@@ -53,18 +71,14 @@ export function AuthProvider(props: { children: ReactNode }) {
   const login = useCallback(async (input: { username: string; password: string }) => {
     const res = await loginAuth(input);
     setStoredUser(res.user);
-    setStoredToken(res.token);
     setUser(res.user);
-    setToken(res.token);
     setStatus("authenticated");
   }, []);
 
   const bootstrap = useCallback(async (input: { username?: string; password?: string }) => {
     const res = await bootstrapAuth(input);
     setStoredUser(res.user);
-    setStoredToken(res.token);
     setUser(res.user);
-    setToken(res.token);
     setStatus("authenticated");
   }, []);
 
@@ -72,7 +86,6 @@ export function AuthProvider(props: { children: ReactNode }) {
     void logoutAuth().catch(() => {});
     clearStoredAuth();
     setUser(null);
-    setToken(null);
     setStatus("anonymous");
   }, []);
 
@@ -86,8 +99,8 @@ export function AuthProvider(props: { children: ReactNode }) {
   );
 
   const value = useMemo<AuthState>(
-    () => ({ status, token, user, login, bootstrap, logout, hasRole }),
-    [bootstrap, hasRole, login, logout, status, token, user],
+    () => ({ status, user, login, bootstrap, logout, hasRole }),
+    [bootstrap, hasRole, login, logout, status, user],
   );
 
   return <AuthContext.Provider value={value}>{props.children}</AuthContext.Provider>;

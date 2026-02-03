@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import cookie from "@fastify/cookie";
 
 import { makeAuthRoutes } from "../../src/routes/auth.js";
 import { createHttpServer } from "../test-utils.js";
@@ -6,15 +7,25 @@ import { createHttpServer } from "../test-utils.js";
 describe("Auth routes", () => {
   it("POST /api/auth/bootstrap creates first admin", async () => {
     const server = createHttpServer();
+    await server.register(cookie);
     const prisma = {
       user: {
         count: vi.fn().mockResolvedValue(0),
         create: vi.fn().mockResolvedValue({ id: "u1", username: "admin", role: "admin", passwordHash: "x" }),
       },
+      refreshSession: {
+        create: vi.fn().mockResolvedValue({ id: "s1" }),
+        findUnique: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+      },
     } as any;
 
     const auth = { authenticate: vi.fn(), requireRoles: vi.fn(), sign: vi.fn().mockReturnValue("tok") } as any;
-    await server.register(makeAuthRoutes({ prisma, auth }), { prefix: "/api/auth" });
+    await server.register(
+      makeAuthRoutes({ prisma, auth, tokens: { accessTtlSeconds: 60, refreshTtlSeconds: 3600 } }),
+      { prefix: "/api/auth" },
+    );
 
     const res = await server.inject({
       method: "POST",
@@ -25,8 +36,12 @@ describe("Auth routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: true,
-      data: { token: "tok", user: { id: "u1", username: "admin", role: "admin" } },
+      data: { user: { id: "u1", username: "admin", role: "admin" } },
     });
+    expect(res.headers["set-cookie"]).toBeTruthy();
+    expect(String(res.headers["set-cookie"])).toMatch(/tuixiu_access=/);
+    expect(String(res.headers["set-cookie"])).toMatch(/tuixiu_refresh=/);
+    expect(String(res.headers["set-cookie"])).toMatch(/HttpOnly/i);
     await server.close();
   });
 
@@ -34,9 +49,18 @@ describe("Auth routes", () => {
     const server = createHttpServer();
     const prisma = {
       user: { count: vi.fn().mockResolvedValue(1) },
+      refreshSession: {
+        create: vi.fn().mockResolvedValue({ id: "s1" }),
+        findUnique: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+      },
     } as any;
     const auth = { authenticate: vi.fn(), requireRoles: vi.fn(), sign: vi.fn() } as any;
-    await server.register(makeAuthRoutes({ prisma, auth }), { prefix: "/api/auth" });
+    await server.register(
+      makeAuthRoutes({ prisma, auth, tokens: { accessTtlSeconds: 60, refreshTtlSeconds: 3600 } }),
+      { prefix: "/api/auth" },
+    );
 
     const res = await server.inject({
       method: "POST",
@@ -54,9 +78,20 @@ describe("Auth routes", () => {
 
   it("POST /api/auth/login returns BAD_CREDENTIALS when user missing", async () => {
     const server = createHttpServer();
-    const prisma = { user: { findUnique: vi.fn().mockResolvedValue(null) } } as any;
+    const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue(null) },
+      refreshSession: {
+        create: vi.fn().mockResolvedValue({ id: "s1" }),
+        findUnique: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    } as any;
     const auth = { authenticate: vi.fn(), requireRoles: vi.fn(), sign: vi.fn() } as any;
-    await server.register(makeAuthRoutes({ prisma, auth }), { prefix: "/api/auth" });
+    await server.register(
+      makeAuthRoutes({ prisma, auth, tokens: { accessTtlSeconds: 60, refreshTtlSeconds: 3600 } }),
+      { prefix: "/api/auth" },
+    );
 
     const res = await server.inject({
       method: "POST",
@@ -68,5 +103,42 @@ describe("Auth routes", () => {
     expect(res.json()).toEqual({ success: false, error: { code: "BAD_CREDENTIALS", message: "用户名或密码错误" } });
     await server.close();
   });
-});
 
+  it("POST /api/auth/bootstrap requires bootstrap token when configured", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      user: {
+        count: vi.fn().mockResolvedValue(0),
+        create: vi.fn().mockResolvedValue({ id: "u1", username: "admin", role: "admin", passwordHash: "x" }),
+      },
+      refreshSession: {
+        create: vi.fn().mockResolvedValue({ id: "s1" }),
+        findUnique: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    } as any;
+
+    const auth = { authenticate: vi.fn(), requireRoles: vi.fn(), sign: vi.fn().mockReturnValue("tok") } as any;
+    await server.register(
+      makeAuthRoutes({
+        prisma,
+        auth,
+        bootstrap: { username: "admin", password: "123456" },
+        cookie: { secure: false },
+        tokens: { accessTtlSeconds: 60, refreshTtlSeconds: 3600 },
+        bootstrapToken: "secret",
+        bootstrapTokenFile: null,
+      }),
+      { prefix: "/api/auth" },
+    );
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/auth/bootstrap",
+      payload: { username: "admin", password: "123456", bootstrapToken: "secret" },
+    });
+    expect(res.statusCode).toBe(401);
+    await server.close();
+  });
+});

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import cookie from "@fastify/cookie";
 
 import { registerAuth } from "../../src/auth.js";
 import { createHttpServer } from "../test-utils.js";
@@ -47,6 +48,33 @@ describe("registerAuth", () => {
     await server.close();
   });
 
+  it("authenticate allows request with access cookie", async () => {
+    const server = createHttpServer();
+    await server.register(cookie);
+    const auth = await registerAuth(server, { jwtSecret: "secret" });
+
+    server.get(
+      "/private",
+      {
+        preHandler: auth.authenticate,
+      },
+      async () => ({ success: true }),
+    );
+
+    const token = auth.sign(
+      { userId: "u1", username: "u1", role: "admin", tokenType: "access" },
+      { expiresIn: 60 },
+    );
+    const res = await server.inject({
+      method: "GET",
+      url: "/private",
+      headers: { cookie: `tuixiu_access=${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    await server.close();
+  });
+
   it("requireRoles returns 403 when role not allowed", async () => {
     const server = createHttpServer();
     const auth = await registerAuth(server, { jwtSecret: "secret" });
@@ -71,4 +99,3 @@ describe("registerAuth", () => {
     await server.close();
   });
 });
-
