@@ -1,3 +1,10 @@
+---
+title: "IAP / 反向代理部署建议"
+owner: "platform"
+status: "active"
+last_reviewed: "2026-02-03"
+---
+
 # IAP / 反向代理部署建议
 
 ## 目标
