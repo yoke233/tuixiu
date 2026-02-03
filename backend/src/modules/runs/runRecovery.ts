@@ -3,12 +3,8 @@ import { parseEnvText } from "../../utils/envText.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
 import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
 import { buildInitPipeline } from "../../utils/initPipeline.js";
-import {
-  assertRoleGitAuthEnv,
-  pickGitAccessToken,
-  resolveGitAuthMode,
-  resolveGitHttpUsername,
-} from "../../utils/gitAuth.js";
+import { GitAuthEnvError } from "../../utils/gitAuth.js";
+import { buildGitRuntimeEnv } from "../../utils/gitCredentialRuntime.js";
 import { getSandboxWorkspaceMode } from "../../utils/sandboxCaps.js";
 import { normalizeWorkspacePolicy } from "../../utils/workspacePolicy.js";
 import { mergeAgentInputsManifests } from "../agentInputs/mergeAgentInputs.js";
@@ -71,27 +67,21 @@ export async function buildRecoveryInit(opts: {
   const resolvedPolicy = normalizeWorkspacePolicy(opts.run?.resolvedWorkspacePolicy) ?? "git";
 
   const roleEnv = normalizeRoleEnv(role?.envText ? parseEnvText(String(role.envText)) : {});
-  if (resolvedPolicy === "git") {
-    assertRoleGitAuthEnv(roleEnv, role?.key ?? null);
+
+  const runGitCredentialId = resolvedPolicy === "git" ? String(project?.runGitCredentialId ?? "").trim() : "";
+  if (resolvedPolicy === "git" && !runGitCredentialId) {
+    throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
   }
-  const gitAuthMode = resolveGitAuthMode({
-    repoUrl: String(project?.repoUrl ?? ""),
-    scmType: project?.scmType ?? null,
-    gitAuthMode: project?.gitAuthMode ?? null,
-    githubAccessToken: project?.githubAccessToken ?? null,
-    gitlabAccessToken: project?.gitlabAccessToken ?? null,
-  });
-  const gitHttpUsername = resolveGitHttpUsername({
-    repoUrl: String(project?.repoUrl ?? ""),
-    scmType: project?.scmType ?? null,
-  });
-  const gitHttpPassword = pickGitAccessToken({
-    scmType: project?.scmType ?? null,
-    githubAccessToken: project?.githubAccessToken ?? null,
-    gitlabAccessToken: project?.gitlabAccessToken ?? null,
-    repoUrl: project?.repoUrl ?? null,
-    gitAuthMode: project?.gitAuthMode ?? null,
-  });
+  const runGitCredential =
+    resolvedPolicy === "git"
+      ? await opts.prisma.gitCredential.findUnique({ where: { id: runGitCredentialId } } as any)
+      : null;
+  if (
+    resolvedPolicy === "git" &&
+    (!runGitCredential || String((runGitCredential as any)?.projectId ?? "") !== String(project?.id ?? ""))
+  ) {
+    throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
+  }
 
   const sandboxWorkspaceMode = getSandboxWorkspaceMode((opts.run as any)?.agent?.capabilities);
   const pipeline = buildInitPipeline({ policy: resolvedPolicy, hasBundle: false });
@@ -123,33 +113,17 @@ export async function buildRecoveryInit(opts: {
   }
 
   if (resolvedPolicy === "git") {
-    if (initEnv.GH_TOKEN === undefined && project?.githubAccessToken) initEnv.GH_TOKEN = String(project.githubAccessToken);
-    if (initEnv.GITHUB_TOKEN === undefined && project?.githubAccessToken)
-      initEnv.GITHUB_TOKEN = String(project.githubAccessToken);
-    if (initEnv.GITLAB_TOKEN === undefined && project?.gitlabAccessToken)
-      initEnv.GITLAB_TOKEN = String(project.gitlabAccessToken);
-    if (initEnv.GITLAB_ACCESS_TOKEN === undefined && project?.gitlabAccessToken)
-      initEnv.GITLAB_ACCESS_TOKEN = String(project.gitlabAccessToken);
-
     initEnv.TUIXIU_REPO_URL = String(project?.repoUrl ?? "");
     initEnv.TUIXIU_SCM_TYPE = String(project?.scmType ?? "");
     initEnv.TUIXIU_DEFAULT_BRANCH = String(project?.defaultBranch ?? "");
 
-    if (initEnv.TUIXIU_GIT_AUTH_MODE === undefined) initEnv.TUIXIU_GIT_AUTH_MODE = gitAuthMode;
-    if (initEnv.TUIXIU_GIT_HTTP_USERNAME === undefined && gitHttpUsername) {
-      initEnv.TUIXIU_GIT_HTTP_USERNAME = gitHttpUsername;
-    }
-    if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined && gitHttpPassword) {
-      initEnv.TUIXIU_GIT_HTTP_PASSWORD = gitHttpPassword;
-    }
-    if (initEnv.TUIXIU_GIT_HTTP_PASSWORD === undefined) {
-      const fallbackToken =
-        initEnv.GITHUB_TOKEN ||
-        initEnv.GH_TOKEN ||
-        initEnv.GITLAB_ACCESS_TOKEN ||
-        initEnv.GITLAB_TOKEN;
-      if (fallbackToken) initEnv.TUIXIU_GIT_HTTP_PASSWORD = fallbackToken;
-    }
+    Object.assign(
+      initEnv,
+      buildGitRuntimeEnv({
+        project: { repoUrl: String(project?.repoUrl ?? ""), scmType: project?.scmType ?? null },
+        credential: runGitCredential as any,
+      }),
+    );
   }
 
   const baseInitScript = buildWorkspaceInitScript();

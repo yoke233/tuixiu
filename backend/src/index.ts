@@ -170,7 +170,17 @@ async function sandboxGitPush(opts: { run: any; branch: string; project: any }) 
       : deriveSandboxInstanceName(String(run?.id ?? ""));
   if (!instanceName) throw new Error("sandboxInstanceName 缺失");
 
-  const env = buildSandboxGitPushEnv(opts.project);
+  const runGitCredentialId = String(opts.project?.runGitCredentialId ?? "").trim();
+  if (!runGitCredentialId) throw new Error("Project.runGitCredentialId 缺失");
+  const credential = await prisma.gitCredential.findUnique({ where: { id: runGitCredentialId } } as any);
+  if (!credential || String((credential as any).projectId ?? "") !== String(opts.project?.id ?? "")) {
+    throw new Error("Project.runGitCredentialId 无效");
+  }
+
+  const env = buildSandboxGitPushEnv({
+    project: { repoUrl: String(opts.project?.repoUrl ?? ""), scmType: opts.project?.scmType ?? null },
+    credential: credential as any,
+  });
   env.TUIXIU_RUN_BRANCH = opts.branch;
   env.TUIXIU_WORKSPACE_GUEST = "/workspace";
 
