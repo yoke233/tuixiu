@@ -21,6 +21,9 @@ import type { RunRuntime } from "./runTypes.js";
 import { defaultCwdForRun } from "./workspacePath.js";
 import { filterAgentInitEnv } from "./agentEnv.js";
 import { parseAgentInputsFromInit } from "./agentInputs.js";
+import { sendSandboxInstanceStatus, sendUpdate } from "./updates.js";
+
+export { sendSandboxInstanceStatus, sendUpdate } from "./updates.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -31,34 +34,6 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-export function sendUpdate(ctx: ProxyContext, runId: string, content: unknown): void {
-  try {
-    ctx.send({ type: "proxy_update", run_id: runId, content });
-  } catch (err) {
-    ctx.log("failed to send proxy_update", { runId, err: String(err) });
-  }
-}
-
-export function sendSandboxInstanceStatus(
-  ctx: ProxyContext,
-  opts: {
-    runId: string;
-    instanceName: string;
-    status: "creating" | "running" | "stopped" | "missing" | "error";
-    lastError?: string | null;
-  },
-): void {
-  sendUpdate(ctx, opts.runId, {
-    type: "sandbox_instance_status",
-    instance_name: opts.instanceName,
-    provider: ctx.sandbox.provider,
-    runtime: ctx.sandbox.provider === "container_oci" ? (ctx.sandbox.runtime ?? null) : null,
-    status: opts.status,
-    last_seen_at: nowIso(),
-    last_error: opts.lastError ?? null,
-  });
 }
 
 function resolveTerminalEnabled(ctx: ProxyContext): boolean {

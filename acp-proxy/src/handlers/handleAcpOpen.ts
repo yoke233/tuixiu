@@ -1,7 +1,8 @@
 import type { ProxyContext } from "../proxyContext.js";
 import { isRecord } from "../utils/validate.js";
-import { ensureRuntime, sendUpdate } from "../runs/runRuntime.js";
+import { ensureRuntime } from "../runs/runRuntime.js";
 import { ensureRunOpen } from "../runs/ensureRunOpen.js";
+import { reportProxyError } from "../runs/updates.js";
 
 export async function handleAcpOpen(ctx: ProxyContext, msg: any): Promise<void> {
   const runId = String(msg?.run_id ?? "").trim();
@@ -28,10 +29,11 @@ export async function handleAcpOpen(ctx: ProxyContext, msg: any): Promise<void> 
     const errText = err instanceof Error ? err.stack ?? err.message : String(err);
     (ctx.logError ?? ctx.log)("acp_open failed", { runId, err: errText });
     // 即使 open 阶段失败，也把错误写入事件流，方便前端直接看到原因。
-    sendUpdate(ctx, runId, {
-      type: "text",
-      text: `[proxy:error] acp_open failed: ${err instanceof Error ? err.message : String(err)}`,
-    });
+    reportProxyError(
+      ctx,
+      runId,
+      `acp_open failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     ctx.send({ type: "acp_opened", run_id: runId, ok: false, error: String(err) });
   }
 }

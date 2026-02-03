@@ -4,12 +4,12 @@ import {
   ensureRuntime,
   ensureSessionForPrompt,
   getPromptCapabilities,
-  sendUpdate,
   shouldRecreateSession,
   withAuthRetry,
 } from "../runs/runRuntime.js";
 import { defaultCwdForRun } from "../runs/workspacePath.js";
 import { ensureRunOpen } from "../runs/ensureRunOpen.js";
+import { reportProxyError } from "../runs/updates.js";
 
 export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<void> {
   const runId = String(msg?.run_id ?? "").trim();
@@ -137,7 +137,7 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
     (ctx.logError ?? ctx.log)("prompt_send failed", { runId, err: errText });
     // 把 proxy 层的错误显式写入事件流，避免 UI “卡住但无输出”。
     // 典型场景：bwrap/agent 启动失败、RPC 超时（如 authenticate）、或 session/new/prompt 抛错。
-    sendUpdate(ctx, runId, { type: "text", text: `[proxy:error] ${err instanceof Error ? err.message : String(err)}` });
+    reportProxyError(ctx, runId, err instanceof Error ? err.message : String(err));
     reply({ ok: false, error: String(err) });
   }
 }
