@@ -117,7 +117,10 @@ describe("RoleTemplate routes", () => {
     expect(body.data.role.envKeys).toEqual(["A", "B"]);
 
     expect(prisma.roleTemplate.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ projectId: "00000000-0000-0000-0000-000000000010", envText: "B=2\nA=1" }),
+      data: expect.objectContaining({
+        project: { connect: { id: "00000000-0000-0000-0000-000000000010" } },
+        envText: "B=2\nA=1",
+      }),
     });
 
     await server.close();
@@ -149,7 +152,7 @@ describe("RoleTemplate routes", () => {
     expect(prisma.roleTemplate.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         workspacePolicy: "empty",
-        executionProfileId: "11111111-1111-1111-1111-111111111111",
+        executionProfile: { connect: { id: "11111111-1111-1111-1111-111111111111" } },
       }),
     });
 
