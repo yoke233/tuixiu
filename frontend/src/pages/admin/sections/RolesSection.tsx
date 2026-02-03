@@ -275,10 +275,7 @@ function RoleSkillsCard(props: {
   const hasItems = skills.length > 0;
   const [open, setOpen] = useState(hasItems);
   const [userToggled, setUserToggled] = useState(false);
-  useEffect(() => {
-    if (userToggled) return;
-    if (hasItems) setOpen(true);
-  }, [hasItems, userToggled]);
+  const effectiveOpen = userToggled ? open : hasItems;
 
   return (
     <div className="rounded-lg border bg-card p-4">
@@ -295,10 +292,11 @@ function RoleSkillsCard(props: {
           cursor: "pointer",
           textAlign: "left",
         }}
-        aria-expanded={open}
+        aria-expanded={effectiveOpen}
         onClick={() => {
+          const currentOpen = userToggled ? open : hasItems;
           setUserToggled(true);
-          setOpen((v) => !v);
+          setOpen(!currentOpen);
         }}
       >
         <div>
@@ -306,11 +304,11 @@ function RoleSkillsCard(props: {
           {subtitle ? <div className="muted">{subtitle}</div> : null}
         </div>
         <div className="muted" style={{ fontSize: 12 }}>
-          {hasItems ? `${skills.length} 项` : "未配置"} · {open ? "点击收起" : "点击展开"}
+          {hasItems ? `${skills.length} 项` : "未配置"} · {effectiveOpen ? "点击收起" : "点击展开"}
         </div>
       </button>
 
-      {!open ? (
+      {!effectiveOpen ? (
         <div className="muted" style={{ marginTop: 12 }}>
           {hasItems ? `已配置 ${skills.length} 项` : "未配置"}
         </div>
@@ -537,10 +535,7 @@ function RoleAgentFilesCard(props: {
   const hasItems = manifest.items.length > 0;
   const [open, setOpen] = useState(hasItems);
   const [userToggled, setUserToggled] = useState(false);
-  useEffect(() => {
-    if (userToggled) return;
-    if (hasItems) setOpen(true);
-  }, [hasItems, userToggled]);
+  const effectiveOpen = userToggled ? open : hasItems;
 
   const selectedIndex = useMemo(() => {
     if (!selectedId) return -1;
@@ -634,10 +629,11 @@ function RoleAgentFilesCard(props: {
           cursor: "pointer",
           textAlign: "left",
         }}
-        aria-expanded={open}
+        aria-expanded={effectiveOpen}
         onClick={() => {
+          const currentOpen = userToggled ? open : hasItems;
           setUserToggled(true);
-          setOpen((v) => !v);
+          setOpen(!currentOpen);
         }}
       >
         <div>
@@ -646,11 +642,11 @@ function RoleAgentFilesCard(props: {
           {statusHint ? <div className="muted">{statusHint}</div> : null}
         </div>
         <div className="muted" style={{ fontSize: 12 }}>
-          {hasItems ? `${manifest.items.length} 项` : "未配置"} · {open ? "点击收起" : "点击展开"}
+          {hasItems ? `${manifest.items.length} 项` : "未配置"} · {effectiveOpen ? "点击收起" : "点击展开"}
         </div>
       </button>
 
-      {!open ? (
+      {!effectiveOpen ? (
         <div className="muted" style={{ marginTop: 12 }}>
           {hasItems ? `已配置 ${manifest.items.length} 项` : "未配置"}
         </div>

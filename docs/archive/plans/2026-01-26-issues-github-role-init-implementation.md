@@ -96,8 +96,8 @@ superseded_by: "docs/00_overview/roadmap.md"
 1. 扩展 `execute_task` 消息：支持 `init: { script, timeout_seconds, env }`。
 2. Proxy 在 `execute_task` 前运行 init：
    - `bash -lc <script>`，`cwd` 为 run workspace
-   - stdout/stderr 作为 `agent_update { type:"text" }` 回传（前缀 `[init]`），并对 `GH_TOKEN/GITHUB_TOKEN` 做简单脱敏替换
-   - 完成后回传 `agent_update { type:"init_result", ok, exitCode, error? }`
+   - stdout/stderr 作为 `proxy_update { type:"text" }` 回传（前缀 `[init]`），并对 `GH_TOKEN/GITHUB_TOKEN` 做简单脱敏替换
+   - 完成后回传 `proxy_update { type:"init_result", ok, exitCode, error? }`
    - init 失败：不继续创建 ACP session/prompt
 3. 前端最小 UI：
    - IssueList：增加“导入 GitHub Issue（number/url）”表单，调用 import API 后刷新列表

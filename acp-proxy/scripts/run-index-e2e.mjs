@@ -196,7 +196,7 @@ async function main() {
       (m) =>
         m &&
         typeof m === "object" &&
-        m.type === "prompt_update" &&
+        m.type === "acp_update" &&
         String(m.run_id || "") === runId &&
         String(m.prompt_id || "") === "p1" &&
         m.update &&

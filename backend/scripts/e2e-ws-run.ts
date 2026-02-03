@@ -264,9 +264,9 @@ async function main() {
       return;
     }
 
-    if (type === "acp.prompt_update") {
+    if (type === "acp.update") {
       const updSummary = summarizePromptUpdate(msg.update);
-      console.log(`[${now()}] WS acp.prompt_update: ${updSummary}`);
+      console.log(`[${now()}] WS acp.update: ${updSummary}`);
       return;
     }
 

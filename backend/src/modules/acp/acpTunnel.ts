@@ -751,7 +751,7 @@ export function createAcpTunnel(deps: {
             ? String((update as any).sessionUpdate)
             : "";
         if (sessionUpdate === "config_option_update" && deps.log) {
-          deps.log("acp prompt_update persisted without runState (post-restart)", {
+          deps.log("acp_update persisted without runState (post-restart)", {
             runId,
             proxyId,
             sessionId,
@@ -765,6 +765,55 @@ export function createAcpTunnel(deps: {
         typeof (update as any).sessionUpdate === "string"
           ? String((update as any).sessionUpdate)
           : "";
+      const content = (update as any).content;
+      const contentType = isRecord(content) ? String((content as any).type ?? "") : "";
+
+      // 把“session 生命周期/状态”也视为 ACP 信号：从 acp_update 的 update.content 派生 run 状态，
+      // 不再依赖 proxy_update 的合成事件。
+      if (contentType === "session_created") {
+        await deps.prisma.run
+          .updateMany({
+            where: { id: runId, acpSessionId: null },
+            data: { acpSessionId: sessionId } as any,
+          } as any)
+          .catch(() => {});
+        await updateSessionState(runId, {
+          sessionId,
+          updatedAt: new Date().toISOString(),
+          note: "session_created",
+        });
+      }
+
+      if (contentType === "session_state") {
+        const raw = content as any;
+        const activity = typeof raw.activity === "string" ? raw.activity : "";
+        const inFlightRaw = raw.in_flight;
+        const inFlight =
+          typeof inFlightRaw === "number" && Number.isFinite(inFlightRaw)
+            ? Math.max(0, inFlightRaw)
+            : 0;
+        const updatedAt =
+          typeof raw.updated_at === "string" ? raw.updated_at : new Date().toISOString();
+        const currentModeId =
+          typeof raw.current_mode_id === "string" ? raw.current_mode_id : null;
+        const currentModelId =
+          typeof raw.current_model_id === "string" ? raw.current_model_id : null;
+        const lastStopReason =
+          typeof raw.last_stop_reason === "string" ? raw.last_stop_reason : null;
+        const note = typeof raw.note === "string" ? raw.note : null;
+
+        await updateSessionState(runId, {
+          sessionId,
+          activity,
+          inFlight,
+          updatedAt,
+          currentModeId,
+          currentModelId,
+          lastStopReason,
+          ...(note ? { note } : {}),
+        });
+      }
+
       if (sessionUpdate === "current_mode_update") {
         const modeId =
           typeof (update as any).modeId === "string"
@@ -782,6 +831,14 @@ export function createAcpTunnel(deps: {
       }
 
       if (sessionUpdate === "config_option_update") {
+        // 让前端/后端尽早拿到 sessionId（proxy 会在 session/new 后合成一次 config_option_update）。
+        await deps.prisma.run
+          .updateMany({
+            where: { id: runId, acpSessionId: null },
+            data: { acpSessionId: sessionId } as any,
+          } as any)
+          .catch(() => {});
+
         const configOptions = Array.isArray((update as any).configOptions)
           ? ((update as any).configOptions as any[])
           : null;

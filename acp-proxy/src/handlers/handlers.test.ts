@@ -149,7 +149,68 @@ describe("proxy/handlers", () => {
     expect(messages).toContainEqual({ type: "acp_opened", run_id: "r1", ok: true });
   });
 
-  it("handlePromptSend: forwards session/update as prompt_update and replies prompt_result(ok)", async () => {
+  it("handleAcpOpen: replies acp_opened(ok=false) when init.agentInputs missing", async () => {
+    const h = createHarness();
+    const messages: any[] = [];
+
+    const sandbox: ProxySandbox = {
+      provider: "boxlite_oci",
+      runtime: null,
+      agentMode: "exec",
+      inspectInstance: async (instanceName) => ({
+        instanceName,
+        status: "running",
+        createdAt: null,
+      }),
+      ensureInstanceRunning: async (opts) => ({
+        instanceName: opts.instanceName,
+        status: "running",
+        createdAt: null,
+      }),
+      listInstances: async () => [],
+      stopInstance: async () => {},
+      removeInstance: async () => {},
+      removeImage: async () => {},
+      execProcess: async () => {
+        throw new Error("not implemented");
+      },
+      openAgent: async () => ({ handle: h.handle, created: true, initPending: false }),
+    };
+
+    const cfg = baseConfig();
+    const ctx = {
+      cfg,
+      sandbox,
+      platform: createPlatform(cfg),
+      runs: new RunManager(),
+      send: (payload: unknown) => messages.push(payload),
+      log: () => {},
+    };
+
+    const p = handleAcpOpen(ctx as any, {
+      type: "acp_open",
+      run_id: "r1",
+      init: {
+        script: "",
+        env: { USER_HOME: "/root" },
+      },
+    });
+
+    await p;
+
+    const opened = messages.find((m) => m.type === "acp_opened");
+    expect(opened).toMatchObject({ type: "acp_opened", run_id: "r1", ok: false });
+
+    const errorUpdate = messages.find(
+      (m) =>
+        m.type === "proxy_update" &&
+        m.content?.type === "text" &&
+        String(m.content?.text ?? "").includes("[proxy:error]"),
+    );
+    expect(errorUpdate?.content?.text).toContain("agentInputs missing");
+  });
+
+  it("handlePromptSend: prompt_send implicit open works and replies prompt_result(ok)", async () => {
     const h = createHarness();
     const messages: any[] = [];
 
@@ -192,6 +253,11 @@ describe("proxy/handlers", () => {
       run_id: "r1",
       prompt_id: "p1",
       prompt: [{ type: "text", text: "1+1=?" }],
+      init: {
+        script: "",
+        env: { USER_HOME: "/root" },
+        agentInputs: { version: 1, items: [] },
+      },
     });
 
     const initReq = await waitFor(() => h.received.find((m) => m.method === "initialize"), 2_000);
@@ -235,12 +301,14 @@ describe("proxy/handlers", () => {
 
     await p;
 
+    expect(h.received.filter((m) => m.method === "initialize")).toHaveLength(1);
+
     expect(
       messages.some(
         (m) =>
           m &&
           typeof m === "object" &&
-          (m as any).type === "prompt_update" &&
+          (m as any).type === "acp_update" &&
           (m as any).run_id === "r1" &&
           (m as any).prompt_id === "p1" &&
           (m as any).update?.sessionUpdate === "agent_message_chunk" &&
@@ -253,10 +321,12 @@ describe("proxy/handlers", () => {
         (m) =>
           m &&
           typeof m === "object" &&
-          (m as any).type === "agent_update" &&
+          (m as any).type === "acp_update" &&
           (m as any).run_id === "r1" &&
-          (m as any).content?.type === "session_created" &&
-          (m as any).content?.session_id === "s1",
+          (m as any).prompt_id === "p1" &&
+          (m as any).session_id === "s1" &&
+          (m as any).update?.sessionUpdate === "session_created" &&
+          (m as any).update?.content?.type === "session_created",
       ),
     ).toBe(true);
 
@@ -318,6 +388,11 @@ describe("proxy/handlers", () => {
       run_id: "r1",
       prompt_id: "p1",
       prompt: [{ type: "text", text: "1+1=?" }],
+      init: {
+        script: "",
+        env: { USER_HOME: "/root" },
+        agentInputs: { version: 1, items: [] },
+      },
     });
 
     const initReq = await waitFor(() => h.received.find((m) => m.method === "initialize"), 2_000);

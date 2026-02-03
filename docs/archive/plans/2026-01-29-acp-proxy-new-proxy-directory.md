@@ -69,7 +69,7 @@ last_reviewed: "2026-01-28"
 - `acp-proxy/src/proxy/runs/runManager.ts`
   - `Map<runId, RunRuntime>` 生命周期、TTL 清理、每 run 串行队列（opQueue）
 - `acp-proxy/src/proxy/acp/agentBridge.ts`
-  - 管理 ACP agent 的 NDJSON stream：读/写、pending RPC、init marker 解析、通知转发（prompt_update）
+  - 管理 ACP agent 的 NDJSON stream：读/写、pending RPC、init marker 解析、通知转发（acp_update）
 - `acp-proxy/src/proxy/sandbox/ProxySandbox.ts`
   - 抽象接口：`openAgent`/`exec`/`inspect`/`stop`/`remove`/`list`（隐藏 Docker vs Boxlite 差异）
 - `acp-proxy/src/proxy/sandbox/ociCliSandbox.ts`
@@ -458,7 +458,7 @@ git commit -m "feat(acp-proxy): extract ACP agent bridge"
 迁移来源：`acp-proxy/src/proxyCli.ts`
 
 - `handleAcpOpen`：按 provider 决定 `openAgent` + init 处理
-- `handlePromptSend`：ensure session → session/prompt → prompt_update/propmpt_result
+- `handlePromptSend`：ensure session → session/prompt → acp_update/prompt_result
 - `handleSessionCancel`/`set_mode`/`set_model`
 - `handleAcpClose`
 - `handleSandboxControl` + `reportInventory`

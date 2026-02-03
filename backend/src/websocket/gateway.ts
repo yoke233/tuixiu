@@ -36,8 +36,8 @@ type AgentHeartbeatMessage = {
   timestamp?: string;
 };
 
-type AgentUpdateMessage = {
-  type: "agent_update";
+type ProxyUpdateMessage = {
+  type: "proxy_update";
   run_id: string;
   content: unknown;
 };
@@ -49,8 +49,8 @@ type AcpOpenedMessage = {
   error?: string;
 };
 
-type PromptUpdateMessage = {
-  type: "prompt_update";
+type AcpUpdateMessage = {
+  type: "acp_update";
   run_id: string;
   prompt_id?: string | null;
   session_id?: string | null;
@@ -147,9 +147,9 @@ type WorkspaceInventoryMessage = {
 type AnyAgentMessage =
   | AgentRegisterMessage
   | AgentHeartbeatMessage
-  | AgentUpdateMessage
+  | ProxyUpdateMessage
   | AcpOpenedMessage
-  | PromptUpdateMessage
+  | AcpUpdateMessage
   | PromptResultMessage
   | SessionControlResultMessage
   | SandboxControlResultMessage
@@ -789,11 +789,11 @@ export function createWebSocketGateway(deps: {
           return;
         }
 
-        if (message.type === "prompt_update") {
+        if (message.type === "acp_update") {
           const traceEnabled = process.env.ACP_WS_TRACE === "1";
           if (traceEnabled && deps.log) {
             const summary = describePromptUpdate(message.update);
-            deps.log("acp prompt_update received", {
+            deps.log("acp_update received", {
               runId: message.run_id,
               promptId: message.prompt_id ?? null,
               sessionId: message.session_id ?? null,
@@ -810,14 +810,14 @@ export function createWebSocketGateway(deps: {
             }
           }
           broadcastToClients({
-            type: "acp.prompt_update",
+            type: "acp.update",
             run_id: message.run_id,
             prompt_id: message.prompt_id ?? null,
             session_id: message.session_id ?? null,
             update: message.update,
           });
           if (traceEnabled && deps.log) {
-            deps.log("acp prompt_update broadcasted", {
+            deps.log("acp_update broadcasted", {
               runId: message.run_id,
               promptId: message.prompt_id ?? null,
               sessionId: message.session_id ?? null,
@@ -1209,7 +1209,7 @@ export function createWebSocketGateway(deps: {
           return;
         }
 
-        if (message.type === "agent_update") {
+        if (message.type === "proxy_update") {
           const chunkSeg = extractChunkSegment(message.content);
           if (chunkSeg) {
             await enqueueRunTask(message.run_id, async () => {
@@ -1289,18 +1289,6 @@ export function createWebSocketGateway(deps: {
               }
             }
 
-            if (contentType === "session_created") {
-              const sessionId = isRecord(message.content) ? message.content.session_id : undefined;
-              if (typeof sessionId === "string" && sessionId) {
-                await deps.prisma.run
-                  .update({
-                    where: { id: message.run_id },
-                    data: { acpSessionId: sessionId },
-                  })
-                  .catch(() => {});
-              }
-            }
-
             if (contentType === "transport_connected" || contentType === "transport_disconnected") {
               const raw = message.content as any;
               const instanceName =
@@ -1333,50 +1321,6 @@ export function createWebSocketGateway(deps: {
               await deps.prisma.run
                 .update({ where: { id: message.run_id }, data: { metadata: next as any } })
                 .catch(() => {});
-            }
-
-            if (contentType === "session_state") {
-              const raw = message.content as any;
-              const sessionId = typeof raw.session_id === "string" ? raw.session_id : "";
-              const activity = typeof raw.activity === "string" ? raw.activity : "";
-              const inFlightRaw = raw.in_flight;
-              const inFlight =
-                typeof inFlightRaw === "number" && Number.isFinite(inFlightRaw)
-                  ? Math.max(0, inFlightRaw)
-                  : 0;
-              const updatedAt =
-                typeof raw.updated_at === "string" ? raw.updated_at : new Date().toISOString();
-              const currentModeId =
-                typeof raw.current_mode_id === "string" ? raw.current_mode_id : null;
-              const currentModelId =
-                typeof raw.current_model_id === "string" ? raw.current_model_id : null;
-              const lastStopReason =
-                typeof raw.last_stop_reason === "string" ? raw.last_stop_reason : null;
-              const note = typeof raw.note === "string" ? raw.note : null;
-
-              if (sessionId) {
-                const run = await deps.prisma.run
-                  .findUnique({ where: { id: message.run_id }, select: { metadata: true } })
-                  .catch(() => null);
-                const prev =
-                  run && isRecord(run.metadata) ? (run.metadata as Record<string, unknown>) : {};
-                const next = {
-                  ...prev,
-                  acpSessionState: {
-                    sessionId,
-                    activity,
-                    inFlight,
-                    updatedAt,
-                    currentModeId,
-                    currentModelId,
-                    lastStopReason,
-                    note,
-                  },
-                };
-                await deps.prisma.run
-                  .update({ where: { id: message.run_id }, data: { metadata: next as any } })
-                  .catch(() => {});
-              }
             }
 
             if (contentType === "prompt_result") {

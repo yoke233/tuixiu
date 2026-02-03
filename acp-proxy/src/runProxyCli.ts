@@ -5,7 +5,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "./config.js";
 import { createLogger, type LoggerFn } from "./logger.js";
 
-import type { IncomingMessage } from "./types.js";
 import { pickArg } from "./utils/args.js";
 import { isRecord } from "./utils/validate.js";
 import { RunManager } from "./runs/runManager.js";
@@ -26,6 +25,17 @@ import { handleSessionPermission } from "./handlers/handleSessionPermission.js";
 import { handleSandboxControl } from "./handlers/handleSandboxControl.js";
 import { nowIso, type ProxyContext, WORKSPACE_GUEST_PATH } from "./proxyContext.js";
 import { reportWorkspaceInventory } from "./workspace/workspaceInventory.js";
+import {
+  parseAcpClose,
+  parseAcpOpen,
+  parsePromptSend,
+  parseSandboxControl,
+  parseSessionCancel,
+  parseSessionPermission,
+  parseSessionSetConfigOption,
+  parseSessionSetMode,
+  parseSessionSetModel,
+} from "./types/parseIncoming.js";
 
 type RunProxyCliOpts = {
   configPath?: string;
@@ -341,44 +351,89 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
   }, 60_000);
   cleanupTimer.unref?.();
 
-  const onMessage = (msg: IncomingMessage) => {
+  const onMessage = (msg: unknown) => {
     if (!msg || !isRecord(msg) || typeof msg.type !== "string") return;
 
     try {
       if (msg.type === "acp_open") {
-        void handleAcpOpen(ctx, msg);
+        const parsed = parseAcpOpen(msg);
+        if ("error" in parsed) {
+          log("invalid ws message: acp_open dropped", { err: parsed.error });
+          return;
+        }
+        void handleAcpOpen(ctx, parsed);
         return;
       }
       if (msg.type === "prompt_send") {
-        void handlePromptSend(ctx, msg);
+        const parsed = parsePromptSend(msg);
+        if ("error" in parsed) {
+          log("invalid ws message: prompt_send dropped", { err: parsed.error });
+          return;
+        }
+        void handlePromptSend(ctx, parsed);
         return;
       }
       if (msg.type === "session_cancel") {
-        void handleSessionCancel(ctx, msg);
+        const parsed = parseSessionCancel(msg);
+        if ("error" in parsed) {
+          log("invalid ws message: session_cancel dropped", { err: parsed.error });
+          return;
+        }
+        void handleSessionCancel(ctx, parsed);
         return;
       }
       if (msg.type === "session_set_mode") {
-        void handleSessionSetMode(ctx, msg);
+        const parsed = parseSessionSetMode(msg);
+        if ("error" in parsed) {
+          log("invalid ws message: session_set_mode dropped", { err: parsed.error });
+          return;
+        }
+        void handleSessionSetMode(ctx, parsed);
         return;
       }
       if (msg.type === "session_set_model") {
-        void handleSessionSetModel(ctx, msg);
+        const parsed = parseSessionSetModel(msg);
+        if ("error" in parsed) {
+          log("invalid ws message: session_set_model dropped", { err: parsed.error });
+          return;
+        }
+        void handleSessionSetModel(ctx, parsed);
         return;
       }
       if (msg.type === "session_set_config_option") {
-        void handleSessionSetConfigOption(ctx, msg);
+        const parsed = parseSessionSetConfigOption(msg);
+        if ("error" in parsed) {
+          log("invalid ws message: session_set_config_option dropped", { err: parsed.error });
+          return;
+        }
+        void handleSessionSetConfigOption(ctx, parsed);
         return;
       }
       if (msg.type === "session_permission") {
-        void handleSessionPermission(ctx, msg);
+        const parsed = parseSessionPermission(msg);
+        if ("error" in parsed) {
+          log("invalid ws message: session_permission dropped", { err: parsed.error });
+          return;
+        }
+        void handleSessionPermission(ctx, parsed);
         return;
       }
       if (msg.type === "acp_close") {
-        void handleAcpClose(ctx, msg);
+        const parsed = parseAcpClose(msg);
+        if ("error" in parsed) {
+          log("invalid ws message: acp_close dropped", { err: parsed.error });
+          return;
+        }
+        void handleAcpClose(ctx, parsed);
         return;
       }
       if (msg.type === "sandbox_control") {
-        void handleSandboxControl(ctx, msg);
+        const parsed = parseSandboxControl(msg);
+        if ("error" in parsed) {
+          log("invalid ws message: sandbox_control dropped", { err: parsed.error });
+          return;
+        }
+        void handleSandboxControl(ctx, parsed);
         return;
       }
     } catch (err) {

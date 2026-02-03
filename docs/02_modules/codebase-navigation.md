@@ -88,7 +88,7 @@ ID 生成：
 
 关键消息（以 `backend/src/websocket/gateway.ts` 为准）：
 
-- Agent → backend：`register_agent` / `heartbeat` / `agent_update`
+- Agent → backend：`register_agent` / `heartbeat` / `acp_update` / `proxy_update`
 - backend → Agent：`execute_task` / `prompt_run`
 - backend → Web UI：`event_added` / `artifact_added`
 

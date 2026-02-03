@@ -31,7 +31,7 @@ superseded_by: "docs/00_overview/roadmap.md"
 
 **Step 1: 以实际仓库为准更新差异点**
 - DB 迁移：用 `backend/prisma/schema.prisma` + `pnpm -C backend prisma:migrate`，移除手写 `database/migrations/*.sql` 的要求。
-- ACP：说明本机 `codex` 若无 `--acp`，使用 `npx --yes @zed-industries/codex-acp`（Proxy 已默认）。
+- ACP：说明本机 `codex` 若无 `--acp`，使用 `codex-acp`（Proxy 已默认）。
 - Windows/pwsh：`curl` 需用 `curl.exe --noproxy 127.0.0.1`（避免系统代理导致 502）。
 - 前端端口：Vite 默认 `5173`，文档中 `8080` 改为实际。
 
@@ -73,7 +73,7 @@ superseded_by: "docs/00_overview/roadmap.md"
 - (Optional) Create: `acp-proxy/src/index.test.ts`
 
 **Step 1: 配置解析（RED→GREEN）**
-- 覆盖：必填字段校验、cwd 默认、max_concurrent/heartbeat 默认、agent_command 默认（`npx --yes @zed-industries/codex-acp`）。
+- 覆盖：必填字段校验、cwd 默认、max_concurrent/heartbeat 默认、agent_command 默认（`codex-acp`）。
 
 **Step 2: ACP 桥接与聚合（可选）**
 - 覆盖：win32 下 `npx` 走 `cmd.exe /c`；`agent_message_chunk` 的聚合 flush 行为。

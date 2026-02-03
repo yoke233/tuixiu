@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const sendSpy = vi.fn();
 const loadConfigSpy = vi.fn();
 const createProxySandboxSpy = vi.fn();
+const handlePromptSendSpy = vi.fn();
+
+let connectLoopMessages: any[] = [];
 
 vi.mock("./config.js", () => ({
   loadConfig: loadConfigSpy,
@@ -14,6 +17,10 @@ vi.mock("./platform/createPlatform.js", () => ({
 
 vi.mock("./sandbox/createProxySandbox.js", () => ({
   createProxySandbox: createProxySandboxSpy,
+}));
+
+vi.mock("./handlers/handlePromptSend.js", () => ({
+  handlePromptSend: handlePromptSendSpy,
 }));
 
 vi.mock("./orchestrator/orchestratorClient.js", () => {
@@ -30,6 +37,11 @@ vi.mock("./orchestrator/orchestratorClient.js", () => {
       heartbeatPayload?: () => unknown;
     }): Promise<void> {
       await opts.onConnected?.();
+
+      for (const msg of connectLoopMessages) {
+        await opts.onMessage(msg);
+      }
+
       await new Promise<void>((resolve) => {
         if (opts.signal?.aborted) return resolve();
         opts.signal?.addEventListener("abort", () => resolve(), { once: true });
@@ -46,6 +58,7 @@ describe("proxy/runProxyCli", () => {
     vi.restoreAllMocks();
     vi.useRealTimers();
     vi.clearAllMocks();
+    connectLoopMessages = [];
   });
 
   it("exports runProxyCli", async () => {
@@ -121,5 +134,72 @@ describe("proxy/runProxyCli", () => {
 
     ac.abort();
     await runP;
+  });
+
+  it("drops invalid prompt_send payloads without calling handler", async () => {
+    loadConfigSpy.mockResolvedValue({
+      orchestrator_url: "ws://example.invalid/ws/agent",
+      auth_token: "",
+      register_url: "",
+      bootstrap_token: "",
+      heartbeat_seconds: 1,
+      inventory_interval_seconds: 0,
+      mock_mode: false,
+      sandbox: {
+        terminalEnabled: false,
+        provider: "boxlite_oci",
+        image: "img",
+        workingDir: "/workspace",
+        volumes: [],
+        env: {},
+        cpus: null,
+        memoryMib: null,
+        workspaceMode: "mount",
+        workspaceHostRoot: "C:/tmp",
+        runtime: null,
+      },
+      agent_command: ["node", "-e", "console.log('ok')"],
+      agent: { id: "a1", name: "a1", max_concurrent: 1, capabilities: {} },
+    });
+
+    createProxySandboxSpy.mockReturnValue({
+      provider: "boxlite_oci",
+      runtime: null,
+      agentMode: "exec",
+      inspectInstance: async (instanceName: string) => ({
+        instanceName,
+        status: "missing",
+        createdAt: null,
+      }),
+      ensureInstanceRunning: async (opts: any) => ({
+        instanceName: opts.instanceName,
+        status: "running",
+        createdAt: null,
+      }),
+      listInstances: async () => [],
+      stopInstance: async () => {},
+      removeInstance: async () => {},
+      removeImage: async () => {},
+      execProcess: async () => {
+        throw new Error("not implemented");
+      },
+      openAgent: async () => {
+        throw new Error("not implemented");
+      },
+    });
+
+    connectLoopMessages = [{ type: "prompt_send", run_id: "r1", prompt: [] }];
+
+    const { runProxyCli } = await import("./runProxyCli.js");
+    const ac = new AbortController();
+
+    const runP = runProxyCli({ configPath: "config.toml", argv: [], signal: ac.signal });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    ac.abort();
+    await runP;
+
+    expect(handlePromptSendSpy).not.toHaveBeenCalled();
   });
 });

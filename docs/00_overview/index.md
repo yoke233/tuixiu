@@ -2,7 +2,7 @@
 title: "文档索引"
 owner: "@tuixiu-maintainers"
 status: "active"
-last_reviewed: "2026-01-27"
+last_reviewed: "2026-02-03"
 ---
 
 # 文档索引
@@ -14,8 +14,9 @@ last_reviewed: "2026-01-27"
 3. 快速跑通闭环：`docs/03_guides/quick-start.md`
 4. 系统架构与数据流：`docs/01_architecture/system-architecture.md`
 5. ACP/Session/Proxy 机制：`docs/01_architecture/acp-integration.md`
-6. 代码导航与关键入口：`docs/02_modules/codebase-navigation.md`
-7. 当前进度与下一步：`docs/00_overview/roadmap.md`
+6. Proxy↔Backend 交互契约（WS /ws/agent）：`docs/01_architecture/acp-proxy-backend-contract.md`
+7. 代码导航与关键入口：`docs/02_modules/codebase-navigation.md`
+8. 当前进度与下一步：`docs/00_overview/roadmap.md`
 
 ## 计划与路线图
 

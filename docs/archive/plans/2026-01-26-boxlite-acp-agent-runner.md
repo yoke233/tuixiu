@@ -159,7 +159,7 @@ export interface SandboxProvider {
 **Step 1: 写 Dockerfile（最小可运行）**
 - 基于 `node:20-slim`
 - 安装 git（Agent 需要提交）
-- 默认启动：`npx --yes @zed-industries/codex-acp`
+- 默认启动：`codex-acp`
 - 约定工作目录 `/workspace`（由 BoxLite volume mount 注入 repo/worktree）
 
 **Step 2: 给出运行/验证命令**

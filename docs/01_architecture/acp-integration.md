@@ -7,7 +7,9 @@ last_reviewed: "2026-01-31"
 
 # ACP 协议集成规范（当前仓库实现）
 
-本文档说明本仓库如何把 ACP（Agent Client Protocol）接入到 Web 看板：通过本地 `acp-proxy/` 把 **WebSocket** 与 **ACP(JSON-RPC/NDJSON over stdio)** 桥接起来，驱动本机的 ACP agent（默认 `npx --yes @zed-industries/codex-acp`）。
+本文档说明本仓库如何把 ACP（Agent Client Protocol）接入到 Web 看板：通过本地 `acp-proxy/` 把 **WebSocket** 与 **ACP(JSON-RPC/NDJSON over stdio)** 桥接起来，驱动本机的 ACP agent（默认 `codex-acp`）。
+
+补充：如果你要看“proxy 与后端之间 WS /ws/agent 的消息契约、事件落库与广播语义”，请读：`docs/01_architecture/acp-proxy-backend-contract.md`。
 
 关键结论（务必先读）：
 
@@ -117,17 +119,35 @@ Session 的创建/复用/恢复由 `acp-proxy` 托管：
 | Server → Agent | `acp_open`       | 打开/启动 ACP 进程 | `{run_id,cwd?,init?}`                             |
 | Server → Agent | `prompt_send`    | 发起一次对话回合   | `{run_id,prompt_id,session_id?,context?,prompt}`   |
 | Server → Agent | `acp_close`      | 关闭 Run           | `{run_id}`                                        |
-| Agent → Server | `agent_update`   | 事件流转发         | `{run_id,content:any}`                            |
+| Agent → Server | `acp_update`     | ACP `session/update` 转发（含合成的 config_option_update） | `{run_id,session_id?,prompt_id?,update:any}` |
+| Agent → Server | `proxy_update`   | Proxy 自产事件（init/transport/sandbox/proxy:error 等） | `{run_id,content:any}` |
 | Server → Agent | `sandbox_control` | 管理/清理指令（stop/remove/gc/remove_workspace 等） | `{action,run_id?,instance_name?,expected_instances?,dry_run?,gc?,request_id?}` |
 | Agent → Server | `sandbox_control_result` | 回执（含 request_id） | `{ok,request_id?,error?}` |
 | Agent → Server | `sandbox_inventory` | 上报实例清单/缺失/删除（用于对账与追踪删除） | `{inventory_id,captured_at?,instances?,missing_instances?,deleted_instances?,deleted_workspaces?}` |
 | Agent → Server | `workspace_inventory` | 上报 workspace 列表（估算/删除后对账） | `{inventory_id,captured_at,workspace_mode,workspaces:[...]}` |
 
+命名约定（重要）：
+
+- proxy ⇄ backend：使用下划线命名的 WS 消息类型（例如 `acp_update` / `proxy_update`）
+- backend → Web UI（`/ws/client`）：使用点分层的事件名（例如 `acp.update`）
+
+`/ws/client` 侧的常用事件：
+
+- `event_added`：DB 落库后的事件（权威流）
+- `acp.update`：低延迟的 ACP update 直出（payload 与 `/ws/agent` 的 `acp_update` 基本等价）
+
 服务器关键行为摘要：
 
 - `register_agent`：upsert `Agent`，置 `online`
 - `heartbeat`：刷新 `Agent.lastHeartbeat`
-- `agent_update`：落库并推送给 Web UI（`ws/client`）
+- `acp_update`：由 `backend/src/modules/acp/acpTunnel.ts` 负责落库/合并并推送给 Web UI（`ws/client`）
+  - Event 形态：`{ type:"session_update", session:<sessionId>, update:<raw update> }`
+  - chunk 合并：对 `*_chunk` 文本做 buffer/flush（减少 DB 写压力与 UI 噪声）
+  - Run 状态派生：从 `update.content`/`update.sessionUpdate` 派生并写入 `Run.acpSessionId` 与 `Run.metadata.acpSessionState`
+    - `update.content.type=session_created`：尽早写入 `Run.acpSessionId`
+    - `update.content.type=session_state`：更新 `metadata.acpSessionState`（activity/inFlight/currentModeId/...）
+    - `update.sessionUpdate=config_option_update`：保存 `configOptions`，供前端渲染 mode/model/options 控件
+- `proxy_update`：由 `backend/src/websocket/gateway.ts` 负责落库并推送给 Web UI（`ws/client`）；用于 init/transport/sandbox/proxy:error 等基础设施信号
 
 补充：
 
@@ -158,7 +178,7 @@ Session 的创建/复用/恢复由 `acp-proxy` 托管：
 1) backend: WS -> proxy acp_open           -> {run_id,instance_name?,init?}
 2) proxy:   启动 sandbox/agent，并完成 initialize
 3) backend: WS -> proxy prompt_send        -> {run_id,prompt_id,session_id?,context?,prompt}
-4) proxy:   session/new|load + session/prompt，并回传 prompt_update / prompt_result
+4) proxy:   session/new|load + session/prompt，并回传 acp_update / prompt_result（并可能伴随 proxy_update）
 ```
 
 ### 5.2 关闭 Run
