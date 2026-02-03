@@ -662,6 +662,30 @@ model User {
   executionProfilesCreated ExecutionProfile[] @relation("ExecutionProfileCreatedBy")
   executionProfilesUpdated ExecutionProfile[] @relation("ExecutionProfileUpdatedBy")
   executionProfileAuditLogs ExecutionProfileAuditLog[] @relation("ExecutionProfileAuditActor")
+  refreshSessions RefreshSession[]
+}
+
+model RefreshSession {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash     String   @unique @db.VarChar(128)
+  rotatedFromId String?  @unique @db.Uuid
+  rotatedFrom   RefreshSession? @relation("RefreshRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
+  rotatedTo     RefreshSession? @relation("RefreshRotation")
+
+  createdAt     DateTime @default(now())
+  lastUsedAt    DateTime?
+  expiresAt     DateTime
+  revokedAt     DateTime?
+
+  ip            String?  @db.VarChar(64)
+  userAgent     String?  @db.Text
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 model Task {
