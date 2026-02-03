@@ -32,7 +32,24 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
   return async (server) => {
     server.get("/", async () => {
       const projects = await deps.prisma.project.findMany({ orderBy: { createdAt: "desc" } });
-      return { success: true, data: { projects: projects.map((p: any) => toPublicProject(p)) } };
+
+      if (projects.length === 0) {
+        return { success: true, data: { projects: [] } };
+      }
+
+      const scmConfigs = await deps.prisma.projectScmConfig.findMany({
+        where: { projectId: { in: projects.map((p) => p.id) } },
+      });
+      const scmConfigByProjectId = new Map(scmConfigs.map((c) => [c.projectId, c]));
+
+      return {
+        success: true,
+        data: {
+          projects: projects.map((p: any) =>
+            toPublicProject({ ...p, scmConfig: scmConfigByProjectId.get(p.id) ?? null }),
+          ),
+        },
+      };
     });
 
     server.post("/", async (request) => {
