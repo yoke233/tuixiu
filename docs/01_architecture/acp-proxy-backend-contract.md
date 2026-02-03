@@ -66,7 +66,7 @@ proxy 为每个 Run 维护独立的 Agent 子进程，通过 stdio/NDJSON 通讯
 - `init`：初始化脚本与环境（由 backend 构造）
   - `init.script`：workspace 初始化/role init 等（在 agent 启动前执行，取决于 sandbox.agentMode/provider）
   - `init.env`：注入 `TUIXIU_*` 等运行变量
-  - `init.agentInputs`：技能/挂载等输入（由 proxy 负责落地）
+  - `init.agentInputs`：技能/挂载等输入（必填；由 proxy 负责落地）
 
 预期响应：
 
@@ -176,7 +176,7 @@ backend 侧会：
 - `update.sessionUpdate = "config_option_update"`
   - 用于保存 `configOptions` 到 `Run.metadata.acpSessionState.configOptions`（并派生 currentModeId/currentModelId）
 
-说明：UI 侧还会收到 backend 广播的 `acp.prompt_update`（见第 5 节），其 payload 基本等价于这里的 `acp_update`。
+说明：UI 侧还会收到 backend 广播的 `acp.update`（见第 5 节），其 payload 基本等价于这里的 `acp_update`。
 
 补充：proxy 目前只会把 **ACP `session/update`** 这类通知转换为 `acp_update` 上报；
 `$/cancel_request` 属于 proxy 内部的 permission request 取消机制（用于撤销待确认的 tool call），不会转发给 backend；
@@ -220,7 +220,7 @@ backend 侧会：
 关键行为：
 
 - 收到 `acp_update`：
-  - 立刻向 `/ws/client` 广播：`{ type:"acp.prompt_update", run_id, prompt_id, session_id, update }`
+  - 立刻向 `/ws/client` 广播：`{ type:"acp.update", run_id, prompt_id, session_id, update }`
   - 同时交给 `acpTunnel.handlePromptUpdate(...)`：
     - chunk 合并与落库：写 `Event(source="acp", type="acp.update.received", payload={type:"session_update", session, update})`
     - Run 状态派生：更新 `Run.acpSessionId` 与 `Run.metadata.acpSessionState`
@@ -234,7 +234,7 @@ backend 侧会：
 
 UI 通常会同时看到：
 
-- **即时流**：`acp.prompt_update`（低延迟，用于 console 实时渲染）
+- **即时流**：`acp.update`（低延迟，用于 console 实时渲染）
 - **持久化流**：`event_added`（来自 DB 的事件，可能因 chunk 合并/flush 有轻微延迟）
 
 因此如果 UI 只盯 `GET /api/runs/:id/events`，可能会感觉“卡住”；正确做法是消费 WS 的实时流。

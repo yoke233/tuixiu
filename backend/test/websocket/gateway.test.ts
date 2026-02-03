@@ -634,7 +634,7 @@ describe("WebSocketGateway", () => {
     expect(msg.inventory_id).toBe("ws-1");
   });
 
-  it("acp_update broadcasts acp.prompt_update to clients", async () => {
+  it("acp_update broadcasts acp.update to clients", async () => {
     const prisma = {
       agent: { upsert: vi.fn().mockResolvedValue({ id: "a1" }) },
     } as any;
@@ -672,10 +672,10 @@ describe("WebSocketGateway", () => {
 
     const msg = clientSocket.sent
       .map((s) => JSON.parse(s))
-      .find((m) => m.type === "acp.prompt_update");
+      .find((m) => m.type === "acp.update");
     expect(msg).toBeTruthy();
     expect(msg).toMatchObject({
-      type: "acp.prompt_update",
+      type: "acp.update",
       run_id: "r1",
       prompt_id: "p1",
       session_id: "s1",

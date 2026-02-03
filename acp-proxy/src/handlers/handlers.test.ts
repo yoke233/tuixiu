@@ -149,6 +149,67 @@ describe("proxy/handlers", () => {
     expect(messages).toContainEqual({ type: "acp_opened", run_id: "r1", ok: true });
   });
 
+  it("handleAcpOpen: replies acp_opened(ok=false) when init.agentInputs missing", async () => {
+    const h = createHarness();
+    const messages: any[] = [];
+
+    const sandbox: ProxySandbox = {
+      provider: "boxlite_oci",
+      runtime: null,
+      agentMode: "exec",
+      inspectInstance: async (instanceName) => ({
+        instanceName,
+        status: "running",
+        createdAt: null,
+      }),
+      ensureInstanceRunning: async (opts) => ({
+        instanceName: opts.instanceName,
+        status: "running",
+        createdAt: null,
+      }),
+      listInstances: async () => [],
+      stopInstance: async () => {},
+      removeInstance: async () => {},
+      removeImage: async () => {},
+      execProcess: async () => {
+        throw new Error("not implemented");
+      },
+      openAgent: async () => ({ handle: h.handle, created: true, initPending: false }),
+    };
+
+    const cfg = baseConfig();
+    const ctx = {
+      cfg,
+      sandbox,
+      platform: createPlatform(cfg),
+      runs: new RunManager(),
+      send: (payload: unknown) => messages.push(payload),
+      log: () => {},
+    };
+
+    const p = handleAcpOpen(ctx as any, {
+      type: "acp_open",
+      run_id: "r1",
+      init: {
+        script: "",
+        env: { USER_HOME: "/root" },
+      },
+    });
+
+    await p;
+
+    const opened = messages.find((m) => m.type === "acp_opened");
+    expect(opened).toMatchObject({ type: "acp_opened", run_id: "r1", ok: false });
+
+    const errorUpdate = messages.find(
+      (m) =>
+        m.type === "proxy_update" &&
+        m.content?.type === "text" &&
+        String(m.content?.text ?? "").includes("[proxy:error]"),
+    );
+    expect(errorUpdate?.content?.text).toContain("agentInputs missing");
+  });
+
   it("handlePromptSend: forwards session/update as acp_update and replies prompt_result(ok)", async () => {
     const h = createHarness();
     const messages: any[] = [];

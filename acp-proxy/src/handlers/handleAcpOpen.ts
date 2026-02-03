@@ -22,10 +22,8 @@ export async function handleAcpOpen(ctx: ProxyContext, msg: any): Promise<void> 
       init?.env && typeof init.env === "object" && !Array.isArray(init.env)
         ? (init.env as Record<string, string>)
         : undefined;
-    const agentInputs = parseAgentInputsFromInit(init) ?? { version: 1, items: [] };
-    if (!("agentInputs" in (init ?? {}))) {
-      ctx.log("acp_open missing agentInputs; using empty manifest for backward compatibility", { runId });
-    }
+    const agentInputs = parseAgentInputsFromInit(init);
+    if (!agentInputs) throw new Error("init.agentInputs missing");
 
     await ctx.runs.enqueue(run.runId, async () => {
       const nextEnv = initEnv ? { ...initEnv } : {};

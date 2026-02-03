@@ -810,7 +810,7 @@ export function createWebSocketGateway(deps: {
             }
           }
           broadcastToClients({
-            type: "acp.prompt_update",
+            type: "acp.update",
             run_id: message.run_id,
             prompt_id: message.prompt_id ?? null,
             session_id: message.session_id ?? null,
