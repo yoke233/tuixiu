@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { apiUrl } from "../api/client";
 import type { Artifact, Event } from "../types";
 
 export type WsMessage = {
@@ -85,7 +86,7 @@ export function useWsClient(onMessage: (msg: WsMessage) => void) {
         if (socketRef.current === ws) socketRef.current = null;
         setStatus("closed");
         if (evt.code === 1008) {
-          void fetch("/api/auth/refresh", { method: "POST", credentials: "include" })
+          void fetch(apiUrl("/auth/refresh"), { method: "POST", credentials: "include" })
             .catch(() => {})
             .finally(() => {
               scheduleReconnect();

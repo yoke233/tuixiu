@@ -1,4 +1,18 @@
 import type { ApiEnvelope } from "../types";
+
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshOnce(headers: Headers): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = fetch(apiUrl("/auth/refresh"), { method: "POST", credentials: "include", headers })
+      .then((res) => res.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
 export function getApiBaseUrl(): string {
   const base = import.meta.env.VITE_API_URL as string | undefined;
   if (base && base.trim()) {
@@ -38,8 +52,8 @@ export async function apiRequest<T>(path: string, init?: RequestInit, retry = 0)
     pathOnly === "/auth/logout";
   if (res.status === 401 && retry === 0 && !skipRefresh) {
     try {
-      const refreshRes = await fetch(apiUrl("/auth/refresh"), { method: "POST", credentials: "include", headers });
-      if (refreshRes.ok) {
+      const refreshed = await refreshOnce(headers);
+      if (refreshed) {
         return apiRequest<T>(path, init, retry + 1);
       }
     } catch {
