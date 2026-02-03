@@ -7,7 +7,8 @@ describe("Projects routes", () => {
   it("GET /api/projects returns list", async () => {
     const server = createHttpServer();
     const prisma = {
-      project: { findMany: vi.fn().mockResolvedValue([{ id: "p1" }]) }
+      project: { findMany: vi.fn().mockResolvedValue([{ id: "p1" }]) },
+      projectScmConfig: { findMany: vi.fn().mockResolvedValue([]) },
     } as any;
 
     await server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
@@ -16,9 +17,72 @@ describe("Projects routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: true,
-      data: { projects: [{ id: "p1", hasGitlabAccessToken: false, hasGithubAccessToken: false }] },
+      data: {
+        projects: [
+          {
+            id: "p1",
+            hasRunGitCredential: false,
+            hasScmAdminCredential: false,
+            gitlabProjectId: null,
+            githubPollingEnabled: false,
+            githubPollingCursor: null,
+          },
+        ],
+      },
     });
     expect(prisma.project.findMany).toHaveBeenCalledWith({ orderBy: { createdAt: "desc" } });
+    expect(prisma.projectScmConfig.findMany).toHaveBeenCalledWith({
+      where: { projectId: { in: ["p1"] } },
+    });
+    await server.close();
+  });
+
+  it("GET /api/projects returns credential/config summary", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      project: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: "p1" },
+        ]),
+      },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([]) },
+      projectScmConfig: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            projectId: "p1",
+            gitlabProjectId: 123,
+            githubPollingEnabled: true,
+            githubPollingCursor: new Date("2026-02-03T00:00:00.000Z"),
+          },
+        ]),
+      },
+    } as any;
+
+    await server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
+
+    const res = await server.inject({ method: "GET", url: "/api/projects" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: true,
+      data: {
+        projects: [
+          {
+            id: "p1",
+            hasRunGitCredential: false,
+            hasScmAdminCredential: false,
+            gitlabProjectId: 123,
+            githubPollingEnabled: true,
+            githubPollingCursor: "2026-02-03T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    expect(prisma.project.findMany).toHaveBeenCalledWith({ orderBy: { createdAt: "desc" } });
+    expect(prisma.projectScmConfig.findMany).toHaveBeenCalledWith({
+      where: { projectId: { in: ["p1"] } },
+    });
+
     await server.close();
   });
 
@@ -38,7 +102,16 @@ describe("Projects routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: true,
-      data: { project: { id: "p2", hasGitlabAccessToken: false, hasGithubAccessToken: false } },
+      data: {
+        project: {
+          id: "p2",
+          hasRunGitCredential: false,
+          hasScmAdminCredential: false,
+          gitlabProjectId: null,
+          githubPollingEnabled: false,
+          githubPollingCursor: null,
+        },
+      },
     });
 
     expect(prisma.project.create).toHaveBeenCalledWith({
@@ -50,15 +123,9 @@ describe("Projects routes", () => {
         defaultBranch: "main",
         workspaceMode: "worktree",
         workspacePolicy: null,
-        gitAuthMode: "https_pat",
         defaultRoleKey: undefined,
         executionProfileId: undefined,
         agentWorkspaceNoticeTemplate: undefined,
-        gitlabProjectId: undefined,
-        gitlabAccessToken: undefined,
-        gitlabWebhookSecret: undefined,
-        githubAccessToken: undefined,
-        githubPollingEnabled: false,
         enableRuntimeSkillsMounting: false,
       }
     });
@@ -126,7 +193,8 @@ describe("Projects routes", () => {
       project: {
         findUnique: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000001" }),
         update: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000001" }),
-      }
+      },
+      projectScmConfig: { findUnique: vi.fn().mockResolvedValue(null) },
     } as any;
 
     await server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
@@ -142,6 +210,9 @@ describe("Projects routes", () => {
       where: { id: "00000000-0000-0000-0000-000000000001" },
       data: expect.objectContaining({ workspacePolicy: "mount" }),
     });
+    expect(prisma.projectScmConfig.findUnique).toHaveBeenCalledWith({
+      where: { projectId: "00000000-0000-0000-0000-000000000001" },
+    });
     await server.close();
   });
 
@@ -151,7 +222,8 @@ describe("Projects routes", () => {
       project: {
         findUnique: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000001" }),
         update: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000001" }),
-      }
+      },
+      projectScmConfig: { findUnique: vi.fn().mockResolvedValue(null) },
     } as any;
 
     await server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
@@ -166,6 +238,9 @@ describe("Projects routes", () => {
     expect(prisma.project.update).toHaveBeenCalledWith({
       where: { id: "00000000-0000-0000-0000-000000000001" },
       data: expect.objectContaining({ workspacePolicy: null }),
+    });
+    expect(prisma.projectScmConfig.findUnique).toHaveBeenCalledWith({
+      where: { projectId: "00000000-0000-0000-0000-000000000001" },
     });
     await server.close();
   });

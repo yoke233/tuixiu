@@ -59,10 +59,10 @@ describe("Approvals routes", () => {
             id: "i1",
             projectId: "p1",
             project: {
+              id: "p1",
               repoUrl: "https://gitlab.example.com/group/repo.git",
               scmType: "gitlab",
-              gitlabProjectId: 123,
-              gitlabAccessToken: "tok",
+              scmAdminCredentialId: "c-admin",
             },
           },
           artifacts: [],
@@ -70,6 +70,8 @@ describe("Approvals routes", () => {
         update: vi.fn().mockResolvedValue({}),
       },
       issue: { update: vi.fn().mockResolvedValue({}) },
+      projectScmConfig: { findUnique: vi.fn().mockResolvedValue({ projectId: "p1", gitlabProjectId: 123 }) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([{ id: "c-admin", projectId: "p1", gitlabAccessToken: "tok" }]) },
     } as any;
 
     const mergeMergeRequest = vi.fn().mockResolvedValue({

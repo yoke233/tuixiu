@@ -28,10 +28,28 @@ export function parseEnvText(text: string | null | undefined): Record<string, st
   return out;
 }
 
+export function isForbiddenGitEnvKey(key: string): boolean {
+  const upper = String(key ?? "").trim().toUpperCase();
+  if (!upper) return false;
+  if (upper.startsWith("TUIXIU_GIT_")) return true;
+  return upper === "GH_TOKEN" || upper === "GITHUB_TOKEN" || upper === "GITLAB_TOKEN" || upper === "GITLAB_ACCESS_TOKEN";
+}
+
+export function listForbiddenGitEnvKeys(text: string | null | undefined): string[] {
+  return listEnvKeys(text).filter(isForbiddenGitEnvKey);
+}
+
+export function stripForbiddenGitEnv(env: Record<string, string>): Record<string, string> {
+  const out = { ...env };
+  for (const key of Object.keys(out)) {
+    if (isForbiddenGitEnvKey(key)) delete out[key];
+  }
+  return out;
+}
+
 export function listEnvKeys(text: string | null | undefined): string[] {
   return Object.keys(parseEnvText(text))
     .map((k) => k.trim())
     .filter(Boolean)
     .sort();
 }
-

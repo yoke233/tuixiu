@@ -155,16 +155,13 @@ model Project {
   defaultBranch          String   @default("main") @db.VarChar(100)
   workspaceMode          String   @default("worktree") @db.VarChar(20)
   workspacePolicy        String?  @db.VarChar(20)
-  gitAuthMode            String   @default("https_pat") @db.VarChar(20)
+  runGitCredentialId     String?  @db.Uuid
+  runGitCredential       GitCredential? @relation("ProjectRunCredential", fields: [runGitCredentialId], references: [id], onDelete: SetNull)
+  scmAdminCredentialId   String?  @db.Uuid
+  scmAdminCredential     GitCredential? @relation("ProjectScmAdminCredential", fields: [scmAdminCredentialId], references: [id], onDelete: SetNull)
   defaultRoleKey         String?  @db.VarChar(100)
   executionProfileId     String?  @db.Uuid
   executionProfile       ExecutionProfile? @relation(fields: [executionProfileId], references: [id], onDelete: SetNull)
-  gitlabProjectId        Int?     @unique
-  gitlabAccessToken      String?  @db.Text
-  gitlabWebhookSecret    String?  @db.VarChar(255)
-  githubAccessToken      String?  @db.Text
-  githubPollingEnabled   Boolean  @default(false)
-  githubPollingCursor    DateTime?
   enableRuntimeSkillsMounting Boolean @default(false)
   branchProtection       Json?
   agentAllocationStrategy String? @db.VarChar(20)
@@ -176,6 +173,49 @@ model Project {
   roles RoleTemplate[]
   textTemplates ProjectTextTemplate[]
   skillAuditLogs SkillAuditLog[]
+  gitCredentials GitCredential[]
+  scmConfig ProjectScmConfig?
+}
+
+model GitCredential {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  key             String   @db.VarChar(100)
+  purpose         String?  @db.VarChar(20)
+  gitAuthMode     String   @default("https_pat") @db.VarChar(20)
+
+  githubAccessToken String? @db.Text
+  gitlabAccessToken String? @db.Text
+
+  gitSshCommand   String?  @db.Text
+  gitSshKey       String?  @db.Text
+  gitSshKeyB64    String?  @db.Text
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  runDefaultForProjects Project[] @relation("ProjectRunCredential")
+  scmAdminDefaultForProjects Project[] @relation("ProjectScmAdminCredential")
+
+  @@unique([projectId, key])
+  @@index([projectId])
+}
+
+model ProjectScmConfig {
+  id                  String   @id @default(uuid()) @db.Uuid
+  projectId            String   @unique @db.Uuid
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  gitlabProjectId      Int?     @unique
+  gitlabWebhookSecret  String?  @db.VarChar(255)
+
+  githubPollingEnabled Boolean  @default(false)
+  githubPollingCursor  DateTime?
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@index([gitlabProjectId])
   @@index([githubPollingEnabled])

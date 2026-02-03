@@ -10,6 +10,7 @@ import { postGitHubApprovalCommentBestEffort } from "../modules/scm/githubIssueC
 import { publishArtifact } from "../modules/artifacts/artifactPublish.js";
 import { advanceTaskFromRunTerminal } from "../modules/workflow/taskProgress.js";
 import { triggerTaskAutoAdvance } from "../modules/workflow/taskAutoAdvance.js";
+import { loadProjectCredentials } from "../utils/projectCredentials.js";
 
 import type * as gitlab from "../integrations/gitlab.js";
 import type * as github from "../integrations/github.js";
@@ -97,7 +98,8 @@ export function makeApprovalRoutes(deps: {
       const project: any = issue?.project;
       const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
       const issueNumber = Number(issue?.externalNumber ?? 0);
-      const token = String(project?.githubAccessToken ?? "").trim();
+      const { admin } = await loadProjectCredentials(deps.prisma, project ?? {});
+      const token = String((admin as any)?.githubAccessToken ?? "").trim();
       const repoUrl = String(project?.repoUrl ?? "").trim();
 
       const action = String((approval as any).action ?? "").trim();
@@ -488,7 +490,8 @@ export function makeApprovalRoutes(deps: {
       const project: any = issue?.project;
       const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
       const issueNumber = Number(issue?.externalNumber ?? 0);
-      const token = String(project?.githubAccessToken ?? "").trim();
+      const { admin } = await loadProjectCredentials(deps.prisma, project ?? {});
+      const token = String((admin as any)?.githubAccessToken ?? "").trim();
       const repoUrl = String(project?.repoUrl ?? "").trim();
 
       if (issueIsGitHub && token) {

@@ -1,5 +1,6 @@
 import type { PrismaDeps } from "../../db.js";
 import { uuidv7 } from "../../utils/uuid.js";
+import { loadProjectCredentials } from "../../utils/projectCredentials.js";
 import { postGitHubAutoReviewCommentBestEffort } from "../scm/githubIssueComments.js";
 import { getPmPolicyFromBranchProtection } from "./pmPolicy.js";
 
@@ -183,7 +184,8 @@ export async function autoReviewRunForPm(
 
       const issueIsGitHub = String(issue?.externalProvider ?? "").toLowerCase() === "github";
       const issueNumber = Number(issue?.externalNumber ?? 0);
-      const token = String(project?.githubAccessToken ?? "").trim();
+      const { admin } = await loadProjectCredentials(deps.prisma, project ?? {});
+      const token = String((admin as any)?.githubAccessToken ?? "").trim();
       const repoUrlForIssue = String(issue?.externalUrl ?? project?.repoUrl ?? "").trim();
 
       if (issueIsGitHub && token) {

@@ -21,8 +21,7 @@ function makeIssue(overrides?: Partial<any>) {
       scmType: "github",
       defaultBranch: "main",
       enableRuntimeSkillsMounting: true,
-      githubAccessToken: "",
-      gitlabAccessToken: "",
+      runGitCredentialId: "00000000-0000-0000-0000-000000000100",
       workspacePolicy: null,
       executionProfileId: null,
     },
@@ -63,6 +62,34 @@ describe("startIssueRun", () => {
     expect(res.success).toBe(false);
     if (!res.success) {
       expect(res.error.code).toBe("BUNDLE_MISSING");
+    }
+    expect(prisma.run.create).not.toHaveBeenCalled();
+  });
+
+  it("returns RUN_GIT_CREDENTIAL_MISSING when git policy but project missing runGitCredentialId", async () => {
+    (suggestRunKeyWithLlm as any).mockResolvedValue("run-key");
+    const issue = makeIssue();
+    issue.project.runGitCredentialId = null;
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
+
+    const prisma = {
+      issue: { findUnique: vi.fn().mockResolvedValue(issue), update: vi.fn() },
+      agent: { findMany: vi.fn().mockResolvedValue([agent]), update: vi.fn() },
+      roleTemplate: { findFirst: vi.fn().mockResolvedValue({ id: "r1", key: "dev", envText: "", workspacePolicy: "git" }) },
+      run: { create: vi.fn(), update: vi.fn() },
+    } as any;
+
+    const res = await startIssueRun({
+      prisma,
+      acp: { promptRun: vi.fn() } as any,
+      createWorkspace: vi.fn(),
+      issueId: "i1",
+      roleKey: "dev",
+    });
+
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.code).toBe("RUN_GIT_CREDENTIAL_MISSING");
     }
     expect(prisma.run.create).not.toHaveBeenCalled();
   });
@@ -226,7 +253,15 @@ describe("startIssueRun", () => {
         findFirst: vi.fn().mockResolvedValue({
           id: "r1",
           key: "dev",
-          envText: "TUIXIU_GIT_AUTH_MODE=https_pat\nGH_TOKEN=role-gh\n",
+          envText: "FOO=bar\n",
+        }),
+      },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "00000000-0000-0000-0000-000000000100",
+          projectId: "p1",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "tok",
         }),
       },
       run: { create: vi.fn().mockResolvedValue({ id: "run1" }), update: vi.fn().mockResolvedValue(undefined) },

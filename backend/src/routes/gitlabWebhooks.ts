@@ -111,15 +111,16 @@ export function makeGitLabWebhookRoutes(deps: {
         return { success: false, error: { code: "NO_PROJECT_ID", message: "Webhook payload 缺少 project.id" } };
       }
 
-      const project = await deps.prisma.project.findFirst({
-        where: { gitlabProjectId: projectId },
-      });
-      if (!project) {
+      const config = await deps.prisma.projectScmConfig
+        .findUnique({ where: { gitlabProjectId: projectId } as any, include: { project: true } as any })
+        .catch(() => null);
+      const project = (config as any)?.project;
+      if (!config || !project) {
         return { success: false, error: { code: "NO_PROJECT", message: "未找到与该 GitLab projectId 匹配的 Project" } };
       }
 
       const token = getHeader(request.headers as any, "x-gitlab-token") ?? "";
-      const effectiveSecret = String((project as any).gitlabWebhookSecret ?? webhookSecret ?? "").trim();
+      const effectiveSecret = String((config as any).gitlabWebhookSecret ?? webhookSecret ?? "").trim();
       if (effectiveSecret) {
         if (!token || !safeTimingEqual(token, effectiveSecret)) {
           return { success: false, error: { code: "BAD_TOKEN", message: "GitLab webhook token 校验失败" } };

@@ -126,6 +126,36 @@ describe("RoleTemplate routes", () => {
     await server.close();
   });
 
+  it("POST /api/projects/:projectId/roles forbids git auth env keys", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      project: { findUnique: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000010" }) },
+      roleTemplate: { create: vi.fn() },
+    } as any;
+
+    await server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/api/projects/00000000-0000-0000-0000-000000000010/roles",
+      payload: { key: "dev", displayName: "Dev", envText: "FOO=bar\nGH_TOKEN=tok\n" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: false,
+      error: {
+        code: "ROLE_ENV_GIT_KEYS_FORBIDDEN",
+        message: "Git 认证已迁移到 GitCredential，请在 Project 凭证中配置",
+        details: ["GH_TOKEN"],
+      },
+    });
+    expect(prisma.project.findUnique).not.toHaveBeenCalled();
+    expect(prisma.roleTemplate.create).not.toHaveBeenCalled();
+
+    await server.close();
+  });
+
   it("POST /api/projects/:projectId/roles accepts workspacePolicy and executionProfileId", async () => {
     const server = createHttpServer();
     const prisma = {
@@ -217,6 +247,38 @@ describe("RoleTemplate routes", () => {
       where: { id: "00000000-0000-0000-0000-000000000099" },
       data: expect.objectContaining({ envText: null }),
     });
+
+    await server.close();
+  });
+
+  it("PATCH /api/projects/:projectId/roles/:roleId forbids git auth env keys", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      roleTemplate: {
+        findFirst: vi.fn(),
+        update: vi.fn(),
+      },
+    } as any;
+
+    await server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
+
+    const res = await server.inject({
+      method: "PATCH",
+      url: "/api/projects/00000000-0000-0000-0000-000000000010/roles/00000000-0000-0000-0000-000000000099",
+      payload: { envText: "FOO=bar\nTUIXIU_GIT_HTTP_PASSWORD=tok\n" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: false,
+      error: {
+        code: "ROLE_ENV_GIT_KEYS_FORBIDDEN",
+        message: "Git 认证已迁移到 GitCredential，请在 Project 凭证中配置",
+        details: ["TUIXIU_GIT_HTTP_PASSWORD"],
+      },
+    });
+    expect(prisma.roleTemplate.findFirst).not.toHaveBeenCalled();
+    expect(prisma.roleTemplate.update).not.toHaveBeenCalled();
 
     await server.close();
   });

@@ -18,6 +18,7 @@ import { makeAcpSessionRoutes } from "./routes/acpSessions.js";
 import { makeAcpProxyRoutes } from "./routes/acpProxy.js";
 import { makeArtifactRoutes } from "./routes/artifacts.js";
 import { makeAuthRoutes } from "./routes/auth.js";
+import { makeGitCredentialRoutes } from "./routes/gitCredentials.js";
 import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
 import { makeGitHubWebhookRoutes } from "./routes/githubWebhooks.js";
 import { makeGitLabWebhookRoutes } from "./routes/gitlabWebhooks.js";
@@ -29,6 +30,7 @@ import { makePmRoutes } from "./routes/pm.js";
 import { makePolicyRoutes } from "./routes/policies.js";
 import { makeWorkflowTemplateRoutes } from "./routes/workflowTemplates.js";
 import { makeProjectRoutes } from "./routes/projects.js";
+import { makeProjectScmConfigRoutes } from "./routes/projectScmConfig.js";
 import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
 import { makeRunRoutes } from "./routes/runs.js";
 import { makeSandboxRoutes } from "./routes/sandboxes.js";
@@ -48,6 +50,7 @@ import { createLocalSkillPackageStore } from "./modules/skills/skillPackageStore
 import { createNpxSkillsCliRunner } from "./modules/skills/npxSkillsCli.js";
 import { resolveGitAuthMode } from "./utils/gitAuth.js";
 import { defaultRunBranchName } from "./utils/gitWorkspace.js";
+import { loadProjectCredentials } from "./utils/projectCredentials.js";
 import { buildSandboxGitPushEnv } from "./utils/sandboxGitPush.js";
 import { createWebSocketGateway } from "./websocket/gateway.js";
 import { deriveSandboxInstanceName } from "./utils/sandbox.js";
@@ -168,7 +171,17 @@ async function sandboxGitPush(opts: { run: any; branch: string; project: any }) 
       : deriveSandboxInstanceName(String(run?.id ?? ""));
   if (!instanceName) throw new Error("sandboxInstanceName 缺失");
 
-  const env = buildSandboxGitPushEnv(opts.project);
+  const runGitCredentialId = String(opts.project?.runGitCredentialId ?? "").trim();
+  if (!runGitCredentialId) throw new Error("Project.runGitCredentialId 缺失");
+  const credential = await prisma.gitCredential.findUnique({ where: { id: runGitCredentialId } } as any);
+  if (!credential || String((credential as any).projectId ?? "") !== String(opts.project?.id ?? "")) {
+    throw new Error("Project.runGitCredentialId 无效");
+  }
+
+  const env = buildSandboxGitPushEnv({
+    project: { repoUrl: String(opts.project?.repoUrl ?? ""), scmType: opts.project?.scmType ?? null },
+    credential: credential as any,
+  });
   env.TUIXIU_RUN_BRANCH = opts.branch;
   env.TUIXIU_WORKSPACE_GUEST = "/workspace";
 
@@ -254,6 +267,8 @@ const createWorkspace: CreateWorkspace = async ({
     }
   }
 
+  const { run: runCredential } = await loadProjectCredentials(prisma, project ?? {});
+
   return {
     workspaceMode: "worktree",
     workspacePath,
@@ -262,9 +277,9 @@ const createWorkspace: CreateWorkspace = async ({
     gitAuthMode: resolveGitAuthMode({
       repoUrl: String(project.repoUrl ?? ""),
       scmType: project.scmType ?? null,
-      gitAuthMode: project.gitAuthMode ?? null,
-      githubAccessToken: project.githubAccessToken ?? null,
-      gitlabAccessToken: project.gitlabAccessToken ?? null,
+      gitAuthMode: (runCredential as any)?.gitAuthMode ?? null,
+      githubAccessToken: (runCredential as any)?.githubAccessToken ?? null,
+      gitlabAccessToken: (runCredential as any)?.gitlabAccessToken ?? null,
     }),
     timingsMs: { totalMs: 0 },
   };
@@ -310,6 +325,8 @@ server.register(
 );
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
+server.register(makeGitCredentialRoutes({ prisma, auth }), { prefix: "/api/projects" });
+server.register(makeProjectScmConfigRoutes({ prisma, auth }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeExecutionProfileRoutes({ prisma }), { prefix: "/api" });
 server.register(makePolicyRoutes({ prisma }), { prefix: "/api" });
@@ -445,4 +462,3 @@ server.setNotFoundHandler(async (request, reply) => {
 });
 
 await server.listen({ port: env.PORT, host: env.HOST });
-
