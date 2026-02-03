@@ -6,7 +6,7 @@ export type AuthState = {
   status: "loading" | "anonymous" | "authenticated";
   user: User | null;
   login: (input: { username: string; password: string }) => Promise<void>;
-  bootstrap: (input: { username?: string; password?: string }) => Promise<void>;
+  bootstrap: (input: { username?: string; password?: string; bootstrapToken?: string }) => Promise<void>;
   logout: () => void;
   hasRole: (roles: UserRole[]) => boolean;
 };
