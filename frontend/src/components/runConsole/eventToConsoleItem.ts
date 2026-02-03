@@ -4,6 +4,58 @@ import { extractToolCallInfo, formatToolCallInfo } from "./toolCallInfo";
 import type { ConsoleItem, PermissionOption } from "./types";
 import { summarizeContentBlocks, tryParseContentBlocks } from "../../acp/contentBlocks";
 
+function formatTransportConnected(payload: any): string {
+  const instance = typeof payload?.instance_name === "string" ? payload.instance_name.trim() : "";
+  return `（状态）已连接到 Agent${instance ? ` · ${instance}` : ""}`;
+}
+
+function formatTransportDisconnected(payload: any): { text: string; ok: boolean } {
+  const code =
+    typeof payload?.code === "number" && Number.isFinite(payload.code) ? payload.code : null;
+  const signal =
+    typeof payload?.signal === "string" && payload.signal.trim() ? payload.signal.trim() : null;
+  const reason =
+    typeof payload?.reason === "string" && payload.reason.trim() ? payload.reason.trim() : "";
+
+  // 与后端 acp_exit 处理保持一致：code 缺失时按 ok 处理（用于“未知退出码但不一定是错误”的场景）。
+  const ok = code === null ? true : code === 0 && !signal;
+
+  const parts = [
+    `连接断开${ok ? "（正常）" : "（异常）"}`,
+    reason ? `reason=${reason}` : "",
+    code === null ? "" : `code=${code}`,
+    signal ? `signal=${signal}` : "",
+  ].filter(Boolean);
+
+  return { ok, text: parts.join(" · ") };
+}
+
+function formatInitResult(payload: any): { text: string; ok: boolean } {
+  const ok = payload?.ok === true;
+  const exitCode =
+    typeof payload?.exitCode === "number" && Number.isFinite(payload.exitCode) ? payload.exitCode : null;
+  const errText = typeof payload?.error === "string" && payload.error.trim() ? payload.error.trim() : "";
+
+  if (ok) return { ok: true, text: "（状态）初始化完成" };
+
+  const parts = ["初始化失败", exitCode == null ? "" : `exitCode=${exitCode}`, errText].filter(Boolean);
+  return { ok: false, text: parts.join(" · ") };
+}
+
+function formatSandboxInstanceStatus(payload: any): { text: string; ok: boolean } {
+  const status = typeof payload?.status === "string" ? payload.status.trim() : "unknown";
+  const provider = typeof payload?.provider === "string" ? payload.provider.trim() : "";
+  const runtime = typeof payload?.runtime === "string" ? payload.runtime.trim() : "";
+  const lastError =
+    typeof payload?.last_error === "string" && payload.last_error.trim() ? payload.last_error.trim() : "";
+  const ok = status !== "error" && status !== "failed" && !lastError;
+
+  const meta = [provider ? `provider=${provider}` : "", runtime ? `runtime=${runtime}` : ""].filter(Boolean);
+  const head = `沙盒状态：${status}${meta.length ? ` · ${meta.join(" ")}` : ""}`;
+  if (!ok) return { ok: false, text: `${head}${lastError ? ` · ${lastError}` : ""}` };
+  return { ok: true, text: `（状态）${head}` };
+}
+
 function extractTextFromUpdateContent(content: unknown): string | null {
   if (!content) return null;
   if (typeof content === "string") return content;
@@ -136,6 +188,44 @@ function extractPlan(update: any): ConsoleItem["plan"] | null {
 }
 
 export function eventToConsoleItem(e: Event): ConsoleItem {
+  if (e.source === "system" && e.type === "client_command_result") {
+    const payload = e.payload as any;
+    const requestId =
+      typeof payload?.request_id === "string" && payload.request_id.trim() ? payload.request_id.trim() : "";
+    const ok = payload?.ok === true;
+
+    if (ok) {
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: `（状态）已发送${requestId ? ` · requestId=${requestId}` : ""}`,
+        timestamp: e.timestamp,
+        isStatus: true,
+      };
+    }
+
+    const err = payload?.error;
+    const code = typeof err?.code === "string" && err.code.trim() ? err.code.trim() : "";
+    const message = typeof err?.message === "string" && err.message.trim() ? err.message.trim() : "发送失败";
+    const details = typeof err?.details === "string" && err.details.trim() ? err.details.trim() : "";
+
+    const head = [
+      "发送消息失败",
+      code ? `code=${code}` : "",
+      requestId ? `requestId=${requestId}` : "",
+      message ? `message=${message}` : "",
+    ].filter(Boolean);
+
+    return {
+      id: e.id,
+      role: "system",
+      kind: "block",
+      text: `${head.join(" · ")}${details ? `\n${details}` : ""}`,
+      timestamp: e.timestamp,
+    };
+  }
+
   if (e.source === "user") {
     const payload = e.payload as any;
     const blocks = tryParseContentBlocks(payload?.prompt);
@@ -154,6 +244,17 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
   if (e.source === "acp" && e.type === "acp.update.received") {
     const payload = e.payload as any;
 
+    // ---------------- Console 可见性规则（重要） ----------------
+    // 目标：默认“干净”，只展示对话/工具调用/关键报错；把高频状态类事件（连接、沙盒心跳等）默认隐藏。
+    //
+    // 约定：
+    // - item.isStatus=true：默认隐藏；是否展示由上层页面传入 `showStatusEvents` 控制。
+    // - 错误相关（如 init_result.ok=false / transport_disconnected 异常 / sandbox_status=error）必须默认可见。
+    //
+    // 修改入口：
+    // - 事件到 ConsoleItem 的映射：frontend/src/components/runConsole/eventToConsoleItem.ts
+    // - 默认过滤逻辑与开关：frontend/src/components/RunConsole.tsx
+
     if (payload?.type === "text" && typeof payload.text === "string") {
       return {
         id: e.id,
@@ -161,6 +262,53 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
         kind: "block",
         text: payload.text,
         timestamp: e.timestamp,
+      };
+    }
+
+    if (payload?.type === "transport_connected") {
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: formatTransportConnected(payload),
+        timestamp: e.timestamp,
+        isStatus: true,
+      };
+    }
+
+    if (payload?.type === "transport_disconnected") {
+      const formatted = formatTransportDisconnected(payload);
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: formatted.text,
+        timestamp: e.timestamp,
+        isStatus: formatted.ok,
+      };
+    }
+
+    if (payload?.type === "init_result") {
+      const formatted = formatInitResult(payload);
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: formatted.text,
+        timestamp: e.timestamp,
+        isStatus: formatted.ok,
+      };
+    }
+
+    if (payload?.type === "sandbox_instance_status") {
+      const formatted = formatSandboxInstanceStatus(payload);
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: formatted.text,
+        timestamp: e.timestamp,
+        isStatus: formatted.ok,
       };
     }
 
@@ -201,12 +349,14 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
       const status = typeof payload.status === "string" ? payload.status.trim() : "progress";
       const message = typeof payload.message === "string" ? payload.message.trim() : "";
       const parts = [stage, status, message].filter(Boolean);
+      const hideByDefault = status === "progress";
       return {
         id: e.id,
         role: "system",
         kind: "block",
         text: parts.join(" "),
         timestamp: e.timestamp,
+        isStatus: hideByDefault,
         initStep: {
           stage: stage || "init",
           status: status || "progress",
@@ -311,16 +461,17 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
 
       if (sessionUpdate === "config_option_update") {
         const formatted = formatConfigOptionsUpdate(update);
-        const text = "";
-          // formatted?.body ??
-          // extractTextFromUpdateContent(update?.content) ??
-          // JSON.stringify(update, null, 2);
+        const text =
+          formatted?.body ??
+          extractTextFromUpdateContent(update?.content) ??
+          JSON.stringify(update, null, 2);
         return {
           id: e.id,
           role: "system",
           kind: "block",
           text,
           timestamp: e.timestamp,
+          isStatus: true,
           detailsTitle: formatted?.title,
         };
       }
@@ -345,6 +496,35 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
       kind: "block",
       text: JSON.stringify(payload ?? null, null, 2),
       timestamp: e.timestamp,
+    };
+  }
+
+  if (e.source === "acp" && e.type === "sandbox.acp_exit") {
+    const payload = e.payload as any;
+    const code =
+      typeof payload?.code === "number" && Number.isFinite(payload.code) ? payload.code : null;
+    const signal =
+      typeof payload?.signal === "string" && payload.signal.trim() ? payload.signal.trim() : null;
+    const instance =
+      typeof payload?.instance_name === "string" && payload.instance_name.trim()
+        ? payload.instance_name.trim()
+        : "";
+
+    const ok = code === null ? true : code === 0 && !signal;
+    const parts = [
+      ok ? "（状态）Agent 已退出" : "Agent 异常退出",
+      instance ? `instance=${instance}` : "",
+      code === null ? "" : `code=${code}`,
+      signal ? `signal=${signal}` : "",
+    ].filter(Boolean);
+
+    return {
+      id: e.id,
+      role: "system",
+      kind: "block",
+      text: parts.join(" · "),
+      timestamp: e.timestamp,
+      isStatus: ok,
     };
   }
 

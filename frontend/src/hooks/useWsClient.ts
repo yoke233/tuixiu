@@ -10,6 +10,9 @@ export type WsMessage = {
   step_id?: string;
   event?: Event;
   artifact?: Artifact;
+  request_id?: string;
+  ok?: boolean;
+  error?: { code: string; message: string; details?: string };
 };
 
 function appendToken(url: string, token: string | null): string {

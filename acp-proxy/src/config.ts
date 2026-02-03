@@ -559,7 +559,9 @@ function buildSchema() {
     agent_command: {
       doc: "Agent command",
       format: "string-array",
-      default: ["npx", "--yes", "@zed-industries/codex-acp"],
+      // 默认优先走已安装的二进制（镜像/环境里通常会预装），避免 npx 下载/网络/路径问题。
+      // 若你希望按需下载，可改为: ["npx", "--yes", "@zed-industries/codex-acp"]
+      default: ["codex-acp"],
       env: "ACP_PROXY_AGENT_COMMAND",
     },
     agent: {

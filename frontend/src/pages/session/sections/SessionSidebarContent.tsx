@@ -1,10 +1,8 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { StatusBadge } from "../../../components/StatusBadge";
 import type { SessionController } from "../useSessionController";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 type SessionSidebarContentProps = {
   model: SessionController;
@@ -23,18 +21,11 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
     runId,
     sessionId,
     sessionState,
-    settingMode,
-    settingModel,
     permissionRequests,
     resolvingPermissionId,
     isAdmin,
-    onSetMode,
-    onSetModel,
     onResolvePermission,
   } = model;
-
-  const [modeDraft, setModeDraft] = useState("");
-  const [modelDraft, setModelDraft] = useState("");
 
   const handleNavigate = () => {
     if (onNavigate) onNavigate();
@@ -156,90 +147,6 @@ export function SessionSidebarContent(props: SessionSidebarContentProps) {
               {sessionState.updatedAt ? new Date(sessionState.updatedAt).toLocaleString() : ""}
               {sessionState.note ? ` · ${sessionState.note}` : ""}
             </div>
-
-            {sessionId ? (
-              <details style={{ marginTop: 12 }}>
-                <summary>设置 mode / model</summary>
-                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                  <div className="row gap" style={{ alignItems: "flex-end" }}>
-                    <label
-                      className="label"
-                      style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}
-                    >
-                      modeId
-                      <Input
-                        value={modeDraft}
-                        onChange={(e) => setModeDraft(e.target.value)}
-                        placeholder={
-                          sessionState.currentModeId
-                            ? `当前：${sessionState.currentModeId}`
-                            : "例如：balanced"
-                        }
-                      />
-                    </label>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setModeDraft(sessionState.currentModeId ?? "")}
-                      disabled={settingMode || settingModel}
-                      title="把当前 mode 填入输入框"
-                    >
-                      填入当前
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => void onSetMode(modeDraft)}
-                      disabled={!modeDraft.trim() || settingMode || settingModel}
-                      size="sm"
-                    >
-                      {settingMode ? "设置中…" : "设置 mode"}
-                    </Button>
-                  </div>
-
-                  <div className="row gap" style={{ alignItems: "flex-end" }}>
-                    <label
-                      className="label"
-                      style={{ margin: 0, flex: "1 1 220px", minWidth: 200 }}
-                    >
-                      modelId
-                      <Input
-                        value={modelDraft}
-                        onChange={(e) => setModelDraft(e.target.value)}
-                        placeholder={
-                          sessionState.currentModelId
-                            ? `当前：${sessionState.currentModelId}`
-                            : "例如：gpt-4.1"
-                        }
-                      />
-                    </label>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setModelDraft(sessionState.currentModelId ?? "")}
-                      disabled={settingMode || settingModel}
-                      title="把当前 model 填入输入框"
-                    >
-                      填入当前
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => void onSetModel(modelDraft)}
-                      disabled={!modelDraft.trim() || settingMode || settingModel}
-                      size="sm"
-                    >
-                      {settingModel ? "设置中…" : "设置 model"}
-                    </Button>
-                  </div>
-
-                  <div className="muted">
-                    后端接口：<code>POST /api/admin/acp-sessions/set-mode</code>、
-                    <code>POST /api/admin/acp-sessions/set-model</code>。
-                  </div>
-                </div>
-              </details>
-            ) : null}
           </>
         ) : (
           <div className="muted" style={{ marginTop: 10 }}>

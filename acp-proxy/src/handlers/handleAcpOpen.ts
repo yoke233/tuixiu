@@ -4,6 +4,7 @@ import {
   ensureHostWorkspaceGit,
   ensureInitialized,
   ensureRuntime,
+  sendUpdate,
   runInitScript,
   startAgent,
 } from "../runs/runRuntime.js";
@@ -68,6 +69,13 @@ export async function handleAcpOpen(ctx: ProxyContext, msg: any): Promise<void> 
     if (run) {
       // best-effort: nothing to cleanup here; per-run state lives under workspaceHostRoot.
     }
+    const errText = err instanceof Error ? err.stack ?? err.message : String(err);
+    (ctx.logError ?? ctx.log)("acp_open failed", { runId, err: errText });
+    // 即使 open 阶段失败，也把错误写入事件流，方便前端直接看到原因。
+    sendUpdate(ctx, runId, {
+      type: "text",
+      text: `[proxy:error] acp_open failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
     ctx.send({ type: "acp_opened", run_id: runId, ok: false, error: String(err) });
   }
 }

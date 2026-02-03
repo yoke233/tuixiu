@@ -104,32 +104,32 @@ async function writeAskPassScript(opts: {
 
   const content = isWin
     ? [
-        "@echo off",
-        "set prompt=%*",
-        "echo %prompt% | findstr /i username >nul",
-        "if %errorlevel%==0 (",
-        `  echo ${username}`,
-        "  exit /b 0",
-        ")",
-        `echo ${token}`,
-        "",
-      ].join("\r\n")
+      "@echo off",
+      "set prompt=%*",
+      "echo %prompt% | findstr /i username >nul",
+      "if %errorlevel%==0 (",
+      `  echo ${username}`,
+      "  exit /b 0",
+      ")",
+      `echo ${token}`,
+      "",
+    ].join("\r\n")
     : [
-        "#!/bin/sh",
-        `prompt="$1"`,
-        'case "$prompt" in',
-        "  *Username*|*username*)",
-        `    printf '%s\\n' '${username}'`,
-        "    ;;",
-        "  *)",
-        `    printf '%s\\n' '${token}'`,
-        "    ;;",
-        "esac",
-        "",
-      ].join("\n");
+      "#!/bin/sh",
+      `prompt="$1"`,
+      'case "$prompt" in',
+      "  *Username*|*username*)",
+      `    printf '%s\\n' '${username}'`,
+      "    ;;",
+      "  *)",
+      `    printf '%s\\n' '${token}'`,
+      "    ;;",
+      "esac",
+      "",
+    ].join("\n");
 
   await writeFile(scriptPath, content, { encoding: "utf8" });
-  if (!isWin) await chmod(scriptPath, 0o700).catch(() => {});
+  if (!isWin) await chmod(scriptPath, 0o700).catch(() => { });
 
   return { scriptPath, cleanup: async () => rm(dir, { recursive: true, force: true }) };
 }
@@ -152,7 +152,7 @@ export async function createGitProcessEnv(project: GitAuthProject): Promise<{
     return {
       gitAuthMode,
       env,
-      cleanup: async () => {},
+      cleanup: async () => { },
     };
   }
 

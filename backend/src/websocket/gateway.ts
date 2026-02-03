@@ -390,6 +390,7 @@ export function createWebSocketGateway(deps: {
     if (!tunnel) {
       sendToClient(socket, {
         type: "client_command_result",
+        run_id: runId,
         request_id: requestId,
         ok: false,
         error: { code: "NO_AGENT_GATEWAY", message: "ACP 隧道未配置" },
@@ -401,6 +402,7 @@ export function createWebSocketGateway(deps: {
     if (!parsed.success) {
       sendToClient(socket, {
         type: "client_command_result",
+        run_id: runId,
         request_id: requestId,
         ok: false,
         error: { code: "BAD_PROMPT", message: "prompt 格式不合法" },
@@ -414,6 +416,7 @@ export function createWebSocketGateway(deps: {
         if ((materialized as any)?.error) {
           sendToClient(socket, {
             type: "client_command_result",
+            run_id: runId,
             request_id: requestId,
             ok: false,
             error: (materialized as any).error,
@@ -433,6 +436,7 @@ export function createWebSocketGateway(deps: {
         if (!run) {
           sendToClient(socket, {
             type: "client_command_result",
+            run_id: runId,
             request_id: requestId,
             ok: false,
             error: { code: "NOT_FOUND", message: "Run 不存在" },
@@ -442,6 +446,7 @@ export function createWebSocketGateway(deps: {
         if (!run.agent) {
           sendToClient(socket, {
             type: "client_command_result",
+            run_id: runId,
             request_id: requestId,
             ok: false,
             error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法发送 prompt" },
@@ -475,6 +480,7 @@ export function createWebSocketGateway(deps: {
         if (!cwd) {
           sendToClient(socket, {
             type: "client_command_result",
+            run_id: runId,
             request_id: requestId,
             ok: false,
             error: { code: "NO_WORKSPACE", message: "Run.workspacePath 缺失，无法发送 prompt" },
@@ -513,12 +519,50 @@ export function createWebSocketGateway(deps: {
 
         sendToClient(socket, {
           type: "client_command_result",
+          run_id: runId,
           request_id: requestId,
           ok: true,
         });
       } catch (error) {
+        if (deps.log) {
+          deps.log("client_command prompt_run failed", {
+            runId,
+            requestId,
+            err: error instanceof Error ? String(error.stack ?? error.message) : String(error),
+          });
+        }
+
+        // 失败也落一条 system event，便于 UI/审计在刷新后仍能看到原因。
+        try {
+          const createdEvent = await deps.prisma.event.create({
+            data: {
+              id: uuidv7(),
+              runId,
+              source: "system",
+              type: "client_command_result",
+              payload: {
+                type: "client_command_result",
+                request_id: requestId,
+                ok: false,
+                error: {
+                  code: "AGENT_SEND_FAILED",
+                  message: "发送消息到 Agent 失败",
+                  details: String(error),
+                },
+              } as any,
+              timestamp: new Date(),
+            },
+          });
+          if (createdEvent) {
+            broadcastToClients({ type: "event_added", run_id: runId, event: createdEvent });
+          }
+        } catch {
+          // ignore persist errors
+        }
+
         sendToClient(socket, {
           type: "client_command_result",
+          run_id: runId,
           request_id: requestId,
           ok: false,
           error: { code: "AGENT_SEND_FAILED", message: "发送消息到 Agent 失败", details: String(error) },

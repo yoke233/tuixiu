@@ -690,10 +690,14 @@ export async function startAcpAgentExecution(
         usedNames.add(dirName);
         return {
           id: `skill:${dirName}`,
-          apply: "downloadExtract",
-          access: "rw",
-          source: { type: "httpZip", uri: String(sv.storageUri), contentHash: String(sv.contentHash) },
-          target: { root: "USER_HOME", path: `.codex/skills/${dirName}` },
+          apply: "downloadExtract" as const,
+          access: "rw" as const,
+          source: {
+            type: "httpZip" as const,
+            uri: String(sv.storageUri),
+            contentHash: String(sv.contentHash),
+          },
+          target: { root: "USER_HOME" as const, path: `.codex/skills/${dirName}` },
         };
       });
 
@@ -702,10 +706,10 @@ export async function startAcpAgentExecution(
         items: [
           {
             id: "workspace",
-            apply: "bindMount",
-            access: "rw",
-            source: { type: "hostPath", path: String(workspace.workspacePath) },
-            target: { root: "WORKSPACE", path: "." },
+            apply: "bindMount" as const,
+            access: "rw" as const,
+            source: { type: "hostPath" as const, path: String(workspace.workspacePath) },
+            target: { root: "WORKSPACE" as const, path: "." },
           },
           ...skillItems,
         ],

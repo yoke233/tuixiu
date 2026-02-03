@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { RunConsole } from "../../../components/RunConsole";
 import { apiUrl } from "../../../api/client";
+import { findLatestAcpTransportStatus } from "../../../utils/acpTransport";
 import { findLatestSandboxInstanceStatus } from "../../../utils/sandboxStatus";
 import type { IssueDetailController } from "../useIssueDetailController";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
   } = props.model;
 
   const sandboxStatus = useMemo(() => findLatestSandboxInstanceStatus(events), [events]);
+  const transport = useMemo(() => findLatestAcpTransportStatus(events), [events]);
+  const sessionOnline = Boolean(sessionKnown && transport?.connected);
   const sandboxHint = useMemo(() => {
     if (!sandboxStatus) return null;
     const status = sandboxStatus.status;
@@ -66,7 +69,14 @@ export function ConsoleCard(props: { model: IssueDetailController }) {
   return (
     <section className="card">
       <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0 }}>Console</h2>
+        <div className="row gap" style={{ alignItems: "center" }}>
+          <h2 style={{ margin: 0 }}>Console</h2>
+          <span
+            className={sessionOnline ? "sessionOnlineDot isOnline" : "sessionOnlineDot isOffline"}
+            title={sessionOnline ? "session 在线（可直接访问）" : "session 离线（不可直接访问）"}
+            aria-label={sessionOnline ? "session online" : "session offline"}
+          />
+        </div>
         <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
           {currentRunId ? (
             <Button variant="secondary" size="sm" asChild>

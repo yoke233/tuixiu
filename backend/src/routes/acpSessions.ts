@@ -467,6 +467,63 @@ export function makeAcpSessionRoutes(deps: {
     );
 
     server.post(
+      "/acp-sessions/set-config-option",
+      { preHandler: deps.auth.authenticate },
+      async (request) => {
+        const bodySchema = z.object({
+          runId: z.string().uuid(),
+          sessionId: z.string().min(1).max(200),
+          configId: z.string().min(1).max(200),
+          value: z.unknown(),
+        });
+        const { runId, sessionId, configId, value } = bodySchema.parse(request.body ?? {});
+
+        const run = await deps.prisma.run.findUnique({
+          where: { id: runId },
+          include: { agent: true } as any,
+        } as any);
+        if (!run) {
+          return { success: false, error: { code: "NOT_FOUND", message: "Run 不存在" } };
+        }
+        if (!deps.sendToAgent) {
+          return { success: false, error: { code: "NO_AGENT_GATEWAY", message: "Agent 网关未配置" } };
+        }
+        if (!deps.acp) {
+          return { success: false, error: { code: "NO_AGENT_GATEWAY", message: "ACP 隧道未配置" } };
+        }
+        if (!(run as any).agent) {
+          return { success: false, error: { code: "NO_AGENT", message: "该 Run 未绑定 Agent，无法设置 config option" } };
+        }
+
+        const cwd = resolveAgentWorkspaceCwd({
+          runId,
+          sandboxWorkspaceMode: getSandboxWorkspaceMode((run as any).agent?.capabilities),
+        });
+        try {
+          await deps.acp.setSessionConfigOption({
+            proxyId: (run as any).agent.proxyId,
+            runId,
+            cwd,
+            sessionId,
+            configId,
+            value,
+          });
+        } catch (error) {
+          return {
+            success: false,
+            error: {
+              code: "AGENT_SEND_FAILED",
+              message: "发送 session/set_config_option 失败",
+              details: String(error),
+            },
+          };
+        }
+
+        return { success: true, data: { ok: true } };
+      },
+    );
+
+    server.post(
       "/acp-sessions/permission",
       { preHandler: requireAdmin },
       async (request) => {

@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 
 import type { PrismaDeps } from "../db.js";
 import { normalizeAgentInputs } from "../modules/agentInputs/agentInputsSchema.js";
@@ -75,6 +76,8 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const body = bodySchema.parse(request.body ?? {});
       const envText = normalizeEnvText(body.envText);
       const agentInputs = normalizeAgentInputs(body.agentInputs);
+      const agentInputsForDb =
+        agentInputs === undefined ? undefined : agentInputs === null ? Prisma.DbNull : agentInputs;
 
       const project = await deps.prisma.project.findUnique({ where: { id: projectId } });
       if (!project) {
@@ -84,7 +87,7 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const role = await deps.prisma.roleTemplate.create({
         data: {
           id: uuidv7(),
-          projectId,
+          project: { connect: { id: projectId } },
           key: body.key,
           displayName: body.displayName,
           description: body.description,
@@ -92,9 +95,11 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
           initScript: body.initScript,
           initTimeoutSeconds: body.initTimeoutSeconds,
           workspacePolicy: body.workspacePolicy ?? null,
-          executionProfileId: body.executionProfileId ?? null,
+          ...(body.executionProfileId
+            ? { executionProfile: { connect: { id: body.executionProfileId } } }
+            : {}),
           ...(envText !== undefined ? { envText } : {}),
-          ...(agentInputs !== undefined ? { agentInputs } : {}),
+          ...(agentInputsForDb !== undefined ? { agentInputs: agentInputsForDb as any } : {}),
         },
       });
 
@@ -119,6 +124,8 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
       const body = bodySchema.parse(request.body ?? {});
       const envText = normalizeEnvText(body.envText);
       const agentInputs = normalizeAgentInputs(body.agentInputs);
+      const agentInputsForDb =
+        agentInputs === undefined ? undefined : agentInputs === null ? Prisma.DbNull : agentInputs;
 
       const existing = await deps.prisma.roleTemplate.findFirst({
         where: { id: roleId, projectId },
@@ -135,10 +142,14 @@ export function makeRoleTemplateRoutes(deps: { prisma: PrismaDeps }): FastifyPlu
           promptTemplate: body.promptTemplate,
           initScript: body.initScript,
           initTimeoutSeconds: body.initTimeoutSeconds,
-          workspacePolicy: body.workspacePolicy,
-          executionProfileId: body.executionProfileId,
+          ...(body.workspacePolicy !== undefined ? { workspacePolicy: body.workspacePolicy } : {}),
+          ...(body.executionProfileId !== undefined
+            ? body.executionProfileId === null
+              ? { executionProfile: { disconnect: true } }
+              : { executionProfile: { connect: { id: body.executionProfileId } } }
+            : {}),
           ...(envText !== undefined ? { envText } : {}),
-          ...(agentInputs !== undefined ? { agentInputs } : {}),
+          ...(agentInputsForDb !== undefined ? { agentInputs: agentInputsForDb as any } : {}),
         },
       });
 

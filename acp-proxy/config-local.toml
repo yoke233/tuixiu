@@ -7,7 +7,8 @@ bootstrap_token = "154f78aeed244d329303fddf851d44fd"
 heartbeat_seconds = 30
 mock_mode = false
 
-# 在 sandbox 内启动 ACP agent 的命令（建议镜像内预装 codex-acp，然后直接运行）
+# 在 sandbox 内启动 ACP agent 的命令（不会经过 shell；必须是 argv 数组）
+# 镜像里已全局安装 codex-acp（/usr/local/bin/codex-acp），直接运行即可。
 agent_command = ["codex-acp"]
 
 [sandbox]
@@ -24,6 +25,13 @@ workspaceMode = "mount"
 
 # 宿主机 workspace 根目录（仅 mount 模式需要）
 workspaceHostRoot = "/workspaces"
+
+# bwrap 会把 USER_HOME/HOME（默认 /root）绑定到每个 Run 的独立目录（/workspaces/home-<runId>），
+# 这会遮住容器里挂载的 /root/.codex。为了让 agent 能读到配置，把 config.toml 以只读方式再挂进去。
+[[sandbox.volumes]]
+hostPath = "/root/.codex/config.toml"
+guestPath = "/root/.codex/config.toml"
+readOnly = true
 
 
 [agent]

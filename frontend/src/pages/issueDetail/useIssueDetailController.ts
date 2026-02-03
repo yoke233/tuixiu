@@ -248,6 +248,7 @@ export function useIssueDetailController(opts: {
   }, [selectedRunId]);
 
   const lastEventsSnapshotRunIdRef = useRef<string>("");
+  const runLookupRef = useRef<Map<string, "pending" | "checked">>(new Map());
 
   useEffect(() => {
     if (auth.status === "loading") return;
@@ -348,6 +349,7 @@ export function useIssueDetailController(opts: {
     setSelectedRunId("");
     selectedRunIdRef.current = "";
     lastEventsSnapshotRunIdRef.current = "";
+    runLookupRef.current = new Map();
     setLiveEventIds(new Set());
     setNextAction(null);
     setNextActionError(null);
@@ -412,6 +414,53 @@ export function useIssueDetailController(opts: {
     }
   }, [issueId]);
 
+  const maybeSwitchToRunFromWs = useCallback(
+    (runId: string) => {
+      const id = String(runId ?? "").trim();
+      if (!id) return;
+      const lookup = runLookupRef.current;
+      if (lookup.get(id)) return;
+      lookup.set(id, "pending");
+
+      void (async () => {
+        try {
+          const r = await getRun(id);
+          if (!r || r.issueId !== issueId) {
+            lookup.set(id, "checked");
+            return;
+          }
+
+          setRun(r);
+          setSelectedRunId(id);
+          selectedRunIdRef.current = id;
+          setEvents([]);
+          setLiveEventIds(new Set());
+
+          const shouldLoadEvents =
+            wsStatusRef.current !== "open" || lastEventsSnapshotRunIdRef.current !== id;
+          if (shouldLoadEvents) {
+            const es = await listRunEvents(id);
+            setEvents((prev) => mergeEventsById(prev, [...es].reverse(), 600));
+            lastEventsSnapshotRunIdRef.current = id;
+          }
+
+          const issueFromRun = (r as any)?.issue;
+          if (issueFromRun && typeof issueFromRun === "object") {
+            setIssue(issueFromRun as Issue);
+            outlet?.onIssueUpdated?.(issueFromRun as Issue);
+          } else {
+            void refresh({ silent: true });
+          }
+        } catch {
+          // ignore
+        } finally {
+          lookup.set(id, "checked");
+        }
+      })();
+    },
+    [issueId, outlet, refresh],
+  );
+
   const onWs = useCallback(
     (msg: WsMessage) => {
       if (
@@ -426,9 +475,13 @@ export function useIssueDetailController(opts: {
       }
 
       const activeRunId = selectedRunIdRef.current || currentRunId;
-      if (!activeRunId) return;
-      if (msg.run_id !== activeRunId) return;
+      const msgRunId = typeof msg.run_id === "string" ? msg.run_id : "";
       if (msg.type === "event_added" && msg.event) {
+        if (msgRunId && msgRunId !== activeRunId) {
+          maybeSwitchToRunFromWs(msgRunId);
+          return;
+        }
+        if (!activeRunId || msgRunId !== activeRunId) return;
         setEvents((prev) => {
           if (prev.some((e) => e.id === msg.event!.id)) return prev;
           const next = [...prev, msg.event!];
@@ -468,6 +521,11 @@ export function useIssueDetailController(opts: {
       }
 
       if (msg.type === "artifact_added" && msg.artifact) {
+        if (msgRunId && msgRunId !== activeRunId) {
+          maybeSwitchToRunFromWs(msgRunId);
+          return;
+        }
+        if (!activeRunId || msgRunId !== activeRunId) return;
         setRun((r) => {
           if (!r) return r;
           const artifacts = [...(r.artifacts ?? [])];
@@ -484,7 +542,7 @@ export function useIssueDetailController(opts: {
         return;
       }
     },
-    [currentRunId, issueId, refresh, refreshTasksOnly],
+    [currentRunId, issueId, maybeSwitchToRunFromWs, refresh, refreshTasksOnly],
   );
   const ws = useWsClient(onWs, { token: auth.token });
   useEffect(() => {

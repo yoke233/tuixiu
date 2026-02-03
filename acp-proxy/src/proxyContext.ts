@@ -14,6 +14,9 @@ export type ProxyContext = {
   runs: RunManager;
   send: SendFn;
   log: Logger;
+  // 可选：用于输出 error 级别日志（docker compose logs 更容易定位）。
+  // 未提供时，错误日志会退化为 ctx.log（info）。
+  logError?: Logger;
 };
 
 export const WORKSPACE_GUEST_PATH = "/workspace";

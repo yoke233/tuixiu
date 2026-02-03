@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RunConsole } from "../../../components/RunConsole";
 import { apiUrl } from "../../../api/client";
+import { buildConsoleItems } from "../../../components/runConsole/buildConsoleItems";
+import { parseSandboxInstanceStatusText } from "../../../utils/sandboxStatus";
 import { findLatestSandboxInstanceStatus } from "../../../utils/sandboxStatus";
+import { findLatestAcpTransportStatus } from "../../../utils/acpTransport";
 import type { SessionController } from "../useSessionController";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +19,7 @@ export function SessionConsoleCard(props: { model: SessionController }) {
     issue,
     isAdmin,
     onResolvePermission,
-    onSetMode,
+    onSetConfigOption,
     onDropFiles,
     onPause,
     onSend,
@@ -29,10 +32,9 @@ export function SessionConsoleCard(props: { model: SessionController }) {
     run,
     runId,
     sending,
-    sessionState,
     sessionId,
     setChatText,
-    settingMode,
+    settingConfigOptionId,
     uploadingImages,
   } = props.model;
 
@@ -68,21 +70,51 @@ export function SessionConsoleCard(props: { model: SessionController }) {
   }, [sandboxStatus]);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const modeMenuRef = useRef<HTMLDivElement | null>(null);
+  const configMenuRef = useRef<HTMLDivElement | null>(null);
   const [commandIndex, setCommandIndex] = useState(0);
   const [commandMenuDismissed, setCommandMenuDismissed] = useState(false);
   const [commandMenuForcedOpen, setCommandMenuForcedOpen] = useState(false);
-  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [configMenuOpen, setConfigMenuOpen] = useState(false);
+  const [showStatusEvents, setShowStatusEvents] = useState(false);
+
+  const consoleStatusSummary = useMemo(() => {
+    const items = buildConsoleItems(events, { liveEventIds });
+    const baseFiltered = items.filter((item) => {
+      if (item.role !== "system") return true;
+      // 默认隐藏状态/调试事件（可通过 UI 展开）
+      if (item.isStatus) return false;
+      // available_commands_update 默认不占屏（需要时可以展开状态事件查看）
+      if (item.detailsTitle && item.detailsTitle.startsWith("可用命令")) return false;
+      if (!item.text) return true;
+      return !parseSandboxInstanceStatusText(item.text);
+    });
+
+    return {
+      hiddenStatusCount: items.length - baseFiltered.length,
+    };
+  }, [events, liveEventIds]);
+
+  const transport = useMemo(() => findLatestAcpTransportStatus(events), [events]);
+  const sessionOnline = Boolean(sessionId && transport?.connected);
+  const sessionBadgeTitle = useMemo(() => {
+    if (!transport) return sessionId ? "未收到 transport 事件（状态未知）" : "sessionId 未建立";
+    const at = transport.at ? `at=${transport.at}` : "";
+    const inst = transport.instanceName ? `instance=${transport.instanceName}` : "";
+    const reason = transport.reason ? `reason=${transport.reason}` : "";
+    const code = transport.code === null ? "" : `code=${transport.code}`;
+    const signal = transport.signal ? `signal=${transport.signal}` : "";
+    return [at, inst, reason, code, signal].filter(Boolean).join(" | ");
+  }, [transport, sessionId]);
 
   useEffect(() => {
-    if (!modeMenuOpen) return;
+    if (!configMenuOpen) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!modeMenuRef.current) return;
-      if (!modeMenuRef.current.contains(event.target as Node)) setModeMenuOpen(false);
+      if (!configMenuRef.current) return;
+      if (!configMenuRef.current.contains(event.target as Node)) setConfigMenuOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [modeMenuOpen]);
+  }, [configMenuOpen]);
 
   type ConfigOption = {
     id: string;
@@ -114,38 +146,17 @@ export function SessionConsoleCard(props: { model: SessionController }) {
     return Array.isArray(fromMeta) ? (fromMeta as ConfigOption[]) : [];
   }, [events, run]);
 
-  type ModeOption = {
-    id: string;          // 你 UI 需要的 id
-    name: string;        // 展示名
-    description?: string;
-    value: string;       // 原始 value（read-only/auto/full-access）
-  };
+  const displayConfigOptions = useMemo(() => {
+    // 目前只渲染 select（最常见：mode/model/...）。其余类型先忽略，避免 UI 误导。
+    const selectable = availableConfigOptions.filter((opt) => {
+      const type = typeof opt?.type === "string" ? opt.type : "";
+      if (type && type !== "select") return false;
+      return Array.isArray(opt?.options) && opt.options.length > 0;
+    });
 
-  const availableModes = useMemo((): ModeOption[] => {
-    // 先拿到最新的 configOptions（用我上一条给你的 availableConfigOptions）
-    const modeOpt = availableConfigOptions.find((x) => x?.id === "mode");
-    const options = modeOpt?.options;
-
-    if (!Array.isArray(options)) return [];
-
-    return options
-      .map((o) => {
-        const name = typeof o?.name === "string" ? o.name : "";
-        const value = typeof o?.value === "string" ? o.value : "";
-        const description = typeof o?.description === "string" ? o.description : "";
-        if (!value || !name) return null;
-
-        return {
-          id: value,          // 直接用 value 当 id（最稳）
-          value,
-          name,
-          description: description || undefined,
-        } satisfies ModeOption;
-      })
-      .filter(Boolean) as ModeOption[];
+    // 规范建议按 Agent 优先级展示；通常就是 3 个。
+    return selectable.slice(0, 3);
   }, [availableConfigOptions]);
-
-
 
   const availableCommands = useMemo(() => {
     for (let i = events.length - 1; i >= 0; i -= 1) {
@@ -247,7 +258,14 @@ export function SessionConsoleCard(props: { model: SessionController }) {
         style={{ alignItems: "baseline", flexWrap: "wrap" }}
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 800 }}>Console</div>
+          <div className="row gap" style={{ alignItems: "center" }}>
+            <div style={{ fontWeight: 800 }}>Console</div>
+            <span
+              className={sessionOnline ? "sessionOnlineDot isOnline" : "sessionOnlineDot isOffline"}
+              title={sessionOnline ? `session 在线（可直接访问）${sessionBadgeTitle ? `\n${sessionBadgeTitle}` : ""}` : `session 离线（不可直接访问）${sessionBadgeTitle ? `\n${sessionBadgeTitle}` : ""}`}
+              aria-label={sessionOnline ? "session online" : "session offline"}
+            />
+          </div>
           <div
             className="muted"
             style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
@@ -255,6 +273,21 @@ export function SessionConsoleCard(props: { model: SessionController }) {
             {issue?.title ?? "—"}
           </div>
         </div>
+        {consoleStatusSummary.hiddenStatusCount > 0 ? (
+          <div className="row gap" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowStatusEvents((prev) => !prev)}
+              title={showStatusEvents ? "隐藏状态事件" : "显示状态事件"}
+            >
+              {showStatusEvents
+                ? `隐藏状态（${consoleStatusSummary.hiddenStatusCount}）`
+                : `显示状态（${consoleStatusSummary.hiddenStatusCount}）`}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div
@@ -270,6 +303,7 @@ export function SessionConsoleCard(props: { model: SessionController }) {
         <RunConsole
           events={events}
           liveEventIds={liveEventIds}
+          showStatusEvents={showStatusEvents}
           permission={{
             isAdmin,
             resolvingRequestId: resolvingPermissionId,
@@ -389,23 +423,28 @@ export function SessionConsoleCard(props: { model: SessionController }) {
           </div>
         ) : null}
         <div className="consoleActions">
-          <div style={{ position: "relative" }} ref={modeMenuRef}>
+          <div style={{ position: "relative" }} ref={configMenuRef}>
             <Button
               type="button"
               variant="secondary"
               size="icon"
               className="consoleIconButton"
-              onClick={() => setModeMenuOpen((open) => !open)}
-              disabled={!sessionId  || settingMode}
-              aria-label="设置 mode"
+              onClick={() => setConfigMenuOpen((open) => !open)}
+              disabled={!auth.user || !sessionId || displayConfigOptions.length === 0}
+              aria-label="配置选项"
               title={
-                !sessionId
-                  ? "session 尚未建立" : "设置 mode"
+                !auth.user
+                  ? "登录后可配置"
+                  : !sessionId
+                    ? "session 尚未建立"
+                    : displayConfigOptions.length === 0
+                      ? "暂无可配置选项（等待 Agent 上报 config_option_update）"
+                      : "配置选项"
               }
             >
-              {settingMode ? <span className="iconSpinner" aria-hidden="true" /> : "mode"}
+              {settingConfigOptionId ? <span className="iconSpinner" aria-hidden="true" /> : "⚙"}
             </Button>
-            {modeMenuOpen ? (
+            {configMenuOpen ? (
               <div
                 style={{
                   position: "absolute",
@@ -419,40 +458,100 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                   boxShadow: "var(--shadow-soft)",
                   zIndex: 30,
                   display: "grid",
-                  gap: 8,
+                  gap: 10,
                 }}
               >
-                <div style={{ fontWeight: 700 }}>设置 mode</div>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {sessionState?.currentModeId
-                    ? `当前：${sessionState.currentModeId}`
-                    : "当前：-"}
-                </div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  {availableModes.map((mode) => {
-                    const active = sessionState?.currentModeId === mode.id;
-                    return (
-                      <Button
-                        key={mode.id}
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          void onSetMode(mode.id);
-                          setModeMenuOpen(false);
-                        }}
-                        disabled={!sessionId || !isAdmin || settingMode}
-                        className={`h-auto w-full items-start justify-start py-2 text-left ${active ? "border-primary" : ""}`}
-                      >
-                        <div style={{ display: "grid", gap: 2 }}>
-                          <div style={{ fontWeight: 700 }}>{mode.name}</div>
+                <div style={{ fontWeight: 700 }}>配置</div>
+
+                {displayConfigOptions.map((opt) => {
+                  const optId = typeof opt.id === "string" ? opt.id : "";
+                  const name =
+                    typeof opt.name === "string" && opt.name.trim() ? opt.name.trim() : optId;
+                  const currentValueStr =
+                    opt.currentValue === undefined ? "-" : JSON.stringify(opt.currentValue);
+                  const options = Array.isArray(opt.options) ? opt.options : [];
+
+                  return (
+                    <div
+                      key={optId || name}
+                      style={{
+                        border: "1px solid var(--card-border)",
+                        borderRadius: 10,
+                        padding: 10,
+                        display: "grid",
+                        gap: 8,
+                      }}
+                    >
+                      <div className="row spaceBetween" style={{ alignItems: "baseline", gap: 10 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {name}
+                          </div>
                           <div className="muted" style={{ fontSize: 12 }}>
-                            {mode.description}
+                            {optId ? `id=${optId} · ` : ""}
+                            current={currentValueStr}
                           </div>
                         </div>
-                      </Button>
-                    );
-                  })}
-                </div>
+                        {settingConfigOptionId === optId ? (
+                          <span className="iconSpinner" aria-hidden="true" />
+                        ) : null}
+                      </div>
+
+                      {typeof opt.description === "string" && opt.description.trim() ? (
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {opt.description.trim()}
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {options.map((o, index) => {
+                          const value = (o as any)?.value;
+                          const label =
+                            typeof (o as any)?.name === "string" && (o as any).name.trim()
+                              ? String((o as any).name).trim()
+                              : value === undefined
+                                ? `option #${index + 1}`
+                                : String(value);
+
+                          const isActive =
+                            typeof value === "string" && typeof opt.currentValue === "string"
+                              ? value === opt.currentValue
+                              : typeof value === "number" && typeof opt.currentValue === "number"
+                                ? value === opt.currentValue
+                                : typeof value === "boolean" && typeof opt.currentValue === "boolean"
+                                  ? value === opt.currentValue
+                                  : JSON.stringify(value) === JSON.stringify(opt.currentValue);
+
+                          const description =
+                            typeof (o as any)?.description === "string" ? (o as any).description.trim() : "";
+
+                          return (
+                            <Button
+                              key={`${optId}:${label}:${index}`}
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                void onSetConfigOption(optId, value);
+                                setConfigMenuOpen(false);
+                              }}
+                              disabled={!sessionId || !optId || settingConfigOptionId === optId}
+                              className={`h-auto w-full items-start justify-start py-2 text-left ${isActive ? "border-primary" : ""}`}
+                            >
+                              <div style={{ display: "grid", gap: 2 }}>
+                                <div style={{ fontWeight: 700 }}>{label}</div>
+                                {description ? (
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    {description}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : null}
           </div>

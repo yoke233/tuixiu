@@ -778,6 +778,14 @@ function isAuthRequiredError(err: unknown): boolean {
   return (err as any).code === -32000;
 }
 
+function authTimeoutMsFromEnv(): number {
+  const raw = Number(process.env.ACP_PROXY_AUTH_TIMEOUT_MS ?? "30000");
+  if (Number.isFinite(raw) && raw > 0) {
+    return Math.min(300_000, Math.max(5_000, Math.floor(raw)));
+  }
+  return 30_000;
+}
+
 export async function withAuthRetry<T>(run: RunRuntime, fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
@@ -787,7 +795,7 @@ export async function withAuthRetry<T>(run: RunRuntime, fn: () => Promise<T>): P
     const initResult = run.initResult as any;
     const methodId = initResult?.authMethods?.[0]?.id ?? "";
     if (!methodId) throw err;
-    await run.agent.sendRpc("authenticate", { methodId });
+    await run.agent.sendRpc("authenticate", { methodId }, { timeoutMs: authTimeoutMsFromEnv() });
     return await fn();
   }
 }
@@ -906,6 +914,30 @@ export async function ensureSessionForPrompt(
     const createdSessionId = String((created as any)?.sessionId ?? "").trim();
     if (!createdSessionId) throw new Error("session/new 未返回 sessionId");
     run.seenSessionIds.add(createdSessionId);
+
+    // session/new 的返回里通常包含 configOptions，但不一定会立刻触发 session/update 通知。
+    // 为了让后端/前端能在“第一条对话输出之前”就知道可配置项，这里把它作为一条合成的 config_option_update 上报。
+    sendUpdate(ctx, run.runId, { type: "session_created", session_id: createdSessionId });
+    const configOptions = Array.isArray((created as any)?.configOptions)
+      ? ((created as any).configOptions as any[])
+      : null;
+    if (configOptions) {
+      try {
+        ctx.send({
+          type: "prompt_update",
+          run_id: run.runId,
+          prompt_id: run.activePromptId ?? null,
+          session_id: createdSessionId,
+          update: { sessionUpdate: "config_option_update", configOptions },
+        });
+      } catch (err) {
+        ctx.log("failed to send synthetic config_option_update", {
+          runId: run.runId,
+          sessionId: createdSessionId,
+          err: String(err),
+        });
+      }
+    }
 
     try {
       await ctx.platform.onSessionCreated?.({

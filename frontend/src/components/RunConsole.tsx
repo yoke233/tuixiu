@@ -100,6 +100,7 @@ export function RunConsole(props: {
   events: Event[];
   liveEventIds?: Set<string>;
   permission?: PermissionUiProps;
+  showStatusEvents?: boolean;
 }) {
   const defaultVisibleCount = 160;
   const loadMoreStep = 200;
@@ -107,14 +108,19 @@ export function RunConsole(props: {
   const items = useMemo(() => {
     return buildConsoleItems(props.events, { liveEventIds: props.liveEventIds });
   }, [props.events, props.liveEventIds]);
-  const filteredItems = useMemo(() => {
+  const baseFilteredItems = useMemo(() => {
     return items.filter((item) => {
       if (item.role !== "system") return true;
+      // 状态/调试类事件默认隐藏（可通过 UI 开关查看）。规则定义见 eventToConsoleItem.ts
+      if (item.isStatus) return false;
       if (item.detailsTitle && item.detailsTitle.startsWith("可用命令")) return false;
       if (!item.text) return true;
       return !parseSandboxInstanceStatusText(item.text);
     });
   }, [items]);
+  const showStatusEvents = props.showStatusEvents === true;
+  const filteredItems = showStatusEvents ? items : baseFilteredItems;
+  const hasHiddenOnly = !showStatusEvents && items.length > 0 && baseFilteredItems.length === 0;
 
   const [visibleCount, setVisibleCount] = useState(defaultVisibleCount);
   const [showAll, setShowAll] = useState(false);
@@ -178,7 +184,18 @@ export function RunConsole(props: {
     }
   }, [visibleItems]);
 
-  if (!filteredItems.length) return <div className="muted">暂无输出（无日志）</div>;
+  if (!filteredItems.length) {
+    return (
+      <div className="muted">
+        <div>暂无输出（无日志）</div>
+        {hasHiddenOnly ? (
+          <div className="row gap" style={{ marginTop: 8, alignItems: "center" }}>
+            <span>当前仅有状态事件（默认隐藏）</span>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div ref={ref} className="console" role="log" aria-label="运行输出">

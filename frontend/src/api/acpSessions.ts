@@ -45,6 +45,21 @@ export async function setAcpSessionModel(runId: string, sessionId: string, model
   return data;
 }
 
+export async function setAcpSessionConfigOption(
+  runId: string,
+  sessionId: string,
+  configId: string,
+  value: unknown,
+): Promise<{ ok: true }> {
+  const data = await apiPost<{ ok: true }>(`/admin/acp-sessions/set-config-option`, {
+    runId,
+    sessionId,
+    configId,
+    value,
+  });
+  return data;
+}
+
 export async function decideAcpSessionPermission(input: {
   runId: string;
   sessionId: string;

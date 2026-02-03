@@ -26,6 +26,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
   ca-certificates \
   git \
+  ripgrep \
   bubblewrap \
   uidmap \
   && rm -rf /var/lib/apt/lists/*

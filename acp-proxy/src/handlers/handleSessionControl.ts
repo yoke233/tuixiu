@@ -181,9 +181,32 @@ export async function handleSessionSetConfigOption(ctx: ProxyContext, msg: any):
     }
 
     await ensureInitialized(ctx, run);
-    await withAuthRetry(run, () =>
+    const res = await withAuthRetry(run, () =>
       run.agent!.sendRpc("session/set_config_option", { sessionId, configId, value }),
     );
+
+    // 有些 Agent 只在 RPC 响应里返回 configOptions，而不发送 session/update 通知。
+    // 为了让后端/前端及时更新可配置项，这里把返回值合成为一条 config_option_update 上报。
+    const configOptions = Array.isArray((res as any)?.configOptions)
+      ? ((res as any).configOptions as any[])
+      : null;
+    if (configOptions) {
+      try {
+        ctx.send({
+          type: "prompt_update",
+          run_id: runId,
+          prompt_id: run.activePromptId ?? null,
+          session_id: sessionId,
+          update: { sessionUpdate: "config_option_update", configOptions },
+        });
+      } catch (err) {
+        ctx.log("failed to send synthetic config_option_update (set_config_option)", {
+          runId,
+          sessionId,
+          err: String(err),
+        });
+      }
+    }
     reply({ ok: true });
   } catch (err) {
     reply({ ok: false, error: String(err) });

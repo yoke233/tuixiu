@@ -40,7 +40,7 @@ type RoleTemplateManageMode = "create" | "edit";
 function RoleTemplateManageForm(props: {
   mode: RoleTemplateManageMode;
   roleKey: string;
-  roleKeyInputRef?: React.RefObject<HTMLInputElement>;
+  roleKeyInputRef?: React.RefObject<HTMLInputElement | null>;
   onRoleKeyChange?: (next: string) => void;
   roleKeyReadOnly?: boolean;
   displayName: string;
@@ -253,9 +253,6 @@ function RoleSkillsCard(props: {
   const {
     title,
     subtitle,
-    enabled,
-    onEnable,
-    onDisable,
     loading,
     loadError,
     saving,
@@ -345,7 +342,7 @@ function RoleSkillsCard(props: {
                 type="button"
                 size="sm"
                 onClick={onSave}
-                disabled={saving === true || loading === true}
+                disabled={Boolean(saving) || Boolean(loading)}
               >
                 {saving ? "保存中…" : "保存 Skills"}
               </Button>
@@ -515,7 +512,7 @@ function RoleAgentFilesCard(props: {
   error?: string | null;
   errorDetails?: unknown | null;
   setError: (msg: string | null) => void;
-  agentInputsInlineFileRef: React.RefObject<HTMLInputElement>;
+  agentInputsInlineFileRef: React.RefObject<HTMLInputElement | null>;
   makeAgentInputId: () => string;
   normalizeItemForApply: (apply: AgentInputsApply, item: AgentInputItem) => AgentInputItem;
 }) {
@@ -523,9 +520,6 @@ function RoleAgentFilesCard(props: {
     title,
     subtitle,
     statusHint,
-    enabled,
-    onEnable,
-    onDisable,
     manifest,
     setManifest,
     selectedId,
@@ -1798,7 +1792,8 @@ export function RolesSection(props: Props) {
   const setCreateAgentFilesManifest = useCallback(
     (updater: (prev: AgentInputsManifestV1) => AgentInputsManifestV1) => {
       setRoleCreateAgentInputs((prev) => {
-        const base = prev && typeof prev === "object" ? prev : ({ version: 1, items: [] } as const);
+        const base =
+          prev && typeof prev === "object" ? prev : ({ version: 1, items: [] } as AgentInputsManifestV1);
         return updater(base);
       });
     },

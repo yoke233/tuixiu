@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import {
   decideAcpSessionPermission,
+  setAcpSessionConfigOption,
   setAcpSessionMode,
   setAcpSessionModel,
 } from "../../api/acpSessions";
@@ -63,6 +64,7 @@ export function useSessionController() {
   const errorTimerRef = useRef<number | null>(null);
   const wsStatusRef = useRef<"connecting" | "open" | "closed">("connecting");
   const lastEventsSnapshotRunIdRef = useRef<string>("");
+  const pendingClientCommandRequestIdsRef = useRef<Set<string>>(new Set());
   const [chatText, setChatText] = useState("");
   const [pendingImages, setPendingImages] = useState<
     Array<{ id: string; uri: string; mimeType: string; name?: string; size: number }>
@@ -73,6 +75,7 @@ export function useSessionController() {
   const [pausing, setPausing] = useState(false);
   const [settingMode, setSettingMode] = useState(false);
   const [settingModel, setSettingModel] = useState(false);
+  const [settingConfigOptionId, setSettingConfigOptionId] = useState<string | null>(null);
   const [resolvingPermissionId, setResolvingPermissionId] = useState<string | null>(null);
   const [resolvedPermissionIds, setResolvedPermissionIds] = useState<Set<string>>(new Set());
 
@@ -198,11 +201,44 @@ export function useSessionController() {
     setLiveEventIds(new Set());
     setResolvedPermissionIds(new Set());
     lastEventsSnapshotRunIdRef.current = "";
+    pendingClientCommandRequestIdsRef.current = new Set();
   }, [runId]);
 
   const onWs = useCallback(
     (msg: WsMessage) => {
       if (!runId) return;
+
+      if (msg.type === "client_command_result") {
+        const requestId =
+          typeof msg.request_id === "string" && msg.request_id.trim() ? msg.request_id.trim() : "";
+        const runIdFromMsg =
+          typeof msg.run_id === "string" && msg.run_id.trim() ? msg.run_id.trim() : "";
+
+        const matchesRun = runIdFromMsg ? runIdFromMsg === runId : false;
+        const matchesRequest = requestId
+          ? pendingClientCommandRequestIdsRef.current.has(requestId)
+          : false;
+        if (!matchesRun && !matchesRequest) return;
+
+        if (requestId) pendingClientCommandRequestIdsRef.current.delete(requestId);
+
+        const ok = msg.ok === true;
+        if (!ok) {
+          const err = (msg as any).error;
+          const message =
+            err && typeof err === "object" && typeof err.message === "string" && err.message.trim()
+              ? err.message.trim()
+              : "发送消息失败";
+          const details =
+            err && typeof err === "object" && typeof err.details === "string" && err.details.trim()
+              ? err.details.trim()
+              : "";
+          const hint = details ? `${message}：${details.slice(0, 160)}` : message;
+          setTransientError(hint);
+        }
+        return;
+      }
+
       if (msg.run_id !== runId) return;
 
       if (msg.type === "event_added" && msg.event) {
@@ -327,6 +363,29 @@ export function useSessionController() {
     [refresh, requireLogin, runId, sessionId, setTransientError],
   );
 
+  const onSetConfigOption = useCallback(
+    async (configId: string, value: unknown) => {
+      if (!runId) return;
+      if (!sessionId) return;
+      if (!requireLogin()) return;
+
+      const id = configId.trim();
+      if (!id) return;
+
+      setTransientError(null);
+      setSettingConfigOptionId(id);
+      try {
+        await setAcpSessionConfigOption(runId, sessionId, id, value);
+        void refresh({ silent: true });
+      } catch (err) {
+        setTransientError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSettingConfigOptionId(null);
+      }
+    },
+    [isAdmin, refresh, requireLogin, runId, sessionId, setTransientError],
+  );
+
   const onResolvePermission = useCallback(
     async (req: PermissionRequestItem, decision: { outcome: "selected" | "cancelled"; optionId?: string }) => {
       if (!runId) return;
@@ -388,14 +447,17 @@ export function useSessionController() {
 
       setSending(true);
       try {
+        pendingClientCommandRequestIdsRef.current.add(requestId);
         const ok = ws.sendJson({ type: "prompt_run", request_id: requestId, run_id: runId, prompt });
         if (!ok) {
+          pendingClientCommandRequestIdsRef.current.delete(requestId);
           setTransientError("WebSocket 未连接（或已断开），无法发送消息");
           return;
         }
         setChatText("");
         setPendingImages([]);
       } catch (err) {
+        pendingClientCommandRequestIdsRef.current.delete(requestId);
         setTransientError(err instanceof Error ? err.message : String(err));
       } finally {
         setSending(false);
@@ -493,12 +555,14 @@ export function useSessionController() {
     pausing,
     settingMode,
     settingModel,
+    settingConfigOptionId,
 
     // actions
     refresh,
     onPause,
     onSetMode,
     onSetModel,
+    onSetConfigOption,
     onResolvePermission,
     onSend,
     onDropFiles,

@@ -5,10 +5,10 @@ RUN sed -i 's@deb.debian.org@mirrors.aliyun.com@g' /etc/apt/sources.list.d/debia
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-    bash \
-    ca-certificates \
-    git \
-    openssh-client \
+  bash \
+  ca-certificates \
+  git \
+  openssh-client \
   && rm -rf /var/lib/apt/lists/*
 
 RUN npm i -g @openai/codex@0.92.0 @zed-industries/codex-acp@0.9.0 --cache /tmp/npm-cache \
@@ -19,4 +19,3 @@ RUN npm i -g @openai/codex@0.92.0 @zed-industries/codex-acp@0.9.0 --cache /tmp/n
 WORKDIR /workspace
 
 CMD ["codex-acp"]
-

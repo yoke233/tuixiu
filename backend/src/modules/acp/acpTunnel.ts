@@ -662,6 +662,48 @@ export function createAcpTunnel(deps: {
     });
   }
 
+  async function setSessionConfigOption(opts: {
+    proxyId: string;
+    runId: string;
+    cwd: string;
+    sessionId: string;
+    configId: string;
+    value: unknown;
+  }) {
+    const cwd = "/workspace";
+    const state = await ensureOpen({ proxyId: opts.proxyId, runId: opts.runId, cwd });
+
+    const controlId = uuidv7();
+    const wait = new Promise<void>((resolve, reject) => {
+      state.controlDeferredById.set(controlId, { resolve, reject });
+      const timer = setTimeout(() => {
+        if (!state.controlDeferredById.has(controlId)) return;
+        state.controlDeferredById.delete(controlId);
+        reject(new Error("session_set_config_option timeout"));
+      }, 60_000);
+      (timer as any).unref?.();
+    });
+
+    await deps.sendToAgent(opts.proxyId, {
+      type: "session_set_config_option",
+      run_id: opts.runId,
+      control_id: controlId,
+      session_id: opts.sessionId,
+      config_id: opts.configId,
+      value: opts.value,
+      instance_name: state.instanceName ?? deriveSandboxInstanceName(opts.runId),
+      keepalive_ttl_seconds:
+        state.keepaliveTtlSeconds ?? DEFAULT_SANDBOX_KEEPALIVE_TTL_SECONDS,
+    });
+    await wait;
+
+    await updateSessionState(opts.runId, {
+      sessionId: opts.sessionId,
+      updatedAt: new Date().toISOString(),
+      note: `config_option_set:${opts.configId}`,
+    });
+  }
+
   function handleAcpOpened(proxyId: string, payload: any) {
     const runId = String(payload?.run_id ?? "").trim();
     if (!runId) return;
@@ -677,8 +719,6 @@ export function createAcpTunnel(deps: {
   function handlePromptUpdate(proxyId: string, payload: any) {
     const runId = String(payload?.run_id ?? "").trim();
     if (!runId) return;
-    const state = runStates.get(runId);
-    if (!state || state.proxyId !== proxyId) return;
 
     const sessionId =
       typeof payload?.session_id === "string" && payload.session_id.trim()
@@ -688,6 +728,37 @@ export function createAcpTunnel(deps: {
     if (!sessionId || !isRecord(update)) return;
 
     void enqueueRunTask(runId, async () => {
+      const state = runStates.get(runId);
+      if (state) {
+        if (state.proxyId !== proxyId) return;
+      } else {
+        // 兼容：后端重启/断线后 runStates 会丢失，但代理仍可能继续推送 session/update。
+        // 这时用 DB 校验 run 归属后继续持久化（否则 config_option_update 等关键事件会“凭空消失”）。
+        const run = await deps.prisma.run
+          .findUnique({
+            where: { id: runId },
+            select: { agent: { select: { proxyId: true } } },
+          } as any)
+          .catch(() => null);
+        const expectedProxyId =
+          run && (run as any).agent && typeof (run as any).agent.proxyId === "string"
+            ? String((run as any).agent.proxyId)
+            : "";
+        if (!expectedProxyId || expectedProxyId !== proxyId) return;
+
+        const sessionUpdate =
+          typeof (update as any).sessionUpdate === "string"
+            ? String((update as any).sessionUpdate)
+            : "";
+        if (sessionUpdate === "config_option_update" && deps.log) {
+          deps.log("acp prompt_update persisted without runState (post-restart)", {
+            runId,
+            proxyId,
+            sessionId,
+          });
+        }
+      }
+
       await persistSessionUpdate(runId, sessionId, update);
 
       const sessionUpdate =
@@ -804,6 +875,7 @@ export function createAcpTunnel(deps: {
     cancelSession,
     setSessionMode,
     setSessionModel,
+    setSessionConfigOption,
     __testing: {
       runStates,
       chunkBuffersByRun,

@@ -7,6 +7,7 @@ import {
   ensureSessionForPrompt,
   getPromptCapabilities,
   runInitScript,
+  sendUpdate,
   shouldRecreateSession,
   startAgent,
   withAuthRetry,
@@ -27,7 +28,7 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
         ...payload,
       });
     } catch (err) {
-      ctx.log("failed to send prompt_result", { runId, err: String(err) });
+      (ctx.logError ?? ctx.log)("failed to send prompt_result", { runId, err: String(err) });
     }
   };
 
@@ -102,25 +103,20 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
           );
         } catch (err) {
           if (shouldRecreateSession(err)) {
-            if (!run.agent) throw err;
             recreatedFrom = usedSessionId;
-            const createdRes = await withAuthRetry(run, () =>
-              run.agent!.sendRpc<any>("session/new", { cwd: cwdForAgent, mcpServers: [] }),
-            );
-            const newSessionId = String((createdRes as any)?.sessionId ?? "").trim();
-            if (!newSessionId) throw err;
-            run.seenSessionIds.add(newSessionId);
-            usedSessionId = newSessionId;
-            created = true;
-
-            const replayCaps = getPromptCapabilities(run.initResult);
-            const replay = composePromptWithContext(context, prompt, replayCaps);
-            assertPromptBlocksSupported(replay, replayCaps);
-
+            const replayEnsured = await ensureSessionForPrompt(ctx, run, {
+              cwd: cwdForAgent,
+              sessionId: null,
+              context,
+              prompt,
+            });
+            usedSessionId = replayEnsured.sessionId;
+            created = replayEnsured.created;
+            assertPromptBlocksSupported(replayEnsured.prompt, caps);
             res = await withAuthRetry(run, () =>
               run.agent!.sendRpc<any>(
                 "session/prompt",
-                { sessionId: usedSessionId, prompt: replay },
+                { sessionId: usedSessionId, prompt: replayEnsured.prompt },
                 { timeoutMs: promptTimeoutMs },
               ),
             );
@@ -143,6 +139,12 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
       }
     });
   } catch (err) {
+    const errText =
+      err instanceof Error ? err.stack ?? err.message : String(err);
+    (ctx.logError ?? ctx.log)("prompt_send failed", { runId, err: errText });
+    // 把 proxy 层的错误显式写入事件流，避免 UI “卡住但无输出”。
+    // 典型场景：bwrap/agent 启动失败、RPC 超时（如 authenticate）、或 session/new/prompt 抛错。
+    sendUpdate(ctx, runId, { type: "text", text: `[proxy:error] ${err instanceof Error ? err.message : String(err)}` });
     reply({ ok: false, error: String(err) });
   }
 }

@@ -49,6 +49,10 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     if (extra) logger.info(extra, msg);
     else logger.info(msg);
   };
+  const logError: LoggerFn = (msg, extra) => {
+    if (extra) logger.error(extra, msg);
+    else logger.error(msg);
+  };
 
   const sandbox = createProxySandbox(cfg.sandbox, log);
   const runs = new RunManager();
@@ -117,6 +121,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
     platform: createPlatform(runtimeCfg),
     send: client.send.bind(client),
     log,
+    logError,
   };
 
   try {

@@ -25,6 +25,9 @@ export type ConsoleItem = {
   kind: ConsoleKind;
   text: string;
   timestamp: string;
+  // 当为 true 时，表示该条目属于“状态/调试类信息”，默认不展示（避免 Console 太吵），
+  // 是否展示由上层页面的 `showStatusEvents` 开关控制。
+  isStatus?: boolean;
   live?: boolean;
   toolCallId?: string;
   toolCallInfo?: ToolCallInfo;

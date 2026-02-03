@@ -28,6 +28,7 @@ describe("runs/runRuntime", () => {
       cfg: { sandbox: { terminalEnabled: false } },
       sandbox: { provider: "boxlite_oci", runtime: null, agentMode: "exec" },
       platform: new NativePlatform("win32"),
+      send: vi.fn(),
       log: vi.fn(),
     } as any;
 
@@ -54,6 +55,15 @@ describe("runs/runRuntime", () => {
       "session/set_config_option",
       expect.objectContaining({ sessionId: "s1", configId: "mode", value: "auto" }),
     );
+
+    // session/new 返回的 configOptions 应该被合成为一条 prompt_update 上报给后端。
+    expect(ctx.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "prompt_update",
+        run_id: "r1",
+        session_id: "s1",
+        update: expect.objectContaining({ sessionUpdate: "config_option_update" }),
+      }),
+    );
   });
 });
-
