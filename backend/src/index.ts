@@ -30,6 +30,7 @@ import { makePmRoutes } from "./routes/pm.js";
 import { makePolicyRoutes } from "./routes/policies.js";
 import { makeWorkflowTemplateRoutes } from "./routes/workflowTemplates.js";
 import { makeProjectRoutes } from "./routes/projects.js";
+import { makeProjectScmConfigRoutes } from "./routes/projectScmConfig.js";
 import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
 import { makeRunRoutes } from "./routes/runs.js";
 import { makeSandboxRoutes } from "./routes/sandboxes.js";
@@ -312,6 +313,7 @@ server.register(
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeGitCredentialRoutes({ prisma, auth }), { prefix: "/api/projects" });
+server.register(makeProjectScmConfigRoutes({ prisma, auth }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeExecutionProfileRoutes({ prisma }), { prefix: "/api" });
 server.register(makePolicyRoutes({ prisma }), { prefix: "/api" });
