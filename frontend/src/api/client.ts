@@ -4,7 +4,12 @@ let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshOnce(headers: Headers): Promise<boolean> {
   if (!refreshPromise) {
-    refreshPromise = fetch(apiUrl("/auth/refresh"), { method: "POST", credentials: "include", headers })
+    refreshPromise = fetch(apiUrl("/auth/refresh"), {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify({}),
+    })
       .then((res) => res.ok)
       .catch(() => false)
       .finally(() => {

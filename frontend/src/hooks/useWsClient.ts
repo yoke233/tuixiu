@@ -86,8 +86,13 @@ export function useWsClient(onMessage: (msg: WsMessage) => void) {
         if (socketRef.current === ws) socketRef.current = null;
         setStatus("closed");
         if (evt.code === 1008) {
-          void fetch(apiUrl("/auth/refresh"), { method: "POST", credentials: "include" })
-            .catch(() => {})
+          void fetch(apiUrl("/auth/refresh"), {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({}),
+          })
+            .catch(() => { })
             .finally(() => {
               scheduleReconnect();
             });

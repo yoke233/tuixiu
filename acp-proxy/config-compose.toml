@@ -39,8 +39,8 @@ workingDir = "/workspace"
 
 # workspaceProvider: "host" | "guest"
 workspaceProvider = "host"
-# workspaceMode: "worktree" | "clone"（仅 mount 模式）
-workspaceMode = "worktree"
+# workspaceMode: "mount" | "git_clone"
+workspaceMode = "mount"
 
 
 # 宿主机 workspace 根目录（仅 mount 模式需要）
