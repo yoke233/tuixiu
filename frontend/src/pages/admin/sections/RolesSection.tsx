@@ -1392,7 +1392,6 @@ export function RolesSection(props: Props) {
       roleCreateAgentInputs,
       roleCreateSkillsDraft,
       rolePromptTemplate,
-      putRoleSkills,
       setError,
     ],
   );
@@ -1500,7 +1499,7 @@ export function RolesSection(props: Props) {
     } finally {
       setRoleSkillsSearchLoading(false);
     }
-  }, [requireAdmin, roleSkillsSearchQ, searchSkills, setError]);
+  }, [requireAdmin, roleSkillsSearchQ, setError]);
 
   const onCreateRoleSkillsSearch = useCallback(async () => {
     setCreateSkillsSearchError(null);
@@ -1518,7 +1517,7 @@ export function RolesSection(props: Props) {
     } finally {
       setCreateSkillsSearchLoading(false);
     }
-  }, [createSkillsSearchQ, requireAdmin, searchSkills, setError]);
+  }, [createSkillsSearchQ, requireAdmin, setError]);
 
   const addRoleSkill = useCallback((it: SkillSearchItem) => {
     setRoleSkills((prev) => {
@@ -1581,7 +1580,7 @@ export function RolesSection(props: Props) {
         setRoleSkillVersionsLoadingById((prev) => ({ ...prev, [skillId]: false }));
       }
     },
-    [listSkillVersions, requireAdmin, roleSkillVersionsById, setError],
+    [requireAdmin, roleSkillVersionsById, setError],
   );
 
   const ensureCreateRoleSkillVersions = useCallback(
@@ -1613,7 +1612,7 @@ export function RolesSection(props: Props) {
         setCreateSkillVersionsLoadingById((prev) => ({ ...prev, [skillId]: false }));
       }
     },
-    [createSkillVersionsById, listSkillVersions, requireAdmin, setError],
+    [createSkillVersionsById, requireAdmin, setError],
   );
 
   useEffect(() => {
@@ -1682,7 +1681,6 @@ export function RolesSection(props: Props) {
   }, [
     effectiveProjectId,
     ensureRoleSkillVersions,
-    putRoleSkills,
     requireAdmin,
     roleEditingId,
     roleSkills,

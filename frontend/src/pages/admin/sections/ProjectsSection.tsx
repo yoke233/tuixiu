@@ -592,7 +592,7 @@ function ProjectIntegrationsPanel(props: {
     setScmGitlabWebhookSecret("");
     setScmGitlabWebhookSecretClear(false);
     setScmGithubPollingEnabled(Boolean(scmConfig.githubPollingEnabled));
-  }, [scmConfig?.projectId, scmConfig?.gitlabProjectId, scmConfig?.githubPollingEnabled]);
+  }, [scmConfig]);
 
   const [savingScmConfig, setSavingScmConfig] = useState(false);
   const onSaveScmConfig = useCallback(async () => {
