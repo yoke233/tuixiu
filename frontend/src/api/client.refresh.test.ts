@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { apiGet } from "./client";
+import { apiGet } from "@/api/client";
 
 function ok(body: any, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });

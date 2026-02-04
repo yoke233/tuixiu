@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./client";
+import { apiGet, apiPost } from "@/api/client";
 
 export type SkillLatestVersion = {
   versionId: string;

@@ -6,15 +6,15 @@ import {
   setAcpSessionConfigOption,
   setAcpSessionMode,
   setAcpSessionModel,
-} from "../../api/acpSessions";
-import { getIssue } from "../../api/issues";
-import { getRun, listRunEvents, pauseRun, uploadRunAttachment } from "../../api/runs";
-import { useAuth } from "../../auth/AuthContext";
-import { useWsClient, type WsMessage } from "../../hooks/useWsClient";
-import type { Event, Issue, Run } from "../../types";
-import { readFileAsBase64 } from "../../utils/files";
+} from "@/api/acpSessions";
+import { getIssue } from "@/api/issues";
+import { getRun, listRunEvents, pauseRun, uploadRunAttachment } from "@/api/runs";
+import { useAuth } from "@/auth/AuthContext";
+import { useWsClient, type WsMessage } from "@/hooks/useWsClient";
+import type { Event, Issue, Run } from "@/types";
+import { readFileAsBase64 } from "@/utils/files";
 
-import { readEffectiveSessionState } from "./readSessionState";
+import { readEffectiveSessionState } from "@/pages/session/readSessionState";
 
 export type SessionController = ReturnType<typeof useSessionController>;
 

@@ -1,4 +1,4 @@
-import type { ApiEnvelope } from "../types";
+import type { ApiEnvelope } from "@/types";
 
 let refreshPromise: Promise<boolean> | null = null;
 

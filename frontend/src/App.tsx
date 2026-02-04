@@ -1,16 +1,16 @@
 import type { ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-import "./App.css";
-import { AuthProvider } from "./auth/AuthProvider";
-import { useAuth } from "./auth/AuthContext";
-import { ThemeProvider } from "./theme";
-import { AdminPage } from "./pages/AdminPage";
-import { IssueDetailPage } from "./pages/IssueDetailPage";
-import { IssueListPage } from "./pages/IssueListPage";
-import { LoginPage } from "./pages/LoginPage";
-import { BootstrapPage } from "./pages/BootstrapPage";
-import { SessionPage } from "./pages/SessionPage";
+import "@/App.css";
+import { AuthProvider } from "@/auth/AuthProvider";
+import { useAuth } from "@/auth/AuthContext";
+import { ThemeProvider } from "@/theme";
+import { AdminPage } from "@/pages/AdminPage";
+import { IssueDetailPage } from "@/pages/IssueDetailPage";
+import { IssueListPage } from "@/pages/IssueListPage";
+import { LoginPage } from "@/pages/LoginPage";
+import { BootstrapPage } from "@/pages/BootstrapPage";
+import { SessionPage } from "@/pages/SessionPage";
 
 function RequireAdmin(props: { children: ReactElement }) {
   const auth = useAuth();

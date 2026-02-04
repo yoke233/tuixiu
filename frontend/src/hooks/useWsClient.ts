@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { apiUrl } from "../api/client";
-import type { Artifact, Event } from "../types";
+import { apiUrl } from "@/api/client";
+import type { Artifact, Event } from "@/types";
 
 export type WsMessage = {
   type: string;

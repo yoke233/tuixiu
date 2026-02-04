@@ -1,5 +1,5 @@
-import { apiGet, apiPut } from "./client";
-import type { ProjectScmConfig } from "../types";
+import { apiGet, apiPut } from "@/api/client";
+import type { ProjectScmConfig } from "@/types";
 
 export async function getProjectScmConfig(projectId: string): Promise<ProjectScmConfig> {
   const data = await apiGet<{ scmConfig: ProjectScmConfig }>(`/projects/${projectId}/scm-config`);

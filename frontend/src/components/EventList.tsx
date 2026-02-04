@@ -1,4 +1,4 @@
-import type { Event } from "../types";
+import type { Event } from "@/types";
 
 export function EventList(props: { events: Event[] }) {
   if (!props.events.length) return <div className="muted">暂无事件</div>;

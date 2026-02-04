@@ -7,17 +7,17 @@ import {
   listAcpSessions,
   setAcpSessionMode,
   startAcpSession,
-} from "../../../api/acpSessions";
-import { listAgents } from "../../../api/agents";
+} from "@/api/acpSessions";
+import { listAgents } from "@/api/agents";
 import {
   pruneSandboxOrphans,
   controlSandboxForRun,
   removeSandboxWorkspace,
   reportSandboxInventory,
   listSandboxes,
-} from "../../../api/sandboxes";
-import { StatusBadge } from "../../../components/StatusBadge";
-import type { AcpSessionSummary, Agent, SandboxSummary } from "../../../types";
+} from "@/api/sandboxes";
+import { StatusBadge } from "@/components/StatusBadge";
+import type { AcpSessionSummary, Agent, SandboxSummary } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";

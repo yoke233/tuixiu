@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
-import { StatusBadge } from "../../../components/StatusBadge";
-import type { SessionController } from "../useSessionController";
+import { StatusBadge } from "@/components/StatusBadge";
+import type { SessionController } from "@/pages/session/useSessionController";
 import { Button } from "@/components/ui/button";
 
 type SessionSidebarContentProps = {

@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { createRole, deleteRole, listRoles, updateRole } from "../../../api/roles";
-import { getRoleSkills, putRoleSkills, type RoleSkillItem } from "../../../api/roleSkills";
+import { createRole, deleteRole, listRoles, updateRole } from "@/api/roles";
+import { getRoleSkills, putRoleSkills, type RoleSkillItem } from "@/api/roleSkills";
 import {
   listSkillVersions,
   searchSkills,
   type SkillSearchItem,
   type SkillVersion,
-} from "../../../api/skills";
+} from "@/api/skills";
 import type {
   AgentInputItem,
   AgentInputsApply,
   AgentInputsManifestV1,
   AgentInputsTargetRoot,
   RoleTemplate,
-} from "../../../types";
+} from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";

@@ -1,5 +1,5 @@
-import { apiGet, apiPost, apiRequest } from "./client";
-import type { User } from "../types";
+import { apiGet, apiPost, apiRequest } from "@/api/client";
+import type { User } from "@/types";
 
 export type AuthResponse = { user: User };
 export type AuthBootstrapInput = { username?: string; password?: string; bootstrapToken?: string };

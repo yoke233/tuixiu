@@ -1,6 +1,6 @@
-import { apiGet, apiPost } from "./client";
-import type { Approval, Artifact, Event, Run } from "../types";
-import type { ContentBlock } from "../acp/contentBlocks";
+import { apiGet, apiPost } from "@/api/client";
+import type { Approval, Artifact, Event, Run } from "@/types";
+import type { ContentBlock } from "@/acp/contentBlocks";
 
 export type RunChangeFile = { path: string; status: string; oldPath?: string };
 export type RunChanges = { baseBranch: string; branch: string; files: RunChangeFile[] };

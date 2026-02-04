@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { RefreshCw } from "lucide-react";
 
-import { ThemeToggle } from "../../../components/ThemeToggle";
-import type { IssueListController } from "../useIssueListController";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import type { IssueListController } from "@/pages/issues/useIssueListController";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 

@@ -1,5 +1,5 @@
-import { apiGet, apiPost } from "./client";
-import type { PmAnalysis, PmAnalysisMeta, PmNextAction } from "../types";
+import { apiGet, apiPost } from "@/api/client";
+import type { PmAnalysis, PmAnalysisMeta, PmNextAction } from "@/types";
 
 export async function analyzeIssue(issueId: string): Promise<{ analysis: PmAnalysis; meta: PmAnalysisMeta }> {
   const data = await apiPost<{ analysis: PmAnalysis; meta: PmAnalysisMeta }>(`/pm/issues/${issueId}/analyze`, {});

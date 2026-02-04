@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { importGitHubIssue } from "../../../api/githubIssues";
-import { createIssue } from "../../../api/issues";
-import type { Project } from "../../../types";
-import { splitLines } from "../adminUtils";
+import { importGitHubIssue } from "@/api/githubIssues";
+import { createIssue } from "@/api/issues";
+import type { Project } from "@/types";
+import { splitLines } from "@/pages/admin/adminUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { apiRequest } from "./client";
+import { apiRequest } from "@/api/client";
 
 function mockFetchOnce(body: unknown, init?: { status?: number; statusText?: string }) {
   const status = init?.status ?? 200;

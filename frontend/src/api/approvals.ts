@@ -1,5 +1,5 @@
-import { apiGet, apiPost } from "./client";
-import type { Approval, Artifact } from "../types";
+import { apiGet, apiPost } from "@/api/client";
+import type { Approval, Artifact } from "@/types";
 
 export async function listApprovals(opts?: { status?: string; limit?: number }): Promise<Approval[]> {
   const qs = new URLSearchParams();

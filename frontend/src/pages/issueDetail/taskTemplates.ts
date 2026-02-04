@@ -1,4 +1,4 @@
-import type { TaskTemplate, TaskTrack } from "../../types";
+import type { TaskTemplate, TaskTrack } from "@/types";
 
 const TASK_TEMPLATE_PRIORITY_ANY: string[] = [
   "quick.dev.full",

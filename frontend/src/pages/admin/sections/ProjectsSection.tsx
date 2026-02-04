@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
-import { createGitCredential, listGitCredentials, setGitCredentialDefaults, updateGitCredential } from "../../../api/gitCredentials";
-import { createProject, updateProject } from "../../../api/projects";
-import { getProjectScmConfig, updateProjectScmConfig } from "../../../api/projectScmConfig";
-import { useAuth } from "../../../auth/AuthContext";
-import type { GitAuthMode, GitCredential, Project, ProjectScmConfig } from "../../../types";
-import type { WorkspaceNoticeMode } from "../adminUtils";
+import { createGitCredential, listGitCredentials, setGitCredentialDefaults, updateGitCredential } from "@/api/gitCredentials";
+import { createProject, updateProject } from "@/api/projects";
+import { getProjectScmConfig, updateProjectScmConfig } from "@/api/projectScmConfig";
+import { useAuth } from "@/auth/AuthContext";
+import type { GitAuthMode, GitCredential, Project, ProjectScmConfig } from "@/types";
+import type { WorkspaceNoticeMode } from "@/pages/admin/adminUtils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";

@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
-import { RunConsole } from "../../../components/RunConsole";
-import { apiUrl } from "../../../api/client";
-import { findLatestAcpTransportStatus } from "../../../utils/acpTransport";
-import { findLatestSandboxInstanceStatus } from "../../../utils/sandboxStatus";
-import type { IssueDetailController } from "../useIssueDetailController";
+import { RunConsole } from "@/components/RunConsole";
+import { apiUrl } from "@/api/client";
+import { findLatestAcpTransportStatus } from "@/utils/acpTransport";
+import { findLatestSandboxInstanceStatus } from "@/utils/sandboxStatus";
+import type { IssueDetailController } from "@/pages/issueDetail/useIssueDetailController";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 

@@ -1,4 +1,4 @@
-import type { Project } from "../../types";
+import type { Project } from "@/types";
 
 export function normalizeRepoWebUrl(repoUrl: string): string | null {
   const raw = repoUrl.trim();

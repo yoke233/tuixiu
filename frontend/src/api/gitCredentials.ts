@@ -1,5 +1,5 @@
-import { apiGet, apiPatch, apiPost, apiRequest } from "./client";
-import type { GitAuthMode, GitCredential, Project } from "../types";
+import { apiGet, apiPatch, apiPost, apiRequest } from "@/api/client";
+import type { GitAuthMode, GitCredential, Project } from "@/types";
 
 export async function listGitCredentials(projectId: string): Promise<GitCredential[]> {
   const data = await apiGet<{ credentials: GitCredential[] }>(`/projects/${projectId}/git-credentials`);

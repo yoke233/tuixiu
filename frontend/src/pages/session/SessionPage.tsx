@@ -1,7 +1,7 @@
-import { SessionConsoleCard } from "./sections/SessionConsoleCard";
-import { SessionMobileHeader } from "./sections/SessionMobileHeader";
-import { SessionSidebar } from "./sections/SessionSidebar";
-import { useSessionController } from "./useSessionController";
+import { SessionConsoleCard } from "@/pages/session/sections/SessionConsoleCard";
+import { SessionMobileHeader } from "@/pages/session/sections/SessionMobileHeader";
+import { SessionSidebar } from "@/pages/session/sections/SessionSidebar";
+import { useSessionController } from "@/pages/session/useSessionController";
 import { GlobalErrorToast } from "@/components/GlobalErrorToast";
 
 export function SessionPage() {

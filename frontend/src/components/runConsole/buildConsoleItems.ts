@@ -1,8 +1,8 @@
-import type { Event } from "../../types";
+import type { Event } from "@/types";
 
-import { eventToConsoleItem } from "./eventToConsoleItem";
-import { formatToolCallInfo, mergeToolCallInfo } from "./toolCallInfo";
-import type { ConsoleItem } from "./types";
+import { eventToConsoleItem } from "@/components/runConsole/eventToConsoleItem";
+import { formatToolCallInfo, mergeToolCallInfo } from "@/components/runConsole/toolCallInfo";
+import type { ConsoleItem } from "@/components/runConsole/types";
 
 function stripSideSpaces(s: string): string {
   return s.trim();

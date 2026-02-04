@@ -1,5 +1,5 @@
-import { StatusBadge } from "../../../components/StatusBadge";
-import type { IssueDetailController } from "../useIssueDetailController";
+import { StatusBadge } from "@/components/StatusBadge";
+import type { IssueDetailController } from "@/pages/issueDetail/useIssueDetailController";
 
 export function IssueSummaryCard(props: { model: IssueDetailController }) {
   const { issue } = props.model;

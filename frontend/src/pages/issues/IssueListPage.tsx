@@ -1,8 +1,8 @@
-import { BoardHeader } from "./sections/BoardHeader";
-import { IssueDetailOverlay } from "./sections/IssueDetailOverlay";
-import { IssuesTopBar } from "./sections/IssuesTopBar";
-import { KanbanBoard } from "./sections/KanbanBoard";
-import { useIssueListController } from "./useIssueListController";
+import { BoardHeader } from "@/pages/issues/sections/BoardHeader";
+import { IssueDetailOverlay } from "@/pages/issues/sections/IssueDetailOverlay";
+import { IssuesTopBar } from "@/pages/issues/sections/IssuesTopBar";
+import { KanbanBoard } from "@/pages/issues/sections/KanbanBoard";
+import { useIssueListController } from "@/pages/issues/useIssueListController";
 import { GlobalErrorToast } from "@/components/GlobalErrorToast";
 
 export function IssueListPage() {

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { publishArtifact } from "../api/artifacts";
-import { useAuth } from "../auth/AuthContext";
-import type { Artifact } from "../types";
+import { publishArtifact } from "@/api/artifacts";
+import { useAuth } from "@/auth/AuthContext";
+import type { Artifact } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 

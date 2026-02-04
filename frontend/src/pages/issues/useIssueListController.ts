@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { listIssues, startIssue, updateIssue } from "../../api/issues";
-import { listProjects } from "../../api/projects";
-import { cancelRun, completeRun } from "../../api/runs";
-import { useAuth } from "../../auth/AuthContext";
-import type { Issue, IssueStatus, Project } from "../../types";
-import { canChangeIssueStatus, canRunIssue } from "../../utils/permissions";
-import { getLastSelectedProjectId, getShowArchivedIssues, setLastSelectedProjectId } from "../../utils/settings";
-import type { IssuesOutletContext } from "../issueDetail/types";
+import { listIssues, startIssue, updateIssue } from "@/api/issues";
+import { listProjects } from "@/api/projects";
+import { cancelRun, completeRun } from "@/api/runs";
+import { useAuth } from "@/auth/AuthContext";
+import type { Issue, IssueStatus, Project } from "@/types";
+import { canChangeIssueStatus, canRunIssue } from "@/utils/permissions";
+import { getLastSelectedProjectId, getShowArchivedIssues, setLastSelectedProjectId } from "@/utils/settings";
+import type { IssuesOutletContext } from "@/pages/issueDetail/types";
 
-import { hasStringLabel } from "./issueListUtils";
-import type { DragPayload, IssueBoardColumn } from "./types";
+import { hasStringLabel } from "@/pages/issues/issueListUtils";
+import type { DragPayload, IssueBoardColumn } from "@/pages/issues/types";
 
 export type IssueListController = ReturnType<typeof useIssueListController>;
 

@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
-import { ThemeToggle } from "../../../components/ThemeToggle";
-import type { IssueDetailController } from "../useIssueDetailController";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import type { IssueDetailController } from "@/pages/issueDetail/useIssueDetailController";
 
 export function PageHeader(props: { model: IssueDetailController }) {
   const { refreshing, ws } = props.model;

@@ -1,5 +1,5 @@
-import { apiGet, apiPut } from "./client";
-import type { PmPolicy } from "../types";
+import { apiGet, apiPut } from "@/api/client";
+import type { PmPolicy } from "@/types";
 
 export type PolicySource = "project" | "default";
 

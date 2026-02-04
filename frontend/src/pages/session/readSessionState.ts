@@ -1,4 +1,4 @@
-import type { Event, Run } from "../../types";
+import type { Event, Run } from "@/types";
 
 export type SessionState = {
   sessionId: string;

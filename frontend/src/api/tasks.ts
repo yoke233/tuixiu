@@ -1,5 +1,5 @@
-import { apiGet, apiPost } from "./client";
-import type { Task, TaskTemplate, TaskTrack } from "../types";
+import { apiGet, apiPost } from "@/api/client";
+import type { Task, TaskTemplate, TaskTrack } from "@/types";
 
 export async function listTaskTemplates(): Promise<TaskTemplate[]> {
   const data = await apiGet<{ templates: TaskTemplate[] }>("/task-templates");

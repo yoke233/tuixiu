@@ -1,8 +1,8 @@
-import type { Event } from "../../types";
+import type { Event } from "@/types";
 
-import { extractToolCallInfo, formatToolCallInfo } from "./toolCallInfo";
-import type { ConsoleItem, PermissionOption } from "./types";
-import { summarizeContentBlocks, tryParseContentBlocks } from "../../acp/contentBlocks";
+import { extractToolCallInfo, formatToolCallInfo } from "@/components/runConsole/toolCallInfo";
+import type { ConsoleItem, PermissionOption } from "@/components/runConsole/types";
+import { summarizeContentBlocks, tryParseContentBlocks } from "@/acp/contentBlocks";
 
 function formatTransportConnected(payload: any): string {
   const instance = typeof payload?.instance_name === "string" ? payload.instance_name.trim() : "";

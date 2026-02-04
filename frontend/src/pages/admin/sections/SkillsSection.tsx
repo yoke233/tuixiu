@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { checkSkillUpdates, getSkill, importSkill, listSkillVersions, searchSkills, updateSkills, type SkillCheckUpdatesResponse, type SkillDetail, type SkillSearchItem, type SkillVersion } from "../../../api/skills";
+import { checkSkillUpdates, getSkill, importSkill, listSkillVersions, searchSkills, updateSkills, type SkillCheckUpdatesResponse, type SkillDetail, type SkillSearchItem, type SkillVersion } from "@/api/skills";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -1,1 +1,1 @@
-export { IssueDetailPage } from "./issueDetail/IssueDetailPage";
+export { IssueDetailPage } from "@/pages/issueDetail/IssueDetailPage";

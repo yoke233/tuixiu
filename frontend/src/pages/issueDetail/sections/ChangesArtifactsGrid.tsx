@@ -1,6 +1,6 @@
-import { ArtifactList } from "../../../components/ArtifactList";
-import { RunChangesPanel } from "../../../components/RunChangesPanel";
-import type { IssueDetailController } from "../useIssueDetailController";
+import { ArtifactList } from "@/components/ArtifactList";
+import { RunChangesPanel } from "@/components/RunChangesPanel";
+import type { IssueDetailController } from "@/pages/issueDetail/useIssueDetailController";
 
 export function ChangesArtifactsGrid(props: { model: IssueDetailController }) {
   const {

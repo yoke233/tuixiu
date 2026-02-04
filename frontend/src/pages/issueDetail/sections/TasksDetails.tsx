@@ -1,8 +1,8 @@
 import { Fragment } from "react";
 
-import { StatusBadge } from "../../../components/StatusBadge";
-import type { TaskTrack } from "../../../types";
-import type { IssueDetailController } from "../useIssueDetailController";
+import { StatusBadge } from "@/components/StatusBadge";
+import type { TaskTrack } from "@/types";
+import type { IssueDetailController } from "@/pages/issueDetail/useIssueDetailController";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";

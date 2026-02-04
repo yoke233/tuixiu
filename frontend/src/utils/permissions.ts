@@ -1,4 +1,4 @@
-import type { UserRole } from "../types";
+import type { UserRole } from "@/types";
 
 export function canRunIssue(role: UserRole | null): boolean {
   return role === "admin" || role === "dev" || role === "pm";

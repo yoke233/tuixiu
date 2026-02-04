@@ -1,5 +1,5 @@
-import { apiGet, apiPost } from "./client";
-import type { GitHubIssue, Issue } from "../types";
+import { apiGet, apiPost } from "@/api/client";
+import type { GitHubIssue, Issue } from "@/types";
 
 export async function listGitHubIssues(
   projectId: string,

@@ -1,5 +1,5 @@
-import { apiGet, apiPatch, apiPost } from "./client";
-import type { Project } from "../types";
+import { apiGet, apiPatch, apiPost } from "@/api/client";
+import type { Project } from "@/types";
 
 export type CreateProjectInput = {
   name: string;

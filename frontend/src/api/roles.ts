@@ -1,5 +1,5 @@
-import { apiGet, apiPatch, apiPost, apiRequest } from "./client";
-import type { AgentInputsManifestV1, RoleTemplate } from "../types";
+import { apiGet, apiPatch, apiPost, apiRequest } from "@/api/client";
+import type { AgentInputsManifestV1, RoleTemplate } from "@/types";
 
 export type CreateRoleTemplateInput = {
   key: string;
