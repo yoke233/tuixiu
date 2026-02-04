@@ -635,7 +635,7 @@ export async function startAcpAgentExecution(
     initEnv.TUIXIU_WORKSPACE_PROVIDER = sandboxWorkspaceProvider;
   }
   const normalizedWorkspaceMode =
-    sandboxWorkspaceProvider === "guest" && workspaceMode === "worktree" ? "clone" : workspaceMode;
+    sandboxWorkspaceProvider === "guest" && mode === "worktree" ? "clone" : mode;
   initEnv.TUIXIU_WORKSPACE_MODE = normalizedWorkspaceMode;
   if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
 
