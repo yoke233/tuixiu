@@ -345,7 +345,7 @@ describe("proxy/handlers", () => {
     ).toBe(true);
   });
 
-  it("handlePromptSend uses per-run cwd for git_clone (workspace/run-)", async () => {
+  it("handlePromptSend uses per-run cwd for guest workspace provider", async () => {
     const h = createHarness();
     const messages: any[] = [];
 
@@ -373,7 +373,7 @@ describe("proxy/handlers", () => {
       openAgent: async () => ({ handle: h.handle, created: true, initPending: false }),
     };
 
-    const cfg = { ...baseConfig(), sandbox: { ...baseConfig().sandbox, workspaceMode: "git_clone" } };
+    const cfg = { ...baseConfig(), sandbox: { ...baseConfig().sandbox, workspaceProvider: "guest" } };
     const ctx = {
       cfg,
       sandbox,

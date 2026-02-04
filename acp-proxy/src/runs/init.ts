@@ -63,7 +63,7 @@ export async function runInitScript(
       instanceName: run.instanceName,
       command: ["bash", "-lc", script],
       cwdInGuest: defaultCwdForRun({
-        workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount",
+        workspaceProvider: ctx.cfg.sandbox.workspaceProvider ?? "host",
         runId: run.runId,
       }),
       env,
@@ -171,4 +171,3 @@ export async function runInitScript(
   sendUpdate(ctx, run.runId, { type: "text", text: "[init] done" });
   return true;
 }
-

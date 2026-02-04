@@ -346,8 +346,8 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
         const remote =
           typeof msg?.remote === "string" && msg.remote.trim() ? msg.remote.trim() : "origin";
 
-        const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
-        if (workspaceMode === "mount") {
+        const workspaceProvider = ctx.cfg.sandbox.workspaceProvider ?? "host";
+        if (workspaceProvider === "host") {
           const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
           if (!rootRaw) {
             reply({ ok: false, error: "workspaceHostRoot 未配置" });
@@ -517,7 +517,7 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
         const known = await ctx.sandbox.listInstances({ managedOnly: true });
         const orphans = known.filter((i) => !expectedSet.has(i.instanceName));
 
-        const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
+        const workspaceProvider = ctx.cfg.sandbox.workspaceProvider ?? "host";
         const gcConfig = isRecord(msg?.gc) ? (msg.gc as Record<string, unknown>) : {};
         const removeOrphans = gcConfig.remove_orphans === false ? false : true;
         const removeWorkspaces = gcConfig.remove_workspaces === false ? false : true;
@@ -538,10 +538,10 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
               run_id: inferredRunId && inferredRunId.trim() ? inferredRunId : null,
             });
           }
-          if (removeWorkspaces && workspaceMode === "mount" && inferredRunId && inferredRunId.trim()) {
+          if (removeWorkspaces && workspaceProvider === "host" && inferredRunId && inferredRunId.trim()) {
             deletes.push({
               kind: "workspace",
-              workspace_mode: workspaceMode,
+              workspace_provider: workspaceProvider,
               instance_name: inst.instanceName,
               run_id: inferredRunId,
             });
@@ -586,7 +586,7 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
             continue;
           }
 
-          if (kind === "workspace" && workspaceMode === "mount") {
+          if (kind === "workspace" && workspaceProvider === "host") {
             const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
             if (!rootRaw) {
               errors.push({
@@ -649,12 +649,7 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
       }
 
       if (action === "remove_workspace") {
-        const workspaceModeRaw =
-          typeof msg?.workspace_mode === "string" ? String(msg.workspace_mode).trim() : "";
-        const workspaceMode =
-          workspaceModeRaw === "mount" || workspaceModeRaw === "git_clone"
-            ? workspaceModeRaw
-            : (ctx.cfg.sandbox.workspaceMode ?? "mount");
+        const workspaceProvider = ctx.cfg.sandbox.workspaceProvider ?? "host";
         const effectiveRunId = queueRunId;
 
         const reportDeletedWorkspace = (opts: { instanceName?: string | null; runId?: string | null }) => {
@@ -668,7 +663,7 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
               {
                 instance_name: opts.instanceName ?? null,
                 run_id: opts.runId ?? null,
-                workspace_mode: workspaceMode,
+                workspace_provider: workspaceProvider,
                 deleted_at: nowIso(),
                 reason: "remove_workspace",
               },
@@ -676,7 +671,7 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
           });
         };
 
-        if (workspaceMode === "mount") {
+        if (workspaceProvider === "host") {
           if (!effectiveRunId) {
             reply({ ok: false, error: "run_id 为空" });
             return;

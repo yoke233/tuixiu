@@ -86,15 +86,15 @@ describe("runs/runRuntime", () => {
     );
   });
 
-  it("ensureHostWorkspaceGit uses git worktree when workspaceCheckout=worktree", async () => {
+  it("ensureHostWorkspaceGit uses worktree when provider=host and mode=worktree", async () => {
     const { ensureHostWorkspaceGit } = await import("./runRuntime.js");
     const { execFile } = await import("node:child_process");
+    (execFile as any).mockClear();
 
     const ctx: any = {
       cfg: {
         sandbox: {
-          workspaceMode: "mount",
-          workspaceCheckout: "worktree",
+          workspaceProvider: "host",
           workspaceHostRoot: "C:/ws",
         },
       },
@@ -109,9 +109,44 @@ describe("runs/runRuntime", () => {
       TUIXIU_REPO_URL: "https://example.com/repo.git",
       TUIXIU_RUN_BRANCH: "run-branch",
       TUIXIU_BASE_BRANCH: "main",
+      TUIXIU_WORKSPACE_MODE: "worktree",
     });
 
     const calls = (execFile as any).mock.calls.map((c: any[]) => c[1].join(" "));
     expect(calls.join("\n")).toContain("worktree add -B run-branch");
+  });
+
+  it("ensureHostWorkspaceGit uses clone when provider=host and mode=clone", async () => {
+    const { ensureHostWorkspaceGit } = await import("./runRuntime.js");
+    const { execFile } = await import("node:child_process");
+    const { access } = await import("node:fs/promises");
+    (execFile as any).mockClear();
+    (access as any).mockImplementationOnce(async () => {
+      throw new Error("missing");
+    });
+
+    const ctx: any = {
+      cfg: {
+        sandbox: {
+          workspaceProvider: "host",
+          workspaceHostRoot: "C:/ws",
+        },
+      },
+      sandbox: {},
+      send: vi.fn(),
+      log: vi.fn(),
+    };
+
+    const run: any = { runId: "r1", hostWorkspacePath: "C:/ws/run-r1" };
+
+    await ensureHostWorkspaceGit(ctx, run, {
+      TUIXIU_REPO_URL: "https://example.com/repo.git",
+      TUIXIU_RUN_BRANCH: "run-branch",
+      TUIXIU_BASE_BRANCH: "main",
+      TUIXIU_WORKSPACE_MODE: "clone",
+    });
+
+    const calls = (execFile as any).mock.calls.map((c: any[]) => c[1].join(" "));
+    expect(calls.join("\n")).toContain("clone --branch main --single-branch");
   });
 });

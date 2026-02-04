@@ -48,8 +48,8 @@ export async function handlePromptSend(ctx: ProxyContext, msg: any): Promise<voi
         ? (init.env as Record<string, string>)
         : undefined;
 
-    const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
-    const defaultCwd = defaultCwdForRun({ workspaceMode, runId });
+    const workspaceProvider = ctx.cfg.sandbox.workspaceProvider ?? "host";
+    const defaultCwd = defaultCwdForRun({ workspaceProvider, runId });
     const cwd =
       typeof msg?.cwd === "string" && msg.cwd.trim() ? msg.cwd.trim() : defaultCwd;
     const cwdForAgent = ctx.platform.resolveCwdForAgent({

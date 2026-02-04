@@ -11,7 +11,7 @@ describe("proxy/sandbox/createProxySandbox", () => {
         image: "alpine:latest",
         workingDir: "/workspace",
         terminalEnabled: false,
-        workspaceMode: "mount",
+        workspaceProvider: "host",
       } as any,
       () => {},
     );
@@ -23,7 +23,7 @@ describe("proxy/sandbox/createProxySandbox", () => {
       {
         provider: "host_process",
         terminalEnabled: false,
-        workspaceMode: "mount",
+        workspaceProvider: "host",
         workspaceHostRoot: "/tmp",
       } as any,
       () => {},

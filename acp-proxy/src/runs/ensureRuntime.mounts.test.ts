@@ -19,7 +19,7 @@ describe("runs/ensureRuntime mounts", () => {
           sandbox: {
             provider: "bwrap",
             terminalEnabled: false,
-            workspaceMode: "mount",
+            workspaceProvider: "host",
             workspaceHostRoot: rootDir,
             perRunRootEnabled: true,
             perRunRootGuestPath: "/root",
@@ -82,7 +82,7 @@ describe("runs/ensureRuntime mounts", () => {
           sandbox: {
             provider: "bwrap",
             terminalEnabled: false,
-            workspaceMode: "mount",
+            workspaceProvider: "host",
             workspaceHostRoot: rootDir,
           },
         },
@@ -151,7 +151,7 @@ describe("runs/ensureRuntime mounts", () => {
           sandbox: {
             provider: "bwrap",
             terminalEnabled: false,
-            workspaceMode: "mount",
+            workspaceProvider: "host",
             workspaceHostRoot: rootDir,
           },
         },

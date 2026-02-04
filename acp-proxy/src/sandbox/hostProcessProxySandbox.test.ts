@@ -43,7 +43,7 @@ describe("proxy/sandbox/host_process resolveHostCwd", () => {
 
   it("resolves guest cwd under /workspace to host workspace path", async () => {
     const sandbox = new HostProcessProxySandbox({
-      config: { provider: "host_process", terminalEnabled: false, workspaceMode: "mount", workspaceHostRoot: rootDir } as any,
+      config: { provider: "host_process", terminalEnabled: false, workspaceProvider: "host", workspaceHostRoot: rootDir } as any,
       log: () => {},
     });
 
@@ -82,7 +82,7 @@ describe("proxy/sandbox/host_process resolveHostCwd", () => {
 
   it("rejects when instance is missing", async () => {
     const sandbox = new HostProcessProxySandbox({
-      config: { provider: "host_process", terminalEnabled: false, workspaceMode: "mount", workspaceHostRoot: rootDir } as any,
+      config: { provider: "host_process", terminalEnabled: false, workspaceProvider: "host", workspaceHostRoot: rootDir } as any,
       log: () => {},
     });
 
@@ -98,7 +98,7 @@ describe("proxy/sandbox/host_process resolveHostCwd", () => {
 
   it("rejects guest cwd outside /workspace", async () => {
     const sandbox = new HostProcessProxySandbox({
-      config: { provider: "host_process", terminalEnabled: false, workspaceMode: "mount", workspaceHostRoot: rootDir } as any,
+      config: { provider: "host_process", terminalEnabled: false, workspaceProvider: "host", workspaceHostRoot: rootDir } as any,
       log: () => {},
     });
 
@@ -120,7 +120,7 @@ describe("proxy/sandbox/host_process resolveHostCwd", () => {
 
   it("rejects Windows absolute path injection via guest cwd", async () => {
     const sandbox = new HostProcessProxySandbox({
-      config: { provider: "host_process", terminalEnabled: false, workspaceMode: "mount", workspaceHostRoot: rootDir } as any,
+      config: { provider: "host_process", terminalEnabled: false, workspaceProvider: "host", workspaceHostRoot: rootDir } as any,
       log: () => {},
     });
 

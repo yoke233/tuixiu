@@ -116,12 +116,12 @@ export async function ensureRuntime(ctx: ProxyContext, msg: any): Promise<RunRun
       : undefined;
   const agentInputs = parseAgentInputsFromInit(init);
 
-  const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
-  const workspaceGuestRoot = defaultCwdForRun({ workspaceMode, runId });
-  if (workspaceMode === "mount") {
+  const workspaceProvider = ctx.cfg.sandbox.workspaceProvider ?? "host";
+  const workspaceGuestRoot = defaultCwdForRun({ workspaceProvider, runId });
+  if (workspaceProvider === "host") {
     const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
     if (!rootRaw) {
-      throw new Error("sandbox.workspaceHostRoot 未配置，无法使用 mount 模式");
+      throw new Error("sandbox.workspaceHostRoot 未配置，无法使用 host workspace");
     }
     const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
 
@@ -255,8 +255,8 @@ export async function ensureHostWorkspaceGit(
   run: RunRuntime,
   initEnv?: Record<string, string>,
 ): Promise<void> {
-  const workspaceMode = ctx.cfg.sandbox.workspaceMode ?? "mount";
-  if (workspaceMode !== "mount") return;
+  const workspaceProvider = ctx.cfg.sandbox.workspaceProvider ?? "host";
+  if (workspaceProvider !== "host") return;
 
   const hostWorkspacePath = run.hostWorkspacePath?.trim() ?? "";
   if (!hostWorkspacePath) {
@@ -267,14 +267,17 @@ export async function ensureHostWorkspaceGit(
   const repo = String(env.TUIXIU_REPO_URL ?? "").trim();
   const branch = String(env.TUIXIU_RUN_BRANCH ?? "").trim();
   const baseBranch = String(env.TUIXIU_BASE_BRANCH ?? "main").trim() || "main";
-  const checkout = ctx.cfg.sandbox.workspaceCheckout ?? "worktree";
+  const checkout =
+    String(env.TUIXIU_WORKSPACE_MODE ?? "").trim().toLowerCase() === "clone"
+      ? "clone"
+      : "worktree";
 
   if (!repo) throw new Error("缺少 TUIXIU_REPO_URL，无法准备宿主机 workspace");
   if (!branch) throw new Error("缺少 TUIXIU_RUN_BRANCH，无法准备宿主机 workspace");
 
   const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
   if (!rootRaw) {
-    throw new Error("sandbox.workspaceHostRoot 未配置，无法使用 mount 模式");
+    throw new Error("sandbox.workspaceHostRoot 未配置，无法使用 host workspace");
   }
   const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
   const rootResolved = path.resolve(root);

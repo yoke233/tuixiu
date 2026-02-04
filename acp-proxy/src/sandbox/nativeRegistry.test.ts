@@ -12,7 +12,7 @@ describe("sandbox/nativeRegistry", () => {
     const cfg = {
       terminalEnabled: false,
       provider: "host_process",
-      workspaceMode: "mount",
+      workspaceProvider: "host",
       workspaceHostRoot: root,
       volumes: [],
       env: {},
