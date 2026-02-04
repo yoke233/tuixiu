@@ -1,5 +1,5 @@
-import { apiGet, apiPatch, apiPost, apiRequest } from "./client";
-import type { GitAuthMode, GitCredential, Project } from "../types";
+import { apiGet, apiPatch, apiPost, apiRequest } from "@/api/client";
+import type { GitAuthMode, GitCredential, Project } from "@/types";
 
 export async function listGitCredentials(projectId: string): Promise<GitCredential[]> {
   const data = await apiGet<{ credentials: GitCredential[] }>(`/projects/${projectId}/git-credentials`);
@@ -12,6 +12,8 @@ export type CreateGitCredentialInput = {
   gitAuthMode?: GitAuthMode;
   githubAccessToken?: string;
   gitlabAccessToken?: string;
+  gitHttpUsername?: string;
+  gitHttpPassword?: string;
   gitSshCommand?: string;
   gitSshKey?: string;
   gitSshKeyB64?: string;
@@ -28,6 +30,8 @@ export type UpdateGitCredentialInput = {
   gitAuthMode?: GitAuthMode;
   githubAccessToken?: string | null;
   gitlabAccessToken?: string | null;
+  gitHttpUsername?: string | null;
+  gitHttpPassword?: string | null;
   gitSshCommand?: string | null;
   gitSshKey?: string | null;
   gitSshKeyB64?: string | null;
@@ -60,4 +64,3 @@ export async function setGitCredentialDefaults(projectId: string, input: SetGitC
   const data = await apiPatch<{ project: Project }>(`/projects/${projectId}/git-credentials-defaults`, input);
   return data.project;
 }
-

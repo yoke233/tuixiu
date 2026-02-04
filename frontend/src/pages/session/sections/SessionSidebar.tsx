@@ -1,6 +1,6 @@
-import { ThemeToggle } from "../../../components/ThemeToggle";
-import type { SessionController } from "../useSessionController";
-import { SessionSidebarContent } from "./SessionSidebarContent";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import type { SessionController } from "@/pages/session/useSessionController";
+import { SessionSidebarContent } from "@/pages/session/sections/SessionSidebarContent";
 
 export function SessionSidebar(props: { model: SessionController }) {
   const { ws, refreshing } = props.model;

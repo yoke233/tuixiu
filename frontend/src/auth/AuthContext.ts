@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import type { User, UserRole } from "../types";
+import type { User, UserRole } from "@/types";
 
 export type AuthState = {
   status: "loading" | "anonymous" | "authenticated";

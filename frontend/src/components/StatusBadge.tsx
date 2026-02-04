@@ -6,7 +6,7 @@ import type {
   SandboxStatus,
   StepStatus,
   TaskStatus,
-} from "../types";
+} from "@/types";
 import { Badge } from "@/components/ui/badge";
 
 type Status =

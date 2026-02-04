@@ -188,6 +188,8 @@ model GitCredential {
 
   githubAccessToken String? @db.Text
   gitlabAccessToken String? @db.Text
+  gitHttpUsername   String? @db.VarChar(255)
+  gitHttpPassword   String? @db.Text
 
   gitSshCommand   String?  @db.Text
   gitSshKey       String?  @db.Text

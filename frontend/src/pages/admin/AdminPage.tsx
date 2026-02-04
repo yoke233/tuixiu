@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
-import { approveApproval, listApprovals, rejectApproval } from "../../api/approvals";
-import { listIssues } from "../../api/issues";
-import { listProjects } from "../../api/projects";
-import { useAuth } from "../../auth/AuthContext";
-import { ThemeToggle } from "../../components/ThemeToggle";
-import type { Approval, Project } from "../../types";
-import { getLastSelectedProjectId, setLastSelectedProjectId } from "../../utils/settings";
+import { approveApproval, listApprovals, rejectApproval } from "@/api/approvals";
+import { listIssues } from "@/api/issues";
+import { listProjects } from "@/api/projects";
+import { useAuth } from "@/auth/AuthContext";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import type { Approval, Project } from "@/types";
+import { getLastSelectedProjectId, setLastSelectedProjectId } from "@/utils/settings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,17 +18,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { ADMIN_SECTION_META, getSectionFromSearch, type AdminSectionKey } from "./adminSections";
-import { AcpSessionsSection } from "./sections/AcpSessionsSection";
-import { ApprovalsSection } from "./sections/ApprovalsSection";
-import { ArchiveSection } from "./sections/ArchiveSection";
-import { IssuesSection } from "./sections/IssuesSection";
-import { PolicySection } from "./sections/PolicySection";
-import { ProjectsSection } from "./sections/ProjectsSection";
-import { RolesSection } from "./sections/RolesSection";
-import { SettingsSection } from "./sections/SettingsSection";
-import { SkillsSection } from "./sections/SkillsSection";
-import { TextTemplatesSection } from "./sections/TextTemplatesSection";
+import { ADMIN_SECTION_META, getSectionFromSearch, type AdminSectionKey } from "@/pages/admin/adminSections";
+import { AcpSessionsSection } from "@/pages/admin/sections/AcpSessionsSection";
+import { ApprovalsSection } from "@/pages/admin/sections/ApprovalsSection";
+import { ArchiveSection } from "@/pages/admin/sections/ArchiveSection";
+import { IssuesSection } from "@/pages/admin/sections/IssuesSection";
+import { PolicySection } from "@/pages/admin/sections/PolicySection";
+import { ProjectsSection } from "@/pages/admin/sections/ProjectsSection";
+import { RolesSection } from "@/pages/admin/sections/RolesSection";
+import { SettingsSection } from "@/pages/admin/sections/SettingsSection";
+import { SkillsSection } from "@/pages/admin/sections/SkillsSection";
+import { TextTemplatesSection } from "@/pages/admin/sections/TextTemplatesSection";
 import { GlobalErrorToast } from "@/components/GlobalErrorToast";
 
 export function AdminPage() {

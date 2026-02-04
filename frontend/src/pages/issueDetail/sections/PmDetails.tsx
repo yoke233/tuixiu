@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
-import type { PmRisk } from "../../../types";
-import type { IssueDetailController } from "../useIssueDetailController";
+import type { PmRisk } from "@/types";
+import type { IssueDetailController } from "@/pages/issueDetail/useIssueDetailController";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 

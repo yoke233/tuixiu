@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { listAgents } from "../../api/agents";
-import { getIssue, startIssue } from "../../api/issues";
+import { listAgents } from "@/api/agents";
+import { getIssue, startIssue } from "@/api/issues";
 import {
   analyzeIssue as analyzePmIssue,
   dispatchIssue as dispatchPmIssue,
   getIssueNextAction,
-} from "../../api/pm";
-import { listRoles } from "../../api/roles";
+} from "@/api/pm";
+import { listRoles } from "@/api/roles";
 import {
   cancelRun,
   completeRun,
@@ -18,11 +18,11 @@ import {
   promptRun,
   submitRun,
   uploadRunAttachment,
-} from "../../api/runs";
-import { startStep as startTaskStep, rollbackTask as rollbackTaskToStep } from "../../api/steps";
-import { createIssueTask, listIssueTasks, listTaskTemplates } from "../../api/tasks";
-import { useAuth } from "../../auth/AuthContext";
-import { useWsClient, type WsMessage } from "../../hooks/useWsClient";
+} from "@/api/runs";
+import { startStep as startTaskStep, rollbackTask as rollbackTaskToStep } from "@/api/steps";
+import { createIssueTask, listIssueTasks, listTaskTemplates } from "@/api/tasks";
+import { useAuth } from "@/auth/AuthContext";
+import { useWsClient, type WsMessage } from "@/hooks/useWsClient";
 import type {
   Agent,
   Artifact,
@@ -39,13 +39,13 @@ import type {
   TaskTemplate,
   TaskTrack,
   UserRole,
-} from "../../types";
-import { getAgentEnvLabel, getAgentSandboxLabel } from "../../utils/agentLabels";
-import { readFileAsBase64 } from "../../utils/files";
-import { canManageTasks, canPauseAgent, canRunIssue, canUsePmTools } from "../../utils/permissions";
+} from "@/types";
+import { getAgentEnvLabel, getAgentSandboxLabel } from "@/utils/agentLabels";
+import { readFileAsBase64 } from "@/utils/files";
+import { canManageTasks, canPauseAgent, canRunIssue, canUsePmTools } from "@/utils/permissions";
 
-import { pickTemplateKey, sortTemplatesByPriority } from "./taskTemplates";
-import type { IssuesOutletContext } from "./types";
+import { pickTemplateKey, sortTemplatesByPriority } from "@/pages/issueDetail/taskTemplates";
+import type { IssuesOutletContext } from "@/pages/issueDetail/types";
 
 export type IssueDetailController = ReturnType<typeof useIssueDetailController>;
 

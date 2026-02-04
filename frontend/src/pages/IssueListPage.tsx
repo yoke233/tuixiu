@@ -1,2 +1,2 @@
-export { IssueListPage } from "./issues/IssueListPage";
+export { IssueListPage } from "@/pages/issues/IssueListPage";
 

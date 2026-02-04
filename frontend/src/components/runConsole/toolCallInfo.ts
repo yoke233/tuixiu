@@ -1,4 +1,4 @@
-import type { ToolCallInfo } from "./types";
+import type { ToolCallInfo } from "@/components/runConsole/types";
 
 export type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
 

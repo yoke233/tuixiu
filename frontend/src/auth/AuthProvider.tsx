@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { bootstrapAuth, loginAuth, logoutAuth, meAuth, refreshAuth } from "../api/auth";
-import type { User, UserRole } from "../types";
-import { AuthContext, type AuthState } from "./AuthContext";
-import { clearStoredAuth, getStoredUser, setStoredUser } from "./storage";
+import { bootstrapAuth, loginAuth, logoutAuth, meAuth, refreshAuth } from "@/api/auth";
+import type { User, UserRole } from "@/types";
+import { AuthContext, type AuthState } from "@/auth/AuthContext";
+import { clearStoredAuth, getStoredUser, setStoredUser } from "@/auth/storage";
 
 function parseHttpStatusFromError(err: unknown): number | null {
   const msg = err instanceof Error ? err.message : String(err);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { getPmPolicy, updatePmPolicy } from "../../../api/policies";
-import type { PmPolicy, Project } from "../../../types";
+import { getPmPolicy, updatePmPolicy } from "@/api/policies";
+import type { PmPolicy, Project } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 

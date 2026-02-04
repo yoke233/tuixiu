@@ -50,6 +50,8 @@ describe("GitCredential routes", () => {
             gitAuthMode: "https_pat",
             hasGithubAccessToken: true,
             hasGitlabAccessToken: false,
+            gitHttpUsername: null,
+            hasGitHttpPassword: false,
             hasSshKey: true,
             updatedAt: "2026-02-03T00:00:00.000Z",
           },
@@ -138,6 +140,8 @@ describe("GitCredential routes", () => {
           gitAuthMode: "https_pat",
           hasGithubAccessToken: false,
           hasGitlabAccessToken: false,
+          gitHttpUsername: null,
+          hasGitHttpPassword: false,
           hasSshKey: false,
           updatedAt: "2026-02-03T00:00:00.000Z",
         },
@@ -157,4 +161,3 @@ describe("GitCredential routes", () => {
     await server.close();
   });
 });
-

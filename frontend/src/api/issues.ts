@@ -1,5 +1,5 @@
-import { apiGet, apiPatch, apiPost } from "./client";
-import type { Issue, IssueStatus, Run } from "../types";
+import { apiGet, apiPatch, apiPost } from "@/api/client";
+import type { Issue, IssueStatus, Run } from "@/types";
 
 export type ListIssuesResult = {
   issues: Issue[];

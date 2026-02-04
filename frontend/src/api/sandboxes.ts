@@ -1,5 +1,5 @@
-import { apiGet, apiPost } from "./client";
-import type { SandboxStatus, SandboxSummary } from "../types";
+import { apiGet, apiPost } from "@/api/client";
+import type { SandboxStatus, SandboxSummary } from "@/types";
 
 export async function listSandboxes(opts?: {
   proxyId?: string;

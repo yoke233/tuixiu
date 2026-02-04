@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeContentBlocks } from "./contentBlocks";
+import { summarizeContentBlocks } from "@/acp/contentBlocks";
 
 describe("summarizeContentBlocks", () => {
   it("summarizes mixed blocks", () => {

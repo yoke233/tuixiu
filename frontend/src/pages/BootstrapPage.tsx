@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
-import { ThemeToggle } from "../components/ThemeToggle";
-import { useAuth } from "../auth/AuthContext";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";

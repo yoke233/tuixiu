@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { RolesSection } from "./RolesSection";
+import { RolesSection } from "@/pages/admin/sections/RolesSection";
 
 function jsonRes(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

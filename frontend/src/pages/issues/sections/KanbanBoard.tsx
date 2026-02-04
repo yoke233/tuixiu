@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
 
-import { StatusBadge } from "../../../components/StatusBadge";
-import type { Issue } from "../../../types";
-import type { IssueListController } from "../useIssueListController";
+import { StatusBadge } from "@/components/StatusBadge";
+import type { Issue } from "@/types";
+import type { IssueListController } from "@/pages/issues/useIssueListController";
 
 function IssueCardLink(props: { model: IssueListController; issue: Issue }) {
   const { model, issue } = props;

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { RunConsole } from "../../../components/RunConsole";
-import { apiUrl } from "../../../api/client";
-import { buildConsoleItems } from "../../../components/runConsole/buildConsoleItems";
-import { parseSandboxInstanceStatusText } from "../../../utils/sandboxStatus";
-import { findLatestSandboxInstanceStatus } from "../../../utils/sandboxStatus";
-import { findLatestAcpTransportStatus } from "../../../utils/acpTransport";
-import type { SessionController } from "../useSessionController";
+import { RunConsole } from "@/components/RunConsole";
+import { apiUrl } from "@/api/client";
+import { buildConsoleItems } from "@/components/runConsole/buildConsoleItems";
+import { parseSandboxInstanceStatusText } from "@/utils/sandboxStatus";
+import { findLatestSandboxInstanceStatus } from "@/utils/sandboxStatus";
+import { findLatestAcpTransportStatus } from "@/utils/acpTransport";
+import type { SessionController } from "@/pages/session/useSessionController";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 

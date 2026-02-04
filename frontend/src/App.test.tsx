@@ -14,7 +14,7 @@ vi.mock("./pages/IssueDetailPage", () => ({
   IssueDetailPage: () => <div>IssueDetailPage</div>
 }));
 
-import App from "./App";
+import App from "@/App";
 
 describe("App routes", () => {
   beforeEach(() => {

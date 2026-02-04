@@ -1,4 +1,4 @@
-import type { RunChangesController } from "../useRunChangesController";
+import type { RunChangesController } from "@/components/runChanges/useRunChangesController";
 
 export function ChangesGrid(props: { model: RunChangesController }) {
   const { changes, diff, diffLoading, loading, selectedPath, setSelectedPath } = props.model;

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { approveApproval, rejectApproval } from "../../api/approvals";
-import { autoReviewRun } from "../../api/pm";
+import { approveApproval, rejectApproval } from "@/api/approvals";
+import { autoReviewRun } from "@/api/pm";
 import {
   createRunPr,
   getRun,
@@ -12,11 +12,11 @@ import {
   requestMergeRunPr,
   syncRunPr,
   type RunChanges,
-} from "../../api/runs";
-import { useAuth } from "../../auth/AuthContext";
-import type { Project, Run } from "../../types";
+} from "@/api/runs";
+import { useAuth } from "@/auth/AuthContext";
+import type { Project, Run } from "@/types";
 
-import { buildCreatePrUrl } from "./utils";
+import { buildCreatePrUrl } from "@/components/runChanges/utils";
 
 type Props = {
   runId: string;

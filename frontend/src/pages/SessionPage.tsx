@@ -1,2 +1,2 @@
-export { SessionPage } from "./session/SessionPage";
+export { SessionPage } from "@/pages/session/SessionPage";
 

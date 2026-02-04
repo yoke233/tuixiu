@@ -1,6 +1,6 @@
-import type { Agent, RoleTemplate, Run } from "../types";
-import { getAgentSandboxLabel } from "../utils/agentLabels";
-import { StatusBadge } from "./StatusBadge";
+import type { Agent, RoleTemplate, Run } from "@/types";
+import { getAgentSandboxLabel } from "@/utils/agentLabels";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

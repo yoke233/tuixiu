@@ -2,9 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { RunChangesPanel } from "./RunChangesPanel";
-import { AuthProvider } from "../auth/AuthProvider";
-import type { Project, Run } from "../types";
+import { RunChangesPanel } from "@/components/RunChangesPanel";
+import { AuthProvider } from "@/auth/AuthProvider";
+import type { Project, Run } from "@/types";
 
 function mockFetchJsonOnce(body: unknown) {
   (globalThis.fetch as any).mockResolvedValueOnce(

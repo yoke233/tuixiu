@@ -1,5 +1,5 @@
-import { apiGet, apiPost } from "./client";
-import type { AcpSessionSummary } from "../types";
+import { apiGet, apiPost } from "@/api/client";
+import type { AcpSessionSummary } from "@/types";
 
 export async function listAcpSessions(opts?: { projectId?: string; limit?: number }): Promise<AcpSessionSummary[]> {
   const qs = new URLSearchParams();

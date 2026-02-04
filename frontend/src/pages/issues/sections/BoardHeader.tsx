@@ -1,4 +1,4 @@
-import type { IssueListController } from "../useIssueListController";
+import type { IssueListController } from "@/pages/issues/useIssueListController";
 import {
   Select,
   SelectContent,

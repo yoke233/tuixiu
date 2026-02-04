@@ -3,9 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AdminPage } from "./AdminPage";
-import { AuthProvider } from "../auth/AuthProvider";
-import { ThemeProvider } from "../theme";
+import { AdminPage } from "@/pages/AdminPage";
+import { AuthProvider } from "@/auth/AuthProvider";
+import { ThemeProvider } from "@/theme";
 
 function mockFetchJsonOnce(body: unknown) {
   (globalThis.fetch as any).mockResolvedValueOnce(

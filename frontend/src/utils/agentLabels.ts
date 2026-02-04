@@ -1,4 +1,4 @@
-import type { Agent } from "../types";
+import type { Agent } from "@/types";
 
 type SandboxLabel = { label: string; details?: string };
 

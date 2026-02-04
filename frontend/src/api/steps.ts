@@ -1,5 +1,5 @@
-import { apiPost } from "./client";
-import type { ExecutorType, Run, Step, Task } from "../types";
+import { apiPost } from "@/api/client";
+import type { ExecutorType, Run, Step, Task } from "@/types";
 
 export type StartStepInput = {
   executorType?: ExecutorType;

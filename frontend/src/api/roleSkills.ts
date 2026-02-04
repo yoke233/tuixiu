@@ -1,4 +1,4 @@
-import { apiGet, apiPut } from "./client";
+import { apiGet, apiPut } from "@/api/client";
 
 export type RoleSkillItem = {
   skillId: string;

@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Event } from "../types";
-import { RunConsole } from "./RunConsole";
+import type { Event } from "@/types";
+import { RunConsole } from "@/components/RunConsole";
 
 function textEvent(id: string, text: string, timestamp: string): Event {
   return {

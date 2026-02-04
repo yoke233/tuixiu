@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { useWsClient } from "./useWsClient";
+import { useWsClient } from "@/hooks/useWsClient";
 
 function TestComponent(props: { onMessage: (msg: any) => void }) {
   const ws = useWsClient(props.onMessage);

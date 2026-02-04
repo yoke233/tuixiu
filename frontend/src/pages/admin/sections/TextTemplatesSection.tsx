@@ -6,8 +6,8 @@ import {
   patchPlatformTextTemplates,
   patchProjectTextTemplates,
   type TextTemplateMap,
-} from "../../../api/textTemplates";
-import type { Project } from "../../../types";
+} from "@/api/textTemplates";
+import type { Project } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

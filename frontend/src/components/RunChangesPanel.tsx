@@ -1,2 +1,2 @@
-export { RunChangesPanel } from "./runChanges/RunChangesPanel";
+export { RunChangesPanel } from "@/components/runChanges/RunChangesPanel";
 

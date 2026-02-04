@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { listIssues, updateIssue } from "../../../api/issues";
-import { StatusBadge } from "../../../components/StatusBadge";
-import type { Issue, IssueStatus } from "../../../types";
-import { getShowArchivedIssues, setShowArchivedIssues } from "../../../utils/settings";
+import { listIssues, updateIssue } from "@/api/issues";
+import { StatusBadge } from "@/components/StatusBadge";
+import type { Issue, IssueStatus } from "@/types";
+import { getShowArchivedIssues, setShowArchivedIssues } from "@/utils/settings";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";

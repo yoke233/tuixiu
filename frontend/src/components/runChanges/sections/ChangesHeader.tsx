@@ -1,4 +1,4 @@
-import type { RunChangesController } from "../useRunChangesController";
+import type { RunChangesController } from "@/components/runChanges/useRunChangesController";
 
 import { Button } from "@/components/ui/button";
 

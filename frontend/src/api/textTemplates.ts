@@ -1,4 +1,4 @@
-import { apiGet, apiPatch } from "./client";
+import { apiGet, apiPatch } from "@/api/client";
 
 export type TextTemplateMap = Record<string, string>;
 

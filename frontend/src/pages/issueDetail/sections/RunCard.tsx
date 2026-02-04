@@ -1,5 +1,5 @@
-import { IssueRunCard } from "../../../components/IssueRunCard";
-import type { IssueDetailController } from "../useIssueDetailController";
+import { IssueRunCard } from "@/components/IssueRunCard";
+import type { IssueDetailController } from "@/pages/issueDetail/useIssueDetailController";
 
 export function RunCard(props: { model: IssueDetailController }) {
   const {

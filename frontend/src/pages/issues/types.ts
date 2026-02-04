@@ -1,4 +1,4 @@
-import type { IssueStatus } from "../../types";
+import type { IssueStatus } from "@/types";
 
 export type DragPayload = {
   issueId: string;

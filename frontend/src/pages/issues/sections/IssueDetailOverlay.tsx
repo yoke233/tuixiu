@@ -1,6 +1,6 @@
 import { Outlet } from "react-router-dom";
 
-import type { IssueListController } from "../useIssueListController";
+import type { IssueListController } from "@/pages/issues/useIssueListController";
 
 export function IssueDetailOverlay(props: { model: IssueListController }) {
   const { closeDetail, hasDetail, outletContext, isMobile } = props.model;

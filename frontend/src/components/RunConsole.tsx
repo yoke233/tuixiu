@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { Event } from "../types";
+import type { Event } from "@/types";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { buildConsoleItems } from "./runConsole/buildConsoleItems";
-import { ConsoleDetailsBlock } from "./runConsole/ConsoleDetailsBlock";
+import { buildConsoleItems } from "@/components/runConsole/buildConsoleItems";
+import { ConsoleDetailsBlock } from "@/components/runConsole/ConsoleDetailsBlock";
 import {
   type BadgeTone,
   exitToTone,
@@ -13,8 +13,8 @@ import {
   kindToTone,
   priorityToTone,
   statusToTone,
-} from "./runConsole/toolCallInfo";
-import { parseSandboxInstanceStatusText } from "../utils/sandboxStatus";
+} from "@/components/runConsole/toolCallInfo";
+import { parseSandboxInstanceStatusText } from "@/utils/sandboxStatus";
 
 const INIT_STAGE_LABELS: Record<string, string> = {
   auth: "鉴权准备",

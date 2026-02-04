@@ -1,7 +1,7 @@
-import { ChangesGrid } from "./sections/ChangesGrid";
-import { ChangesHeader } from "./sections/ChangesHeader";
-import { useRunChangesController } from "./useRunChangesController";
-import type { RunChangesController } from "./useRunChangesController";
+import { ChangesGrid } from "@/components/runChanges/sections/ChangesGrid";
+import { ChangesHeader } from "@/components/runChanges/sections/ChangesHeader";
+import { useRunChangesController } from "@/components/runChanges/useRunChangesController";
+import type { RunChangesController } from "@/components/runChanges/useRunChangesController";
 
 type Props = Parameters<typeof useRunChangesController>[0];
 

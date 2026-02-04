@@ -2,9 +2,9 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
-import { AuthProvider } from "../auth/AuthProvider";
-import { ThemeProvider } from "../theme";
-import { BootstrapPage } from "./BootstrapPage";
+import { AuthProvider } from "@/auth/AuthProvider";
+import { ThemeProvider } from "@/theme";
+import { BootstrapPage } from "@/pages/BootstrapPage";
 
 describe("BootstrapPage", () => {
   it("renders bootstrap token input", () => {

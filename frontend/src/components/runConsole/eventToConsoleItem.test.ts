@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { eventToConsoleItem } from "./eventToConsoleItem";
+import { eventToConsoleItem } from "@/components/runConsole/eventToConsoleItem";
 
 describe("eventToConsoleItem (user)", () => {
   it("renders payload.prompt when present", () => {

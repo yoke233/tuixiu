@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 
-import { createGitCredential, listGitCredentials, setGitCredentialDefaults, updateGitCredential } from "../../../api/gitCredentials";
-import { createProject, updateProject } from "../../../api/projects";
-import { getProjectScmConfig, updateProjectScmConfig } from "../../../api/projectScmConfig";
-import { useAuth } from "../../../auth/AuthContext";
-import type { GitAuthMode, GitCredential, Project, ProjectScmConfig } from "../../../types";
-import type { WorkspaceNoticeMode } from "../adminUtils";
+import { createGitCredential, listGitCredentials, setGitCredentialDefaults, updateGitCredential } from "@/api/gitCredentials";
+import { createProject, updateProject } from "@/api/projects";
+import { getProjectScmConfig, updateProjectScmConfig } from "@/api/projectScmConfig";
+import { useAuth } from "@/auth/AuthContext";
+import type { GitAuthMode, GitCredential, Project, ProjectScmConfig } from "@/types";
+import type { WorkspaceNoticeMode } from "@/pages/admin/adminUtils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -113,6 +114,7 @@ function ProjectManageForm(props: {
               <SelectItem value="gitlab">gitlab</SelectItem>
               <SelectItem value="github">github</SelectItem>
               <SelectItem value="gitee">gitee</SelectItem>
+              <SelectItem value="git">git（普通）</SelectItem>
             </SelectContent>
           </Select>
         </label>
@@ -203,6 +205,10 @@ function GitCredentialEditor(props: {
   const [githubAccessTokenClear, setGithubAccessTokenClear] = useState(false);
   const [gitlabAccessToken, setGitlabAccessToken] = useState("");
   const [gitlabAccessTokenClear, setGitlabAccessTokenClear] = useState(false);
+  const [gitHttpUsername, setGitHttpUsername] = useState("");
+  const [gitHttpUsernameClear, setGitHttpUsernameClear] = useState(false);
+  const [gitHttpPassword, setGitHttpPassword] = useState("");
+  const [gitHttpPasswordClear, setGitHttpPasswordClear] = useState(false);
   const [gitSshCommand, setGitSshCommand] = useState("");
   const [gitSshCommandClear, setGitSshCommandClear] = useState(false);
   const [gitSshKey, setGitSshKey] = useState("");
@@ -216,15 +222,37 @@ function GitCredentialEditor(props: {
     setGithubAccessTokenClear(false);
     setGitlabAccessToken("");
     setGitlabAccessTokenClear(false);
+    setGitHttpUsername(credential.gitHttpUsername ?? "");
+    setGitHttpUsernameClear(false);
+    setGitHttpPassword("");
+    setGitHttpPasswordClear(false);
     setGitSshCommand("");
     setGitSshCommandClear(false);
     setGitSshKey("");
     setGitSshKeyClear(false);
     setGitSshKeyB64("");
-  }, [credential.id, credential.gitAuthMode]);
+  }, [credential.gitHttpUsername, credential.id, credential.gitAuthMode]);
 
-  const showGithubToken = provider === "github";
-  const showGitlabToken = provider === "gitlab" || provider === "codeup";
+  const supportsTokenAuth = provider === "github" || provider === "gitlab" || provider === "codeup";
+  const showTokenFields = supportsTokenAuth && gitAuthMode === "https_pat";
+  const showGithubToken = showTokenFields && provider === "github";
+  const showGitlabToken = showTokenFields && (provider === "gitlab" || provider === "codeup");
+  const showBasicAuth = gitAuthMode === "https_basic";
+  const authModeOptions = useMemo(() => {
+    const options: Array<{ value: GitAuthMode; label: string }> = supportsTokenAuth
+      ? [
+          { value: "https_pat", label: "HTTPS（Token）" },
+          { value: "ssh", label: "SSH" },
+        ]
+      : [
+          { value: "ssh", label: "SSH（推荐）" },
+          { value: "https_basic", label: "HTTPS（用户名/密码）" },
+        ];
+    if (!options.some((opt) => opt.value === gitAuthMode)) {
+      options.unshift({ value: gitAuthMode, label: `当前：${gitAuthMode}` });
+    }
+    return options;
+  }, [gitAuthMode, supportsTokenAuth]);
 
   const patchSecret = (draft: string, clear: boolean): string | null | undefined => {
     if (clear) return null;
@@ -241,6 +269,12 @@ function GitCredentialEditor(props: {
         gitAuthMode,
         ...(showGithubToken ? { githubAccessToken: patchSecret(githubAccessToken, githubAccessTokenClear) } : {}),
         ...(showGitlabToken ? { gitlabAccessToken: patchSecret(gitlabAccessToken, gitlabAccessTokenClear) } : {}),
+        ...(showBasicAuth
+          ? {
+              gitHttpUsername: patchSecret(gitHttpUsername, gitHttpUsernameClear),
+              gitHttpPassword: patchSecret(gitHttpPassword, gitHttpPasswordClear),
+            }
+          : {}),
         ...(gitAuthMode === "ssh"
           ? {
               gitSshCommand: patchSecret(gitSshCommand, gitSshCommandClear),
@@ -264,6 +298,10 @@ function GitCredentialEditor(props: {
     gitSshKey,
     gitSshKeyB64,
     gitSshKeyClear,
+    gitHttpPassword,
+    gitHttpPasswordClear,
+    gitHttpUsername,
+    gitHttpUsernameClear,
     githubAccessToken,
     githubAccessTokenClear,
     gitlabAccessToken,
@@ -271,6 +309,7 @@ function GitCredentialEditor(props: {
     onSaved,
     projectId,
     setError,
+    showBasicAuth,
     showGithubToken,
     showGitlabToken,
   ]);
@@ -297,10 +336,18 @@ function GitCredentialEditor(props: {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="https_pat">https_pat（token）</SelectItem>
-              <SelectItem value="ssh">ssh</SelectItem>
+              {authModeOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
+          <div className="muted" style={{ marginTop: 6 }}>
+            {supportsTokenAuth
+              ? "HTTPS（Token）仅支持 Token，不支持用户名密码。"
+              : "普通 Git 推荐 SSH；如需 HTTP Basic 可使用用户名/密码。"}
+          </div>
         </label>
 
         {showGithubToken ? (
@@ -335,6 +382,39 @@ function GitCredentialEditor(props: {
               <span className="muted">清除 token</span>
             </span>
           </label>
+        ) : null}
+
+        {showBasicAuth ? (
+          <>
+            <label className="label">
+              HTTP Basic 用户名（留空=不改）
+              <Input
+                value={gitHttpUsername}
+                onChange={(e) => setGitHttpUsername(e.target.value)}
+                placeholder="例如：git"
+                disabled={saving || !canSave || gitHttpUsernameClear}
+              />
+              <span className="row gap" style={{ alignItems: "center" }}>
+                <Checkbox checked={gitHttpUsernameClear} onCheckedChange={(v) => setGitHttpUsernameClear(v === true)} disabled={saving || !canSave} />
+                <span className="muted">清除用户名</span>
+              </span>
+            </label>
+
+            <label className="label">
+              HTTP Basic 密码（留空=不改）
+              <Input
+                type="password"
+                value={gitHttpPassword}
+                onChange={(e) => setGitHttpPassword(e.target.value)}
+                placeholder={credential.hasGitHttpPassword ? "已设置（留空不改）" : "输入密码或 Token"}
+                disabled={saving || !canSave || gitHttpPasswordClear}
+              />
+              <span className="row gap" style={{ alignItems: "center" }}>
+                <Checkbox checked={gitHttpPasswordClear} onCheckedChange={(v) => setGitHttpPasswordClear(v === true)} disabled={saving || !canSave} />
+                <span className="muted">清除密码</span>
+              </span>
+            </label>
+          </>
         ) : null}
 
         {gitAuthMode === "ssh" ? (
@@ -397,6 +477,8 @@ function ProjectIntegrationsPanel(props: {
   const { active, projectId, project, canSave, setError, onRefreshGlobal } = props;
 
   const provider = useMemo(() => (project?.scmType ?? "gitlab").toLowerCase(), [project?.scmType]);
+  const supportsTokenAuth = provider === "github" || provider === "gitlab" || provider === "codeup";
+  const defaultAuthMode: GitAuthMode = supportsTokenAuth ? "https_pat" : "ssh";
   const NO_CRED = "__none__";
 
   const [credentialsLoading, setCredentialsLoading] = useState(false);
@@ -487,7 +569,7 @@ function ProjectIntegrationsPanel(props: {
         const purpose = kind === "run" ? "run" : "scm_admin";
         let cred = credentials.find((c) => c.key === key) ?? null;
         if (!cred) {
-          cred = await createGitCredential(projectId, { key, purpose, gitAuthMode: "https_pat" });
+          cred = await createGitCredential(projectId, { key, purpose, gitAuthMode: defaultAuthMode });
         }
         await onSetDefaults(kind === "run" ? { runGitCredentialId: cred.id } : { scmAdminCredentialId: cred.id });
       } catch (err) {
@@ -496,7 +578,7 @@ function ProjectIntegrationsPanel(props: {
         setEnsuringDefault(null);
       }
     },
-    [canSave, credentials, onSetDefaults, projectId, setError],
+    [canSave, credentials, defaultAuthMode, onSetDefaults, projectId, setError],
   );
 
   const [scmGitlabProjectId, setScmGitlabProjectId] = useState("");
@@ -613,8 +695,11 @@ function ProjectIntegrationsPanel(props: {
 
               <div className="row gap" style={{ flexWrap: "wrap" }}>
                 <Button type="button" size="sm" variant="secondary" onClick={() => void ensureDefaultCredential("run")} disabled={ensuringDefault != null || !canSave}>
-                  {ensuringDefault === "run" ? "处理中…" : "确保 run-default"}
+                  {ensuringDefault === "run" ? "处理中…" : "创建并设为默认（Run）"}
                 </Button>
+              </div>
+              <div className="muted" style={{ marginTop: 6 }}>
+                如果没有默认 Run 凭证，将自动创建 key=run-default 并设为默认。
               </div>
             </div>
 
@@ -663,8 +748,11 @@ function ProjectIntegrationsPanel(props: {
 
               <div className="row gap" style={{ flexWrap: "wrap" }}>
                 <Button type="button" size="sm" variant="secondary" onClick={() => void ensureDefaultCredential("scm_admin")} disabled={ensuringDefault != null || !canSave}>
-                  {ensuringDefault === "scm_admin" ? "处理中…" : "确保 scm-admin"}
+                  {ensuringDefault === "scm_admin" ? "处理中…" : "创建并设为默认（SCM Admin）"}
                 </Button>
+              </div>
+              <div className="muted" style={{ marginTop: 6 }}>
+                如果没有默认 SCM Admin 凭证，将自动创建 key=scm-admin 并设为默认。
               </div>
             </div>
 
@@ -748,6 +836,7 @@ export function ProjectsSection(props: Props) {
     onSelectedProjectIdChange,
   } = props;
 
+  const location = useLocation();
   const auth = useAuth();
   const canSave = auth.hasRole(["admin"]);
 
@@ -777,6 +866,19 @@ export function ProjectsSection(props: Props) {
     if (loading) return;
     if (!projects.length) setManageTab("create");
   }, [active, loading, projects.length]);
+
+  useEffect(() => {
+    if (!active) return;
+    const hash = location.hash || "";
+    const id = hash.startsWith("#") ? hash.slice(1) : "";
+    if (id !== "project-create") return;
+    setManageTab("create");
+    const t = setTimeout(() => {
+      const el = document.getElementById("project-create");
+      if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [active, location.hash]);
 
   useEffect(() => {
     if (!effectiveProject) return;
@@ -980,7 +1082,7 @@ export function ProjectsSection(props: Props) {
 
   return (
     <>
-      <section className="card" hidden={!active} style={{ marginBottom: 16 }}>
+      <section id="project-create" className="card" hidden={!active} style={{ marginBottom: 16 }}>
         <div className="row spaceBetween" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
           <div>
             <h2 style={{ marginTop: 0, marginBottom: 4 }}>项目管理</h2>

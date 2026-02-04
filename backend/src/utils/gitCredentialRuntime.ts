@@ -4,6 +4,8 @@ export type GitCredentialAuthInput = {
   gitAuthMode?: string | null;
   githubAccessToken?: string | null;
   gitlabAccessToken?: string | null;
+  gitHttpUsername?: string | null;
+  gitHttpPassword?: string | null;
   gitSshCommand?: string | null;
   gitSshKey?: string | null;
   gitSshKeyB64?: string | null;
@@ -19,6 +21,8 @@ export function mergeGitAuthInput(
     gitAuthMode: credential.gitAuthMode ?? null,
     githubAccessToken: credential.githubAccessToken ?? null,
     gitlabAccessToken: credential.gitlabAccessToken ?? null,
+    gitHttpUsername: credential.gitHttpUsername ?? null,
+    gitHttpPassword: credential.gitHttpPassword ?? null,
   };
 }
 
@@ -56,6 +60,19 @@ export function buildGitRuntimeEnv(opts: {
     env.TUIXIU_GIT_HTTP_PASSWORD = token;
     return env;
   }
+  if (gitAuthMode === "https_basic") {
+    const username = String(opts.credential.gitHttpUsername ?? "").trim();
+    const password = String(opts.credential.gitHttpPassword ?? "").trim();
+    if (!username || !password) {
+      throw new GitAuthEnvError(
+        "GIT_CREDENTIAL_HTTP_BASIC_MISSING",
+        "GitCredential HTTPS Basic 认证缺失：请配置 gitHttpUsername 与 gitHttpPassword",
+      );
+    }
+    env.TUIXIU_GIT_HTTP_USERNAME = username;
+    env.TUIXIU_GIT_HTTP_PASSWORD = password;
+    return env;
+  }
 
   const sshCommand = String(opts.credential.gitSshCommand ?? "").trim();
   const sshKeyB64 = String(opts.credential.gitSshKeyB64 ?? "").trim();
@@ -75,4 +92,3 @@ export function buildGitRuntimeEnv(opts: {
 
   return env;
 }
-

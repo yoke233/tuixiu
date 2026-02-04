@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { importGitHubIssue } from "../../../api/githubIssues";
-import { createIssue } from "../../../api/issues";
-import type { Project } from "../../../types";
-import { splitLines } from "../adminUtils";
+import { importGitHubIssue } from "@/api/githubIssues";
+import { createIssue } from "@/api/issues";
+import type { Project } from "@/types";
+import { splitLines } from "@/pages/admin/adminUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +21,8 @@ type Props = {
 export function IssuesSection(props: Props) {
   const { active, effectiveProject, effectiveProjectId, requireAdmin, setError, onRefreshGlobal } = props;
   const location = useLocation();
+  const navigate = useNavigate();
+  const goCreateProject = () => navigate("/admin?section=projects#project-create");
 
   const [issueTitle, setIssueTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
@@ -53,6 +55,7 @@ export function IssuesSection(props: Props) {
       }
       if (!effectiveProjectId) {
         setError("请先创建 Project");
+        goCreateProject();
         return;
       }
 
@@ -78,6 +81,7 @@ export function IssuesSection(props: Props) {
     if (!requireAdmin()) return;
     if (!effectiveProjectId) {
       setError("请先创建 Project");
+      goCreateProject();
       return;
     }
     const raw = githubImport.trim();
@@ -139,7 +143,14 @@ export function IssuesSection(props: Props) {
             提交
           </Button>
         </form>
-        {!effectiveProjectId ? <div className="muted">请先创建 Project</div> : null}
+        {!effectiveProjectId ? (
+          <div className="row gap" style={{ alignItems: "center", marginTop: 8 }}>
+            <span className="muted">请先创建 Project</span>
+            <Button type="button" variant="secondary" size="sm" onClick={goCreateProject}>
+              去创建
+            </Button>
+          </div>
+        ) : null}
       </section>
     </>
   );
