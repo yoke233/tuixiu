@@ -14,7 +14,7 @@
 - **THEN** 系统按照 任务 > 角色 > 项目 > 平台 的顺序解析最终 policy
 
 ### Requirement: Policy must be constrained by agent capabilities
-系统 SHALL 在启动前校验 agent capabilities 与 workspacePolicy 的兼容性（例如 `mount` 需要 sandbox workspaceMode=mount）。
+系统 SHALL 在启动前校验 agent capabilities 与 workspacePolicy 的兼容性（例如 `mount` 需要 sandbox workspaceProvider=host，`git` 需要 workspaceProvider=guest）。
 
 #### Scenario: Policy incompatible with agent capabilities
 - **WHEN** 解析出的 policy 与 agent capabilities 不兼容
