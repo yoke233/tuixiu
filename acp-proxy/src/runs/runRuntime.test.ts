@@ -3,6 +3,25 @@ import { describe, expect, it, vi } from "vitest";
 import { NativePlatform } from "../platform/native/nativePlatform.js";
 import { ensureSessionForPrompt } from "./session.js";
 
+vi.mock("node:child_process", () => ({
+  execFile: vi.fn((_cmd, _args, _opts, cb) => cb(null, { stdout: "", stderr: "" })),
+}));
+
+vi.mock("node:fs/promises", () => ({
+  access: vi.fn(async () => {}),
+  mkdir: vi.fn(async () => {}),
+  rm: vi.fn(async () => {}),
+  readFile: vi.fn(async () => ""),
+  writeFile: vi.fn(async () => {}),
+  open: vi.fn(async () => ({ close: async () => {} })),
+  mkdtemp: vi.fn(async () => "C:/tmp/tuixiu-git-ssh-123"),
+  chmod: vi.fn(async () => {}),
+}));
+
+vi.mock("../utils/gitHost.js", () => ({
+  createHostGitEnv: vi.fn(async () => ({ env: {}, cleanup: async () => {} })),
+}));
+
 describe("runs/runRuntime", () => {
   it("mode=auto: session/new applies config option when offered", async () => {
     const sendRpc = vi.fn(async (method: string, params: any) => {
@@ -65,5 +84,34 @@ describe("runs/runRuntime", () => {
         update: expect.objectContaining({ sessionUpdate: "config_option_update" }),
       }),
     );
+  });
+
+  it("ensureHostWorkspaceGit uses git worktree when workspaceCheckout=worktree", async () => {
+    const { ensureHostWorkspaceGit } = await import("./runRuntime.js");
+    const { execFile } = await import("node:child_process");
+
+    const ctx: any = {
+      cfg: {
+        sandbox: {
+          workspaceMode: "mount",
+          workspaceCheckout: "worktree",
+          workspaceHostRoot: "C:/ws",
+        },
+      },
+      sandbox: {},
+      send: vi.fn(),
+      log: vi.fn(),
+    };
+
+    const run: any = { runId: "r1", hostWorkspacePath: "C:/ws/run-r1" };
+
+    await ensureHostWorkspaceGit(ctx, run, {
+      TUIXIU_REPO_URL: "https://example.com/repo.git",
+      TUIXIU_RUN_BRANCH: "run-branch",
+      TUIXIU_BASE_BRANCH: "main",
+    });
+
+    const calls = (execFile as any).mock.calls.map((c: any[]) => c[1].join(" "));
+    expect(calls.join("\n")).toContain("worktree add -B run-branch");
   });
 });

@@ -1,12 +1,14 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { access, mkdir, rm } from "node:fs/promises";
+import { access, mkdir, open, rm } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { AcpClientFacade } from "../acpClientFacade.js";
 import { DEFAULT_KEEPALIVE_TTL_SECONDS, WORKSPACE_GUEST_PATH } from "../proxyContext.js";
 import type { ProxyContext } from "../proxyContext.js";
 import { createHostGitEnv } from "../utils/gitHost.js";
+import { resolveRepoCacheDir, resolveRepoLockPath } from "../utils/repoCache.js";
 import { isRecord, validateInstanceName, validateRunId } from "../utils/validate.js";
 
 import type { RunRuntime } from "./runTypes.js";
@@ -27,6 +29,53 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function withRepoLock(lockPath: string, task: () => Promise<void>): Promise<void> {
+  await mkdir(path.dirname(lockPath), { recursive: true });
+  const startedAt = Date.now();
+
+  for (;;) {
+    try {
+      const handle = await open(lockPath, "wx");
+      try {
+        await task();
+      } finally {
+        await handle.close().catch(() => {});
+        await rm(lockPath, { force: true }).catch(() => {});
+      }
+      return;
+    } catch (err: any) {
+      if (err?.code !== "EEXIST") throw err;
+      if (Date.now() - startedAt > 5 * 60 * 1000) {
+        throw new Error(`repo cache lock timeout: ${lockPath}`);
+      }
+      await delay(200);
+    }
+  }
+}
+
+async function ensureBaseRepoUpdated(
+  baseRepoPath: string,
+  repo: string,
+  baseBranch: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  const gitDir = path.join(baseRepoPath, ".git");
+  if (await pathExists(gitDir)) {
+    await execFileAsync("git", ["-C", baseRepoPath, "remote", "set-url", "origin", repo], { env });
+    await execFileAsync("git", ["-C", baseRepoPath, "fetch", "--prune", "origin"], { env });
+    await execFileAsync("git", ["-C", baseRepoPath, "worktree", "prune"], { env });
+    return;
+  }
+
+  await rm(baseRepoPath, { recursive: true, force: true }).catch(() => {});
+  await mkdir(path.dirname(baseRepoPath), { recursive: true });
+  await execFileAsync(
+    "git",
+    ["clone", "--branch", baseBranch, "--single-branch", repo, baseRepoPath],
+    { env },
+  );
 }
 
 function resolveTerminalEnabled(ctx: ProxyContext): boolean {
@@ -218,10 +267,17 @@ export async function ensureHostWorkspaceGit(
   const repo = String(env.TUIXIU_REPO_URL ?? "").trim();
   const branch = String(env.TUIXIU_RUN_BRANCH ?? "").trim();
   const baseBranch = String(env.TUIXIU_BASE_BRANCH ?? "main").trim() || "main";
+  const checkout = ctx.cfg.sandbox.workspaceCheckout ?? "worktree";
 
   if (!repo) throw new Error("缺少 TUIXIU_REPO_URL，无法准备宿主机 workspace");
   if (!branch) throw new Error("缺少 TUIXIU_RUN_BRANCH，无法准备宿主机 workspace");
 
+  const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
+  if (!rootRaw) {
+    throw new Error("sandbox.workspaceHostRoot 未配置，无法使用 mount 模式");
+  }
+  const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
+  const rootResolved = path.resolve(root);
   const gitDir = path.join(hostWorkspacePath, ".git");
   const reportStep = (stage: string, status: string, message?: string) => {
     sendUpdate(ctx, run.runId, {
@@ -241,28 +297,49 @@ export async function ensureHostWorkspaceGit(
     reportStep("auth", "done");
 
     reportStep("clone", "start");
-    if (await pathExists(gitDir)) {
-      await execFileAsync("git", ["-C", hostWorkspacePath, "fetch", "--prune"], { env: hostEnv });
-    } else {
-      await rm(hostWorkspacePath, { recursive: true, force: true }).catch(() => {});
-      await mkdir(hostWorkspacePath, { recursive: true });
-      await execFileAsync(
-        "git",
-        ["clone", "--branch", baseBranch, "--single-branch", repo, hostWorkspacePath],
-        { env: hostEnv },
-      );
-    }
-    reportStep("clone", "done");
-
-    reportStep("checkout", "start");
-    try {
-      await execFileAsync("git", ["-C", hostWorkspacePath, "checkout", "-B", branch, `origin/${baseBranch}`], {
-        env: hostEnv,
+    if (checkout === "worktree") {
+      const baseRepoPath = resolveRepoCacheDir(rootResolved, repo);
+      const lockPath = resolveRepoLockPath(rootResolved, repo);
+      await withRepoLock(lockPath, async () => {
+        await ensureBaseRepoUpdated(baseRepoPath, repo, baseBranch, hostEnv);
+        await rm(hostWorkspacePath, { recursive: true, force: true }).catch(() => {});
+        await mkdir(hostWorkspacePath, { recursive: true });
+        await execFileAsync(
+          "git",
+          ["-C", baseRepoPath, "worktree", "add", "-B", branch, hostWorkspacePath, `origin/${baseBranch}`],
+          { env: hostEnv },
+        );
       });
-    } catch {
-      await execFileAsync("git", ["-C", hostWorkspacePath, "checkout", "-B", branch], { env: hostEnv });
+      run.hostRepoPath = baseRepoPath;
+      reportStep("clone", "done");
+      reportStep("checkout", "done");
+    } else {
+      if (await pathExists(gitDir)) {
+        await execFileAsync("git", ["-C", hostWorkspacePath, "fetch", "--prune"], { env: hostEnv });
+      } else {
+        await rm(hostWorkspacePath, { recursive: true, force: true }).catch(() => {});
+        await mkdir(hostWorkspacePath, { recursive: true });
+        await execFileAsync(
+          "git",
+          ["clone", "--branch", baseBranch, "--single-branch", repo, hostWorkspacePath],
+          { env: hostEnv },
+        );
+      }
+      reportStep("clone", "done");
+
+      reportStep("checkout", "start");
+      try {
+        await execFileAsync(
+          "git",
+          ["-C", hostWorkspacePath, "checkout", "-B", branch, `origin/${baseBranch}`],
+          { env: hostEnv },
+        );
+      } catch {
+        await execFileAsync("git", ["-C", hostWorkspacePath, "checkout", "-B", branch], { env: hostEnv });
+      }
+      reportStep("checkout", "done");
+      run.hostRepoPath = null;
     }
-    reportStep("checkout", "done");
     reportStep("ready", "done");
     run.hostWorkspaceReady = true;
   } catch (err) {

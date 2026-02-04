@@ -39,6 +39,8 @@ workingDir = "/workspace"
 
 # workspaceMode: "mount" | "git_clone"
 workspaceMode = "mount"
+# workspaceCheckout: "worktree" | "clone"（仅 mount 模式）
+# workspaceCheckout = "worktree"
 
 
 # 宿主机 workspace 根目录（仅 mount 模式需要）

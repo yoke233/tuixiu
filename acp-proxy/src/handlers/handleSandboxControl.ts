@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { access, rm } from "node:fs/promises";
+import { access, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
 import type { ProxyContext } from "../proxyContext.js";
 import { WORKSPACE_GUEST_PATH, nowIso } from "../proxyContext.js";
 import { closeAgent, sendSandboxInstanceStatus } from "../runs/runRuntime.js";
 import { createHostGitEnv } from "../utils/gitHost.js";
+import { parseGitDirFromWorktree, resolveBaseRepoFromGitDir } from "../utils/gitWorktree.js";
 import { validateInstanceName, validateRunId } from "../utils/validate.js";
 
 type ExpectedInstance = {
@@ -702,6 +703,19 @@ export async function handleSandboxControl(ctx: ProxyContext, msg: any): Promise
           if (!hostUserHome.startsWith(rootPrefix)) {
             reply({ ok: false, error: `home path escape: ${hostUserHome}` });
             return;
+          }
+
+          const gitFile = path.join(hostWorkspace, ".git");
+          try {
+            const gitFileContent = await readFile(gitFile, "utf8");
+            const gitDir = parseGitDirFromWorktree(gitFileContent);
+            const baseRepo = gitDir ? resolveBaseRepoFromGitDir(gitDir) : null;
+            if (baseRepo) {
+              await execFileAsync("git", ["-C", baseRepo, "worktree", "remove", "--force", hostWorkspace]);
+              await execFileAsync("git", ["-C", baseRepo, "worktree", "prune"]);
+            }
+          } catch {
+            // best effort
           }
 
           await rm(hostWorkspace, { recursive: true, force: true });

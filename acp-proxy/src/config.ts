@@ -29,6 +29,7 @@ export type SandboxConfig = {
   cpus?: number;
   memoryMib?: number;
   workspaceMode: "mount" | "git_clone";
+  workspaceCheckout: "worktree" | "clone";
   gitPush?: boolean;
   workspaceHostRoot: string;
   runtime?: string;
@@ -472,6 +473,12 @@ function buildSchema() {
         format: ["mount", "git_clone"],
         default: "mount",
         env: "ACP_PROXY_SANDBOX_WORKSPACE_MODE",
+      },
+      workspaceCheckout: {
+        doc: "Workspace checkout strategy (mount only)",
+        format: ["worktree", "clone"],
+        default: "worktree",
+        env: "ACP_PROXY_SANDBOX_WORKSPACE_CHECKOUT",
       },
       gitPush: {
         doc: "Enable git push from sandbox",

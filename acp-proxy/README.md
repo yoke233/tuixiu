@@ -49,6 +49,8 @@
 - `agent_command`：在 guest 内执行的 ACP 启动命令
 - `sandbox.runtime`（仅 `provider=container_oci`）：容器运行时（可选；默认自动探测）
 - `sandbox.workingDir`：ACP 工作目录（默认 `/workspace`）
+- `sandbox.workspaceMode`：workspace 模式（`mount`/`git_clone`）
+- `sandbox.workspaceCheckout`：仅 `workspaceMode=mount` 生效，默认 `worktree`（repo cache 位于 `workspaceHostRoot/_repo-cache`）；可设为 `clone` 回退旧行为
 - `inventory_interval_seconds`：周期性上报 inventory 的间隔秒数（默认 300；设为 0 可关闭）
 
 ### profiles
@@ -70,6 +72,8 @@
 - `ACP_PROXY_SANDBOX_PROVIDER`（`boxlite_oci`/`container_oci`/`host_process`）
 - `ACP_PROXY_SANDBOX_IMAGE`
 - `ACP_PROXY_SANDBOX_WORKING_DIR`
+- `ACP_PROXY_SANDBOX_WORKSPACE_MODE`
+- `ACP_PROXY_SANDBOX_WORKSPACE_CHECKOUT`
 - `ACP_PROXY_SANDBOX_RUNTIME`
 - `ACP_PROXY_CONTAINER_RUNTIME`（兼容旧字段）
 

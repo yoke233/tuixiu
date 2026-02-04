@@ -54,6 +54,8 @@ workingDir = "/workspace"
 
 # workspaceMode: "mount" | "git_clone"
 workspaceMode = "mount"
+# workspaceCheckout: "worktree" | "clone"（仅 mount 模式）
+# workspaceCheckout = "worktree"
 # sandbox 是否支持由后端触发 git push（mount 默认 true，git_clone 动态探测）
 # gitPush = false
 
