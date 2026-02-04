@@ -41,7 +41,7 @@ ACP session 是“一段对话/线程”的上下文载体。要跨进程重启�
 
 ### 2.1 初始化
 
-proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 workspace；`workspaceMode=git_clone` 时为 `/workspace/run-<runId>`），并在启动后先发起 `initialize`，确认协议版本与能力（尤其是 `agentCapabilities.loadSession`）。
+proxy 会为每个 Run 启动独立的 agent 子进程（cwd=该 Run 的 workspace；`workspaceProvider=guest` 时为 `/workspace/run-<runId>`，`workspaceProvider=host` 时为 `/workspace`），并在启动后先发起 `initialize`，确认协议版本与能力（尤其是 `agentCapabilities.loadSession`）。
 
 ### 2.2 Session 建立/恢复
 
@@ -167,8 +167,8 @@ Session 的创建/复用/恢复由 `acp-proxy` 托管：
 
 关键约定：
 
-- `workspaceMode=mount`：宿主机目录 `workspaceHostRoot/run-<runId>`
-- `workspaceMode=git_clone`：guest 内目录 `/workspace/run-<runId>`（删除 workspace 只删该子目录，不再粗暴清空 `/workspace`）
+- `workspaceProvider=host`：宿主机目录 `workspaceHostRoot/run-<runId>`
+- `workspaceProvider=guest`：guest 内目录 `/workspace/run-<runId>`（删除 workspace 只删该子目录，不再粗暴清空 `/workspace`）
 
 ## 5. 典型消息流（当前实现）
 

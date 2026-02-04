@@ -223,13 +223,13 @@ describe("acpAgentExecutor", () => {
     expect(promptText).toContain("测试要求:");
   });
 
-  it("git_clone uses per-run workspace dir in init env (workspace/run-)", async () => {
+  it("guest workspace provider uses per-run workspace dir in init env (workspace/run-)", async () => {
     const run = makeRun({ kind: "test.run" });
     const role = makeRoleTemplate({
       initScript: "echo hi",
       initTimeoutSeconds: 10,
     });
-    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceProvider: "guest" } } });
 
     const acp = {
       promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
@@ -270,13 +270,13 @@ describe("acpAgentExecutor", () => {
     );
   });
 
-  it("mount workspace mode sets skip init", async () => {
+  it("host workspace provider sets workspace env", async () => {
     const run = makeRun({ kind: "test.run" });
     const role = makeRoleTemplate({
       envText: "",
       workspacePolicy: "mount",
     });
-    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "mount" } } });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceProvider: "host" } } });
 
     const acp = {
       promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
@@ -298,8 +298,8 @@ describe("acpAgentExecutor", () => {
     await startAcpAgentExecution({ prisma, acp }, "r1");
 
     const initEnv = acp.promptRun.mock.calls[0][0].init.env as Record<string, string>;
-    expect(initEnv.TUIXIU_WORKSPACE_MODE).toBe("mount");
-    expect(initEnv.TUIXIU_SKIP_WORKSPACE_INIT).toBe("1");
+    expect(initEnv.TUIXIU_WORKSPACE_PROVIDER).toBe("host");
+    expect(initEnv.TUIXIU_WORKSPACE_MODE).toBe("worktree");
   });
 
   it("empty workspace policy skips repo env and includes skills inventory", async () => {
@@ -309,7 +309,7 @@ describe("acpAgentExecutor", () => {
       envText: "",
       workspacePolicy: "empty",
     });
-    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "mount" } } });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceProvider: "host" } } });
 
     const acp = {
       promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
@@ -410,7 +410,7 @@ describe("acpAgentExecutor", () => {
     const role = makeRoleTemplate({
       envText: "FOO=bar\n",
     });
-    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "mount" } } });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceProvider: "host" } } });
 
     const acp = {
       promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),
@@ -446,7 +446,7 @@ describe("acpAgentExecutor", () => {
     const role = makeRoleTemplate({
       envText: "FOO=bar\n",
     });
-    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceProvider: "guest" } } });
 
     const acp = {
       promptRun: vi.fn().mockResolvedValue({ sessionId: "s1", stopReason: "end" }),

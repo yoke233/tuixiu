@@ -7,6 +7,7 @@ export type RunRuntime = {
   opQueue: Promise<void>;
   hostWorkspacePath?: string | null;
   hostWorkspaceReady?: boolean;
+  hostRepoPath?: string | null;
   workspaceMounts?: Array<{ hostPath: string; guestPath: string; readOnly?: boolean }>;
   hostUserHomePath?: string | null;
   userHomeGuestPath?: string | null;

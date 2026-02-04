@@ -6,7 +6,7 @@ import { buildContextPackPrompt } from "../modules/acp/contextPack.js";
 import { renderTextTemplateFromDb } from "../modules/templates/textTemplates.js";
 import { renderTextTemplate } from "../utils/textTemplate.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../utils/agentInit.js";
-import { getSandboxWorkspaceMode } from "../utils/sandboxCaps.js";
+import { getSandboxWorkspaceProvider } from "../utils/sandboxCaps.js";
 import { resolveAgentWorkspaceCwd } from "../utils/agentWorkspaceCwd.js";
 import { resolveExecutionProfile } from "../utils/executionProfile.js";
 import { GitAuthEnvError } from "../utils/gitAuth.js";
@@ -315,7 +315,6 @@ export async function startAcpAgentExecution(
     projectProfileId: project?.executionProfileId ?? null,
   });
   const resolvedPolicy = resolveWorkspacePolicy({
-    platformDefault: process.env.WORKSPACE_POLICY_DEFAULT ?? null,
     projectPolicy: project?.workspacePolicy ?? null,
     rolePolicy: (role as any)?.workspacePolicy ?? null,
     taskPolicy: task?.workspacePolicy ?? null,
@@ -538,10 +537,10 @@ export async function startAcpAgentExecution(
       skillInputs.push(...skillVersions);
     }
   }
-  const sandboxWorkspaceMode = getSandboxWorkspaceMode((agent as any)?.capabilities);
+  const sandboxWorkspaceProvider = getSandboxWorkspaceProvider((agent as any)?.capabilities);
   const agentWorkspaceCwd = resolveAgentWorkspaceCwd({
     runId: String(run.id),
-    sandboxWorkspaceMode,
+    sandboxWorkspaceProvider,
   });
   const initEnv: Record<string, string> = {
     ...roleEnv,
@@ -632,12 +631,12 @@ export async function startAcpAgentExecution(
     // skills 将通过 agentInputs 落地到 USER_HOME/.codex/skills（不再拷贝进 workspace）
   }
 
-  if (sandboxWorkspaceMode) {
-    initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
-    if (sandboxWorkspaceMode === "mount") {
-      initEnv.TUIXIU_SKIP_WORKSPACE_INIT = "1";
-    }
+  if (sandboxWorkspaceProvider) {
+    initEnv.TUIXIU_WORKSPACE_PROVIDER = sandboxWorkspaceProvider;
   }
+  const normalizedWorkspaceMode =
+    sandboxWorkspaceProvider === "guest" && mode === "worktree" ? "clone" : mode;
+  initEnv.TUIXIU_WORKSPACE_MODE = normalizedWorkspaceMode;
   if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
 
   const baseInitScript = buildWorkspaceInitScript();

@@ -181,10 +181,10 @@ BoxLite Node SDK 已作为 `acp-proxy` 依赖（`pnpm install` 后即可）。�
 注意：Codex 类 Agent 通常需要 API Key（例如 `OPENAI_API_KEY`）；建议通过 `sandbox.boxlite.env` 注入（不要提交到仓库）。
 注意：配置字段已统一为 `sandbox.env`（与 provider 无关）。
 
-BoxLite 支持两种工作区模式（`sandbox.boxlite.workspaceMode`）：
+BoxLite 工作区由 `workspaceProvider` 与 `workspaceMode` 共同决定：
 
-- `git_clone`（推荐，不挂载）：VM 内 `git clone` 到 `/workspace/run-<runId>` + 在运行分支上修改并 `git push`；后端通过 `git fetch` 拉取该分支来展示 diff/创建 PR。
-- `mount`（挂载）：通过 `sandbox.boxlite.volumes` 把宿主机 worktree 挂到 VM（例如 `/workspace`），Agent 的文件改动直接落到宿主机，后端从本地 worktree 读取 diff/提交并创建 PR。
+- `sandbox.workspaceProvider=guest`：由 VM 内 init 在 `/workspace/run-<runId>` 创建 workspace；后端会下发 `workspaceMode=clone`（guest + worktree 会被归一化为 clone）。
+- `sandbox.workspaceProvider=host`：由宿主机创建 workspace，并通过 `sandbox.boxlite.volumes` 挂载到 VM 的 `/workspace`；后端下发 `workspaceMode=worktree|clone` 决定宿主机侧策略。
 
 准备一个可运行的 ACP Agent 镜像（推荐）：
 

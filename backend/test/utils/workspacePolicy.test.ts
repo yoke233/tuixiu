@@ -3,9 +3,8 @@ import { describe, expect, it } from "vitest";
 import { assertWorkspacePolicyCompat, resolveWorkspacePolicy } from "../../src/utils/workspacePolicy.js";
 
 describe("workspacePolicy", () => {
-  it("resolves by precedence task > role > project > profile > platform", () => {
+  it("resolves by precedence task > role > project > profile", () => {
     const res = resolveWorkspacePolicy({
-      platformDefault: "git",
       projectPolicy: "mount",
       rolePolicy: "empty",
       taskPolicy: "bundle",
@@ -18,7 +17,6 @@ describe("workspacePolicy", () => {
 
   it("falls back to profile when task/role/project missing", () => {
     const res = resolveWorkspacePolicy({
-      platformDefault: "git",
       projectPolicy: null,
       rolePolicy: null,
       taskPolicy: null,
@@ -29,9 +27,8 @@ describe("workspacePolicy", () => {
     expect(res.source).toBe("profile");
   });
 
-  it("ignores invalid policies and falls back to platform default", () => {
+  it("ignores invalid policies and falls back to default git", () => {
     const res = resolveWorkspacePolicy({
-      platformDefault: "git",
       projectPolicy: "bogus",
       rolePolicy: "nope",
       taskPolicy: "",
@@ -55,7 +52,7 @@ describe("workspacePolicy", () => {
     expect(() =>
       assertWorkspacePolicyCompat({
         policy: "mount",
-        capabilities: { sandbox: { workspaceMode: "git_clone" } },
+        capabilities: { sandbox: { workspaceProvider: "guest" } },
       }),
     ).toThrow("Agent 不支持 mount workspace 模式");
   });
@@ -64,7 +61,7 @@ describe("workspacePolicy", () => {
     expect(() =>
       assertWorkspacePolicyCompat({
         policy: "git",
-        capabilities: { sandbox: { workspaceMode: "mount" } },
+        capabilities: { sandbox: { workspaceProvider: "host" } },
       }),
     ).toThrow("Agent 不支持 git workspace 模式");
   });

@@ -36,7 +36,7 @@ function makeAgent(overrides?: Partial<any>) {
     currentLoad: 0,
     maxConcurrentRuns: 1,
     proxyId: "proxy-1",
-    capabilities: { sandbox: { workspaceMode: "mount" } },
+    capabilities: { sandbox: { workspaceProvider: "host" } },
     ...overrides,
   };
 }
@@ -70,7 +70,7 @@ describe("startIssueRun", () => {
     (suggestRunKeyWithLlm as any).mockResolvedValue("run-key");
     const issue = makeIssue();
     issue.project.runGitCredentialId = null;
-    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceProvider: "guest" } } });
 
     const prisma = {
       issue: { findUnique: vi.fn().mockResolvedValue(issue), update: vi.fn() },
@@ -245,7 +245,7 @@ describe("startIssueRun", () => {
     (suggestRunKeyWithLlm as any).mockResolvedValue("run-key");
     const issue = makeIssue();
     issue.project.enableRuntimeSkillsMounting = false;
-    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceProvider: "guest" } } });
     const prisma = {
       issue: { findUnique: vi.fn().mockResolvedValue(issue), update: vi.fn().mockResolvedValue(undefined) },
       agent: { findMany: vi.fn().mockResolvedValue([agent]), update: vi.fn().mockResolvedValue(undefined) },
@@ -299,7 +299,7 @@ describe("startIssueRun", () => {
   it("returns WORKSPACE_FAILED when createWorkspace missing", async () => {
     (suggestRunKeyWithLlm as any).mockResolvedValue("run-key");
     const issue = makeIssue();
-    const agent = makeAgent({ capabilities: { sandbox: { workspaceMode: "git_clone" } } });
+    const agent = makeAgent({ capabilities: { sandbox: { workspaceProvider: "guest" } } });
     const prisma = {
       issue: { findUnique: vi.fn().mockResolvedValue(issue), update: vi.fn().mockResolvedValue(undefined) },
       agent: { findMany: vi.fn().mockResolvedValue([agent]), update: vi.fn().mockResolvedValue(undefined) },

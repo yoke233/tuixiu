@@ -111,7 +111,6 @@ export type SandboxControlMessage = {
     remove_workspaces?: boolean;
     max_delete_count?: number;
   };
-  workspace_mode?: "mount" | "git_clone";
   request_id?: string;
   branch?: string;
   cwd?: string;

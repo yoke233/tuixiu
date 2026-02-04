@@ -76,15 +76,15 @@ export async function startAgent(
     }
   }
 
-  const res = await ctx.sandbox.openAgent({
-    runId: run.runId,
-    instanceName: run.instanceName,
-    workspaceGuestPath: defaultCwdForRun({
-      workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount",
+    const res = await ctx.sandbox.openAgent({
       runId: run.runId,
-    }),
-    mounts: run.workspaceMounts,
-    agentCommand: ctx.cfg.agent_command,
+      instanceName: run.instanceName,
+      workspaceGuestPath: defaultCwdForRun({
+        workspaceProvider: ctx.cfg.sandbox.workspaceProvider ?? "host",
+        runId: run.runId,
+      }),
+      mounts: run.workspaceMounts,
+      agentCommand: ctx.cfg.agent_command,
     init: effectiveInit,
   });
 
@@ -101,7 +101,7 @@ export async function startAgent(
       runId: run.runId,
       instanceName: run.instanceName,
       workspaceGuestRoot: defaultCwdForRun({
-        workspaceMode: ctx.cfg.sandbox.workspaceMode ?? "mount",
+        workspaceProvider: ctx.cfg.sandbox.workspaceProvider ?? "host",
         runId: run.runId,
       }),
       workspaceHostRoot: run.hostWorkspacePath,
@@ -358,4 +358,3 @@ export async function withAuthRetry<T>(run: RunRuntime, fn: () => Promise<T>): P
     return await fn();
   }
 }
-

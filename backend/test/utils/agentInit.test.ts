@@ -23,10 +23,10 @@ describe("agentInit", () => {
     expect(script).toContain("write_inventory()");
   });
 
-  it("buildWorkspaceInitScript includes action dispatch and skip logic", () => {
+  it("buildWorkspaceInitScript includes action dispatch and provider logic", () => {
     const script = buildWorkspaceInitScript();
     expect(script).toContain("TUIXIU_INIT_ACTIONS");
-    expect(script).toContain("TUIXIU_SKIP_WORKSPACE_INIT");
+    expect(script).toContain("TUIXIU_WORKSPACE_PROVIDER");
     expect(script).toContain("workspace_mode");
   });
 

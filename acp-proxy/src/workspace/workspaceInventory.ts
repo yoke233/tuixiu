@@ -6,7 +6,7 @@ import type { ProxyContext } from "../proxyContext.js";
 import { nowIso } from "../proxyContext.js";
 
 type WorkspaceInventoryItem = {
-  workspace_mode: "mount" | "git_clone";
+  workspace_provider: "host" | "guest";
   run_id: string | null;
   instance_name: string | null;
   host_path: string | null;
@@ -19,11 +19,11 @@ type WorkspaceInventoryItem = {
 export async function reportWorkspaceInventory(ctx: ProxyContext): Promise<void> {
   const capturedAt = nowIso();
   const inventoryId = randomUUID();
-  const workspaceMode = (ctx.cfg.sandbox.workspaceMode ?? "mount") === "git_clone" ? "git_clone" : "mount";
+  const workspaceProvider = ctx.cfg.sandbox.workspaceProvider ?? "host";
 
   const workspaces: WorkspaceInventoryItem[] = [];
 
-  if (workspaceMode === "mount") {
+  if (workspaceProvider === "host") {
     const rootRaw = ctx.cfg.sandbox.workspaceHostRoot?.trim() ?? "";
     if (rootRaw) {
       const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
@@ -39,7 +39,7 @@ export async function reportWorkspaceInventory(ctx: ProxyContext): Promise<void>
           .then((s) => s.mtime.toISOString())
           .catch(() => null);
         workspaces.push({
-          workspace_mode: "mount",
+          workspace_provider: "host",
           run_id: runId,
           instance_name: null,
           host_path: hostPath,
@@ -52,7 +52,7 @@ export async function reportWorkspaceInventory(ctx: ProxyContext): Promise<void>
     }
   }
 
-  if (workspaceMode === "git_clone") {
+  if (workspaceProvider === "guest") {
     const instances = await ctx.sandbox.listInstances({ managedOnly: true }).catch(() => []);
     for (const inst of instances) {
       const runId = inst.instanceName.startsWith("tuixiu-run-")
@@ -60,7 +60,7 @@ export async function reportWorkspaceInventory(ctx: ProxyContext): Promise<void>
         : null;
       if (!runId) continue;
       workspaces.push({
-        workspace_mode: "git_clone",
+        workspace_provider: "guest",
         run_id: runId,
         instance_name: inst.instanceName,
         host_path: null,
@@ -76,8 +76,7 @@ export async function reportWorkspaceInventory(ctx: ProxyContext): Promise<void>
     type: "workspace_inventory",
     inventory_id: inventoryId,
     captured_at: capturedAt,
-    workspace_mode: workspaceMode,
+    workspace_provider: workspaceProvider,
     workspaces,
   });
 }
-

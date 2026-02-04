@@ -2,21 +2,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-export type SandboxWorkspaceMode = "mount" | "git_clone";
+export type SandboxWorkspaceProvider = "host" | "guest";
 export type SandboxGitPushMode = "supported" | "unsupported";
 
-export function getSandboxWorkspaceMode(caps: unknown): SandboxWorkspaceMode | null {
+export function getSandboxWorkspaceProvider(caps: unknown): SandboxWorkspaceProvider | null {
   if (!isRecord(caps)) return null;
   const sandbox = caps.sandbox;
   if (!isRecord(sandbox)) return null;
-  const raw = String((sandbox as any).workspaceMode ?? "").trim();
-  if (raw === "git_clone") return "git_clone";
-  if (raw === "mount") return "mount";
+  const raw = String((sandbox as any).workspaceProvider ?? "").trim();
+  if (raw === "guest") return "guest";
+  if (raw === "host") return "host";
   return null;
 }
 
-export function isSandboxGitClone(caps: unknown): boolean {
-  return getSandboxWorkspaceMode(caps) === "git_clone";
+export function isSandboxWorkspaceGuest(caps: unknown): boolean {
+  return getSandboxWorkspaceProvider(caps) === "guest";
 }
 
 export function getSandboxGitPushMode(caps: unknown): SandboxGitPushMode | null {

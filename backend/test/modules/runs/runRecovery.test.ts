@@ -66,7 +66,7 @@ describe("runRecovery", () => {
       workspacePath: "/host/ws",
       branchName: "",
       artifacts: [{ type: "branch", content: { branch: "from-art" } }],
-      agent: { capabilities: { sandbox: { workspaceMode: "git_clone" } } },
+      agent: { capabilities: { sandbox: { workspaceProvider: "guest" } } },
     };
 
     const init = await buildRecoveryInit({
@@ -90,6 +90,7 @@ describe("runRecovery", () => {
     expect(init?.env.TUIXIU_GIT_HTTP_PASSWORD).toBe("proj-gh");
     expect(init?.env.TUIXIU_GIT_HTTP_USERNAME).toBe("x-access-token");
     expect(init?.env.GH_TOKEN).toBe("proj-gh");
+    expect(init?.env.TUIXIU_WORKSPACE_PROVIDER).toBe("guest");
     expect(init?.env.TUIXIU_WORKSPACE_GUEST).toBe("/workspace/run-r1");
     expect(init?.script).toContain("init_step");
     expect(init?.script).toContain("role-init");

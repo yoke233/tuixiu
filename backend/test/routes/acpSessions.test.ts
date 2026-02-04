@@ -197,7 +197,7 @@ describe("ACP session admin routes", () => {
           workspacePath: "C:/repo/.worktrees/run-1",
           acpSessionId: "s1",
           metadata: null,
-          agent: { proxyId: "proxy-1", capabilities: { sandbox: { workspaceMode: "git_clone" } } },
+          agent: { proxyId: "proxy-1", capabilities: { sandbox: { workspaceProvider: "guest" } } },
         }),
         update: vi.fn().mockResolvedValue({ id: runId }),
       },
@@ -287,7 +287,7 @@ describe("ACP session admin routes", () => {
       run: {
         findUnique: vi.fn().mockResolvedValue({
           id: runId,
-          agent: { proxyId: "proxy-1", capabilities: { sandbox: { workspaceMode: "git_clone" } } },
+          agent: { proxyId: "proxy-1", capabilities: { sandbox: { workspaceProvider: "guest" } } },
         }),
       },
     } as any;
@@ -327,7 +327,7 @@ describe("ACP session admin routes", () => {
       run: {
         findUnique: vi.fn().mockResolvedValue({
           id: runId,
-          agent: { proxyId: "proxy-1", capabilities: { sandbox: { workspaceMode: "git_clone" } } },
+          agent: { proxyId: "proxy-1", capabilities: { sandbox: { workspaceProvider: "guest" } } },
         }),
       },
     } as any;

@@ -153,7 +153,7 @@ describe("handleSandboxControl", () => {
       const ctx = {
         cfg: {
           ...baseConfig(),
-          sandbox: { ...baseConfig().sandbox, workspaceHostRoot: root, workspaceMode: "mount" },
+          sandbox: { ...baseConfig().sandbox, workspaceHostRoot: root, workspaceProvider: "host" },
         },
         sandbox,
         runs: new RunManager(),
@@ -178,7 +178,7 @@ describe("handleSandboxControl", () => {
     }
   });
 
-  it("remove_workspace runs rm -rf /workspace/run-r1 in git_clone mode", async () => {
+  it("remove_workspace runs rm -rf /workspace/run-r1 with guest workspace provider", async () => {
     const messages: any[] = [];
 
     const sandbox: ProxySandbox = {
@@ -212,7 +212,7 @@ describe("handleSandboxControl", () => {
     };
 
     const ctx = {
-      cfg: { ...baseConfig(), sandbox: { ...baseConfig().sandbox, workspaceMode: "git_clone" } },
+      cfg: { ...baseConfig(), sandbox: { ...baseConfig().sandbox, workspaceProvider: "guest" } },
       sandbox,
       runs: new RunManager(),
       send: (payload: unknown) => messages.push(payload),
@@ -400,7 +400,7 @@ describe("handleSandboxControl", () => {
 
     try {
       const ctx = {
-        cfg: { ...baseConfig(), sandbox: { ...baseConfig().sandbox, workspaceHostRoot: root, workspaceMode: "mount" } },
+        cfg: { ...baseConfig(), sandbox: { ...baseConfig().sandbox, workspaceHostRoot: root, workspaceProvider: "host" } },
         sandbox,
         runs: new RunManager(),
         send: (payload: unknown) => messages.push(payload),

@@ -5,7 +5,7 @@ import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
 import { buildInitPipeline } from "../../utils/initPipeline.js";
 import { GitAuthEnvError } from "../../utils/gitAuth.js";
 import { buildGitRuntimeEnv } from "../../utils/gitCredentialRuntime.js";
-import { getSandboxWorkspaceMode } from "../../utils/sandboxCaps.js";
+import { getSandboxWorkspaceProvider } from "../../utils/sandboxCaps.js";
 import { normalizeWorkspacePolicy } from "../../utils/workspacePolicy.js";
 import { mergeAgentInputsManifests } from "../agentInputs/mergeAgentInputs.js";
 
@@ -84,7 +84,7 @@ export async function buildRecoveryInit(opts: {
     throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
   }
 
-  const sandboxWorkspaceMode = getSandboxWorkspaceMode((opts.run as any)?.agent?.capabilities);
+  const sandboxWorkspaceProvider = getSandboxWorkspaceProvider((opts.run as any)?.agent?.capabilities);
   const pipeline = buildInitPipeline({ policy: resolvedPolicy, hasBundle: false });
 
   const initEnv: Record<string, string> = {
@@ -97,7 +97,7 @@ export async function buildRecoveryInit(opts: {
     TUIXIU_WORKSPACE: String(opts.run?.workspacePath ?? ""),
     TUIXIU_WORKSPACE_GUEST: resolveAgentWorkspaceCwd({
       runId: String(opts.run?.id ?? ""),
-      sandboxWorkspaceMode,
+      sandboxWorkspaceProvider,
     }),
     TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(opts.issue?.projectId ?? "")}`,
   };
@@ -106,12 +106,14 @@ export async function buildRecoveryInit(opts: {
   if (pipeline.actions.length) {
     initEnv.TUIXIU_INIT_ACTIONS = pipeline.actions.map((a) => a.type).join(",");
   }
-  if (sandboxWorkspaceMode) {
-    initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
-    if (sandboxWorkspaceMode === "mount") {
-      initEnv.TUIXIU_SKIP_WORKSPACE_INIT = "1";
-    }
+  if (sandboxWorkspaceProvider) {
+    initEnv.TUIXIU_WORKSPACE_PROVIDER = sandboxWorkspaceProvider;
   }
+  const normalizedWorkspaceMode =
+    sandboxWorkspaceProvider === "guest" && String(opts.run?.workspaceType ?? "") === "worktree"
+      ? "clone"
+      : String(opts.run?.workspaceType ?? "");
+  initEnv.TUIXIU_WORKSPACE_MODE = normalizedWorkspaceMode || "clone";
 
   if (resolvedPolicy === "git") {
     initEnv.TUIXIU_REPO_URL = String(project?.repoUrl ?? "");

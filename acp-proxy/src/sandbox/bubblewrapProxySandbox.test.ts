@@ -50,7 +50,7 @@ describe("proxy/sandbox/bubblewrap", () => {
       config: {
         provider: "bwrap",
         terminalEnabled: false,
-        workspaceMode: "mount",
+        workspaceProvider: "host",
         workspaceHostRoot: rootDir,
         volumes: [{ hostPath: hostCodexCfg, guestPath: "/root/.codex/config.toml", readOnly: true }],
       } as any,

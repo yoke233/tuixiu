@@ -25,7 +25,7 @@ base="\${TUIXIU_BASE_BRANCH:-main}"
 branch="\${TUIXIU_RUN_BRANCH:-}"
 auth="\${TUIXIU_GIT_AUTH_MODE:-}"
 workspace_mode="\${TUIXIU_WORKSPACE_MODE:-}"
-skip_workspace_init="\${TUIXIU_SKIP_WORKSPACE_INIT:-}"
+workspace_provider="\${TUIXIU_WORKSPACE_PROVIDER:-}"
 actions="\${TUIXIU_INIT_ACTIONS:-}"
 inventory_path="\${TUIXIU_INVENTORY_PATH:-.tuixiu/context-inventory.json}"
 inventory_json="\${TUIXIU_INVENTORY_JSON:-}"
@@ -205,7 +205,7 @@ if [ -n "$actions" ]; then
   exit 0
 fi
 
-if [ "$workspace_mode" = "mount" ] || [ "$skip_workspace_init" = "1" ]; then
+if [ "$workspace_provider" = "host" ]; then
   init_step ready done
   exit 0
 fi

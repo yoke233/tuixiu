@@ -8,7 +8,7 @@ import type { CreateWorkspace } from "../executors/types.js";
 import { dispatchExecutionForRun } from "../modules/workflow/executionDispatch.js";
 import { TaskEngineError, createTaskFromTemplate, startStep } from "../modules/workflow/taskEngine.js";
 import { uuidv7 } from "../utils/uuid.js";
-import { getSandboxWorkspaceMode } from "../utils/sandboxCaps.js";
+import { getSandboxWorkspaceProvider } from "../utils/sandboxCaps.js";
 import { resolveAgentWorkspaceCwd } from "../utils/agentWorkspaceCwd.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -264,7 +264,7 @@ export function makeAcpSessionRoutes(deps: {
 
         const cwd = resolveAgentWorkspaceCwd({
           runId,
-          sandboxWorkspaceMode: getSandboxWorkspaceMode((run as any).agent?.capabilities),
+          sandboxWorkspaceProvider: getSandboxWorkspaceProvider((run as any).agent?.capabilities),
         });
         try {
           await deps.acp.cancelSession({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId });
@@ -398,7 +398,7 @@ export function makeAcpSessionRoutes(deps: {
 
         const cwd = resolveAgentWorkspaceCwd({
           runId,
-          sandboxWorkspaceMode: getSandboxWorkspaceMode((run as any).agent?.capabilities),
+          sandboxWorkspaceProvider: getSandboxWorkspaceProvider((run as any).agent?.capabilities),
         });
         try {
           await deps.acp.setSessionMode({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId, modeId });
@@ -447,7 +447,7 @@ export function makeAcpSessionRoutes(deps: {
 
         const cwd = resolveAgentWorkspaceCwd({
           runId,
-          sandboxWorkspaceMode: getSandboxWorkspaceMode((run as any).agent?.capabilities),
+          sandboxWorkspaceProvider: getSandboxWorkspaceProvider((run as any).agent?.capabilities),
         });
         try {
           await deps.acp.setSessionModel({ proxyId: (run as any).agent.proxyId, runId, cwd, sessionId, modelId });
@@ -497,7 +497,7 @@ export function makeAcpSessionRoutes(deps: {
 
         const cwd = resolveAgentWorkspaceCwd({
           runId,
-          sandboxWorkspaceMode: getSandboxWorkspaceMode((run as any).agent?.capabilities),
+          sandboxWorkspaceProvider: getSandboxWorkspaceProvider((run as any).agent?.capabilities),
         });
         try {
           await deps.acp.setSessionConfigOption({
