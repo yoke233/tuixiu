@@ -7,6 +7,7 @@ export type CreateProjectInput = {
   scmType?: string;
   defaultBranch?: string;
   workspaceMode?: "worktree" | "clone";
+  workspacePolicy?: "git" | "mount" | "empty" | "bundle" | null;
   agentWorkspaceNoticeTemplate?: string;
 };
 
@@ -26,6 +27,7 @@ export type UpdateProjectInput = {
   scmType?: string;
   defaultBranch?: string;
   workspaceMode?: "worktree" | "clone" | null;
+  workspacePolicy?: "git" | "mount" | "empty" | "bundle" | null;
   defaultRoleKey?: string | null;
   agentWorkspaceNoticeTemplate?: string | null;
 };

@@ -37,6 +37,7 @@ services:
     environment:
       ACP_PROXY_REGISTER_URL: http://host.docker.internal:3000/api/admin/acp-proxy/register
       ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
+      WORKSPACES_ROOT: /workspaces
     depends_on:
       postgres:
         condition: service_healthy

@@ -30,6 +30,7 @@ services:
       DATABASE_URL: postgresql://acp_user:acp_password@postgres:5432/acp_system
       JWT_SECRET: dev-jwt-secret
       ACP_PROXY_BOOTSTRAP_TOKEN: 154f78aeed244d329303fddf851d44fd
+      WORKSPACES_ROOT: /workspaces
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,6 +38,7 @@ services:
       - "3000:3000"
     volumes:
       - backend_data:/root/.tuixiu
+      - acp_workspaces_data:/workspaces
     networks:
       - tuixiu-network
 

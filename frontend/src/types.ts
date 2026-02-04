@@ -25,6 +25,7 @@ export type Project = {
   scmType: string;
   defaultBranch: string;
   workspaceMode?: "worktree" | "clone";
+  workspacePolicy?: "git" | "mount" | "empty" | "bundle" | null;
   defaultRoleKey?: string | null;
   agentWorkspaceNoticeTemplate?: string | null;
   runGitCredentialId?: string | null;
@@ -299,9 +300,9 @@ export type AgentInputItem = {
   apply: AgentInputsApply;
   access?: AgentInputsAccess;
   source:
-    | { type: "hostPath"; path: string }
-    | { type: "httpZip"; uri: string; contentHash?: string }
-    | { type: "inlineText"; text: string };
+  | { type: "hostPath"; path: string }
+  | { type: "httpZip"; uri: string; contentHash?: string }
+  | { type: "inlineText"; text: string };
   target: { root: AgentInputsTargetRoot; path: string };
 };
 

@@ -33,6 +33,7 @@ type ProjectManageDraft = {
   scmType: string;
   defaultBranch: string;
   workspaceMode: "worktree" | "clone";
+  workspacePolicy: "git" | "mount" | "empty" | "bundle";
   defaultRoleKey: string;
   workspaceNoticeMode: WorkspaceNoticeMode;
   workspaceNoticeTemplate: string;
@@ -121,6 +122,35 @@ function ProjectManageForm(props: {
         <label className="label">
           默认分支
           <Input value={draft.defaultBranch} onChange={(e) => onChange({ defaultBranch: e.target.value })} disabled={saving} />
+        </label>
+        <label className="label">
+          Workspace 模式
+          <Select value={draft.workspaceMode} onValueChange={(v) => onChange({ workspaceMode: v as ProjectManageDraft["workspaceMode"] })} disabled={saving}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="worktree">worktree</SelectItem>
+              <SelectItem value="clone">clone</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+        <label className="label">
+          Workspace 策略
+          <Select value={draft.workspacePolicy} onValueChange={(v) => onChange({ workspacePolicy: v as ProjectManageDraft["workspacePolicy"] })} disabled={saving}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mount">mount（host 挂载）</SelectItem>
+              <SelectItem value="git">git（guest clone/worktree）</SelectItem>
+              <SelectItem value="empty">empty（空目录）</SelectItem>
+              <SelectItem value="bundle">bundle（预置包）</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="muted" style={{ marginTop: 6 }}>
+            host 模式建议选 mount；guest 模式可选 git。
+          </div>
         </label>
 
         {mode === "edit" ? (
@@ -241,13 +271,13 @@ function GitCredentialEditor(props: {
   const authModeOptions = useMemo(() => {
     const options: Array<{ value: GitAuthMode; label: string }> = supportsTokenAuth
       ? [
-          { value: "https_pat", label: "HTTPS（Token）" },
-          { value: "ssh", label: "SSH" },
-        ]
+        { value: "https_pat", label: "HTTPS（Token）" },
+        { value: "ssh", label: "SSH" },
+      ]
       : [
-          { value: "ssh", label: "SSH（推荐）" },
-          { value: "https_basic", label: "HTTPS（用户名/密码）" },
-        ];
+        { value: "ssh", label: "SSH（推荐）" },
+        { value: "https_basic", label: "HTTPS（用户名/密码）" },
+      ];
     if (!options.some((opt) => opt.value === gitAuthMode)) {
       options.unshift({ value: gitAuthMode, label: `当前：${gitAuthMode}` });
     }
@@ -271,16 +301,16 @@ function GitCredentialEditor(props: {
         ...(showGitlabToken ? { gitlabAccessToken: patchSecret(gitlabAccessToken, gitlabAccessTokenClear) } : {}),
         ...(showBasicAuth
           ? {
-              gitHttpUsername: patchSecret(gitHttpUsername, gitHttpUsernameClear),
-              gitHttpPassword: patchSecret(gitHttpPassword, gitHttpPasswordClear),
-            }
+            gitHttpUsername: patchSecret(gitHttpUsername, gitHttpUsernameClear),
+            gitHttpPassword: patchSecret(gitHttpPassword, gitHttpPasswordClear),
+          }
           : {}),
         ...(gitAuthMode === "ssh"
           ? {
-              gitSshCommand: patchSecret(gitSshCommand, gitSshCommandClear),
-              gitSshKey: patchSecret(gitSshKey, gitSshKeyClear),
-              gitSshKeyB64: gitSshKeyClear ? null : gitSshKeyB64.trim() ? gitSshKeyB64.trim() : undefined,
-            }
+            gitSshCommand: patchSecret(gitSshCommand, gitSshCommandClear),
+            gitSshKey: patchSecret(gitSshKey, gitSshKeyClear),
+            gitSshKeyB64: gitSshKeyClear ? null : gitSshKeyB64.trim() ? gitSshKeyB64.trim() : undefined,
+          }
           : {}),
       });
       await onSaved();
@@ -849,6 +879,7 @@ export function ProjectsSection(props: Props) {
   const [editScmType, setEditScmType] = useState("gitlab");
   const [editDefaultBranch, setEditDefaultBranch] = useState("main");
   const [editWorkspaceMode, setEditWorkspaceMode] = useState<"worktree" | "clone">("worktree");
+  const [editWorkspacePolicy, setEditWorkspacePolicy] = useState<ProjectManageDraft["workspacePolicy"]>("mount");
   const [editDefaultRoleKey, setEditDefaultRoleKey] = useState("");
   const [editWorkspaceNoticeMode, setEditWorkspaceNoticeMode] = useState<WorkspaceNoticeMode>("default");
   const [editWorkspaceNoticeTemplate, setEditWorkspaceNoticeTemplate] = useState("");
@@ -858,6 +889,7 @@ export function ProjectsSection(props: Props) {
   const [projectScmType, setProjectScmType] = useState("gitlab");
   const [projectDefaultBranch, setProjectDefaultBranch] = useState("main");
   const [projectWorkspaceMode, setProjectWorkspaceMode] = useState<"worktree" | "clone">("worktree");
+  const [projectWorkspacePolicy, setProjectWorkspacePolicy] = useState<ProjectManageDraft["workspacePolicy"]>("mount");
   const [projectAgentWorkspaceNoticeMode, setProjectAgentWorkspaceNoticeMode] = useState<WorkspaceNoticeMode>("default");
   const [projectAgentWorkspaceNoticeTemplate, setProjectAgentWorkspaceNoticeTemplate] = useState("");
 
@@ -887,6 +919,7 @@ export function ProjectsSection(props: Props) {
     setEditScmType(effectiveProject.scmType ?? "gitlab");
     setEditDefaultBranch(effectiveProject.defaultBranch ?? "main");
     setEditWorkspaceMode(effectiveProject.workspaceMode ?? "worktree");
+    setEditWorkspacePolicy((effectiveProject.workspacePolicy ?? "mount") as ProjectManageDraft["workspacePolicy"]);
     setEditDefaultRoleKey(effectiveProject.defaultRoleKey ?? "");
 
     const raw = effectiveProject.agentWorkspaceNoticeTemplate;
@@ -909,6 +942,7 @@ export function ProjectsSection(props: Props) {
     setEditScmType(effectiveProject.scmType ?? "gitlab");
     setEditDefaultBranch(effectiveProject.defaultBranch ?? "main");
     setEditWorkspaceMode(effectiveProject.workspaceMode ?? "worktree");
+    setEditWorkspacePolicy((effectiveProject.workspacePolicy ?? "mount") as ProjectManageDraft["workspacePolicy"]);
     setEditDefaultRoleKey(effectiveProject.defaultRoleKey ?? "");
 
     const raw = effectiveProject.agentWorkspaceNoticeTemplate;
@@ -930,6 +964,7 @@ export function ProjectsSection(props: Props) {
     setProjectScmType("gitlab");
     setProjectDefaultBranch("main");
     setProjectWorkspaceMode("worktree");
+    setProjectWorkspacePolicy("mount");
     setProjectAgentWorkspaceNoticeMode("default");
     setProjectAgentWorkspaceNoticeTemplate("");
   }, []);
@@ -946,6 +981,7 @@ export function ProjectsSection(props: Props) {
         scmType: projectScmType.trim() || undefined,
         defaultBranch: projectDefaultBranch.trim() || undefined,
         workspaceMode: projectWorkspaceMode,
+        workspacePolicy: projectWorkspacePolicy,
         agentWorkspaceNoticeTemplate:
           projectAgentWorkspaceNoticeMode === "default"
             ? undefined
@@ -974,6 +1010,7 @@ export function ProjectsSection(props: Props) {
     projectRepoUrl,
     projectScmType,
     projectWorkspaceMode,
+    projectWorkspacePolicy,
     requireAdmin,
     setError,
   ]);
@@ -1008,6 +1045,7 @@ export function ProjectsSection(props: Props) {
         scmType: editScmType.trim() || undefined,
         defaultBranch: editDefaultBranch.trim() || undefined,
         workspaceMode: editWorkspaceMode,
+        workspacePolicy: editWorkspacePolicy,
         defaultRoleKey: editDefaultRoleKey.trim() ? editDefaultRoleKey.trim() : null,
         agentWorkspaceNoticeTemplate,
       });
@@ -1024,6 +1062,7 @@ export function ProjectsSection(props: Props) {
     editRepoUrl,
     editScmType,
     editWorkspaceMode,
+    editWorkspacePolicy,
     editWorkspaceNoticeMode,
     editWorkspaceNoticeTemplate,
     effectiveProjectId,
@@ -1035,25 +1074,27 @@ export function ProjectsSection(props: Props) {
   const draft: ProjectManageDraft =
     manageTab === "edit"
       ? {
-          name: editName,
-          repoUrl: editRepoUrl,
-          scmType: editScmType,
-          defaultBranch: editDefaultBranch,
-          workspaceMode: editWorkspaceMode,
-          defaultRoleKey: editDefaultRoleKey,
-          workspaceNoticeMode: editWorkspaceNoticeMode,
-          workspaceNoticeTemplate: editWorkspaceNoticeTemplate,
-        }
+        name: editName,
+        repoUrl: editRepoUrl,
+        scmType: editScmType,
+        defaultBranch: editDefaultBranch,
+        workspaceMode: editWorkspaceMode,
+        workspacePolicy: editWorkspacePolicy,
+        defaultRoleKey: editDefaultRoleKey,
+        workspaceNoticeMode: editWorkspaceNoticeMode,
+        workspaceNoticeTemplate: editWorkspaceNoticeTemplate,
+      }
       : {
-          name: projectName,
-          repoUrl: projectRepoUrl,
-          scmType: projectScmType,
-          defaultBranch: projectDefaultBranch,
-          workspaceMode: projectWorkspaceMode,
-          defaultRoleKey: "",
-          workspaceNoticeMode: projectAgentWorkspaceNoticeMode,
-          workspaceNoticeTemplate: projectAgentWorkspaceNoticeTemplate,
-        };
+        name: projectName,
+        repoUrl: projectRepoUrl,
+        scmType: projectScmType,
+        defaultBranch: projectDefaultBranch,
+        workspaceMode: projectWorkspaceMode,
+        workspacePolicy: projectWorkspacePolicy,
+        defaultRoleKey: "",
+        workspaceNoticeMode: projectAgentWorkspaceNoticeMode,
+        workspaceNoticeTemplate: projectAgentWorkspaceNoticeTemplate,
+      };
 
   const onChangeDraft = useCallback(
     (patch: Partial<ProjectManageDraft>) => {
@@ -1063,6 +1104,7 @@ export function ProjectsSection(props: Props) {
         if (patch.scmType !== undefined) setEditScmType(patch.scmType);
         if (patch.defaultBranch !== undefined) setEditDefaultBranch(patch.defaultBranch);
         if (patch.workspaceMode !== undefined) setEditWorkspaceMode(patch.workspaceMode);
+        if (patch.workspacePolicy !== undefined) setEditWorkspacePolicy(patch.workspacePolicy);
         if (patch.defaultRoleKey !== undefined) setEditDefaultRoleKey(patch.defaultRoleKey);
         if (patch.workspaceNoticeMode !== undefined) setEditWorkspaceNoticeMode(patch.workspaceNoticeMode);
         if (patch.workspaceNoticeTemplate !== undefined) setEditWorkspaceNoticeTemplate(patch.workspaceNoticeTemplate);
@@ -1074,6 +1116,7 @@ export function ProjectsSection(props: Props) {
       if (patch.scmType !== undefined) setProjectScmType(patch.scmType);
       if (patch.defaultBranch !== undefined) setProjectDefaultBranch(patch.defaultBranch);
       if (patch.workspaceMode !== undefined) setProjectWorkspaceMode(patch.workspaceMode);
+      if (patch.workspacePolicy !== undefined) setProjectWorkspacePolicy(patch.workspacePolicy);
       if (patch.workspaceNoticeMode !== undefined) setProjectAgentWorkspaceNoticeMode(patch.workspaceNoticeMode);
       if (patch.workspaceNoticeTemplate !== undefined) setProjectAgentWorkspaceNoticeTemplate(patch.workspaceNoticeTemplate);
     },
