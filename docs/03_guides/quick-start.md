@@ -73,7 +73,7 @@ pnpm dev
 - `workspaceMode=clone`：`<WORKSPACES_ROOT>/run-<runId>`（默认 `$HOME/.tuixiu/workspaces`），并维护 `REPO_CACHE_ROOT/<projectId>.git` mirror 缓存（best-effort）用于加速 clone（默认 `$HOME/.tuixiu/repo-cache`）
 - 分支名：`run/<worktreeName>`
 
-并把 `cwd` 透传给 proxy/ACP session：`mount` 为 `/workspace`，`git_clone` 为 `/workspace/run-<runId>`，让 agent 在隔离环境里修改代码。  
+并把 `cwd` 透传给 proxy/ACP session：`workspaceProvider=host` 为 `/workspace`，`workspaceProvider=guest` 为 `/workspace/run-<runId>`，让 agent 在隔离环境里修改代码。  
 **约定**：agent 在该分支上完成修改后应执行 `git commit`，随后由后端负责 `git push` 并创建 PR。
 
 实现参考：
