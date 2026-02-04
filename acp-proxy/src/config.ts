@@ -28,8 +28,7 @@ export type SandboxConfig = {
   env?: Record<string, string>;
   cpus?: number;
   memoryMib?: number;
-  workspaceMode: "mount" | "git_clone";
-  workspaceCheckout: "worktree" | "clone";
+  workspaceProvider: "host" | "guest";
   gitPush?: boolean;
   workspaceHostRoot: string;
   runtime?: string;
@@ -405,9 +404,9 @@ function buildSchema() {
         "TUIXIU_RUN_BRANCH",
         "TUIXIU_WORKSPACE",
         "TUIXIU_WORKSPACE_GUEST",
+        "TUIXIU_WORKSPACE_PROVIDER",
         "TUIXIU_PROJECT_HOME_DIR",
         "TUIXIU_WORKSPACE_MODE",
-        "TUIXIU_SKIP_WORKSPACE_INIT",
         "TUIXIU_ROLE_KEY",
         "TUIXIU_GIT_AUTH_MODE",
         "TUIXIU_GIT_HTTP_USERNAME",
@@ -468,17 +467,11 @@ function buildSchema() {
         default: null,
         env: "ACP_PROXY_SANDBOX_MEMORY_MIB",
       },
-      workspaceMode: {
-        doc: "Workspace mode",
-        format: ["mount", "git_clone"],
-        default: "mount",
-        env: "ACP_PROXY_SANDBOX_WORKSPACE_MODE",
-      },
-      workspaceCheckout: {
-        doc: "Workspace checkout strategy (mount only)",
-        format: ["worktree", "clone"],
-        default: "worktree",
-        env: "ACP_PROXY_SANDBOX_WORKSPACE_CHECKOUT",
+      workspaceProvider: {
+        doc: "Workspace provider (host or guest)",
+        format: ["host", "guest"],
+        default: "host",
+        env: "ACP_PROXY_SANDBOX_WORKSPACE_PROVIDER",
       },
       gitPush: {
         doc: "Enable git push from sandbox",
@@ -695,11 +688,8 @@ export async function loadConfig(
   schema.validate({ allowed: "warn" });
 
   const effective = cleanOptionalFields(normalizeConfig(schema.getProperties() as ProxyConfigRaw));
-  if (
-    effective.sandbox.provider === "host_process" &&
-    effective.sandbox.workspaceMode === "git_clone"
-  ) {
-    throw new Error("sandbox.provider=host_process 不支持 workspaceMode=git_clone");
+  if (effective.sandbox.provider === "host_process" && effective.sandbox.workspaceProvider === "guest") {
+    throw new Error("sandbox.provider=host_process 不支持 workspaceProvider=guest");
   }
 
   const sandboxProvider = effective.sandbox.provider;

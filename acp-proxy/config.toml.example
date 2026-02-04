@@ -39,7 +39,7 @@ provider = "container_oci"
 
 # host_process（PoC，低隔离）：在宿主机直接启动 ACP agent。
 # ⚠️ 风险提示：几乎没有隔离，只建议本地开发/排障；必须关闭 terminalEnabled，
-# 且仅支持 workspaceMode=mount（只允许 git 与内置 fs 操作）。
+# 且仅支持 workspaceProvider=host（只允许 git 与内置 fs 操作）。
 # provider = "host_process"
 
 # 仅 provider=container_oci 时需要：docker/podman/nerdctl（可省略，acp-proxy 会自动探测）
@@ -52,10 +52,8 @@ provider = "container_oci"
 # 容器/BoxLite 内的工作目录（Run 的 workspace 固定在 guest 内 /workspace；通常由 `acp_open.init.script` 负责 git clone）
 workingDir = "/workspace"
 
-# workspaceMode: "mount" | "git_clone"
-workspaceMode = "mount"
-# workspaceCheckout: "worktree" | "clone"（仅 mount 模式）
-# workspaceCheckout = "worktree"
+# workspaceProvider: "host" | "guest"
+workspaceProvider = "host"
 # sandbox 是否支持由后端触发 git push（mount 默认 true，git_clone 动态探测）
 # gitPush = false
 

@@ -40,7 +40,7 @@ describe("loadConfig", () => {
     expect(cfg.sandbox.terminalEnabled).toBe(false);
   });
 
-  it("parses sandbox.workspaceMode", async () => {
+  it("defaults sandbox.workspaceProvider to host", async () => {
     const p = path.join(
       tmpdir(),
       `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
@@ -53,20 +53,15 @@ describe("loadConfig", () => {
         mock_mode: true,
         agent_command: ["node", "--version"],
         agent: { id: "codex-local-1", max_concurrent: 2 },
-        sandbox: {
-          provider: "boxlite_oci",
-          image: "alpine:latest",
-          workspaceMode: "mount",
-        },
+        sandbox: { provider: "boxlite_oci", image: "alpine:latest" },
       }),
       "utf8",
     );
-
     const cfg = await loadConfig(p);
-    expect(cfg.sandbox.workspaceMode).toBe("mount");
+    expect(cfg.sandbox.workspaceProvider).toBe("host");
   });
 
-  it("defaults sandbox.workspaceCheckout to worktree", async () => {
+  it("parses sandbox.workspaceProvider=guest", async () => {
     const p = path.join(
       tmpdir(),
       `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
@@ -79,64 +74,12 @@ describe("loadConfig", () => {
         mock_mode: true,
         agent_command: ["node", "--version"],
         agent: { id: "codex-local-1", max_concurrent: 2 },
-        sandbox: { provider: "boxlite_oci", image: "alpine:latest", workspaceMode: "mount" },
+        sandbox: { provider: "boxlite_oci", image: "alpine:latest", workspaceProvider: "guest" },
       }),
       "utf8",
     );
     const cfg = await loadConfig(p);
-    expect(cfg.sandbox.workspaceCheckout).toBe("worktree");
-  });
-
-  it("parses sandbox.workspaceCheckout=clone", async () => {
-    const p = path.join(
-      tmpdir(),
-      `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
-    );
-    await writeFile(
-      p,
-      JSON.stringify({
-        orchestrator_url: "ws://localhost:3000/ws/agent",
-        heartbeat_seconds: 30,
-        mock_mode: true,
-        agent_command: ["node", "--version"],
-        agent: { id: "codex-local-1", max_concurrent: 2 },
-        sandbox: {
-          provider: "boxlite_oci",
-          image: "alpine:latest",
-          workspaceMode: "mount",
-          workspaceCheckout: "clone",
-        },
-      }),
-      "utf8",
-    );
-    const cfg = await loadConfig(p);
-    expect(cfg.sandbox.workspaceCheckout).toBe("clone");
-  });
-
-  it("parses sandbox.workspaceMode=git_clone", async () => {
-    const p = path.join(
-      tmpdir(),
-      `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
-    );
-    await writeFile(
-      p,
-      JSON.stringify({
-        orchestrator_url: "ws://localhost:3000/ws/agent",
-        heartbeat_seconds: 30,
-        mock_mode: true,
-        agent_command: ["node", "--version"],
-        agent: { id: "codex-local-1", max_concurrent: 2 },
-        sandbox: {
-          provider: "boxlite_oci",
-          image: "alpine:latest",
-          workspaceMode: "git_clone",
-        },
-      }),
-      "utf8",
-    );
-
-    const cfg = await loadConfig(p);
-    expect(cfg.sandbox.workspaceMode).toBe("git_clone");
+    expect(cfg.sandbox.workspaceProvider).toBe("guest");
   });
 
   it("parses sandbox.gitPush", async () => {
@@ -155,7 +98,6 @@ describe("loadConfig", () => {
         sandbox: {
           provider: "boxlite_oci",
           image: "alpine:latest",
-          workspaceMode: "git_clone",
           gitPush: false,
         },
       }),
@@ -182,7 +124,6 @@ describe("loadConfig", () => {
         sandbox: {
           provider: "host_process",
           terminalEnabled: false,
-          workspaceMode: "mount",
         },
       }),
       "utf8",
@@ -208,7 +149,6 @@ describe("loadConfig", () => {
         sandbox: {
           provider: "host_process",
           terminalEnabled: true,
-          workspaceMode: "mount",
         },
       }),
       "utf8",
@@ -219,7 +159,7 @@ describe("loadConfig", () => {
     expect(cfg.sandbox.terminalEnabled).toBe(true);
   });
 
-  it("rejects host_process with git_clone", async () => {
+  it("rejects host_process with guest workspace provider", async () => {
     const p = path.join(
       tmpdir(),
       `acp-proxy-config-${Date.now()}-${Math.random()}.json`,
@@ -235,7 +175,7 @@ describe("loadConfig", () => {
         sandbox: {
           provider: "host_process",
           terminalEnabled: false,
-          workspaceMode: "git_clone",
+          workspaceProvider: "guest",
         },
       }),
       "utf8",
