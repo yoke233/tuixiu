@@ -4,11 +4,13 @@
 .pnpm-store
 **/node_modules
 **/dist
+**/test
 **/.turbo
 **/.codex
 **/.vite
 **/.next
 **/.cache
+**/.env
 **/coverage
 **/*.log
 **/.DS_Store

@@ -55,6 +55,8 @@ def main() -> int:
             continue
         if rel.startswith("docs/plans/"):
             continue
+        if rel.startswith("docs/archive/plans/"):
+            continue
 
         try:
             text = md.read_text(encoding="utf-8")

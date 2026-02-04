@@ -21,10 +21,10 @@ provider = "bwrap"
 # 容器/BoxLite 内的工作目录（Run 的 workspace 固定在 guest 内 /workspace；通常由 `acp_open.init.script` 负责 git clone）
 workingDir = "/workspace"
 
-# workspaceProvider: "host" | "guest"
+#`workspaceMode = worktree|clone`（策略）
+#`workspaceProvider = host|guest`（执行位置）
+workspaceMode = "worktree"
 workspaceProvider = "host"
-# workspaceCheckout: "worktree" | "clone"（仅 mount 模式）
-# workspaceCheckout = "worktree"
 
 # 宿主机 workspace 根目录（仅 mount 模式需要）
 workspaceHostRoot = "/workspaces"

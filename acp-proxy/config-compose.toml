@@ -2,7 +2,7 @@
 orchestrator_url = "ws://backend:3000/ws/agent"
 auth_token = ""
 register_url = "http://backend:3000/api/admin/acp-proxy/register"
-bootstrap_token = "154f78aeed244d329303fddf851d44fd"
+bootstrap_token = ""
 
 heartbeat_seconds = 30
 mock_mode = false
@@ -21,7 +21,7 @@ terminalEnabled = true
 
 
 # provider: "container_oci" | "boxlite_oci" | "host_process" | "bwrap"
-provider = "host_process"
+provider = "bwrap"
 
 # host_process（PoC，低隔离）：在宿主机直接启动 ACP agent。
 # ⚠️ 风险提示：几乎没有隔离，只建议本地开发/排障；必须关闭 terminalEnabled，
@@ -39,8 +39,8 @@ workingDir = "/workspace"
 
 # workspaceProvider: "host" | "guest"
 workspaceProvider = "host"
-# workspaceCheckout: "worktree" | "clone"（仅 mount 模式）
-# workspaceCheckout = "worktree"
+# workspaceMode: "worktree" | "clone"（仅 mount 模式）
+workspaceMode = "worktree"
 
 
 # 宿主机 workspace 根目录（仅 mount 模式需要）
