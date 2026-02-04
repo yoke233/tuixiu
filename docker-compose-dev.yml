@@ -30,6 +30,8 @@ services:
     privileged: true
     security_opt:
       - seccomp=unconfined
+    cap_add:
+      - SYS_ADMIN
     volumes:
       - "./acp-proxy/config-dev.toml:/config/config.toml:ro"
       - "./acp-proxy/.codex:/root/.codex"

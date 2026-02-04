@@ -64,6 +64,8 @@ services:
       dockerfile: acp-proxy/Dockerfile
     container_name: tuixiu-acp-proxy
     restart: always
+    cap_add:
+      - SYS_ADMIN
     volumes:
       - "./acp-proxy/config-compose.toml:/config/config.toml:ro"
       - acp_workspaces_data:/workspaces
