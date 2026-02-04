@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { getSandboxWorkspaceMode, isSandboxGitClone } from "../../src/utils/sandboxCaps.js";
+import { getSandboxWorkspaceProvider, isSandboxWorkspaceGuest } from "../../src/utils/sandboxCaps.js";
 
 describe("sandboxCaps", () => {
-  it("detects git_clone", () => {
-    const caps = { sandbox: { provider: "container_oci", workspaceMode: "git_clone" } };
-    expect(getSandboxWorkspaceMode(caps)).toBe("git_clone");
-    expect(isSandboxGitClone(caps)).toBe(true);
+  it("detects workspaceProvider", () => {
+    const caps = { sandbox: { provider: "container_oci", workspaceProvider: "guest" } };
+    expect(getSandboxWorkspaceProvider(caps)).toBe("guest");
+    expect(isSandboxWorkspaceGuest(caps)).toBe(true);
   });
 
-  it("returns null/false for missing or mount", () => {
-    expect(getSandboxWorkspaceMode(null)).toBe(null);
-    expect(isSandboxGitClone({ sandbox: { workspaceMode: "mount" } })).toBe(false);
+  it("returns null/false for missing or host", () => {
+    expect(getSandboxWorkspaceProvider(null)).toBe(null);
+    expect(isSandboxWorkspaceGuest({ sandbox: { workspaceProvider: "host" } })).toBe(false);
   });
 });

@@ -13,7 +13,7 @@ import { renderTextTemplate } from "../../utils/textTemplate.js";
 import { postGitHubIssueCommentBestEffort } from "../scm/githubIssueComments.js";
 import type { AcpTunnel } from "../acp/acpTunnel.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
-import { getSandboxWorkspaceMode } from "../../utils/sandboxCaps.js";
+import { getSandboxWorkspaceProvider } from "../../utils/sandboxCaps.js";
 import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
 import { resolveExecutionProfile } from "../../utils/executionProfile.js";
 import { GitAuthEnvError } from "../../utils/gitAuth.js";
@@ -146,7 +146,6 @@ export async function startIssueRun(opts: {
     projectProfileId: project?.executionProfileId ?? null,
   });
   const resolvedPolicy = resolveWorkspacePolicy({
-    platformDefault: process.env.WORKSPACE_POLICY_DEFAULT ?? null,
     projectPolicy: project?.workspacePolicy ?? null,
     rolePolicy: (role as any)?.workspacePolicy ?? null,
     taskPolicy: null,
@@ -269,14 +268,14 @@ export async function startIssueRun(opts: {
         : null;
 
     assertWorkspacePolicyCompat({ policy: resolvedPolicy.resolved, capabilities: caps });
-    const sandboxWorkspaceMode = getSandboxWorkspaceMode(caps);
+    const sandboxWorkspaceProvider = getSandboxWorkspaceProvider(caps);
     const snapshot = {
       workspaceMode,
       workspacePath,
       branchName,
       baseBranch: resolvedBaseBranch,
       gitAuthMode: ws.gitAuthMode ?? null,
-      sandbox: { provider: sandboxProvider, workspaceMode: sandboxWorkspaceMode ?? undefined },
+      sandbox: { provider: sandboxProvider, workspaceProvider: sandboxWorkspaceProvider ?? undefined },
       agent: { max_concurrent: (selectedAgent as any).maxConcurrentRuns },
       timingsMs: timingsMsSnapshot,
     };
@@ -320,10 +319,10 @@ export async function startIssueRun(opts: {
     };
   }
 
-  const sandboxWorkspaceMode = getSandboxWorkspaceMode((selectedAgent as any)?.capabilities);
+  const sandboxWorkspaceProvider = getSandboxWorkspaceProvider((selectedAgent as any)?.capabilities);
   const agentWorkspacePath = resolveAgentWorkspaceCwd({
     runId: String((run as any).id ?? ""),
-    sandboxWorkspaceMode,
+    sandboxWorkspaceProvider,
   });
 
   const promptParts: string[] = [];
@@ -567,12 +566,12 @@ export async function startIssueRun(opts: {
       // skills 将通过 agentInputs 落地到 USER_HOME/.codex/skills（不再拷贝进 workspace）
     }
 
-    if (sandboxWorkspaceMode) {
-      initEnv.TUIXIU_WORKSPACE_MODE = sandboxWorkspaceMode;
-      if (sandboxWorkspaceMode === "mount") {
-        initEnv.TUIXIU_SKIP_WORKSPACE_INIT = "1";
-      }
+    if (sandboxWorkspaceProvider) {
+      initEnv.TUIXIU_WORKSPACE_PROVIDER = sandboxWorkspaceProvider;
     }
+    const normalizedWorkspaceMode =
+      sandboxWorkspaceProvider === "guest" && workspaceMode === "worktree" ? "clone" : workspaceMode;
+    initEnv.TUIXIU_WORKSPACE_MODE = normalizedWorkspaceMode;
     if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
 
     const baseInitScript = buildWorkspaceInitScript();

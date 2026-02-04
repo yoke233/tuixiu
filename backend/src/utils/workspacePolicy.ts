@@ -1,4 +1,4 @@
-import { getSandboxWorkspaceMode } from "./sandboxCaps.js";
+import { getSandboxWorkspaceProvider } from "./sandboxCaps.js";
 
 export const WORKSPACE_POLICIES = ["git", "mount", "empty", "bundle"] as const;
 export type WorkspacePolicy = (typeof WORKSPACE_POLICIES)[number];
@@ -23,7 +23,6 @@ export function normalizeWorkspacePolicy(value: unknown): WorkspacePolicy | null
 }
 
 export function resolveWorkspacePolicy(opts: {
-  platformDefault?: unknown;
   projectPolicy?: unknown;
   rolePolicy?: unknown;
   taskPolicy?: unknown;
@@ -34,14 +33,12 @@ export function resolveWorkspacePolicy(opts: {
     role: normalizeWorkspacePolicy(opts.rolePolicy),
     project: normalizeWorkspacePolicy(opts.projectPolicy),
     profile: normalizeWorkspacePolicy(opts.profilePolicy),
-    platform: normalizeWorkspacePolicy(opts.platformDefault),
   };
 
   if (chain.task) return { resolved: chain.task, source: "task", chain };
   if (chain.role) return { resolved: chain.role, source: "role", chain };
   if (chain.project) return { resolved: chain.project, source: "project", chain };
   if (chain.profile) return { resolved: chain.profile, source: "profile", chain };
-  if (chain.platform) return { resolved: chain.platform, source: "platform", chain };
   return { resolved: "git", source: "platform", chain };
 }
 
@@ -49,12 +46,12 @@ export function assertWorkspacePolicyCompat(opts: {
   policy: WorkspacePolicy;
   capabilities: unknown;
 }) {
-  const mode = getSandboxWorkspaceMode(opts.capabilities);
-  if (!mode) return;
-  if (opts.policy === "mount" && mode !== "mount") {
+  const provider = getSandboxWorkspaceProvider(opts.capabilities);
+  if (!provider) return;
+  if (opts.policy === "mount" && provider !== "host") {
     throw new Error("Agent 不支持 mount workspace 模式");
   }
-  if (opts.policy === "git" && mode !== "git_clone") {
+  if (opts.policy === "git" && provider !== "guest") {
     throw new Error("Agent 不支持 git workspace 模式");
   }
 }
