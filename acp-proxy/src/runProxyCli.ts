@@ -235,7 +235,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       cachedGitPushCap = false;
       return cachedGitPushCap;
     }
-    if ((cfg.sandbox.workspaceMode ?? "mount") === "mount") {
+    if ((cfg.sandbox.workspaceProvider ?? "host") === "host") {
       cachedGitPushCap = true;
       return cachedGitPushCap;
     }
@@ -270,7 +270,7 @@ export async function runProxyCli(opts?: RunProxyCliOpts): Promise<void> {
       agentMode: sandbox.agentMode,
       image: cfg.sandbox.image ?? null,
       workingDir: cfg.sandbox.workingDir ?? null,
-      workspaceMode: cfg.sandbox.workspaceMode ?? "mount",
+      workspaceProvider: cfg.sandbox.workspaceProvider ?? "host",
     };
     sandboxCaps.gitPush = await resolveGitPushCap();
     if (cfg.sandbox.provider === "container_oci")

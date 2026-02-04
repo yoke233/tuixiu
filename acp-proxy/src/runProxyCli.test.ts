@@ -66,7 +66,7 @@ describe("proxy/runProxyCli", () => {
     expect(typeof runProxyCli).toBe("function");
   }, 15_000);
 
-  it("periodically reports sandbox_inventory after connected", async () => {
+  it("reports workspaceProvider and sandbox_inventory after connected", async () => {
     loadConfigSpy.mockResolvedValue({
       orchestrator_url: "ws://example.invalid/ws/agent",
       auth_token: "",
@@ -84,7 +84,7 @@ describe("proxy/runProxyCli", () => {
         env: {},
         cpus: null,
         memoryMib: null,
-        workspaceMode: "mount",
+        workspaceProvider: "host",
         workspaceHostRoot: "C:/tmp",
         runtime: null,
       },
@@ -126,6 +126,11 @@ describe("proxy/runProxyCli", () => {
         .map((c) => c[0])
         .filter((m) => m && typeof m === "object" && (m as any).type === "sandbox_inventory").length;
 
+    const registerPayload = sendSpy.mock.calls
+      .map((c) => c[0])
+      .find((m) => m && typeof m === "object" && (m as any).type === "register_agent") as any;
+    expect(registerPayload?.agent?.capabilities?.sandbox?.workspaceProvider).toBe("host");
+
     expect(loadConfigSpy).toHaveBeenCalled();
 
     const initial = countInventory();
@@ -154,7 +159,7 @@ describe("proxy/runProxyCli", () => {
         env: {},
         cpus: null,
         memoryMib: null,
-        workspaceMode: "mount",
+        workspaceProvider: "host",
         workspaceHostRoot: "C:/tmp",
         runtime: null,
       },
