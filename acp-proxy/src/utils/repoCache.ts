@@ -11,5 +11,7 @@ export function resolveRepoCacheDir(workspaceHostRoot: string, repoUrl: string):
 }
 
 export function resolveRepoLockPath(workspaceHostRoot: string, repoUrl: string): string {
-  return path.join(resolveRepoCacheDir(workspaceHostRoot, repoUrl), ".worktree.lock");
+  const cacheRoot = path.join(workspaceHostRoot, "_repo-cache");
+  const lockRoot = path.join(cacheRoot, "_locks");
+  return path.join(lockRoot, `${hashRepoUrl(repoUrl)}.lock`);
 }

@@ -20,6 +20,7 @@ describe("repoCache", () => {
   it("resolves lock path", () => {
     const root = path.resolve("C:/tmp/workspaces");
     const lock = resolveRepoLockPath(root, "https://example.com/repo.git");
+    expect(lock.startsWith(path.join(root, "_repo-cache", "_locks"))).toBe(true);
     expect(lock.endsWith(".lock")).toBe(true);
   });
 });
