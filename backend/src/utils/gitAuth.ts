@@ -126,8 +126,28 @@ async function writeAskPassScript(opts: {
   const dir = await mkdtemp(path.join(os.tmpdir(), "tuixiu-git-askpass-"));
   const isWin = process.platform === "win32";
   const scriptPath = path.join(dir, isWin ? "askpass.cmd" : "askpass.sh");
-  const password = opts.password;
+  const escapeCmdLiteral = (value: string): string =>
+    value
+      .replace(/\r?\n/g, "")
+      .replace(/%/g, "%%")
+      .replace(/\^/g, "^^")
+      .replace(/&/g, "^&")
+      .replace(/\|/g, "^|")
+      .replace(/</g, "^<")
+      .replace(/>/g, "^>")
+      .replace(/\(/g, "^(")
+      .replace(/\)/g, "^)")
+      .replace(/"/g, "^\"");
+  const escapeShSingle = (value: string): string => {
+    const cleaned = value.replace(/\r?\n/g, "");
+    return `'${cleaned.replace(/'/g, `'\\''`)}'`;
+  };
   const username = opts.username;
+  const password = opts.password;
+  const cmdUser = escapeCmdLiteral(username);
+  const cmdPass = escapeCmdLiteral(password);
+  const shUser = escapeShSingle(username);
+  const shPass = escapeShSingle(password);
 
   const content = isWin
     ? [
@@ -135,10 +155,10 @@ async function writeAskPassScript(opts: {
       "set prompt=%*",
       "echo %prompt% | findstr /i username >nul",
       "if %errorlevel%==0 (",
-      `  echo ${username}`,
+      `  echo ${cmdUser}`,
       "  exit /b 0",
       ")",
-      `echo ${password}`,
+      `echo ${cmdPass}`,
       "",
     ].join("\r\n")
     : [
@@ -146,10 +166,10 @@ async function writeAskPassScript(opts: {
       `prompt="$1"`,
       'case "$prompt" in',
       "  *Username*|*username*)",
-      `    printf '%s\\n' '${username}'`,
+      `    printf '%s\\n' ${shUser}`,
       "    ;;",
       "  *)",
-      `    printf '%s\\n' '${password}'`,
+      `    printf '%s\\n' ${shPass}`,
       "    ;;",
       "esac",
       "",
