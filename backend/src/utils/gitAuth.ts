@@ -2,7 +2,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-export type GitAuthMode = "https_pat" | "ssh";
+export type GitAuthMode = "https_pat" | "https_basic" | "ssh";
 
 export type GitAuthProject = {
   repoUrl: string | null | undefined;
@@ -10,6 +10,8 @@ export type GitAuthProject = {
   gitAuthMode?: string | null;
   githubAccessToken?: string | null;
   gitlabAccessToken?: string | null;
+  gitHttpUsername?: string | null;
+  gitHttpPassword?: string | null;
 };
 
 export class GitAuthEnvError extends Error {
@@ -70,6 +72,7 @@ function inferGitAuthMode(input: GitAuthProject): GitAuthMode {
     .trim()
     .toLowerCase();
   if (explicit === "https_pat") return "https_pat";
+  if (explicit === "https_basic") return "https_basic";
   if (explicit === "ssh") return "ssh";
 
   const url = String(input.repoUrl ?? "")
@@ -96,6 +99,14 @@ function pickPatToken(input: GitAuthProject): string | null {
   return input.githubAccessToken?.trim() || input.gitlabAccessToken?.trim() || null;
 }
 
+function pickHttpBasicUsername(input: GitAuthProject): string | null {
+  return input.gitHttpUsername?.trim() || null;
+}
+
+function pickHttpBasicPassword(input: GitAuthProject): string | null {
+  return input.gitHttpPassword?.trim() || null;
+}
+
 export function resolveGitAuthMode(input: GitAuthProject): GitAuthMode {
   return inferGitAuthMode(input);
 }
@@ -109,13 +120,13 @@ export function pickGitAccessToken(input: GitAuthProject): string | null {
 }
 
 async function writeAskPassScript(opts: {
-  token: string;
   username: string;
+  password: string;
 }): Promise<{ scriptPath: string; cleanup: () => Promise<void> }> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "tuixiu-git-askpass-"));
   const isWin = process.platform === "win32";
   const scriptPath = path.join(dir, isWin ? "askpass.cmd" : "askpass.sh");
-  const token = opts.token;
+  const password = opts.password;
   const username = opts.username;
 
   const content = isWin
@@ -127,7 +138,7 @@ async function writeAskPassScript(opts: {
       `  echo ${username}`,
       "  exit /b 0",
       ")",
-      `echo ${token}`,
+      `echo ${password}`,
       "",
     ].join("\r\n")
     : [
@@ -138,7 +149,7 @@ async function writeAskPassScript(opts: {
       `    printf '%s\\n' '${username}'`,
       "    ;;",
       "  *)",
-      `    printf '%s\\n' '${token}'`,
+      `    printf '%s\\n' '${password}'`,
       "    ;;",
       "esac",
       "",
@@ -156,7 +167,7 @@ export async function createGitProcessEnv(input: GitAuthProject): Promise<{
   cleanup: () => Promise<void>;
 }> {
   const gitAuthMode = inferGitAuthMode(input);
-  if (gitAuthMode !== "https_pat") {
+  if (gitAuthMode === "ssh") {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       GIT_TERMINAL_PROMPT: "0",
@@ -172,12 +183,31 @@ export async function createGitProcessEnv(input: GitAuthProject): Promise<{
     };
   }
 
-  const token = pickPatToken(input);
-  if (!token) {
-    throw new Error("gitAuthMode=https_pat 但未配置 accessToken");
+  if (gitAuthMode === "https_pat") {
+    const token = pickPatToken(input);
+    if (!token) {
+      throw new Error("gitAuthMode=https_pat 但未配置 accessToken");
+    }
+    const username = inferHttpsUsername(input);
+    const { scriptPath, cleanup } = await writeAskPassScript({ password: token, username });
+
+    return {
+      gitAuthMode,
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GCM_INTERACTIVE: "Never",
+        GIT_ASKPASS: scriptPath,
+      },
+      cleanup,
+    };
   }
-  const username = inferHttpsUsername(input);
-  const { scriptPath, cleanup } = await writeAskPassScript({ token, username });
+  const username = pickHttpBasicUsername(input);
+  const password = pickHttpBasicPassword(input);
+  if (!username || !password) {
+    throw new Error("gitAuthMode=https_basic 但未配置用户名或密码");
+  }
+  const { scriptPath, cleanup } = await writeAskPassScript({ password, username });
 
   return {
     gitAuthMode,

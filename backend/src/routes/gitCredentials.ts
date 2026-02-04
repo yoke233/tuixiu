@@ -6,7 +6,7 @@ import type { PrismaDeps } from "../db.js";
 import { toPublicProject } from "../utils/publicProject.js";
 import { uuidv7 } from "../utils/uuid.js";
 
-const gitAuthModeSchema = z.enum(["https_pat", "ssh"]);
+const gitAuthModeSchema = z.enum(["https_pat", "https_basic", "ssh"]);
 
 function isNonEmptyString(value: unknown): boolean {
   return !!String(value ?? "").trim();
@@ -21,6 +21,8 @@ function toGitCredentialDto(credential: any) {
     gitAuthMode: credential.gitAuthMode,
     hasGithubAccessToken: isNonEmptyString(credential.githubAccessToken),
     hasGitlabAccessToken: isNonEmptyString(credential.gitlabAccessToken),
+    gitHttpUsername: credential.gitHttpUsername ?? null,
+    hasGitHttpPassword: isNonEmptyString(credential.gitHttpPassword),
     hasSshKey: isNonEmptyString(credential.gitSshKey) || isNonEmptyString(credential.gitSshKeyB64),
     updatedAt: credential.updatedAt,
   };
@@ -50,6 +52,8 @@ export function makeGitCredentialRoutes(deps: { prisma: PrismaDeps; auth: AuthHe
           gitAuthMode: gitAuthModeSchema.optional(),
           githubAccessToken: z.string().min(1).optional(),
           gitlabAccessToken: z.string().min(1).optional(),
+          gitHttpUsername: z.string().min(1).optional(),
+          gitHttpPassword: z.string().min(1).optional(),
           gitSshCommand: z.string().min(1).optional(),
           gitSshKey: z.string().min(1).optional(),
           gitSshKeyB64: z.string().min(1).optional(),
@@ -72,6 +76,8 @@ export function makeGitCredentialRoutes(deps: { prisma: PrismaDeps; auth: AuthHe
             gitAuthMode: body.gitAuthMode ?? "https_pat",
             githubAccessToken: body.githubAccessToken ?? null,
             gitlabAccessToken: body.gitlabAccessToken ?? null,
+            gitHttpUsername: body.gitHttpUsername ?? null,
+            gitHttpPassword: body.gitHttpPassword ?? null,
             gitSshCommand: body.gitSshCommand ?? null,
             gitSshKey: body.gitSshKey ?? null,
             gitSshKeyB64: body.gitSshKeyB64 ?? null,
@@ -93,6 +99,8 @@ export function makeGitCredentialRoutes(deps: { prisma: PrismaDeps; auth: AuthHe
           gitAuthMode: gitAuthModeSchema.optional(),
           githubAccessToken: z.string().min(1).nullable().optional(),
           gitlabAccessToken: z.string().min(1).nullable().optional(),
+          gitHttpUsername: z.string().min(1).nullable().optional(),
+          gitHttpPassword: z.string().min(1).nullable().optional(),
           gitSshCommand: z.string().min(1).nullable().optional(),
           gitSshKey: z.string().min(1).nullable().optional(),
           gitSshKeyB64: z.string().min(1).nullable().optional(),
@@ -114,6 +122,8 @@ export function makeGitCredentialRoutes(deps: { prisma: PrismaDeps; auth: AuthHe
         if (body.gitAuthMode !== undefined) data.gitAuthMode = body.gitAuthMode;
         if (body.githubAccessToken !== undefined) data.githubAccessToken = body.githubAccessToken;
         if (body.gitlabAccessToken !== undefined) data.gitlabAccessToken = body.gitlabAccessToken;
+        if (body.gitHttpUsername !== undefined) data.gitHttpUsername = body.gitHttpUsername;
+        if (body.gitHttpPassword !== undefined) data.gitHttpPassword = body.gitHttpPassword;
         if (body.gitSshCommand !== undefined) data.gitSshCommand = body.gitSshCommand;
         if (body.gitSshKey !== undefined) data.gitSshKey = body.gitSshKey;
         if (body.gitSshKeyB64 !== undefined) data.gitSshKeyB64 = body.gitSshKeyB64;
@@ -204,4 +214,3 @@ export function makeGitCredentialRoutes(deps: { prisma: PrismaDeps; auth: AuthHe
     );
   };
 }
-

@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function IssuesTopBar(props: { model: IssueListController }) {
-  const { auth, loading, location, navigate, refresh, searchText, setSearchText } = props.model;
+  const { auth, loading, location, navigate, projects, refresh, searchText, setSearchText } = props.model;
 
   const loginNext = useMemo(
     () => `/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`,
     [location.pathname, location.search],
   );
+  const shouldCreateProject = !loading && projects.length === 0;
+  const goCreateProject = () => navigate("/admin?section=projects#project-create");
 
   return (
     <div className="issuesTopBar">
@@ -58,7 +60,9 @@ export function IssuesTopBar(props: { model: IssueListController }) {
                   type="button"
                   variant="secondary"
                   size="sm"
-                  onClick={() => navigate("/admin?section=issues#issue-create")}
+                  onClick={() =>
+                    shouldCreateProject ? goCreateProject() : navigate("/admin?section=issues#issue-create")
+                  }
                 >
                   新建 Issue
                 </Button>
@@ -66,7 +70,9 @@ export function IssuesTopBar(props: { model: IssueListController }) {
                   type="button"
                   variant="secondary"
                   size="sm"
-                  onClick={() => navigate("/admin?section=issues#issue-github-import")}
+                  onClick={() =>
+                    shouldCreateProject ? goCreateProject() : navigate("/admin?section=issues#issue-github-import")
+                  }
                 >
                   GitHub 导入
                 </Button>

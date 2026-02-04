@@ -16,7 +16,7 @@ export type User = {
   role: UserRole;
 };
 
-export type GitAuthMode = "https_pat" | "ssh";
+export type GitAuthMode = "https_pat" | "https_basic" | "ssh";
 
 export type Project = {
   id: string;
@@ -45,6 +45,8 @@ export type GitCredential = {
   gitAuthMode: GitAuthMode;
   hasGithubAccessToken: boolean;
   hasGitlabAccessToken: boolean;
+  gitHttpUsername?: string | null;
+  hasGitHttpPassword?: boolean;
   hasSshKey: boolean;
   updatedAt: string;
 };

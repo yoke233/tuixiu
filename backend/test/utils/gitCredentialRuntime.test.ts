@@ -31,6 +31,19 @@ describe("gitCredentialRuntime", () => {
     });
   });
 
+  it("builds https_basic env from GitCredential username/password", () => {
+    const env = buildGitRuntimeEnv({
+      project: { repoUrl: "https://git.example.com/org/repo.git", scmType: "git" },
+      credential: { gitAuthMode: "https_basic", gitHttpUsername: "git", gitHttpPassword: "secret" },
+    });
+
+    expect(env).toEqual({
+      TUIXIU_GIT_AUTH_MODE: "https_basic",
+      TUIXIU_GIT_HTTP_USERNAME: "git",
+      TUIXIU_GIT_HTTP_PASSWORD: "secret",
+    });
+  });
+
   it("throws with code when https_pat token missing", () => {
     try {
       buildGitRuntimeEnv({
@@ -57,4 +70,3 @@ describe("gitCredentialRuntime", () => {
     }
   });
 });
-
