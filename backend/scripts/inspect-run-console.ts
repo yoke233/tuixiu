@@ -76,7 +76,6 @@ function formatLine(item: any): string {
 async function main() {
   const runId = String(process.argv[2] ?? "").trim();
   if (!runId) {
-    // eslint-disable-next-line no-console
     console.error("用法: pnpm exec tsx scripts/inspect-run-console.ts <runId> [limit]");
     process.exit(1);
   }
@@ -90,7 +89,6 @@ async function main() {
       select: { id: true, status: true, errorMessage: true, startedAt: true, completedAt: true },
     });
     if (!run) {
-      // eslint-disable-next-line no-console
       console.error(`Run 不存在: ${runId}`);
       process.exit(1);
     }
@@ -128,7 +126,6 @@ async function main() {
     const hiddenOldCount = baseFilteredItems.length - visibleItems.length;
     const hiddenStatusCount = items.length - baseFilteredItems.length;
 
-    // eslint-disable-next-line no-console
     console.log(
       JSON.stringify(
         {
@@ -156,15 +153,12 @@ async function main() {
       ),
     );
 
-    // eslint-disable-next-line no-console
     console.log("\n--- console (default view) ---");
     for (const item of visibleItems) {
-      // eslint-disable-next-line no-console
       console.log(formatLine(item));
     }
 
     if (hasHiddenOnly) {
-      // eslint-disable-next-line no-console
       console.log("\n(提示) 该 Run 目前只有 sandbox 状态类事件；前端会提示“显示状态事件”。");
     }
   } finally {
@@ -173,7 +167,6 @@ async function main() {
 }
 
 void main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error(String(err instanceof Error ? err.stack ?? err.message : err));
   process.exit(1);
 });

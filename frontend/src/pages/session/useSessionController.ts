@@ -296,7 +296,7 @@ export function useSessionController() {
         });
       }
     },
-    [refresh, runId],
+    [refresh, runId, setTransientError],
   );
   const ws = useWsClient(onWs);
   useEffect(() => {
@@ -383,7 +383,7 @@ export function useSessionController() {
         setSettingConfigOptionId(null);
       }
     },
-    [isAdmin, refresh, requireLogin, runId, sessionId, setTransientError],
+    [refresh, requireLogin, runId, sessionId, setTransientError],
   );
 
   const onResolvePermission = useCallback(
