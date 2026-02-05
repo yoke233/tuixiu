@@ -42,7 +42,7 @@ function RequireAuth(props: { children: ReactElement }) {
 export default function App() {
   return (
     <AuthProvider>
-      <ThemeProvider defaultTheme="dark" storageKey="theme">
+      <ThemeProvider defaultTheme="light" storageKey="theme">
         <Routes>
           <Route path="/" element={<Navigate to="/issues" replace />} />
           <Route path="/login" element={<LoginPage />} />

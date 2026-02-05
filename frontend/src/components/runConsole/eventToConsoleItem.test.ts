@@ -42,3 +42,20 @@ describe("eventToConsoleItem (permission_request)", () => {
     expect(item.permissionRequest?.options?.[0]?.optionId).toBe("approved");
   });
 });
+
+describe("eventToConsoleItem (system.run_init_prompt)", () => {
+  it("maps init prompt into a visible details block", () => {
+    const item = eventToConsoleItem({
+      id: "e1",
+      runId: "r1",
+      source: "system",
+      type: "system.run_init_prompt",
+      payload: { text: "hello", truncated: false, totalChars: 5 },
+      timestamp: "2026-02-05T00:00:00.000Z",
+    } as any);
+
+    expect(item.role).toBe("system");
+    expect(item.detailsTitle).toContain("Run 初始提示词");
+    expect(item.text).toBe("hello");
+  });
+});

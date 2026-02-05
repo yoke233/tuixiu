@@ -30,6 +30,7 @@ export function createPmAutomation(deps: {
   prisma: PrismaDeps;
   acp: AcpTunnel;
   createWorkspace?: (opts: { runId: string; baseBranch: string; name: string }) => Promise<CreateWorkspaceResult>;
+  broadcastToClients?: (payload: unknown) => void;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 }): PmAutomation {
   const queue = new Map<string, Promise<void>>();
@@ -77,6 +78,7 @@ export function createPmAutomation(deps: {
     const startRes = await startIssueRun({
       prisma: deps.prisma,
       acp: deps.acp,
+      broadcastToClients: deps.broadcastToClients,
       createWorkspace: deps.createWorkspace,
       issueId,
       agentId: analysis.recommendedAgentId ?? undefined,

@@ -103,6 +103,7 @@ describe("startIssueRun", () => {
       agent: { findMany: vi.fn().mockResolvedValue([agent]), update: vi.fn().mockResolvedValue(undefined) },
       roleTemplate: { findFirst: vi.fn().mockResolvedValue({ id: "r1", key: "dev", envText: "", workspacePolicy: "empty" }) },
       run: { create: vi.fn().mockResolvedValue({ id: "run1" }), update: vi.fn().mockResolvedValue(undefined) },
+      event: { create: vi.fn().mockResolvedValue({ id: "e0" }) },
       roleSkillBinding: {
         findMany: vi.fn().mockResolvedValue([
           { skillId: "s1", versionPolicy: "latest", pinnedVersionId: null },
@@ -119,6 +120,7 @@ describe("startIssueRun", () => {
     } as any;
 
     const acp = { promptRun: vi.fn().mockResolvedValue({}) } as any;
+    const broadcastToClients = vi.fn();
     const createWorkspace = vi.fn().mockResolvedValue({
       workspacePath: "C:/ws",
       branchName: "run-branch",
@@ -131,6 +133,7 @@ describe("startIssueRun", () => {
     const res = await startIssueRun({
       prisma,
       acp,
+      broadcastToClients,
       createWorkspace,
       issueId: "i1",
       roleKey: "dev",
@@ -141,6 +144,23 @@ describe("startIssueRun", () => {
     expect(initEnv.TUIXIU_REPO_URL).toBeUndefined();
     expect(initEnv.TUIXIU_GIT_AUTH_MODE).toBeUndefined();
     expect(initEnv.TUIXIU_INIT_ACTIONS).toEqual("ensure_workspace,write_inventory");
+
+    expect(prisma.event.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          source: "system",
+          type: "system.run_init_prompt",
+          payload: expect.objectContaining({ text: expect.any(String) }),
+        }),
+      }),
+    );
+    expect(broadcastToClients).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "event_added",
+        run_id: "run1",
+        event: expect.objectContaining({ id: "e0" }),
+      }),
+    );
 
     const agentInputs = acp.promptRun.mock.calls[0][0].init.agentInputs as any;
     expect(agentInputs).toEqual(

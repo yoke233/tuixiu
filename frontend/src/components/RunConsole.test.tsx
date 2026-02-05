@@ -79,6 +79,49 @@ describe("RunConsole", () => {
     const img = await screen.findByRole("img", { name: "image image/jpeg" });
     expect(img).toHaveAttribute("src", expect.stringContaining("/api/runs/r1/attachments/a1"));
   });
+
+  it("renders agent_thought_chunk first line markdown in both summary and expanded body", async () => {
+    const events: Event[] = [
+      {
+        id: "t1",
+        runId: "r1",
+        source: "acp",
+        type: "acp.update.received",
+        payload: {
+          type: "session_update",
+          update: {
+            sessionUpdate: "agent_thought_chunk",
+            content: { text: "**Running ripgrep for 's'**\nsecond line" },
+          },
+        },
+        timestamp: "2026-02-05T00:00:00.000Z",
+      },
+    ];
+
+    const { container } = render(<RunConsole events={events} />);
+    const details = container.querySelector("details");
+    expect(details).not.toBeNull();
+    expect(details?.open).toBe(false);
+
+    const summaryStrong = details?.querySelectorAll("summary strong") ?? [];
+    expect(summaryStrong).toHaveLength(1);
+    expect(summaryStrong[0]?.textContent).toBe("Running ripgrep for 's'");
+
+    const summary = details?.querySelector("summary");
+    expect(summary).not.toBeNull();
+    fireEvent.click(summary as Element);
+    expect(details?.open).toBe(true);
+
+    const body = details?.querySelector("div.pre");
+    expect(body).not.toBeNull();
+
+    const bodyStrong = body?.querySelectorAll("strong") ?? [];
+    expect(bodyStrong).toHaveLength(1);
+    expect(bodyStrong[0]?.textContent).toBe("Running ripgrep for 's'");
+
+    expect(container.textContent ?? "").toContain("second line");
+    expect(container.textContent ?? "").not.toContain("**Running ripgrep for 's'**");
+  });
 });
 
 describe("RunConsole plan", () => {

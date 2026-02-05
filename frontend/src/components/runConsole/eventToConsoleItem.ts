@@ -226,6 +226,26 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
     };
   }
 
+  if (e.source === "system" && e.type === "system.run_init_prompt") {
+    const payload = e.payload as any;
+    const text = typeof payload?.text === "string" ? payload.text : JSON.stringify(payload ?? null, null, 2);
+    const truncated = payload?.truncated === true;
+    const totalChars =
+      typeof payload?.totalChars === "number" && Number.isFinite(payload.totalChars) ? payload.totalChars : null;
+
+    const titleParts = ["Run 初始提示词", truncated ? "（已截断）" : "", totalChars ? `chars=${totalChars}` : ""]
+      .filter(Boolean);
+
+    return {
+      id: e.id,
+      role: "system",
+      kind: "block",
+      text,
+      timestamp: e.timestamp,
+      detailsTitle: titleParts.join(" "),
+    };
+  }
+
   if (e.source === "user") {
     const payload = e.payload as any;
     const blocks = tryParseContentBlocks(payload?.prompt);

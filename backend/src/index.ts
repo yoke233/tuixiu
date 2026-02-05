@@ -321,12 +321,14 @@ const pm = createPmAutomation({
   prisma,
   acp: acpTunnel,
   createWorkspace,
+  broadcastToClients: wsGateway.broadcastToClients,
   log: (msg, extra) => server.log.info(extra ? { ...extra, msg } : { msg }),
 });
 server.register(
   makeIssueRoutes({
     prisma,
     acp: acpTunnel,
+    broadcastToClients: wsGateway.broadcastToClients,
     createWorkspace,
     onIssueCreated: pm.triggerAutoStart,
   }),

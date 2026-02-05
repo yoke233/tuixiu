@@ -71,6 +71,7 @@ export async function startIssueRun(opts: {
     baseBranch: string;
     name: string;
   }) => Promise<CreateWorkspaceResult>;
+  broadcastToClients?: (payload: unknown) => void;
   issueId: string;
   agentId?: string;
   roleKey?: string;
@@ -122,7 +123,10 @@ export async function startIssueRun(opts: {
     };
   }
 
-  const effectiveRoleKey = roleKey?.trim() ? roleKey.trim() : "";
+  const project = (issue as any).project as any;
+  const roleKeyFromInput = roleKey?.trim() ? roleKey.trim() : "";
+  const roleKeyFromProject = String(project?.defaultRoleKey ?? "").trim();
+  const effectiveRoleKey = roleKeyFromInput || roleKeyFromProject;
   if (!effectiveRoleKey) {
     return {
       success: false,
@@ -140,7 +144,6 @@ export async function startIssueRun(opts: {
     };
   }
 
-  const project = (issue as any).project as any;
   const executionProfile = await resolveExecutionProfile({
     prisma: opts.prisma,
     platformProfileKey: process.env.EXECUTION_PROFILE_DEFAULT_KEY ?? null,
@@ -613,12 +616,37 @@ export async function startIssueRun(opts: {
       })(),
     };
 
+    const fullPromptText = promptParts.join("\n\n");
+    try {
+      const maxChars = 20_000;
+      const text = fullPromptText.length > maxChars ? `${fullPromptText.slice(0, maxChars - 1)}…` : fullPromptText;
+      const createdEvent = await (opts.prisma as any)?.event?.create?.({
+        data: {
+          id: uuidv7(),
+          runId: String((run as any).id),
+          source: "system",
+          type: "system.run_init_prompt",
+          payload: {
+            text,
+            truncated: fullPromptText.length > maxChars,
+            totalChars: fullPromptText.length,
+          } as any,
+          timestamp: new Date(),
+        },
+      });
+      if (createdEvent) {
+        opts.broadcastToClients?.({ type: "event_added", run_id: String((run as any).id), event: createdEvent });
+      }
+    } catch {
+      // best-effort
+    }
+
     await opts.acp.promptRun({
       proxyId: String((selectedAgent as any).proxyId ?? ""),
       runId: String((run as any).id),
       cwd: agentWorkspacePath,
       sessionId: (run as any).acpSessionId ?? null,
-      prompt: [{ type: "text", text: promptParts.join("\n\n") }],
+      prompt: [{ type: "text", text: fullPromptText }],
       init,
     });
 

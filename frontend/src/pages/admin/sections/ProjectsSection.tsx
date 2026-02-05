@@ -879,7 +879,7 @@ export function ProjectsSection(props: Props) {
   const [editScmType, setEditScmType] = useState("gitlab");
   const [editDefaultBranch, setEditDefaultBranch] = useState("main");
   const [editWorkspaceMode, setEditWorkspaceMode] = useState<"worktree" | "clone">("worktree");
-  const [editWorkspacePolicy, setEditWorkspacePolicy] = useState<ProjectManageDraft["workspacePolicy"]>("mount");
+  const [editWorkspacePolicy, setEditWorkspacePolicy] = useState<ProjectManageDraft["workspacePolicy"]>("git");
   const [editDefaultRoleKey, setEditDefaultRoleKey] = useState("");
   const [editWorkspaceNoticeMode, setEditWorkspaceNoticeMode] = useState<WorkspaceNoticeMode>("default");
   const [editWorkspaceNoticeTemplate, setEditWorkspaceNoticeTemplate] = useState("");
@@ -889,7 +889,7 @@ export function ProjectsSection(props: Props) {
   const [projectScmType, setProjectScmType] = useState("gitlab");
   const [projectDefaultBranch, setProjectDefaultBranch] = useState("main");
   const [projectWorkspaceMode, setProjectWorkspaceMode] = useState<"worktree" | "clone">("worktree");
-  const [projectWorkspacePolicy, setProjectWorkspacePolicy] = useState<ProjectManageDraft["workspacePolicy"]>("mount");
+  const [projectWorkspacePolicy, setProjectWorkspacePolicy] = useState<ProjectManageDraft["workspacePolicy"]>("git");
   const [projectAgentWorkspaceNoticeMode, setProjectAgentWorkspaceNoticeMode] = useState<WorkspaceNoticeMode>("default");
   const [projectAgentWorkspaceNoticeTemplate, setProjectAgentWorkspaceNoticeTemplate] = useState("");
 
@@ -919,7 +919,7 @@ export function ProjectsSection(props: Props) {
     setEditScmType(effectiveProject.scmType ?? "gitlab");
     setEditDefaultBranch(effectiveProject.defaultBranch ?? "main");
     setEditWorkspaceMode(effectiveProject.workspaceMode ?? "worktree");
-    setEditWorkspacePolicy((effectiveProject.workspacePolicy ?? "mount") as ProjectManageDraft["workspacePolicy"]);
+    setEditWorkspacePolicy((effectiveProject.workspacePolicy ?? "git") as ProjectManageDraft["workspacePolicy"]);
     setEditDefaultRoleKey(effectiveProject.defaultRoleKey ?? "");
 
     const raw = effectiveProject.agentWorkspaceNoticeTemplate;
@@ -942,7 +942,7 @@ export function ProjectsSection(props: Props) {
     setEditScmType(effectiveProject.scmType ?? "gitlab");
     setEditDefaultBranch(effectiveProject.defaultBranch ?? "main");
     setEditWorkspaceMode(effectiveProject.workspaceMode ?? "worktree");
-    setEditWorkspacePolicy((effectiveProject.workspacePolicy ?? "mount") as ProjectManageDraft["workspacePolicy"]);
+    setEditWorkspacePolicy((effectiveProject.workspacePolicy ?? "git") as ProjectManageDraft["workspacePolicy"]);
     setEditDefaultRoleKey(effectiveProject.defaultRoleKey ?? "");
 
     const raw = effectiveProject.agentWorkspaceNoticeTemplate;
@@ -964,7 +964,7 @@ export function ProjectsSection(props: Props) {
     setProjectScmType("gitlab");
     setProjectDefaultBranch("main");
     setProjectWorkspaceMode("worktree");
-    setProjectWorkspacePolicy("mount");
+    setProjectWorkspacePolicy("git");
     setProjectAgentWorkspaceNoticeMode("default");
     setProjectAgentWorkspaceNoticeTemplate("");
   }, []);

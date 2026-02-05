@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { importGitHubIssue } from "@/api/githubIssues";
@@ -23,10 +23,15 @@ export function IssuesSection(props: Props) {
   const location = useLocation();
   const navigate = useNavigate();
   const goCreateProject = () => navigate("/admin?section=projects#project-create");
+  const goHome = () => navigate("/issues");
+
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const postCreateActionRef = useRef<"home" | "stay">("home");
 
   const [issueTitle, setIssueTitle] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
   const [issueCriteria, setIssueCriteria] = useState("");
+  const [creatingIssue, setCreatingIssue] = useState(false);
 
   const [githubImport, setGithubImport] = useState("");
   const [importingGithub, setImportingGithub] = useState(false);
@@ -59,6 +64,7 @@ export function IssuesSection(props: Props) {
         return;
       }
 
+      setCreatingIssue(true);
       await createIssue({
         projectId: effectiveProjectId,
         title: issueTitle.trim(),
@@ -70,8 +76,20 @@ export function IssuesSection(props: Props) {
       setIssueDescription("");
       setIssueCriteria("");
       await onRefreshGlobal();
+
+      const action = postCreateActionRef.current;
+      if (action === "home") {
+        goHome();
+      } else {
+        requestAnimationFrame(() => titleInputRef.current?.focus());
+      }
+
+      // default back to home for the next submit
+      postCreateActionRef.current = "home";
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreatingIssue(false);
     }
   }
 
@@ -129,7 +147,12 @@ export function IssuesSection(props: Props) {
         <form onSubmit={(e) => void onCreateIssue(e)} className="form">
           <label className="label">
             标题 *
-            <Input aria-label="Issue 标题" value={issueTitle} onChange={(e) => setIssueTitle(e.target.value)} />
+            <Input
+              aria-label="Issue 标题"
+              ref={titleInputRef}
+              value={issueTitle}
+              onChange={(e) => setIssueTitle(e.target.value)}
+            />
           </label>
           <label className="label">
             描述
@@ -139,9 +162,27 @@ export function IssuesSection(props: Props) {
             验收标准（每行一条）
             <Textarea value={issueCriteria} onChange={(e) => setIssueCriteria(e.target.value)} rows={6} />
           </label>
-          <Button type="submit" disabled={!effectiveProjectId}>
-            提交
-          </Button>
+          <div className="row gap" style={{ flexWrap: "wrap" }}>
+            <Button
+              type="submit"
+              disabled={!effectiveProjectId || creatingIssue}
+              onClick={() => {
+                postCreateActionRef.current = "home";
+              }}
+            >
+              {creatingIssue ? "提交中…" : "提交"}
+            </Button>
+            <Button
+              type="submit"
+              variant="secondary"
+              disabled={!effectiveProjectId || creatingIssue}
+              onClick={() => {
+                postCreateActionRef.current = "stay";
+              }}
+            >
+              保存并继续提交
+            </Button>
+          </div>
         </form>
         {!effectiveProjectId ? (
           <div className="row gap" style={{ alignItems: "center", marginTop: 8 }}>

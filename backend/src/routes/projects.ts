@@ -55,7 +55,7 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
           scmType: body.scmType ?? "gitlab",
           defaultBranch: body.defaultBranch ?? "main",
           workspaceMode: body.workspaceMode ?? "worktree",
-          workspacePolicy: body.workspacePolicy ?? null,
+          workspacePolicy: body.workspacePolicy ?? "git",
           defaultRoleKey: body.defaultRoleKey,
           executionProfileId: body.executionProfileId,
           agentWorkspaceNoticeTemplate: body.agentWorkspaceNoticeTemplate,

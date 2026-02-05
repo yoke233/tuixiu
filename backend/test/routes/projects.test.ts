@@ -122,7 +122,7 @@ describe("Projects routes", () => {
         scmType: "gitlab",
         defaultBranch: "main",
         workspaceMode: "worktree",
-        workspacePolicy: null,
+        workspacePolicy: "git",
         defaultRoleKey: undefined,
         executionProfileId: undefined,
         agentWorkspaceNoticeTemplate: undefined,

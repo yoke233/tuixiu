@@ -52,6 +52,7 @@ const createIssueBodySchema = z.object({
 export function makeIssueRoutes(deps: {
   prisma: PrismaDeps;
   acp: AcpTunnel;
+  broadcastToClients?: (payload: unknown) => void;
   createWorkspace?: (opts: {
     runId: string;
     baseBranch: string;
@@ -161,6 +162,7 @@ export function makeIssueRoutes(deps: {
       return await startIssueRun({
         prisma: deps.prisma,
         acp: deps.acp,
+        broadcastToClients: deps.broadcastToClients,
         createWorkspace: deps.createWorkspace,
         issueId: id,
         agentId,
