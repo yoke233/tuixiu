@@ -450,7 +450,7 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                   position: "absolute",
                   bottom: "calc(100% + 8px)",
                   right: 0,
-                  width: "min(72vw, 320px)",
+                  width: "min(86vw, 420px)",
                   padding: 10,
                   borderRadius: 10,
                   border: "1px solid var(--card-border)",
@@ -459,6 +459,8 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                   zIndex: 30,
                   display: "grid",
                   gap: 10,
+                  maxHeight: "min(70vh, 520px)",
+                  overflowY: "auto",
                 }}
               >
                 <div style={{ fontWeight: 700 }}>配置</div>
@@ -467,6 +469,8 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                   const optId = typeof opt.id === "string" ? opt.id : "";
                   const name =
                     typeof opt.name === "string" && opt.name.trim() ? opt.name.trim() : optId;
+                  const optDescription =
+                    typeof opt.description === "string" ? opt.description.trim() : "";
                   const currentValueStr =
                     opt.currentValue === undefined ? "-" : JSON.stringify(opt.currentValue);
                   const options = Array.isArray(opt.options) ? opt.options : [];
@@ -484,7 +488,14 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                     >
                       <div className="row spaceBetween" style={{ alignItems: "baseline", gap: 10 }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div
+                            style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}
+                            title={
+                              optDescription
+                                ? [name, optDescription].filter(Boolean).join("\n")
+                                : name || undefined
+                            }
+                          >
                             {name}
                           </div>
                           <div className="muted" style={{ fontSize: 12 }}>
@@ -496,12 +507,6 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                           <span className="iconSpinner" aria-hidden="true" />
                         ) : null}
                       </div>
-
-                      {typeof opt.description === "string" && opt.description.trim() ? (
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          {opt.description.trim()}
-                        </div>
-                      ) : null}
 
                       <div style={{ display: "grid", gap: 6 }}>
                         {options.map((o, index) => {
@@ -536,14 +541,10 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                               }}
                               disabled={!sessionId || !optId || settingConfigOptionId === optId}
                               className={`h-auto w-full items-start justify-start py-2 text-left ${isActive ? "border-primary" : ""}`}
+                              title={description ? [label, description].filter(Boolean).join("\n") : undefined}
                             >
                               <div style={{ display: "grid", gap: 2 }}>
                                 <div style={{ fontWeight: 700 }}>{label}</div>
-                                {description ? (
-                                  <div className="muted" style={{ fontSize: 12 }}>
-                                    {description}
-                                  </div>
-                                ) : null}
                               </div>
                             </Button>
                           );

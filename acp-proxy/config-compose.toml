@@ -39,8 +39,7 @@ workingDir = "/workspace"
 
 # workspaceProvider: "host" | "guest"
 workspaceProvider = "host"
-# workspaceMode: "mount" | "git_clone"
-workspaceMode = "mount"
+# workspaceMode 由后端下发（TUIXIU_WORKSPACE_MODE），acp-proxy 不再在配置中控制。
 
 
 # 宿主机 workspace 根目录（仅 mount 模式需要）

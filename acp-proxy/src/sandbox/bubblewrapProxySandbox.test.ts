@@ -75,13 +75,17 @@ describe("proxy/sandbox/bubblewrap", () => {
       return;
     }
 
+    const expectedWorkspaceHostPath = path.resolve(rootDir, "run-r1");
+    const worktreeGitDir = path.resolve(rootDir, "_repo-cache", "abc", ".git", "worktrees", "run-r1");
+    await fs.mkdir(worktreeGitDir, { recursive: true });
+    await fs.writeFile(path.join(expectedWorkspaceHostPath, ".git"), `gitdir: ${worktreeGitDir}\n`, "utf8");
+
     await sandbox.execProcess({
       instanceName: "inst1",
       command: ["node", "--version"],
       cwdInGuest: "/workspace/sub/dir",
     });
 
-    const expectedWorkspaceHostPath = path.resolve(rootDir, "run-r1");
     const firstCall = spawnMock.mock.calls[0] ?? null;
     expect(firstCall).not.toBeNull();
     const [calledCmd, calledArgs, calledOpts] = firstCall as any[];
@@ -90,6 +94,9 @@ describe("proxy/sandbox/bubblewrap", () => {
 
     const args = calledArgs as string[];
     expect(args).toEqual(expect.arrayContaining(["--bind", expectedWorkspaceHostPath, "/workspace"]));
+    expect(args).toEqual(
+      expect.arrayContaining(["--bind", path.resolve(rootDir, "_repo-cache", "abc", ".git"), path.resolve(rootDir, "_repo-cache", "abc", ".git")]),
+    );
     expect(args).toEqual(expect.arrayContaining(["--ro-bind", path.resolve(hostCodexCfg), "/root/.codex/config.toml"]));
     expect(args).toEqual(expect.arrayContaining(["--chdir", "/workspace/sub/dir"]));
     expect(args).toEqual(expect.arrayContaining(["--", "node", "--version"]));

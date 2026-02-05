@@ -298,12 +298,12 @@ export function useIssueDetailController(opts: {
         const desiredRunId = selectedRunIdRef.current || i.runs?.[0]?.id || "";
         if (desiredRunId) {
           try {
-            setEvents([]);
             const r = await getRun(desiredRunId);
             setRun(r);
             setSelectedRunId(desiredRunId);
             const shouldLoadEvents = !wsOpen || lastEventsSnapshotRunIdRef.current !== desiredRunId;
             if (shouldLoadEvents) {
+              setEvents([]);
               const es = await listRunEvents(desiredRunId);
               setEvents((prev) => mergeEventsById(prev, [...es].reverse(), 600));
               lastEventsSnapshotRunIdRef.current = desiredRunId;
@@ -311,12 +311,12 @@ export function useIssueDetailController(opts: {
           } catch (e) {
             const latest = i.runs?.[0]?.id || "";
             if (latest && latest !== desiredRunId) {
-              setEvents([]);
               const r = await getRun(latest);
               setRun(r);
               setSelectedRunId(latest);
               const shouldLoadEvents = !wsOpen || lastEventsSnapshotRunIdRef.current !== latest;
               if (shouldLoadEvents) {
+                setEvents([]);
                 const es = await listRunEvents(latest);
                 setEvents((prev) => mergeEventsById(prev, [...es].reverse(), 600));
                 lastEventsSnapshotRunIdRef.current = latest;
@@ -393,12 +393,6 @@ export function useIssueDetailController(opts: {
       });
   }, [issue?.projectId]);
 
-  useEffect(() => {
-    if (!issue) return;
-    if (selectedRoleKey) return;
-    const def = issue.project?.defaultRoleKey;
-    if (typeof def === "string" && def.trim()) setSelectedRoleKey(def.trim());
-  }, [issue, selectedRoleKey]);
 
   const refreshTasksOnly = useCallback(async () => {
     if (!issueId) return;
@@ -498,10 +492,10 @@ export function useIssueDetailController(opts: {
           setRun((r) =>
             r
               ? {
-                  ...r,
-                  status: "completed",
-                  completedAt: r.completedAt ?? new Date().toISOString(),
-                }
+                ...r,
+                status: "completed",
+                completedAt: r.completedAt ?? new Date().toISOString(),
+              }
               : r,
           );
           void refresh({ silent: true });
@@ -555,11 +549,13 @@ export function useIssueDetailController(opts: {
   );
   const selectedAgentReady = selectedAgent
     ? selectedAgent.status === "online" &&
-      selectedAgent.currentLoad < selectedAgent.maxConcurrentRuns
+    selectedAgent.currentLoad < selectedAgent.maxConcurrentRuns
     : false;
+  const hasSelectedRole = Boolean(selectedRoleKey?.trim());
   const canStartRun =
     allowRunActions &&
     Boolean(issueId) &&
+    hasSelectedRole &&
     (selectedAgentId
       ? selectedAgentReady
       : !agentsLoaded || !!agentsError || availableAgents.length > 0);
@@ -576,6 +572,10 @@ export function useIssueDetailController(opts: {
     if (!requireLogin()) return;
     if (!allowRunActions) {
       setError("当前账号无权限操作 Run");
+      return;
+    }
+    if (!selectedRoleKey?.trim()) {
+      setError("请先选择 Role");
       return;
     }
     setError(null);
@@ -1016,10 +1016,10 @@ export function useIssueDetailController(opts: {
     const payload =
       step.kind === "pr.merge"
         ? {
-            verdict: "approve" as const,
-            squash: Boolean(form.squash),
-            mergeCommitMessage: form.mergeCommitMessage?.trim() || undefined,
-          }
+          verdict: "approve" as const,
+          squash: Boolean(form.squash),
+          mergeCommitMessage: form.mergeCommitMessage?.trim() || undefined,
+        }
         : { verdict: form.verdict, comment: form.comment?.trim() || undefined };
 
     setSubmittingRunId(runId);

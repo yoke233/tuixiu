@@ -344,6 +344,18 @@ export function eventToConsoleItem(e: Event): ConsoleItem {
       };
     }
 
+    if (payload?.type === "session_created") {
+      const sessionId = typeof payload?.session_id === "string" ? payload.session_id.trim() : "";
+      return {
+        id: e.id,
+        role: "system",
+        kind: "block",
+        text: `（状态）session 已创建${sessionId ? ` · sessionId=${sessionId}` : ""}`,
+        timestamp: e.timestamp,
+        isStatus: true,
+      };
+    }
+
     if (payload?.type === "init_step") {
       const stage = typeof payload.stage === "string" ? payload.stage.trim() : "";
       const status = typeof payload.status === "string" ? payload.status.trim() : "progress";

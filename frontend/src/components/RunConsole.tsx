@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 
 import type { Event } from "@/types";
 
+import { apiUrl } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { buildConsoleItems } from "@/components/runConsole/buildConsoleItems";
@@ -95,6 +96,89 @@ type PermissionUiProps = {
   resolvedRequestIds?: Set<string>;
   onDecide?: (input: { requestId: string; sessionId: string } & PermissionDecision) => void;
 };
+
+type ConsoleRichToken =
+  | { type: "text"; text: string }
+  | { type: "image"; mimeType: string; uri: string };
+
+function resolveMediaUri(uri: string): string {
+  const u = String(uri ?? "").trim();
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith("/")) return apiUrl(u);
+  return apiUrl(`/${u}`);
+}
+
+function parseConsoleRichTokens(text: string): ConsoleRichToken[] {
+  const input = String(text ?? "");
+  if (!input) return [];
+
+  const tokens: ConsoleRichToken[] = [];
+  const re = /\[image\s+([^\s\]]+)(?:\s+([^\]]+))?\]/g;
+  let lastIndex = 0;
+
+  for (;;) {
+    const m = re.exec(input);
+    if (!m) break;
+
+    const start = m.index;
+    if (start > lastIndex) {
+      tokens.push({ type: "text", text: input.slice(lastIndex, start) });
+    }
+
+    const mimeType = String(m[1] ?? "").trim();
+    const uri = String(m[2] ?? "").trim();
+    if (mimeType && uri) {
+      tokens.push({ type: "image", mimeType, uri });
+    } else {
+      tokens.push({ type: "text", text: m[0] });
+    }
+
+    lastIndex = re.lastIndex;
+  }
+
+  if (lastIndex < input.length) {
+    tokens.push({ type: "text", text: input.slice(lastIndex) });
+  }
+
+  return tokens.length ? tokens : [{ type: "text", text: input }];
+}
+
+function ConsoleRichContent(props: { text: string }) {
+  const tokens = useMemo(() => parseConsoleRichTokens(props.text), [props.text]);
+  if (!tokens.length) return null;
+  return (
+    <>
+      {tokens.map((t, idx) => {
+        if (t.type === "text") return <span key={`${idx}-t`}>{t.text}</span>;
+        const src = resolveMediaUri(t.uri);
+        if (!src) return <span key={`${idx}-b`}>{`[image ${t.mimeType}]`}</span>;
+        return (
+          <a
+            key={`${idx}-i`}
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            style={{ display: "block", marginTop: 6 }}
+          >
+            <img
+              src={src}
+              alt={`image ${t.mimeType}`}
+              loading="lazy"
+              style={{
+                display: "block",
+                maxWidth: "100%",
+                maxHeight: 360,
+                borderRadius: 10,
+                border: "1px solid rgba(255,255,255,0.12)",
+              }}
+            />
+          </a>
+        );
+      })}
+    </>
+  );
+}
 
 export function RunConsole(props: {
   events: Event[];
@@ -425,7 +509,7 @@ export function RunConsole(props: {
               <span className="consoleNewTag" title="new" aria-label="new">
                 !
               </span>
-              <span>{item.text}</span>
+              <ConsoleRichContent text={item.text} />
             </div>
           );
         }
@@ -495,7 +579,14 @@ export function RunConsole(props: {
         }
         return (
           <div key={item.id} className={`consoleItem ${item.role}`}>
-            {item.role === "user" ? `你: ${item.text}` : item.text}
+            {item.role === "user" ? (
+              <>
+                <span>{`你: `}</span>
+                <ConsoleRichContent text={item.text} />
+              </>
+            ) : (
+              <ConsoleRichContent text={item.text} />
+            )}
           </div>
         );
       })}

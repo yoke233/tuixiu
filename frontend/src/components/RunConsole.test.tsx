@@ -59,6 +59,26 @@ describe("RunConsole", () => {
     await screen.findByText("three");
     await waitFor(() => expect(scrollTo).toHaveBeenCalled());
   });
+
+  it("renders [image mime uri] markers as inline images for user prompts", async () => {
+    const events: Event[] = [
+      {
+        id: "u1",
+        runId: "r1",
+        source: "user",
+        type: "prompt",
+        payload: {
+          prompt: [{ type: "image", mimeType: "image/jpeg", uri: "/runs/r1/attachments/a1" }],
+        },
+        timestamp: "2026-02-05T00:00:00.000Z",
+      },
+    ];
+
+    render(<RunConsole events={events} />);
+
+    const img = await screen.findByRole("img", { name: "image image/jpeg" });
+    expect(img).toHaveAttribute("src", expect.stringContaining("/api/runs/r1/attachments/a1"));
+  });
 });
 
 describe("RunConsole plan", () => {
@@ -107,6 +127,24 @@ describe("RunConsole sandbox", () => {
 
     expect(await screen.findByText("暂无输出（无日志）")).toBeInTheDocument();
     expect(screen.queryByText(payload)).not.toBeInTheDocument();
+  });
+
+  it("hides session_created status events by default", async () => {
+    const events: Event[] = [
+      {
+        id: "e1",
+        runId: "r1",
+        source: "acp",
+        type: "acp.update.received",
+        payload: { type: "session_created", session_id: "s1" },
+        timestamp: "2026-02-05T00:00:00.000Z",
+      },
+    ];
+
+    render(<RunConsole events={events} />);
+
+    expect(await screen.findByText("暂无输出（无日志）")).toBeInTheDocument();
+    expect(screen.queryByText("sessionId=s1")).not.toBeInTheDocument();
   });
 });
 

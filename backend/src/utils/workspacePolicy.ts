@@ -51,7 +51,4 @@ export function assertWorkspacePolicyCompat(opts: {
   if (opts.policy === "mount" && provider !== "host") {
     throw new Error("Agent 不支持 mount workspace 模式");
   }
-  if (opts.policy === "git" && provider !== "guest") {
-    throw new Error("Agent 不支持 git workspace 模式");
-  }
 }

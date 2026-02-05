@@ -96,7 +96,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
   const runStatus = run?.status ?? null;
   const canOperateRunningRun = runStatus === "pending" || runStatus === "running" || runStatus === "waiting_ci";
   const canStartNewRun = !run || runStatus === "completed" || runStatus === "failed" || runStatus === "cancelled";
-  const roleSelectValue = selectedRoleKey ? selectedRoleKey : "__project_default__";
+  const roleSelectValue = selectedRoleKey || "";
   const agentSelectValue = selectedAgentId ? selectedAgentId : "__auto_assign__";
 
   return (
@@ -238,19 +238,16 @@ export function IssueRunCard(props: IssueRunCardProps) {
 
           <div className="grid gap-3 md:grid-cols-2">
             <div className="grid gap-2">
-              <Label>选择 Role（可选）</Label>
+              <Label>选择 Role（必选）</Label>
               <Select
                 value={roleSelectValue}
-                onValueChange={(v) =>
-                  onSelectedRoleKeyChange(v === "__project_default__" ? "" : v)
-                }
+                onValueChange={(v) => onSelectedRoleKeyChange(v)}
                 disabled={(!rolesLoaded && !rolesError) || refreshing}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="项目默认" />
+                  <SelectValue placeholder="请选择角色" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__project_default__">项目默认</SelectItem>
                   {roles.map((r) => (
                     <SelectItem key={r.id} value={r.key}>
                       {r.displayName} ({r.key})
@@ -258,7 +255,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
                   ))}
                 </SelectContent>
               </Select>
-              <div className="text-xs text-muted-foreground">不选则使用 Project 默认</div>
+              <div className="text-xs text-muted-foreground">请选择一个角色模板</div>
             </div>
 
             <div className="grid gap-2">

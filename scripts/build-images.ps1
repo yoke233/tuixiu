@@ -14,16 +14,16 @@ $proxyImage = "yoke233/tuixiu-acp-proxy"
 #   -t "${backendImage}:$timestamp" `
 #   "$repoRoot"
 
-Write-Host "Building ${frontendImage}:latest and ${frontendImage}:$timestamp"
-docker build `
-  -f "$repoRoot\frontend\Dockerfile" `
-  -t "${frontendImage}:latest" `
-  -t "${frontendImage}:$timestamp" `
-  "$repoRoot"
-
-# Write-Host "Building ${proxyImage}:latest and ${proxyImage}:$timestamp"
+# Write-Host "Building ${frontendImage}:latest and ${frontendImage}:$timestamp"
 # docker build `
-#   -f "$repoRoot\acp-proxy\Dockerfile" `
-#   -t "${proxyImage}:latest" `
-#   -t "${proxyImage}:$timestamp" `
+#   -f "$repoRoot\frontend\Dockerfile" `
+#   -t "${frontendImage}:latest" `
+#   -t "${frontendImage}:$timestamp" `
 #   "$repoRoot"
+
+Write-Host "Building ${proxyImage}:latest and ${proxyImage}:$timestamp"
+docker build `
+  -f "$repoRoot\acp-proxy\Dockerfile" `
+  -t "${proxyImage}:latest" `
+  -t "${proxyImage}:$timestamp" `
+  "$repoRoot"

@@ -9,6 +9,7 @@ import { DEFAULT_KEEPALIVE_TTL_SECONDS, WORKSPACE_GUEST_PATH } from "../proxyCon
 import type { ProxyContext } from "../proxyContext.js";
 import { createHostGitEnv } from "../utils/gitHost.js";
 import { resolveRepoCacheDir, resolveRepoLockPath } from "../utils/repoCache.js";
+import { pickSecretValues, redactSecrets } from "../utils/secrets.js";
 import { isRecord, validateInstanceName, validateRunId } from "../utils/validate.js";
 
 import type { RunRuntime } from "./runTypes.js";
@@ -264,6 +265,23 @@ export async function ensureHostWorkspaceGit(
   }
 
   const env = initEnv ?? {};
+  const secrets = pickSecretValues(env);
+  const redact = (text: string) => redactSecrets(text, secrets);
+  const formatExecError = (err: unknown): string => {
+    if (!err || typeof err !== "object") return redact(String(err));
+    const anyErr = err as any;
+    const message = typeof anyErr.message === "string" ? anyErr.message.trim() : String(err);
+    const stderr = typeof anyErr.stderr === "string" ? anyErr.stderr.trim() : "";
+    const stdout = typeof anyErr.stdout === "string" ? anyErr.stdout.trim() : "";
+    const clip = (text: string, maxLen: number) =>
+      text.length > maxLen ? `${text.slice(0, maxLen)}...(truncated)` : text;
+    const parts = [
+      message,
+      stderr ? `stderr: ${clip(stderr, 2000)}` : "",
+      stdout ? `stdout: ${clip(stdout, 2000)}` : "",
+    ].filter(Boolean);
+    return redact(parts.join("\n"));
+  };
   const repo = String(env.TUIXIU_REPO_URL ?? "").trim();
   const branch = String(env.TUIXIU_RUN_BRANCH ?? "").trim();
   const baseBranch = String(env.TUIXIU_BASE_BRANCH ?? "main").trim() || "main";
@@ -346,8 +364,9 @@ export async function ensureHostWorkspaceGit(
     reportStep("ready", "done");
     run.hostWorkspaceReady = true;
   } catch (err) {
-    reportStep("init", "failed", String(err));
-    throw err;
+    const message = formatExecError(err);
+    reportStep("init", "failed", message);
+    throw new Error(message);
   } finally {
     await cleanup().catch(() => {});
   }

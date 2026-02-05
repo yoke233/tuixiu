@@ -682,6 +682,19 @@ export async function loadConfig(
 
   const merged = override ? mergeConfig(base as ProxyConfig, override) : (base as ProxyConfig);
 
+  const mergedAny = merged as any;
+  const deprecatedWorkspaceMode =
+    typeof mergedAny?.sandbox?.workspaceMode === "string" ? mergedAny.sandbox.workspaceMode.trim() : "";
+  const envWorkspaceMode = process.env.ACP_PROXY_SANDBOX_WORKSPACE_MODE?.trim() ?? "";
+  if (deprecatedWorkspaceMode || envWorkspaceMode) {
+    console.warn(
+      "sandbox.workspaceMode is deprecated and ignored; use backend TUIXIU_WORKSPACE_MODE instead.",
+    );
+  }
+  if (mergedAny?.sandbox && "workspaceMode" in mergedAny.sandbox) {
+    delete mergedAny.sandbox.workspaceMode;
+  }
+
   applyRuntimeCompat();
   const schema = buildSchema();
   schema.load(merged);

@@ -4,10 +4,10 @@ import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentIni
 import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
 import { buildInitPipeline } from "../../utils/initPipeline.js";
 import { GitAuthEnvError } from "../../utils/gitAuth.js";
-import { buildGitRuntimeEnv } from "../../utils/gitCredentialRuntime.js";
 import { getSandboxWorkspaceProvider } from "../../utils/sandboxCaps.js";
 import { normalizeWorkspacePolicy } from "../../utils/workspacePolicy.js";
 import { mergeAgentInputsManifests } from "../agentInputs/mergeAgentInputs.js";
+import { buildRunInitEnv } from "./initEnv.js";
 
 type RecoveryInit = {
   script: string;
@@ -86,48 +86,36 @@ export async function buildRecoveryInit(opts: {
 
   const sandboxWorkspaceProvider = getSandboxWorkspaceProvider((opts.run as any)?.agent?.capabilities);
   const pipeline = buildInitPipeline({ policy: resolvedPolicy, hasBundle: false });
+  const initActions = pipeline.actions.length ? pipeline.actions.map((a) => a.type).join(",") : null;
 
-  const initEnv: Record<string, string> = {
-    ...roleEnv,
-    TUIXIU_PROJECT_ID: String(opts.issue?.projectId ?? ""),
-    TUIXIU_PROJECT_NAME: String(project?.name ?? ""),
-    TUIXIU_BASE_BRANCH: String(project?.defaultBranch ?? "main"),
-    TUIXIU_RUN_ID: String(opts.run?.id ?? ""),
-    TUIXIU_RUN_BRANCH: resolveBranchName(opts.run),
-    TUIXIU_WORKSPACE: String(opts.run?.workspacePath ?? ""),
-    TUIXIU_WORKSPACE_GUEST: resolveAgentWorkspaceCwd({
+  const runWorkspaceType = String(opts.run?.workspaceType ?? "").trim();
+  const workspaceMode = runWorkspaceType === "worktree" ? "worktree" : "clone";
+
+  const initEnv = buildRunInitEnv({
+    roleEnv,
+    project: {
+      id: project?.id ?? null,
+      name: project?.name ?? null,
+      repoUrl: project?.repoUrl ?? null,
+      scmType: project?.scmType ?? null,
+      defaultBranch: project?.defaultBranch ?? null,
+    },
+    issueProjectId: String(opts.issue?.projectId ?? ""),
+    runId: String(opts.run?.id ?? ""),
+    baseBranch: String(project?.defaultBranch ?? "main"),
+    branchName: resolveBranchName(opts.run),
+    workspaceGuestPath: resolveAgentWorkspaceCwd({
       runId: String(opts.run?.id ?? ""),
       sandboxWorkspaceProvider,
     }),
-    TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String(opts.issue?.projectId ?? "")}`,
-  };
-  if (!initEnv.USER_HOME) initEnv.USER_HOME = "/root";
-  if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
-  if (pipeline.actions.length) {
-    initEnv.TUIXIU_INIT_ACTIONS = pipeline.actions.map((a) => a.type).join(",");
-  }
-  if (sandboxWorkspaceProvider) {
-    initEnv.TUIXIU_WORKSPACE_PROVIDER = sandboxWorkspaceProvider;
-  }
-  const normalizedWorkspaceMode =
-    sandboxWorkspaceProvider === "guest" && String(opts.run?.workspaceType ?? "") === "worktree"
-      ? "clone"
-      : String(opts.run?.workspaceType ?? "");
-  initEnv.TUIXIU_WORKSPACE_MODE = normalizedWorkspaceMode || "clone";
-
-  if (resolvedPolicy === "git") {
-    initEnv.TUIXIU_REPO_URL = String(project?.repoUrl ?? "");
-    initEnv.TUIXIU_SCM_TYPE = String(project?.scmType ?? "");
-    initEnv.TUIXIU_DEFAULT_BRANCH = String(project?.defaultBranch ?? "");
-
-    Object.assign(
-      initEnv,
-      buildGitRuntimeEnv({
-        project: { repoUrl: String(project?.repoUrl ?? ""), scmType: project?.scmType ?? null },
-        credential: runGitCredential as any,
-      }),
-    );
-  }
+    workspaceMode,
+    sandboxWorkspaceProvider,
+    resolvedPolicy,
+    runGitCredential,
+    initActions,
+    workspaceHostPath: String(opts.run?.workspacePath ?? ""),
+    roleKey: role?.key ? String(role.key) : null,
+  });
 
   const baseInitScript = buildWorkspaceInitScript();
   const roleInitScript = role?.initScript?.trim() ? String(role.initScript) : "";

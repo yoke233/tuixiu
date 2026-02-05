@@ -1,9 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams, type StdioOptions } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
 
 import type { LoadedProxyConfig } from "../config.js";
+import { parseGitDirFromWorktree, resolveBaseRepoFromGitDir } from "../utils/gitWorktree.js";
 import type { ProxySandbox } from "./ProxySandbox.js";
 import {
   readNativeRegistry,
@@ -69,6 +70,31 @@ function normalizeAbsolutePosixPath(p: string): string {
   const normalized = path.posix.normalize(raw);
   if (!normalized.startsWith("/")) throw new Error("path must be absolute");
   return normalized;
+}
+
+async function resolveWorktreeCommonGitDirMount(opts: {
+  workspaceHostPath: string;
+  workspaceHostRoot: string;
+}): Promise<{ hostPath: string; guestPath: string; readOnly?: boolean } | null> {
+  const gitFilePath = path.join(opts.workspaceHostPath, ".git");
+  const gitFileStat = await lstat(gitFilePath).catch(() => null);
+  if (!gitFileStat?.isFile()) return null;
+
+  const content = await readFile(gitFilePath, "utf8").catch(() => "");
+  const gitDirRaw = parseGitDirFromWorktree(content);
+  if (!gitDirRaw) return null;
+
+  const gitDir = path.isAbsolute(gitDirRaw) ? gitDirRaw : path.resolve(opts.workspaceHostPath, gitDirRaw);
+  const baseRepoPath = resolveBaseRepoFromGitDir(gitDir);
+  if (!baseRepoPath) return null;
+
+  const commonGitDir = path.resolve(baseRepoPath, ".git");
+  if (!isSubPath(opts.workspaceHostRoot, commonGitDir)) return null;
+
+  const commonGitDirStat = await lstat(commonGitDir).catch(() => null);
+  if (!commonGitDirStat?.isDirectory()) return null;
+
+  return { hostPath: commonGitDir, guestPath: commonGitDir };
 }
 
 function processHandleFromChildProcess(proc: ChildProcessWithoutNullStreams): ProcessHandle {
@@ -228,6 +254,35 @@ export class BubblewrapProxySandbox implements ProxySandbox {
     if (!rootRaw) throw new Error("sandbox.workspaceHostRoot missing");
     const root = path.isAbsolute(rootRaw) ? rootRaw : path.join(process.cwd(), rootRaw);
     return path.resolve(root);
+  }
+
+  private async buildEffectiveMounts(opts: {
+    workspaceHostPath: string;
+    mounts?: { hostPath: string; guestPath: string; readOnly?: boolean }[];
+  }): Promise<{ hostPath: string; guestPath: string; readOnly?: boolean }[]> {
+    const mounts = [...(opts.mounts ?? []), ...(this.opts.config.volumes ?? [])];
+
+    // If the workspace is a git worktree, `.git` is a file pointing to a gitdir under the base repo's
+    // `.git/worktrees/*`. Git operations inside the sandbox need RW access there (e.g. index.lock).
+    const extra = await resolveWorktreeCommonGitDirMount({
+      workspaceHostPath: opts.workspaceHostPath,
+      workspaceHostRoot: this.resolveWorkspaceHostRoot(),
+    });
+    if (extra) {
+      const extraGuest = normalizeAbsoluteGuestMountPath(extra.guestPath);
+      const already = mounts.some((m) => {
+        const guest = typeof m?.guestPath === "string" ? m.guestPath : "";
+        if (!guest) return false;
+        try {
+          return normalizeAbsoluteGuestMountPath(guest) === extraGuest;
+        } catch {
+          return false;
+        }
+      });
+      if (!already) mounts.push(extra);
+    }
+
+    return mounts;
   }
 
   private resolveRegistryPath(): string {
@@ -393,9 +448,14 @@ export class BubblewrapProxySandbox implements ProxySandbox {
       env: opts.env,
     });
 
+    const mounts = await this.buildEffectiveMounts({
+      workspaceHostPath: inst.workspaceHostPath,
+      mounts: inst.mounts,
+    });
+
     const args = buildBwrapArgs({
       workspaceHostPath: inst.workspaceHostPath,
-      mounts: [...(inst.mounts ?? []), ...(this.opts.config.volumes ?? [])],
+      mounts,
       cwdInGuest: opts.cwdInGuest,
       command: opts.command,
       ...(userView ? { userView } : {}),
@@ -455,9 +515,14 @@ export class BubblewrapProxySandbox implements ProxySandbox {
       env: initEnv ?? undefined,
     });
 
+    const mounts = await this.buildEffectiveMounts({
+      workspaceHostPath,
+      mounts: opts.mounts,
+    });
+
     const args = buildBwrapArgs({
       workspaceHostPath,
-      mounts: [...(opts.mounts ?? []), ...(this.opts.config.volumes ?? [])],
+      mounts,
       cwdInGuest: opts.workspaceGuestPath,
       command: opts.agentCommand,
       ...(userView ? { userView } : {}),

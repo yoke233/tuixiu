@@ -13,11 +13,11 @@ import { renderTextTemplate } from "../../utils/textTemplate.js";
 import { postGitHubIssueCommentBestEffort } from "../scm/githubIssueComments.js";
 import type { AcpTunnel } from "../acp/acpTunnel.js";
 import { buildWorkspaceInitScript, mergeInitScripts } from "../../utils/agentInit.js";
+import { buildRunInitEnv } from "./initEnv.js";
 import { getSandboxWorkspaceProvider } from "../../utils/sandboxCaps.js";
 import { resolveAgentWorkspaceCwd } from "../../utils/agentWorkspaceCwd.js";
 import { resolveExecutionProfile } from "../../utils/executionProfile.js";
 import { GitAuthEnvError } from "../../utils/gitAuth.js";
-import { buildGitRuntimeEnv } from "../../utils/gitCredentialRuntime.js";
 import { buildInitPipeline } from "../../utils/initPipeline.js";
 import { stringifyContextInventory } from "../../utils/contextInventory.js";
 import { assertWorkspacePolicyCompat, resolveWorkspacePolicy } from "../../utils/workspacePolicy.js";
@@ -39,10 +39,10 @@ export type CreateWorkspaceResult = {
 type StartIssueRunResult =
   | { success: true; data: { run: any } }
   | {
-      success: false;
-      error: { code: string; message: string; details?: string };
-      data?: any;
-    };
+    success: false;
+    error: { code: string; message: string; details?: string };
+    data?: any;
+  };
 
 function toPublicIssue<T extends { project?: unknown }>(issue: T): T {
   const anyIssue = issue as any;
@@ -100,14 +100,14 @@ export async function startIssueRun(opts: {
   const selectedAgent = agentId
     ? await opts.prisma.agent.findUnique({ where: { id: agentId } })
     : ((
-        await opts.prisma.agent.findMany({
-          where: { status: "online" },
-          orderBy: { createdAt: "asc" },
-        })
-      ).find(
-        (a: { currentLoad: number; maxConcurrentRuns: number }) =>
-          a.currentLoad < a.maxConcurrentRuns,
-      ) ?? null);
+      await opts.prisma.agent.findMany({
+        where: { status: "online" },
+        orderBy: { createdAt: "asc" },
+      })
+    ).find(
+      (a: { currentLoad: number; maxConcurrentRuns: number }) =>
+        a.currentLoad < a.maxConcurrentRuns,
+    ) ?? null);
 
   if (!selectedAgent || (selectedAgent as any).status !== "online") {
     return {
@@ -122,16 +122,18 @@ export async function startIssueRun(opts: {
     };
   }
 
-  const effectiveRoleKey = roleKey?.trim()
-    ? roleKey.trim()
-    : (((issue as any).project as any)?.defaultRoleKey?.trim() ?? "");
-  const role = effectiveRoleKey
-    ? await opts.prisma.roleTemplate.findFirst({
-        where: { projectId: (issue as any).projectId, key: effectiveRoleKey },
-      })
-    : null;
+  const effectiveRoleKey = roleKey?.trim() ? roleKey.trim() : "";
+  if (!effectiveRoleKey) {
+    return {
+      success: false,
+      error: { code: "ROLE_REQUIRED", message: "必须选择 RoleTemplate" },
+    };
+  }
+  const role = await opts.prisma.roleTemplate.findFirst({
+    where: { projectId: (issue as any).projectId, key: effectiveRoleKey },
+  });
 
-  if (effectiveRoleKey && !role) {
+  if (!role) {
     return {
       success: false,
       error: { code: "NO_ROLE", message: "RoleTemplate 不存在" },
@@ -234,11 +236,11 @@ export async function startIssueRun(opts: {
       typeof worktreeName === "string" && worktreeName.trim()
         ? worktreeName.trim()
         : await suggestRunKeyWithLlm({
-            title: (issue as any).title,
-            externalProvider: (issue as any).externalProvider,
-            externalNumber: (issue as any).externalNumber,
-            runNumber,
-          });
+          title: (issue as any).title,
+          externalProvider: (issue as any).externalProvider,
+          externalNumber: (issue as any).externalNumber,
+          runNumber,
+        });
 
     const createWorkspace = opts.createWorkspace;
     if (!createWorkspace) {
@@ -261,9 +263,9 @@ export async function startIssueRun(opts: {
     const caps = (selectedAgent as any)?.capabilities;
     const sandboxProvider =
       caps &&
-      typeof caps === "object" &&
-      (caps as any).sandbox &&
-      typeof (caps as any).sandbox === "object"
+        typeof caps === "object" &&
+        (caps as any).sandbox &&
+        typeof (caps as any).sandbox === "object"
         ? (caps as any).sandbox.provider
         : null;
 
@@ -300,13 +302,13 @@ export async function startIssueRun(opts: {
     });
     await opts.prisma.issue
       .update({ where: { id: (issue as any).id }, data: { status: "failed" } })
-      .catch(() => {});
+      .catch(() => { });
     await opts.prisma.agent
       .update({
         where: { id: (selectedAgent as any).id },
         data: { currentLoad: { decrement: 1 } },
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return {
       success: false,
@@ -413,29 +415,26 @@ export async function startIssueRun(opts: {
       throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
     }
 
-    const initEnv: Record<string, string> = {
-      ...roleEnv,
-      TUIXIU_PROJECT_ID: String((issue as any).projectId),
-      TUIXIU_PROJECT_NAME: String(project?.name ?? ""),
-      TUIXIU_BASE_BRANCH: String(baseBranchForRun),
-      TUIXIU_RUN_ID: String((run as any).id),
-      TUIXIU_RUN_BRANCH: String(branchName),
-      TUIXIU_WORKSPACE_GUEST: String(agentWorkspacePath),
-      TUIXIU_PROJECT_HOME_DIR: `.tuixiu/projects/${String((issue as any).projectId)}`,
-    };
-    if (resolvedPolicy.resolved === "git") {
-      initEnv.TUIXIU_REPO_URL = String(project?.repoUrl ?? "");
-      initEnv.TUIXIU_SCM_TYPE = String(project?.scmType ?? "");
-      initEnv.TUIXIU_DEFAULT_BRANCH = String(project?.defaultBranch ?? "");
-
-      Object.assign(
-        initEnv,
-        buildGitRuntimeEnv({
-          project: { repoUrl: String(project?.repoUrl ?? ""), scmType: project?.scmType ?? null },
-          credential: runGitCredential as any,
-        }),
-      );
-    }
+    const initEnv = buildRunInitEnv({
+      roleEnv,
+      project: {
+        id: project?.id ?? null,
+        name: project?.name ?? null,
+        repoUrl: project?.repoUrl ?? null,
+        scmType: project?.scmType ?? null,
+        defaultBranch: project?.defaultBranch ?? null,
+      },
+      issueProjectId: String((issue as any).projectId),
+      runId: String((run as any).id),
+      baseBranch: String(baseBranchForRun),
+      branchName: String(branchName),
+      workspaceGuestPath: String(agentWorkspacePath),
+      workspaceMode,
+      sandboxWorkspaceProvider,
+      resolvedPolicy: resolvedPolicy.resolved,
+      runGitCredential,
+      roleKey: role?.key ? String(role.key) : null,
+    });
 
     const enableRuntimeSkillsMounting = project?.enableRuntimeSkillsMounting === true;
     const skillInputs: Array<{
@@ -509,11 +508,6 @@ export async function startIssueRun(opts: {
         skillInputs.push(...skillVersions);
       }
     }
-    if (!initEnv.USER_HOME) initEnv.USER_HOME = "/root";
-    if (!initEnv.TUIXIU_BWRAP_USERNAME) initEnv.TUIXIU_BWRAP_USERNAME = "agent";
-    if (!initEnv.TUIXIU_BWRAP_UID) initEnv.TUIXIU_BWRAP_UID = "1000";
-    if (!initEnv.TUIXIU_BWRAP_GID) initEnv.TUIXIU_BWRAP_GID = initEnv.TUIXIU_BWRAP_UID;
-    if (!initEnv.TUIXIU_BWRAP_HOME_PATH) initEnv.TUIXIU_BWRAP_HOME_PATH = initEnv.USER_HOME;
     const hasSkills = skillInputs.length > 0;
     const pipeline = buildInitPipeline({
       policy: resolvedPolicy.resolved,
@@ -560,19 +554,11 @@ export async function startIssueRun(opts: {
           where: { id: (run as any).id },
           data: { metadata: { ...baseMetadata, contextInventory: inventoryItems } } as any,
         })
-        .catch(() => {});
+        .catch(() => { });
     }
     if (hasSkills) {
       // skills 将通过 agentInputs 落地到 USER_HOME/.codex/skills（不再拷贝进 workspace）
     }
-
-    if (sandboxWorkspaceProvider) {
-      initEnv.TUIXIU_WORKSPACE_PROVIDER = sandboxWorkspaceProvider;
-    }
-    const normalizedWorkspaceMode =
-      sandboxWorkspaceProvider === "guest" && workspaceMode === "worktree" ? "clone" : workspaceMode;
-    initEnv.TUIXIU_WORKSPACE_MODE = normalizedWorkspaceMode;
-    if (role?.key) initEnv.TUIXIU_ROLE_KEY = String(role.key);
 
     const baseInitScript = buildWorkspaceInitScript();
     const roleInitScript = role?.initScript?.trim() ? String(role.initScript) : "";
@@ -673,7 +659,7 @@ export async function startIssueRun(opts: {
         where: { id: (selectedAgent as any).id },
         data: { currentLoad: { decrement: 1 } },
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return {
       success: false,
