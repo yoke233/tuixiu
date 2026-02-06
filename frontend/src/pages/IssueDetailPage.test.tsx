@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -302,7 +302,7 @@ describe("IssueDetailPage", () => {
     await waitFor(() => expect(screen.getAllByText("cancelled").length).toBeGreaterThan(0));
   });
 
-  it("keeps start run enabled when /api/agents fails", async () => {
+  it("keeps start run disabled before role selection when /api/agents fails", async () => {
     // task templates
     mockFetchJsonOnce({ success: true, data: { templates: [] } });
 
@@ -334,7 +334,10 @@ describe("IssueDetailPage", () => {
 
     // tasks list
     mockFetchJsonOnce({ success: true, data: { tasks: [] } });
-    mockFetchJsonOnce({ success: true, data: { roles: [] } });
+    mockFetchJsonOnce({
+      success: true,
+      data: { roles: [{ id: "role-1", projectId: "p1", key: "dev", displayName: "Dev" }] },
+    });
 
     render(
       <AuthProvider>
@@ -352,7 +355,7 @@ describe("IssueDetailPage", () => {
     expect(await screen.findByText(/无法获取 Agent 列表/)).toBeInTheDocument();
 
     const btn = await screen.findByRole("button", { name: "启动 Run" });
-    expect(btn).not.toBeDisabled();
+    expect(btn).toBeDisabled();
     expect(screen.queryByText(/当前没有可用的在线 Agent/)).not.toBeInTheDocument();
   });
 
@@ -387,7 +390,10 @@ describe("IssueDetailPage", () => {
     mockFetchJsonOnce({ success: true, data: { tasks: [] } });
 
     // roles
-    mockFetchJsonOnce({ success: true, data: { roles: [] } });
+    mockFetchJsonOnce({
+      success: true,
+      data: { roles: [{ id: "role-1", projectId: "p1", key: "dev", displayName: "Dev" }] },
+    });
 
     render(
       <AuthProvider>
@@ -402,6 +408,12 @@ describe("IssueDetailPage", () => {
     );
 
     expect(await screen.findByText("Start run live")).toBeInTheDocument();
+
+    const runCardHeading = await screen.findByRole("heading", { name: "Run" });
+    const runCard = runCardHeading.closest("section");
+    if (!runCard) throw new Error("Run card section not found");
+    await within(runCard).findByText("请选择角色").then((el) => el.click());
+    await screen.findByRole("option", { name: /Dev \(dev\)/ }).then((el) => el.click());
 
     // start run (POST)
     mockFetchJsonOnce({

@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export function ConsoleDetailsBlock(props: {
   className: string;
@@ -8,15 +10,20 @@ export function ConsoleDetailsBlock(props: {
   body: ReactNode;
   bodyClassName?: string;
 }) {
+  const [open, setOpen] = useState(Boolean(props.defaultOpen));
+
   return (
-    <details
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
       className={`${props.className}${props.bordered ? " consoleDetailsBorder" : ""}`}
-      open={props.defaultOpen}
     >
-      <summary className="detailsSummary">
+      <CollapsibleTrigger>
         <span className="toolSummaryRow">{props.summary}</span>
-      </summary>
-      <div className={props.bodyClassName ?? "pre"}>{props.body}</div>
-    </details>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className={props.bodyClassName ?? "pre"}>{props.body}</div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

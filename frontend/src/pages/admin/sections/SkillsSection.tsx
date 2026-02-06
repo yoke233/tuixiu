@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { checkSkillUpdates, getSkill, importSkill, listSkillVersions, searchSkills, updateSkills, type SkillCheckUpdatesResponse, type SkillDetail, type SkillSearchItem, type SkillVersion } from "@/api/skills";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -227,7 +228,7 @@ export function SkillsSection(props: Props) {
             {updatesLoading ? "检查更新中…" : "检查 skills.sh 更新"}
           </Button>
           <label className="row" style={{ gap: 8, alignItems: "center" }}>
-            <input type="checkbox" checked={publishLatest} onChange={(e) => setPublishLatest(e.target.checked)} />
+            <Checkbox checked={publishLatest} onCheckedChange={(v) => setPublishLatest(v === true)} />
             <span className="muted">更新后发布 latest（默认关闭）</span>
           </label>
           <Button

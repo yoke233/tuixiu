@@ -264,10 +264,18 @@ export function TextTemplatesSection(props: Props) {
 
                   return (
                     <li key={key} className={`listItem adminListItem ${isSelected ? "selected" : ""}`}>
-                      <button type="button" className="adminListItemButton" onClick={() => setSelectedKey(key)}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="adminListItemButton"
+                        onClick={() => setSelectedKey(key)}
+                      >
                         <div className="row spaceBetween" style={{ alignItems: "center", gap: 10 }}>
                           <code title={key}>{key}</code>
-                          <span className="row gap" style={{ alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                          <span
+                            className="row gap"
+                            style={{ alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}
+                          >
                             {hasOverride ? (
                               <Badge className="bg-primary text-primary-foreground hover:bg-primary/80">覆盖</Badge>
                             ) : null}
@@ -281,7 +289,7 @@ export function TextTemplatesSection(props: Props) {
                         <div className="muted" style={{ marginTop: 6 }}>
                           生效：<code>{effectiveSource}</code>
                         </div>
-                      </button>
+                      </Button>
                     </li>
                   );
                 })}

@@ -259,9 +259,11 @@ export function AdminPage() {
                   const label = meta.nav ?? meta.title;
                   const isActive = activeSection === key;
                   return (
-                    <button
+                    <Button
                       key={key}
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       className={`adminNavItem ${isActive ? "active" : ""}`}
                       aria-current={isActive ? "page" : undefined}
                       onClick={() => setActiveSectionWithUrl(key)}
@@ -273,7 +275,7 @@ export function AdminPage() {
                           {approvals.length}
                         </Badge>
                       ) : null}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>

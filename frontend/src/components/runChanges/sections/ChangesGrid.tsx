@@ -1,4 +1,5 @@
 import type { RunChangesController } from "@/components/runChanges/useRunChangesController";
+import { Button } from "@/components/ui/button";
 
 export function ChangesGrid(props: { model: RunChangesController }) {
   const { changes, diff, diffLoading, loading, selectedPath, setSelectedPath } = props.model;
@@ -13,9 +14,10 @@ export function ChangesGrid(props: { model: RunChangesController }) {
           changes.files.map((f) => {
             const active = selectedPath === f.path;
             return (
-              <button
+              <Button
                 key={`${f.status}:${f.oldPath ?? ""}:${f.path}`}
                 type="button"
+                variant="ghost"
                 className={`fileRow ${active ? "active" : ""}`}
                 onClick={() => setSelectedPath(f.path)}
               >
@@ -23,7 +25,7 @@ export function ChangesGrid(props: { model: RunChangesController }) {
                 <span className="filePath" title={f.path}>
                   {f.path}
                 </span>
-              </button>
+              </Button>
             );
           })
         ) : (

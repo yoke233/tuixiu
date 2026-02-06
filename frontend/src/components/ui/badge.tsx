@@ -1,4 +1,5 @@
 import * as React from "react"
+import { Primitive } from "@radix-ui/react-primitive"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
@@ -24,13 +25,19 @@ const badgeVariants = cva(
 )
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {}
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div>,
+  VariantProps<typeof badgeVariants> { }
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
-  )
-}
+const Badge = React.forwardRef<
+  React.ElementRef<typeof Primitive.div>,
+  BadgeProps
+>(({ className, variant, ...props }, ref) => (
+  <Primitive.div
+    ref={ref}
+    className={cn(badgeVariants({ variant }), className)}
+    {...props}
+  />
+))
+Badge.displayName = "Badge"
 
 export { Badge }

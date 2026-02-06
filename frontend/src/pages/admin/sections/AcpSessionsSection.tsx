@@ -819,9 +819,10 @@ export function AcpSessionsSection(props: Props) {
                     const selected = selectedSessionKey === key;
                     return (
                       <li key={key} className={`adminListItem ${selected ? "selected" : ""}`}>
-                        <button
+                        <Button
                           type="button"
-                          className="adminListItemButton"
+                          variant="ghost"
+                          className="adminListItemButton h-auto justify-start"
                           onClick={() => setSelectedSessionKey(key)}
                         >
                           <div className="row gap" style={{ alignItems: "center", justifyContent: "space-between" }}>
@@ -846,7 +847,7 @@ export function AcpSessionsSection(props: Props) {
                           <div className="cellSub" style={{ marginTop: 6 }}>
                             {s.issueTitle ? s.issueTitle : s.issueId}
                           </div>
-                        </button>
+                        </Button>
                       </li>
                     );
                   })}

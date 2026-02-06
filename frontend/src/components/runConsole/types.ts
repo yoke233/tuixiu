@@ -19,6 +19,15 @@ export type PermissionOption = {
   kind?: string;
 };
 
+export type PermissionDecision = { outcome: "selected" | "cancelled"; optionId?: string };
+
+export type PermissionUiProps = {
+  isAdmin?: boolean;
+  resolvingRequestId?: string | null;
+  resolvedRequestIds?: Set<string>;
+  onDecide?: (input: { requestId: string; sessionId: string } & PermissionDecision) => void;
+};
+
 export type ConsoleItem = {
   id: string;
   role: ConsoleRole;

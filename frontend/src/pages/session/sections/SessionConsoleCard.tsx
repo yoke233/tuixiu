@@ -3,8 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RunConsole } from "@/components/RunConsole";
 import { apiUrl } from "@/api/client";
 import { buildConsoleItems } from "@/components/runConsole/buildConsoleItems";
-import { parseSandboxInstanceStatusText } from "@/utils/sandboxStatus";
-import { findLatestSandboxInstanceStatus } from "@/utils/sandboxStatus";
+import { findLatestSandboxInstanceStatus, parseSandboxInstanceStatusText } from "@/utils/sandboxStatus";
 import { findLatestAcpTransportStatus } from "@/utils/acpTransport";
 import type { SessionController } from "@/pages/session/useSessionController";
 import { Button } from "@/components/ui/button";
@@ -189,12 +188,12 @@ export function SessionConsoleCard(props: { model: SessionController }) {
         };
       })
       .filter(Boolean) as Array<{
-      name: string;
-      display: string;
-      description: string;
-      hint: string;
-      filterKey: string;
-    }>;
+        name: string;
+        display: string;
+        description: string;
+        hint: string;
+        filterKey: string;
+      }>;
   }, [availableCommands]);
 
   const trimmed = chatText.trimStart();
@@ -406,9 +405,10 @@ export function SessionConsoleCard(props: { model: SessionController }) {
         {showCommandMenu ? (
           <div className="commandMenu" role="listbox" aria-label="可用命令">
             {filteredCommands.map((cmd, index) => (
-              <button
+              <Button
                 key={cmd.name}
                 type="button"
+                variant="ghost"
                 className={index === commandIndex ? "commandMenuItem isActive" : "commandMenuItem"}
                 onClick={() => handlePickCommand(cmd.name)}
               >
@@ -418,7 +418,7 @@ export function SessionConsoleCard(props: { model: SessionController }) {
                     {[cmd.description, cmd.hint].filter(Boolean).join(" · ")}
                   </span>
                 ) : null}
-              </button>
+              </Button>
             ))}
           </div>
         ) : null}

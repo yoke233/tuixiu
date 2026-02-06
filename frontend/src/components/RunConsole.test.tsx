@@ -99,18 +99,18 @@ describe("RunConsole", () => {
     ];
 
     const { container } = render(<RunConsole events={events} />);
-    const details = container.querySelector("details");
+    const details = container.querySelector(".consoleItem.agent");
     expect(details).not.toBeNull();
-    expect(details?.open).toBe(false);
+    expect(details?.getAttribute("data-state")).toBe("closed");
 
-    const summaryStrong = details?.querySelectorAll("summary strong") ?? [];
+    const summaryStrong = details?.querySelectorAll("button strong") ?? [];
     expect(summaryStrong).toHaveLength(1);
     expect(summaryStrong[0]?.textContent).toBe("Running ripgrep for 's'");
 
-    const summary = details?.querySelector("summary");
+    const summary = details?.querySelector("button");
     expect(summary).not.toBeNull();
     fireEvent.click(summary as Element);
-    expect(details?.open).toBe(true);
+    expect(details?.getAttribute("data-state")).toBe("open");
 
     const body = details?.querySelector("div.pre");
     expect(body).not.toBeNull();

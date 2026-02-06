@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -242,6 +242,133 @@ describe("RolesSection Agent 文件", () => {
             String(c.init?.method ?? "GET").toUpperCase() === "POST",
         ),
       ).toBe(true);
+    });
+  });
+  it("uses target.path filename when old item name is code letter", async () => {
+    (globalThis.fetch as any).mockImplementation(async (url: any, init?: RequestInit) => {
+      const u = new URL(String(url));
+      const method = String(init?.method ?? "GET").toUpperCase();
+
+      if (u.pathname.endsWith("/api/projects/p1/roles") && method === "GET") {
+        return jsonRes({
+          success: true,
+          data: {
+            roles: [
+              {
+                id: "r1",
+                projectId: "p1",
+                key: "dev",
+                displayName: "Dev",
+                description: "",
+                promptTemplate: "",
+                initScript: "",
+                initTimeoutSeconds: 300,
+                agentInputs: {
+                  version: 1,
+                  items: [
+                    {
+                      id: "x",
+                      name: "code A",
+                      apply: "writeFile",
+                      source: { type: "inlineText", text: "t" },
+                      target: { root: "USER_HOME", path: ".codex/rules/Alpha.md" },
+                    },
+                  ],
+                },
+                envKeys: [],
+                createdAt: "2026-02-02T00:00:00.000Z",
+                updatedAt: "2026-02-02T00:00:00.000Z",
+              },
+            ],
+          },
+        });
+      }
+
+      if (u.pathname.endsWith("/api/admin/projects/p1/roles/r1/skills") && method === "GET") {
+        return jsonRes({ success: true, data: { projectId: "p1", roleId: "r1", items: [] } });
+      }
+
+      return jsonRes({ success: true, data: { ok: true } });
+    });
+
+    render(
+      <RolesSection
+        active
+        effectiveProjectId="p1"
+        requireAdmin={() => true}
+        setError={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /dev/i }));
+
+    expect(await screen.findByText("Alpha.md")).toBeInTheDocument();
+    expect(await screen.findByText("编辑：Alpha.md")).toBeInTheDocument();
+  });
+
+  it("updates name and target filename after choosing inline text file", async () => {
+    (globalThis.fetch as any).mockImplementation(async (url: any, init?: RequestInit) => {
+      const u = new URL(String(url));
+      const method = String(init?.method ?? "GET").toUpperCase();
+
+      if (u.pathname.endsWith("/api/projects/p1/roles") && method === "GET") {
+        return jsonRes({
+          success: true,
+          data: {
+            roles: [
+              {
+                id: "r1",
+                projectId: "p1",
+                key: "dev",
+                displayName: "Dev",
+                description: "",
+                promptTemplate: "",
+                initScript: "",
+                initTimeoutSeconds: 300,
+                agentInputs: { version: 1, items: [] },
+                envKeys: [],
+                createdAt: "2026-02-02T00:00:00.000Z",
+                updatedAt: "2026-02-02T00:00:00.000Z",
+              },
+            ],
+          },
+        });
+      }
+
+      if (u.pathname.endsWith("/api/admin/projects/p1/roles/r1/skills") && method === "GET") {
+        return jsonRes({ success: true, data: { projectId: "p1", roleId: "r1", items: [] } });
+      }
+
+      return jsonRes({ success: true, data: { ok: true } });
+    });
+
+    const { container } = render(
+      <RolesSection
+        active
+        effectiveProjectId="p1"
+        requireAdmin={() => true}
+        setError={() => undefined}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /dev/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Agent 文件/i }));
+    await userEvent.click(screen.getByRole("button", { name: "新增" }));
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).toBeTruthy();
+    if (!fileInput) return;
+
+    const file = new File(["# from file\n"], "MyPolicy.md", { type: "text/markdown" });
+    Object.defineProperty(file, "text", { value: async () => "# from file\n" });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("名称（可选）") as HTMLInputElement).value).toBe("MyPolicy.md");
+      expect((screen.getByLabelText(/target\.path/i) as HTMLInputElement).value).toBe(
+        ".codex/MyPolicy.md",
+      );
     });
   });
 });
