@@ -361,7 +361,11 @@ export function AdminPage() {
             onReject={onRejectApproval}
           />
 
-          <SettingsSection active={activeSection === "settings"} />
+          <SettingsSection
+            active={activeSection === "settings"}
+            requireAdmin={requireAdmin}
+            setError={setError}
+          />
 
           <AcpSessionsSection
             active={activeSection === "acpSessions"}

@@ -250,6 +250,7 @@ export function IssueRunCard(props: IssueRunCardProps) {
                 <SelectContent>
                   {roles.map((r) => (
                     <SelectItem key={r.id} value={r.key}>
+                      {r.scope === "platform" ? "[公共] " : ""}
                       {r.displayName} ({r.key})
                     </SelectItem>
                   ))}

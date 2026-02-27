@@ -1,4 +1,16 @@
 import type { PrismaDeps } from "../db.js";
+import { isPlatformScope } from "./sharedScopes.js";
+
+export function isCredentialUsableForProject(
+  credential: unknown,
+  projectId: unknown,
+): boolean {
+  const project = String(projectId ?? "").trim();
+  if (!credential || !project) return false;
+
+  if (isPlatformScope((credential as any)?.scope)) return true;
+  return String((credential as any)?.projectId ?? "").trim() === project;
+}
 
 export async function loadProjectCredentials(
   prisma: PrismaDeps,
@@ -26,8 +38,8 @@ export async function loadProjectCredentials(
   let admin = adminId ? (byId.get(adminId) ?? null) : null;
 
   if (projectId) {
-    if (run && String((run as any)?.projectId ?? "") !== projectId) run = null;
-    if (admin && String((admin as any)?.projectId ?? "") !== projectId) admin = null;
+    if (run && !isCredentialUsableForProject(run, projectId)) run = null;
+    if (admin && !isCredentialUsableForProject(admin, projectId)) admin = null;
   }
 
   return { run, admin };

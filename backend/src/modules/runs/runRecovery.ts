@@ -8,6 +8,8 @@ import { getSandboxWorkspaceProvider } from "../../utils/sandboxCaps.js";
 import { normalizeWorkspacePolicy } from "../../utils/workspacePolicy.js";
 import { mergeAgentInputsManifests } from "../agentInputs/mergeAgentInputs.js";
 import { buildRunInitEnv } from "./initEnv.js";
+import { loadProjectCredentials } from "../../utils/projectCredentials.js";
+import { findEffectiveRoleTemplate } from "../../utils/roleTemplates.js";
 
 type RecoveryInit = {
   script: string;
@@ -60,8 +62,9 @@ export async function buildRecoveryInit(opts: {
   const roleKey = getRoleKey(opts.run, project);
   if (!roleKey) return undefined;
 
-  const role = await opts.prisma.roleTemplate.findFirst({
-    where: { projectId: opts.issue?.projectId, key: roleKey },
+  const role = await findEffectiveRoleTemplate(opts.prisma, {
+    projectId: opts.issue?.projectId,
+    roleKey,
   });
   if (!role) return undefined;
 
@@ -69,18 +72,8 @@ export async function buildRecoveryInit(opts: {
 
   const roleEnv = normalizeRoleEnv(role?.envText ? parseEnvText(String(role.envText)) : {});
 
-  const runGitCredentialId = resolvedPolicy === "git" ? String(project?.runGitCredentialId ?? "").trim() : "";
-  if (resolvedPolicy === "git" && !runGitCredentialId) {
-    throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
-  }
-  const runGitCredential =
-    resolvedPolicy === "git"
-      ? await opts.prisma.gitCredential.findUnique({ where: { id: runGitCredentialId } } as any)
-      : null;
-  if (
-    resolvedPolicy === "git" &&
-    (!runGitCredential || String((runGitCredential as any)?.projectId ?? "") !== String(project?.id ?? ""))
-  ) {
+  const { run: runGitCredential } = await loadProjectCredentials(opts.prisma, project ?? {});
+  if (resolvedPolicy === "git" && !runGitCredential) {
     throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
   }
 
@@ -172,7 +165,9 @@ export async function buildRecoveryInit(opts: {
                 return { skillId, skillName: String(skill.name ?? ""), skillVersionId: latestVersionId };
               });
 
-              const versionIds = Array.from(new Set(resolved.map((x) => x.skillVersionId)));
+              const versionIds = Array.from(
+                new Set(resolved.map((x: any) => String(x.skillVersionId ?? ""))),
+              ).filter((id): id is string => Boolean(id));
               const versions = await opts.prisma.skillVersion.findMany({
                 where: { id: { in: versionIds } } as any,
                 select: { id: true, skillId: true, contentHash: true, storageUri: true },
@@ -180,10 +175,10 @@ export async function buildRecoveryInit(opts: {
               const versionById = new Map<string, any>();
               for (const v of versions as any[]) versionById.set(String(v.id ?? ""), v);
 
-              const missing = versionIds.filter((id) => !versionById.has(id));
+              const missing = versionIds.filter((id: string) => !versionById.has(id));
               if (missing.length) throw new Error(`role skills 解析失败：SkillVersion 不存在: ${missing.join(", ")}`);
 
-              const skillVersions = resolved.map((x) => {
+              const skillVersions = resolved.map((x: any) => {
                 const v = versionById.get(x.skillVersionId);
                 if (!v) throw new Error("unreachable");
                 if (String(v.skillId ?? "") !== x.skillId) {

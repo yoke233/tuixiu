@@ -2,13 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import { buildRecoveryInit } from "../../../src/modules/runs/runRecovery.js";
 
-function makePrisma(opts?: { role?: any; credential?: any }) {
+function makePrisma(opts?: { roles?: any[]; role?: any; credential?: any }) {
+  const roles = Array.isArray(opts?.roles)
+    ? opts.roles
+    : opts?.role !== undefined
+      ? [opts.role]
+      : [];
+  let idx = 0;
   return {
     roleTemplate: {
-      findFirst: async () => opts?.role ?? null,
+      findFirst: async () => roles[idx++] ?? null,
     },
     gitCredential: {
-      findUnique: async () => opts?.credential ?? null,
+      findMany: async () => (opts?.credential ? [opts.credential] : []),
     },
   } as any;
 }
@@ -34,7 +40,7 @@ describe("runRecovery", () => {
 
   it("returns undefined when role not found", async () => {
     const init = await buildRecoveryInit({
-      prisma: makePrisma(null),
+      prisma: makePrisma(),
       run: { metadata: { roleKey: "dev" } },
       issue: { projectId: "p1", project: { defaultRoleKey: "dev" } },
       project: { defaultRoleKey: "dev" },
@@ -123,5 +129,54 @@ describe("runRecovery", () => {
         project,
       }),
     ).rejects.toMatchObject({ code: "RUN_GIT_CREDENTIAL_MISSING" });
+  });
+
+  it("falls back to platform role and platform credential", async () => {
+    const project = {
+      id: "p1",
+      name: "Proj",
+      repoUrl: "https://example.com/repo.git",
+      scmType: "github",
+      defaultBranch: "main",
+      defaultRoleKey: "reviewer",
+      runGitCredentialId: "00000000-0000-0000-0000-000000000200",
+    };
+    const run = {
+      id: "r3",
+      metadata: { roleKey: "reviewer" },
+      workspacePath: "/host/ws",
+      branchName: "run-reviewer",
+      agent: { capabilities: { sandbox: { workspaceProvider: "guest" } } },
+    };
+
+    const init = await buildRecoveryInit({
+      prisma: makePrisma({
+        roles: [
+          null,
+          {
+            id: "role-platform",
+            projectId: null,
+            scope: "platform",
+            key: "reviewer",
+            envText: "",
+            initScript: "",
+            initTimeoutSeconds: 60,
+          },
+        ],
+        credential: {
+          id: "00000000-0000-0000-0000-000000000200",
+          projectId: null,
+          scope: "platform",
+          gitAuthMode: "https_pat",
+          githubAccessToken: "global-gh",
+        },
+      }),
+      run,
+      issue: { projectId: "p1", project },
+      project,
+    });
+
+    expect(init?.env.TUIXIU_ROLE_KEY).toBe("reviewer");
+    expect(init?.env.TUIXIU_GIT_HTTP_PASSWORD).toBe("global-gh");
   });
 });

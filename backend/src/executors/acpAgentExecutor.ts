@@ -15,6 +15,8 @@ import { buildInitPipeline } from "../utils/initPipeline.js";
 import { stringifyContextInventory } from "../utils/contextInventory.js";
 import { assertWorkspacePolicyCompat, resolveWorkspacePolicy } from "../utils/workspacePolicy.js";
 import { mergeAgentInputsManifests } from "../modules/agentInputs/mergeAgentInputs.js";
+import { loadProjectCredentials } from "../utils/projectCredentials.js";
+import { findEffectiveRoleTemplate } from "../utils/roleTemplates.js";
 
 import type { CreateWorkspace, CreateWorkspaceResult } from "./types.js";
 
@@ -301,9 +303,7 @@ export async function startAcpAgentExecution(
         : "";
 
   const role = roleKey
-    ? await deps.prisma.roleTemplate.findFirst({
-        where: { projectId: issue.projectId, key: roleKey },
-      })
+    ? await findEffectiveRoleTemplate(deps.prisma, { projectId: issue.projectId, roleKey })
     : null;
   if (roleKey && !role) throw new Error("RoleTemplate 不存在");
 
@@ -445,19 +445,8 @@ export async function startAcpAgentExecution(
   }
 
   const roleEnv = normalizeRoleEnv(role?.envText ? parseEnvText(String(role.envText)) : {});
-  const runGitCredentialId =
-    resolvedPolicy.resolved === "git" ? String((project as any)?.runGitCredentialId ?? "").trim() : "";
-  if (resolvedPolicy.resolved === "git" && !runGitCredentialId) {
-    throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
-  }
-  const runGitCredential =
-    resolvedPolicy.resolved === "git"
-      ? await deps.prisma.gitCredential.findUnique({ where: { id: runGitCredentialId } } as any)
-      : null;
-  if (
-    resolvedPolicy.resolved === "git" &&
-    (!runGitCredential || String((runGitCredential as any)?.projectId ?? "") !== String((project as any)?.id ?? ""))
-  ) {
+  const { run: runGitCredential } = await loadProjectCredentials(deps.prisma, project ?? {});
+  if (resolvedPolicy.resolved === "git" && !runGitCredential) {
     throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
   }
   const enableRuntimeSkillsMounting = project?.enableRuntimeSkillsMounting === true;
@@ -503,7 +492,9 @@ export async function startAcpAgentExecution(
         return { skillId, skillName: String(skill.name ?? ""), skillVersionId: latestVersionId };
       });
 
-      const versionIds = Array.from(new Set(resolved.map((x) => x.skillVersionId)));
+      const versionIds = Array.from(
+        new Set(resolved.map((x: any) => String(x.skillVersionId ?? ""))),
+      ).filter((id): id is string => Boolean(id));
       const versions = await deps.prisma.skillVersion.findMany({
         where: { id: { in: versionIds } } as any,
         select: { id: true, skillId: true, contentHash: true, storageUri: true },
@@ -511,10 +502,10 @@ export async function startAcpAgentExecution(
       const versionById = new Map<string, any>();
       for (const v of versions as any[]) versionById.set(String(v.id ?? ""), v);
 
-      const missing = versionIds.filter((id) => !versionById.has(id));
+      const missing = versionIds.filter((id: string) => !versionById.has(id));
       if (missing.length) throw new Error(`role skills 解析失败：SkillVersion 不存在: ${missing.join(", ")}`);
 
-      const skillVersions = resolved.map((x) => {
+      const skillVersions = resolved.map((x: any) => {
         const v = versionById.get(x.skillVersionId);
         if (!v) throw new Error("unreachable");
         if (String(v.skillId ?? "") !== x.skillId) {

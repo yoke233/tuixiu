@@ -4,6 +4,7 @@ import type { PrismaDeps } from "../../db.js";
 import * as github from "../../integrations/github.js";
 import { uuidv7 } from "../../utils/uuid.js";
 import { loadProjectCredentials } from "../../utils/projectCredentials.js";
+import { findEffectiveRoleTemplate } from "../../utils/roleTemplates.js";
 import { parseEnvText, stripForbiddenGitEnv } from "../../utils/envText.js";
 import { renderTextTemplate } from "../../utils/textTemplate.js";
 import type { AcpTunnel } from "../acp/acpTunnel.js";
@@ -231,7 +232,10 @@ async function runGitHubPrAutoReviewOnce(
         const roleKeyFromEnv = String(process.env.GITHUB_PR_AUTO_REVIEW_ROLE_KEY ?? "").trim();
         const roleKey = roleKeyFromEnv || "reviewer";
         const role = roleKey
-          ? await deps.prisma.roleTemplate.findFirst({ where: { projectId: issue.projectId, key: roleKey } }).catch(() => null)
+          ? await findEffectiveRoleTemplate(deps.prisma, {
+              projectId: issue.projectId,
+              roleKey,
+            }).catch(() => null)
           : null;
 
         const created = await deps.prisma.run

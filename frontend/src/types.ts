@@ -40,8 +40,10 @@ export type Project = {
 
 export type GitCredential = {
   id: string;
-  projectId: string;
+  projectId: string | null;
+  scope?: "project" | "platform";
   key: string;
+  displayName: string;
   purpose: string | null;
   gitAuthMode: GitAuthMode;
   hasGithubAccessToken: boolean;
@@ -274,7 +276,8 @@ export type SandboxSummary = {
 
 export type RoleTemplate = {
   id: string;
-  projectId: string;
+  projectId: string | null;
+  scope?: "project" | "platform";
   key: string;
   displayName: string;
   description?: string | null;

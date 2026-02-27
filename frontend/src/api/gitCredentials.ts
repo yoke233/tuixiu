@@ -8,6 +8,7 @@ export async function listGitCredentials(projectId: string): Promise<GitCredenti
 
 export type CreateGitCredentialInput = {
   key: string;
+  displayName?: string;
   purpose?: string;
   gitAuthMode?: GitAuthMode;
   githubAccessToken?: string;
@@ -26,6 +27,7 @@ export async function createGitCredential(projectId: string, input: CreateGitCre
 
 export type UpdateGitCredentialInput = {
   key?: string;
+  displayName?: string;
   purpose?: string | null;
   gitAuthMode?: GitAuthMode;
   githubAccessToken?: string | null;

@@ -71,6 +71,68 @@ describe("RoleTemplate routes", () => {
     await server.close();
   });
 
+  it("GET /api/projects/:projectId/roles?includePlatform=1 merges platform roles", async () => {
+    const server = createHttpServer();
+    const prisma = {
+      roleTemplate: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: "00000000-0000-0000-0000-000000000011",
+              projectId: "00000000-0000-0000-0000-000000000010",
+              scope: "project",
+              key: "dev",
+              displayName: "Project Dev",
+              envText: null,
+            },
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: "00000000-0000-0000-0000-000000000021",
+              projectId: null,
+              scope: "platform",
+              key: "dev",
+              displayName: "Platform Dev",
+              envText: null,
+            },
+            {
+              id: "00000000-0000-0000-0000-000000000022",
+              projectId: null,
+              scope: "platform",
+              key: "reviewer",
+              displayName: "Reviewer",
+              envText: null,
+            },
+          ]),
+      },
+    } as any;
+
+    await server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
+
+    const res = await server.inject({
+      method: "GET",
+      url: "/api/projects/00000000-0000-0000-0000-000000000010/roles?includePlatform=1",
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as any;
+    expect(body.success).toBe(true);
+    expect(body.data.roles.map((x: any) => `${x.scope}:${x.key}`)).toEqual([
+      "project:dev",
+      "platform:reviewer",
+    ]);
+    expect(prisma.roleTemplate.findMany).toHaveBeenNthCalledWith(1, {
+      where: { projectId: "00000000-0000-0000-0000-000000000010" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(prisma.roleTemplate.findMany).toHaveBeenNthCalledWith(2, {
+      where: { scope: "platform", projectId: null },
+      orderBy: { createdAt: "desc" },
+    });
+
+    await server.close();
+  });
+
   it("POST /api/projects/:projectId/roles returns NOT_FOUND when project missing", async () => {
     const server = createHttpServer();
     const prisma = {
@@ -118,7 +180,8 @@ describe("RoleTemplate routes", () => {
 
     expect(prisma.roleTemplate.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        project: { connect: { id: "00000000-0000-0000-0000-000000000010" } },
+        projectId: "00000000-0000-0000-0000-000000000010",
+        scope: "project",
         envText: "B=2\nA=1",
       }),
     });

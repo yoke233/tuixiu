@@ -227,7 +227,7 @@ export function makeIssueRoutes(deps: {
         });
 
         await Promise.all(
-          runs.map(async (run) => {
+          runs.map(async (run: any) => {
             const proxyId = String((run as any).agent?.proxyId ?? "").trim();
             const sessionId = String((run as any).acpSessionId ?? "").trim();
             if (!proxyId || !sessionId) return;

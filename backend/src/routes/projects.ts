@@ -31,9 +31,9 @@ export function makeProjectRoutes(deps: { prisma: PrismaDeps }): FastifyPluginAs
       }
 
       const scmConfigs = await deps.prisma.projectScmConfig.findMany({
-        where: { projectId: { in: projects.map((p) => p.id) } },
+        where: { projectId: { in: projects.map((p: any) => p.id) } },
       });
-      const scmConfigByProjectId = new Map(scmConfigs.map((c) => [c.projectId, c]));
+      const scmConfigByProjectId = new Map(scmConfigs.map((c: any) => [c.projectId, c]));
 
       return {
         success: true,

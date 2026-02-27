@@ -12,8 +12,14 @@ export type CreateRoleTemplateInput = {
   agentInputs?: AgentInputsManifestV1 | null;
 };
 
-export async function listRoles(projectId: string): Promise<RoleTemplate[]> {
-  const data = await apiGet<{ roles: RoleTemplate[] }>(`/projects/${projectId}/roles`);
+export async function listRoles(
+  projectId: string,
+  opts?: { includePlatform?: boolean },
+): Promise<RoleTemplate[]> {
+  const params = new URLSearchParams();
+  if (opts?.includePlatform) params.set("includePlatform", "1");
+  const suffix = params.size ? `?${params.toString()}` : "";
+  const data = await apiGet<{ roles: RoleTemplate[] }>(`/projects/${projectId}/roles${suffix}`);
   return Array.isArray(data.roles) ? data.roles : [];
 }
 
@@ -34,4 +40,3 @@ export async function updateRole(
 export async function deleteRole(projectId: string, roleId: string): Promise<{ roleId: string }> {
   return await apiRequest<{ roleId: string }>(`/projects/${projectId}/roles/${roleId}`, { method: "DELETE" });
 }
-

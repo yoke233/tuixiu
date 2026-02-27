@@ -11,20 +11,40 @@ describe("GitCredential routes", () => {
 
     const prisma = {
       gitCredential: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            id: "00000000-0000-0000-0000-000000000100",
-            projectId: "00000000-0000-0000-0000-000000000001",
-            key: "run-default",
-            purpose: "run",
-            gitAuthMode: "https_pat",
-            githubAccessToken: "ghp_secret",
-            gitlabAccessToken: "",
-            gitSshKey: "ssh-rsa AAA",
-            gitSshKeyB64: null,
-            updatedAt: new Date("2026-02-03T00:00:00.000Z"),
-          },
-        ]),
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: "00000000-0000-0000-0000-000000000100",
+              projectId: "00000000-0000-0000-0000-000000000001",
+              scope: "project",
+              key: "run-default",
+              displayName: "Run 默认",
+              purpose: "run",
+              gitAuthMode: "https_pat",
+              githubAccessToken: "ghp_secret",
+              gitlabAccessToken: "",
+              gitSshKey: "ssh-rsa AAA",
+              gitSshKeyB64: null,
+              updatedAt: new Date("2026-02-03T00:00:00.000Z"),
+            },
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: "00000000-0000-0000-0000-000000000101",
+              projectId: null,
+              scope: "platform",
+              key: "scm-admin-global",
+              displayName: "平台 SCM 管理员",
+              purpose: "scm_admin",
+              gitAuthMode: "https_pat",
+              githubAccessToken: "",
+              gitlabAccessToken: "tok",
+              gitSshKey: null,
+              gitSshKeyB64: null,
+              updatedAt: new Date("2026-02-02T00:00:00.000Z"),
+            },
+          ]),
       },
     } as any;
 
@@ -45,7 +65,9 @@ describe("GitCredential routes", () => {
           {
             id: "00000000-0000-0000-0000-000000000100",
             projectId: "00000000-0000-0000-0000-000000000001",
+            scope: "project",
             key: "run-default",
+            displayName: "Run 默认",
             purpose: "run",
             gitAuthMode: "https_pat",
             hasGithubAccessToken: true,
@@ -55,12 +77,31 @@ describe("GitCredential routes", () => {
             hasSshKey: true,
             updatedAt: "2026-02-03T00:00:00.000Z",
           },
+          {
+            id: "00000000-0000-0000-0000-000000000101",
+            projectId: null,
+            scope: "platform",
+            key: "scm-admin-global",
+            displayName: "平台 SCM 管理员",
+            purpose: "scm_admin",
+            gitAuthMode: "https_pat",
+            hasGithubAccessToken: false,
+            hasGitlabAccessToken: true,
+            gitHttpUsername: null,
+            hasGitHttpPassword: false,
+            hasSshKey: false,
+            updatedAt: "2026-02-02T00:00:00.000Z",
+          },
         ],
       },
     });
 
-    expect(prisma.gitCredential.findMany).toHaveBeenCalledWith({
+    expect(prisma.gitCredential.findMany).toHaveBeenNthCalledWith(1, {
       where: { projectId: "00000000-0000-0000-0000-000000000001" },
+      orderBy: { updatedAt: "desc" },
+    });
+    expect(prisma.gitCredential.findMany).toHaveBeenNthCalledWith(2, {
+      where: { scope: "platform", projectId: null },
       orderBy: { updatedAt: "desc" },
     });
 
@@ -98,15 +139,21 @@ describe("GitCredential routes", () => {
     const auth = await registerAuth(server, { jwtSecret: "secret" });
 
     const prisma = {
+      project: {
+        findUnique: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000001" }),
+      },
       gitCredential: {
         findFirst: vi.fn().mockResolvedValue({
           id: "00000000-0000-0000-0000-000000000100",
           projectId: "00000000-0000-0000-0000-000000000001",
+          scope: "project",
         }),
         update: vi.fn().mockResolvedValue({
           id: "00000000-0000-0000-0000-000000000100",
           projectId: "00000000-0000-0000-0000-000000000001",
+          scope: "project",
           key: "run-default",
+          displayName: "run-default",
           purpose: "run",
           gitAuthMode: "https_pat",
           githubAccessToken: null,
@@ -135,7 +182,9 @@ describe("GitCredential routes", () => {
         credential: {
           id: "00000000-0000-0000-0000-000000000100",
           projectId: "00000000-0000-0000-0000-000000000001",
+          scope: "project",
           key: "run-default",
+          displayName: "run-default",
           purpose: "run",
           gitAuthMode: "https_pat",
           hasGithubAccessToken: false,
@@ -156,6 +205,69 @@ describe("GitCredential routes", () => {
         gitSshKey: null,
         gitSshKeyB64: null,
       },
+    });
+
+    await server.close();
+  });
+
+  it("PATCH /api/projects/:projectId/git-credentials-defaults accepts platform credential ids", async () => {
+    const server = createHttpServer();
+    const auth = await registerAuth(server, { jwtSecret: "secret" });
+
+    const prisma = {
+      project: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ id: "00000000-0000-0000-0000-000000000001" })
+          .mockResolvedValueOnce({
+            id: "00000000-0000-0000-0000-000000000001",
+            runGitCredentialId: "00000000-0000-0000-0000-000000000200",
+            scmAdminCredentialId: null,
+          }),
+        update: vi.fn().mockResolvedValue({
+          id: "00000000-0000-0000-0000-000000000001",
+          name: "P1",
+          repoUrl: "https://example.com/repo.git",
+          scmType: "github",
+          defaultBranch: "main",
+          createdAt: new Date("2026-02-10T00:00:00.000Z"),
+          runGitCredentialId: "00000000-0000-0000-0000-000000000200",
+          scmAdminCredentialId: null,
+        }),
+      },
+      gitCredential: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "00000000-0000-0000-0000-000000000200",
+          projectId: null,
+          scope: "platform",
+        }),
+      },
+    } as any;
+
+    await server.register(makeGitCredentialRoutes({ prisma, auth }), { prefix: "/api/projects" });
+
+    const token = auth.sign({ userId: "u1", username: "u1", role: "admin" });
+    const res = await server.inject({
+      method: "PATCH",
+      url: "/api/projects/00000000-0000-0000-0000-000000000001/git-credentials-defaults",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { runGitCredentialId: "00000000-0000-0000-0000-000000000200" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: true,
+      data: {
+        project: expect.objectContaining({
+          id: "00000000-0000-0000-0000-000000000001",
+          runGitCredentialId: "00000000-0000-0000-0000-000000000200",
+          hasRunGitCredential: true,
+        }),
+      },
+    });
+    expect(prisma.project.update).toHaveBeenCalledWith({
+      where: { id: "00000000-0000-0000-0000-000000000001" },
+      data: { runGitCredentialId: "00000000-0000-0000-0000-000000000200" },
     });
 
     await server.close();

@@ -382,7 +382,7 @@ export function useIssueDetailController(opts: {
 
     setRolesLoaded(false);
     setRolesError(null);
-    listRoles(projectId)
+    listRoles(projectId, { includePlatform: true })
       .then((rs) => {
         setRoles(rs);
         setRolesLoaded(true);

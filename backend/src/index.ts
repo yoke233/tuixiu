@@ -19,7 +19,7 @@ import { makeAcpSessionRoutes } from "./routes/acpSessions.js";
 import { makeAcpProxyRoutes } from "./routes/acpProxy.js";
 import { makeArtifactRoutes } from "./routes/artifacts.js";
 import { makeAuthRoutes } from "./routes/auth.js";
-import { makeGitCredentialRoutes } from "./routes/gitCredentials.js";
+import { makeGitCredentialRoutes, makePlatformGitCredentialRoutes } from "./routes/gitCredentials.js";
 import { makeGitHubIssueRoutes } from "./routes/githubIssues.js";
 import { makeGitHubWebhookRoutes } from "./routes/githubWebhooks.js";
 import { makeGitLabWebhookRoutes } from "./routes/gitlabWebhooks.js";
@@ -32,7 +32,7 @@ import { makePolicyRoutes } from "./routes/policies.js";
 import { makeWorkflowTemplateRoutes } from "./routes/workflowTemplates.js";
 import { makeProjectRoutes } from "./routes/projects.js";
 import { makeProjectScmConfigRoutes } from "./routes/projectScmConfig.js";
-import { makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
+import { makePlatformRoleTemplateRoutes, makeRoleTemplateRoutes } from "./routes/roleTemplates.js";
 import { makeRunRoutes } from "./routes/runs.js";
 import { makeSandboxRoutes } from "./routes/sandboxes.js";
 import { makeSkillRoutes } from "./routes/skills.js";
@@ -203,10 +203,8 @@ async function sandboxGitPush(opts: { run: any; branch: string; project: any }) 
       : deriveSandboxInstanceName(String(run?.id ?? ""));
   if (!instanceName) throw new Error("sandboxInstanceName 缺失");
 
-  const runGitCredentialId = String(opts.project?.runGitCredentialId ?? "").trim();
-  if (!runGitCredentialId) throw new Error("Project.runGitCredentialId 缺失");
-  const credential = await prisma.gitCredential.findUnique({ where: { id: runGitCredentialId } } as any);
-  if (!credential || String((credential as any).projectId ?? "") !== String(opts.project?.id ?? "")) {
+  const { run: credential } = await loadProjectCredentials(prisma, opts.project ?? {});
+  if (!credential) {
     throw new Error("Project.runGitCredentialId 无效");
   }
 
@@ -360,8 +358,10 @@ server.register(
 server.register(makeAgentRoutes({ prisma }), { prefix: "/api/agents" });
 server.register(makeProjectRoutes({ prisma }), { prefix: "/api/projects" });
 server.register(makeGitCredentialRoutes({ prisma, auth }), { prefix: "/api/projects" });
+server.register(makePlatformGitCredentialRoutes({ prisma, auth }), { prefix: "/api/admin/platform" });
 server.register(makeProjectScmConfigRoutes({ prisma, auth }), { prefix: "/api/projects" });
 server.register(makeRoleTemplateRoutes({ prisma }), { prefix: "/api/projects" });
+server.register(makePlatformRoleTemplateRoutes({ prisma, auth }), { prefix: "/api/admin/platform" });
 server.register(makeExecutionProfileRoutes({ prisma }), { prefix: "/api" });
 server.register(makePolicyRoutes({ prisma }), { prefix: "/api" });
 server.register(makeWorkflowTemplateRoutes({ prisma }), { prefix: "/api" });

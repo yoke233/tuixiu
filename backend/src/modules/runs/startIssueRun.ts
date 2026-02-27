@@ -1,5 +1,4 @@
 import type { PrismaDeps } from "../../db.js";
-import { Prisma } from "@prisma/client";
 import { uuidv7 } from "../../utils/uuid.js";
 import { toPublicProject } from "../../utils/publicProject.js";
 import { suggestRunKeyWithLlm } from "../../utils/gitWorkspace.js";
@@ -23,6 +22,7 @@ import { stringifyContextInventory } from "../../utils/contextInventory.js";
 import { assertWorkspacePolicyCompat, resolveWorkspacePolicy } from "../../utils/workspacePolicy.js";
 import { mergeAgentInputsManifests } from "../agentInputs/mergeAgentInputs.js";
 import { loadProjectCredentials } from "../../utils/projectCredentials.js";
+import { findEffectiveRoleTemplate } from "../../utils/roleTemplates.js";
 
 export type WorkspaceMode = "worktree" | "clone";
 
@@ -133,8 +133,9 @@ export async function startIssueRun(opts: {
       error: { code: "ROLE_REQUIRED", message: "必须选择 RoleTemplate" },
     };
   }
-  const role = await opts.prisma.roleTemplate.findFirst({
-    where: { projectId: (issue as any).projectId, key: effectiveRoleKey },
+  const role = await findEffectiveRoleTemplate(opts.prisma, {
+    projectId: (issue as any).projectId,
+    roleKey: effectiveRoleKey,
   });
 
   if (!role) {
@@ -164,9 +165,11 @@ export async function startIssueRun(opts: {
     };
   }
 
-  const runGitCredentialId =
-    resolvedPolicy.resolved === "git" ? String(project?.runGitCredentialId ?? "").trim() : "";
-  if (resolvedPolicy.resolved === "git" && !runGitCredentialId) {
+  const { run: runCredential, admin: adminCredential } = await loadProjectCredentials(
+    opts.prisma,
+    project ?? {},
+  );
+  if (resolvedPolicy.resolved === "git" && !runCredential) {
     return {
       success: false,
       error: { code: "RUN_GIT_CREDENTIAL_MISSING", message: "Project 未配置 Run GitCredential" },
@@ -192,9 +195,7 @@ export async function startIssueRun(opts: {
       resolvedWorkspacePolicy: resolvedPolicy.resolved,
       workspacePolicySource: resolvedPolicy,
       executionProfileId: executionProfile?.id ?? null,
-      executionProfileSnapshot: executionProfile
-        ? (executionProfile as unknown as Prisma.InputJsonValue)
-        : Prisma.DbNull,
+      executionProfileSnapshot: executionProfile ? (executionProfile as any) : null,
       metadata: role ? ({ roleKey: (role as any).key } as any) : undefined,
     },
   });
@@ -210,8 +211,7 @@ export async function startIssueRun(opts: {
 
   const issueIsGitHub = String((issue as any).externalProvider ?? "").toLowerCase() === "github";
   const githubIssueNumber = Number((issue as any).externalNumber ?? 0);
-  const { admin } = await loadProjectCredentials(opts.prisma, project ?? {});
-  const githubAccessToken = String((admin as any)?.githubAccessToken ?? "").trim();
+  const githubAccessToken = String((adminCredential as any)?.githubAccessToken ?? "").trim();
   const repoUrl = String(project?.repoUrl ?? "").trim();
 
   if (issueIsGitHub && githubAccessToken) {
@@ -407,17 +407,6 @@ export async function startIssueRun(opts: {
   try {
     const project: any = (issue as any).project;
     const roleEnv = normalizeRoleEnv(role ? parseEnvText(String((role as any).envText)) : {});
-    const runGitCredential =
-      resolvedPolicy.resolved === "git"
-        ? await opts.prisma.gitCredential.findUnique({ where: { id: runGitCredentialId } } as any)
-        : null;
-    if (
-      resolvedPolicy.resolved === "git" &&
-      (!runGitCredential || String((runGitCredential as any)?.projectId ?? "") !== String(project?.id ?? ""))
-    ) {
-      throw new GitAuthEnvError("RUN_GIT_CREDENTIAL_MISSING", "Project 未配置 Run GitCredential");
-    }
-
     const initEnv = buildRunInitEnv({
       roleEnv,
       project: {
@@ -435,7 +424,7 @@ export async function startIssueRun(opts: {
       workspaceMode,
       sandboxWorkspaceProvider,
       resolvedPolicy: resolvedPolicy.resolved,
-      runGitCredential,
+      runGitCredential: runCredential,
       roleKey: role?.key ? String(role.key) : null,
     });
 
@@ -480,7 +469,9 @@ export async function startIssueRun(opts: {
           return { skillId, skillName: String(skill.name ?? ""), skillVersionId: latestVersionId };
         });
 
-        const versionIds = Array.from(new Set(resolved.map((x) => x.skillVersionId)));
+        const versionIds = Array.from(
+          new Set(resolved.map((x: any) => String(x.skillVersionId ?? ""))),
+        ).filter((id): id is string => Boolean(id));
         const versions = await opts.prisma.skillVersion.findMany({
           where: { id: { in: versionIds } } as any,
           select: { id: true, skillId: true, contentHash: true, storageUri: true },
@@ -488,10 +479,10 @@ export async function startIssueRun(opts: {
         const versionById = new Map<string, any>();
         for (const v of versions as any[]) versionById.set(String(v.id ?? ""), v);
 
-        const missing = versionIds.filter((id) => !versionById.has(id));
+        const missing = versionIds.filter((id: string) => !versionById.has(id));
         if (missing.length) throw new Error(`role skills 解析失败：SkillVersion 不存在: ${missing.join(", ")}`);
 
-        const skillVersions = resolved.map((x) => {
+        const skillVersions = resolved.map((x: any) => {
           const v = versionById.get(x.skillVersionId);
           if (!v) throw new Error("unreachable");
           if (String(v.skillId ?? "") !== x.skillId) {

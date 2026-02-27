@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { PrismaDeps } from "../../db.js";
 import { callPmLlmJson, isPmLlmEnabled } from "./pmLlm.js";
 import { renderTextTemplateFromDb } from "../templates/textTemplates.js";
+import { listEffectiveRoleTemplates } from "../../utils/roleTemplates.js";
 
 export const pmRiskSchema = z.enum(["low", "medium", "high"]);
 
@@ -171,11 +172,16 @@ export async function analyzeIssueForPm(opts: {
     return { ok: false, error: { code: "NOT_FOUND", message: "Issue 不存在" } };
   }
 
-  const roles = await opts.prisma.roleTemplate.findMany({
-    where: { projectId: (issue as any).projectId },
-    orderBy: { createdAt: "asc" },
-    select: { key: true, displayName: true, description: true },
+  const rolesRaw = await listEffectiveRoleTemplates(opts.prisma, {
+    projectId: (issue as any).projectId,
+    includePlatform: true,
+    projectOrder: "asc",
   });
+  const roles = rolesRaw.map((role: any) => ({
+    key: role?.key,
+    displayName: role?.displayName,
+    description: role?.description,
+  }));
 
   const agents = await opts.prisma.agent.findMany({
     where: { status: "online" },

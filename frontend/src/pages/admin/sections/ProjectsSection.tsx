@@ -348,7 +348,7 @@ function GitCredentialEditor(props: {
     <div className="rounded-lg border bg-card p-4" style={{ marginTop: 10 }}>
       <div style={{ fontWeight: 700 }}>{title}</div>
       <div className="muted" style={{ marginTop: 4 }}>
-        key: <code>{credential.key}</code>
+        名称: <strong>{credential.displayName ?? credential.key}</strong> · key: <code>{credential.key}</code>
         {credential.purpose ? (
           <>
             {" "}
@@ -597,9 +597,10 @@ function ProjectIntegrationsPanel(props: {
       try {
         const key = kind === "run" ? "run-default" : "scm-admin";
         const purpose = kind === "run" ? "run" : "scm_admin";
+        const displayName = kind === "run" ? "Run 默认凭证" : "SCM Admin 默认凭证";
         let cred = credentials.find((c) => c.key === key) ?? null;
         if (!cred) {
-          cred = await createGitCredential(projectId, { key, purpose, gitAuthMode: defaultAuthMode });
+          cred = await createGitCredential(projectId, { key, displayName, purpose, gitAuthMode: defaultAuthMode });
         }
         await onSetDefaults(kind === "run" ? { runGitCredentialId: cred.id } : { scmAdminCredentialId: cred.id });
       } catch (err) {
@@ -680,7 +681,10 @@ function ProjectIntegrationsPanel(props: {
   const credentialOptions = useMemo(() => {
     return [
       { id: NO_CRED, label: "未设置" },
-      ...credentials.map((c) => ({ id: c.id, label: `${c.key}${c.purpose ? ` (${c.purpose})` : ""}` })),
+      ...credentials.map((c) => ({
+        id: c.id,
+        label: `${c.scope === "platform" ? "[公共] " : ""}${c.displayName ?? c.key} (${c.key})${c.purpose ? ` · ${c.purpose}` : ""}`,
+      })),
     ];
   }, [credentials]);
 
@@ -734,7 +738,15 @@ function ProjectIntegrationsPanel(props: {
             </div>
 
             {runCredential ? (
-              <GitCredentialEditor title="编辑默认 Run 凭证" projectId={projectId} provider={provider} credential={runCredential} canSave={canSave} setError={setError} onSaved={refreshAll} />
+              <GitCredentialEditor
+                title={runCredential.scope === "platform" ? "编辑默认 Run 凭证（公共）" : "编辑默认 Run 凭证"}
+                projectId={projectId}
+                provider={provider}
+                credential={runCredential}
+                canSave={canSave}
+                setError={setError}
+                onSaved={refreshAll}
+              />
             ) : (
               <div className="muted" style={{ marginTop: 10 }}>
                 未设置默认 Run 凭证。
@@ -787,7 +799,15 @@ function ProjectIntegrationsPanel(props: {
             </div>
 
             {adminCredential ? (
-              <GitCredentialEditor title="编辑默认 SCM Admin 凭证" projectId={projectId} provider={provider} credential={adminCredential} canSave={canSave} setError={setError} onSaved={refreshAll} />
+              <GitCredentialEditor
+                title={adminCredential.scope === "platform" ? "编辑默认 SCM Admin 凭证（公共）" : "编辑默认 SCM Admin 凭证"}
+                projectId={projectId}
+                provider={provider}
+                credential={adminCredential}
+                canSave={canSave}
+                setError={setError}
+                onSaved={refreshAll}
+              />
             ) : (
               <div className="muted" style={{ marginTop: 10 }}>
                 未设置默认 SCM Admin 凭证。

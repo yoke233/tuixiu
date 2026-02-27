@@ -277,12 +277,15 @@ describe("startIssueRun", () => {
         }),
       },
       gitCredential: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: "00000000-0000-0000-0000-000000000100",
-          projectId: "p1",
-          gitAuthMode: "https_pat",
-          githubAccessToken: "tok",
-        }),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "00000000-0000-0000-0000-000000000100",
+            projectId: "p1",
+            scope: "project",
+            gitAuthMode: "https_pat",
+            githubAccessToken: "tok",
+          },
+        ]),
       },
       run: { create: vi.fn().mockResolvedValue({ id: "run1" }), update: vi.fn().mockResolvedValue(undefined) },
     } as any;
@@ -319,6 +322,7 @@ describe("startIssueRun", () => {
   it("returns WORKSPACE_FAILED when createWorkspace missing", async () => {
     (suggestRunKeyWithLlm as any).mockResolvedValue("run-key");
     const issue = makeIssue();
+    issue.project.workspacePolicy = "empty";
     const agent = makeAgent({ capabilities: { sandbox: { workspaceProvider: "guest" } } });
     const prisma = {
       issue: { findUnique: vi.fn().mockResolvedValue(issue), update: vi.fn().mockResolvedValue(undefined) },
@@ -350,5 +354,61 @@ describe("startIssueRun", () => {
         data: expect.objectContaining({ currentLoad: { decrement: 1 } }),
       }),
     );
+  });
+
+  it("falls back to platform role when project role key is missing", async () => {
+    (suggestRunKeyWithLlm as any).mockResolvedValue("run-key");
+    const issue = makeIssue();
+    issue.project.workspacePolicy = "empty";
+    const agent = makeAgent();
+    const prisma = {
+      issue: { findUnique: vi.fn().mockResolvedValue(issue), update: vi.fn().mockResolvedValue(undefined) },
+      agent: { findMany: vi.fn().mockResolvedValue([agent]), update: vi.fn().mockResolvedValue(undefined) },
+      roleTemplate: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({
+            id: "r-platform",
+            projectId: null,
+            scope: "platform",
+            key: "reviewer",
+            displayName: "Reviewer",
+            envText: "",
+            workspacePolicy: "empty",
+          }),
+      },
+      run: { create: vi.fn().mockResolvedValue({ id: "run1" }), update: vi.fn().mockResolvedValue(undefined) },
+      event: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+      roleSkillBinding: { findMany: vi.fn().mockResolvedValue([]) },
+      skill: { findMany: vi.fn().mockResolvedValue([]) },
+      skillVersion: { findMany: vi.fn().mockResolvedValue([]) },
+      gitCredential: { findMany: vi.fn().mockResolvedValue([]) },
+    } as any;
+
+    const acp = { promptRun: vi.fn().mockResolvedValue({}) } as any;
+    const createWorkspace = vi.fn().mockResolvedValue({
+      workspacePath: "C:/ws",
+      branchName: "run-branch",
+      baseBranch: "main",
+      workspaceMode: "worktree",
+      timingsMs: {},
+    });
+
+    const res = await startIssueRun({
+      prisma,
+      acp,
+      createWorkspace,
+      issueId: "i1",
+      roleKey: "reviewer",
+    });
+
+    expect(res.success).toBe(true);
+    expect(prisma.roleTemplate.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { projectId: "p1", key: "reviewer" },
+    });
+    expect(prisma.roleTemplate.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { key: "reviewer", scope: "platform", projectId: null },
+    });
   });
 });
