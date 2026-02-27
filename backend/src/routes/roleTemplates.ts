@@ -333,7 +333,17 @@ export function makePlatformRoleTemplateRoutes(deps: {
       }
 
       const inUseProject = await deps.prisma.project.findFirst({
-        where: { defaultRoleKey: String((existing as any).key ?? "") } as any,
+        where: {
+          defaultRoleKey: String((existing as any).key ?? ""),
+          NOT: {
+            roles: {
+              some: {
+                key: String((existing as any).key ?? ""),
+                scope: SHARED_SCOPE_PROJECT,
+              },
+            },
+          },
+        } as any,
         select: { id: true },
       });
       if (inUseProject) {

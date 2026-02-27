@@ -213,4 +213,95 @@ describe("platform shared routes", () => {
     expect(prisma.roleTemplate.findMany).not.toHaveBeenCalled();
     await server.close();
   });
+
+  it("DELETE /api/admin/platform/roles/:roleId allows delete when project role overrides same key", async () => {
+    const server = createHttpServer();
+    const auth = await registerAuth(server, { jwtSecret: "secret" });
+    const prisma = {
+      roleTemplate: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "00000000-0000-0000-0000-000000000301",
+          projectId: null,
+          scope: "platform",
+          key: "reviewer",
+        }),
+        delete: vi.fn().mockResolvedValue(undefined),
+      },
+      project: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+    } as any;
+
+    await server.register(makePlatformRoleTemplateRoutes({ prisma, auth }), {
+      prefix: "/api/admin/platform",
+    });
+
+    const token = auth.sign({ userId: "u1", username: "u1", role: "admin" });
+    const res = await server.inject({
+      method: "DELETE",
+      url: "/api/admin/platform/roles/00000000-0000-0000-0000-000000000301",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: true,
+      data: { roleId: "00000000-0000-0000-0000-000000000301" },
+    });
+    expect(prisma.project.findFirst).toHaveBeenCalledWith({
+      where: {
+        defaultRoleKey: "reviewer",
+        NOT: {
+          roles: {
+            some: { key: "reviewer", scope: "project" },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    expect(prisma.roleTemplate.delete).toHaveBeenCalledWith({
+      where: { id: "00000000-0000-0000-0000-000000000301" },
+    });
+
+    await server.close();
+  });
+
+  it("DELETE /api/admin/platform/roles/:roleId blocks delete when project defaultRoleKey depends on platform role", async () => {
+    const server = createHttpServer();
+    const auth = await registerAuth(server, { jwtSecret: "secret" });
+    const prisma = {
+      roleTemplate: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "00000000-0000-0000-0000-000000000302",
+          projectId: null,
+          scope: "platform",
+          key: "reviewer",
+        }),
+        delete: vi.fn().mockResolvedValue(undefined),
+      },
+      project: {
+        findFirst: vi.fn().mockResolvedValue({ id: "00000000-0000-0000-0000-000000000010" }),
+      },
+    } as any;
+
+    await server.register(makePlatformRoleTemplateRoutes({ prisma, auth }), {
+      prefix: "/api/admin/platform",
+    });
+
+    const token = auth.sign({ userId: "u1", username: "u1", role: "admin" });
+    const res = await server.inject({
+      method: "DELETE",
+      url: "/api/admin/platform/roles/00000000-0000-0000-0000-000000000302",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: false,
+      error: { code: "BAD_INPUT", message: "该平台公共 Role 已被项目默认角色引用，无法删除" },
+    });
+    expect(prisma.roleTemplate.delete).not.toHaveBeenCalled();
+
+    await server.close();
+  });
 });
